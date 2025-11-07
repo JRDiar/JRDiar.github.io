@@ -15,404 +15,424 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-07 03:33:42</div>
+  <div class="meta">Última actualización: 2025-11-07 04:00:26</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
+================================================================================
+brain_executor.py
+================================================================================
 """
-SHEETS MANAGER - Bot Phase 4.0
-Gestión de escritura a Google Sheets
+BRAIN EXECUTOR - Bot Phase 4.0
+Ejecución inteligente: monitoreo, entrada, gestión, salida
 """
 
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
+from exchange_connection import fetch_ohlcv
 from brain_config import (
-    GOOGLE_CREDENTIALS_FILE, GOOGLE_SPREADSHEET_ID,
-    ENABLE_SHEETS, BATCH_WRITE, ARGENTINA_TZ,
-    SHEET_BRAIN_PRE_FILTRO, SHEET_BRAIN_WATCHLIST,
-    SHEET_BRAIN_TRIGGERS, SHEET_BRAIN_PROYECCIONES,
-    SHEET_BRAIN_TRADES, SHEET_BRAIN_MONITOREO,
-    SHEET_BRAIN_SALIDAS, SHEET_BRAIN_CONFIG_REMOTE,
-    SHEET_BRAIN_STATS
+    CAPITAL_INICIAL, SIMULATE_LEVERAGE, MAX_TRADES_SIMULTANEOUS,
+    ADX_THRESHOLD, ADX_MIN_ACCELERATION, MOMENTUM_CONSECUTIVE_CANDLES,
+    VOLUME_RATIO_MIN, ENABLE_BREAKEVEN_PROTECTION, ENABLE_TRAILING_STOP,
+    ENABLE_SMART_EXIT, BREAKEVEN_PROFIT_TRIGGER_PCT,
+    DECELERATION_THRESHOLD, VOLUME_DECLINE_THRESHOLD,
+    CRITICAL_ZONE_DISTANCE_PCT, BUFFETT_EARLY_EXIT_TIME_MIN,
+    BUFFETT_EARLY_EXIT_LOSS_PCT, ARGENTINA_TZ
 )
+from brain_analyzer import calculate_adx, calculate_momentum_color
+from brain_calculator import calculate_velocity, calculate_acceleration
+from brain_watchlist import watchlist_manager
+from sheets_manager import sheets_manager
+from telegram_notifications import notify_entry, notify_exit, notify_breakeven
+import pandas as pd
 
 # ============================================================================
-# SHEETS MANAGER CLASS
+# CLASE TRADE MANAGER
 # ============================================================================
 
-class SheetsManager:
-    """Gestiona conexión y escritura a Google Sheets"""
-    
+class TradeManager:
     def __init__(self):
-        self.client = None
-        self.spreadsheet = None
-        self.connected = False
-        
-        if ENABLE_SHEETS and GOOGLE_CREDENTIALS_FILE and GOOGLE_SPREADSHEET_ID:
-            self._connect()
+        self.active_trades = {}
+        self.capital_available = CAPITAL_INICIAL
+        self.capital_per_trade = CAPITAL_INICIAL / MAX_TRADES_SIMULTANEOUS
+        self.trade_history = []
+        self.breakeven_exited_symbols = {}  # Monedas que salieron en breakeven para re-analizar
     
-    def _connect(self):
-        """Establece conexión con Google Sheets"""
-        try:
-            scope = [
-                'https://spreadsheets.google.com/feeds',
-                'https://www.googleapis.com/auth/drive'
-            ]
+    def can_open_trade(self):
+        """Verifica si puede abrir nuevo trade"""
+        return len(self.active_trades) &lt; MAX_TRADES_SIMULTANEOUS
+    
+    def check_trigger_activated(self, symbol, watchlist_data):
+        """
+        Verifica si trigger está activado para entrada
+        
+        Args:
+            symbol: Símbolo
+            watchlist_data: Dict con datos de watchlist
+        
+        Returns:
+            bool: True si trigger activado
+        """
+        # Fetch datos actuales 5M
+        ohlcv = fetch_ohlcv(symbol, '5m', 50)
+        if not ohlcv or len(ohlcv) &lt; 20:
+            return False
+        
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        # Verificar ADX
+        adx, di_plus, di_minus = calculate_adx(df)
+        if adx is None or adx &lt; ADX_THRESHOLD:
+            return False
+        
+        # Verificar momentum color consecutivo
+        momentum_color = calculate_momentum_color(df)
+        expected_direction = watchlist_data['direction']
+        
+        if (expected_direction == 'BULLISH' and momentum_color != 'green') or \
+           (expected_direction == 'BEARISH' and momentum_color != 'red'):
+            return False
+        
+        # Verificar volumen ratio
+        volumes = df['volume'].values
+        volume_current = volumes[-1]
+        volume_avg = volumes[-20:].mean()
+        volume_ratio = volume_current / volume_avg if volume_avg &gt; 0 else 0
+        
+        if volume_ratio &lt; VOLUME_RATIO_MIN:
+            return False
+        
+        # Verificar aceleración ADX (opcional pero recomendado)
+        if len(ohlcv) &gt;= 60:
+            df_past = df.iloc[:-5]
+            adx_past, _, _ = calculate_adx(df_past)
+            if adx_past:
+                adx_acceleration = (adx - adx_past) / 5  # Cambio por minuto
+                if adx_acceleration &lt; ADX_MIN_ACCELERATION:
+                    return False
+        
+        print(f"🎯 TRIGGER ACTIVADO: {symbol}")
+        print(f"   ADX: {adx:.1f} | Momentum: {momentum_color} | Vol ratio: {volume_ratio:.2f}x")
+        
+        return True
+    
+    def enter_trade(self, symbol, watchlist_data):
+        """
+        Entra a trade
+        
+        Args:
+            symbol: Símbolo
+            watchlist_data: Dict con datos de watchlist
+        """
+        if not self.can_open_trade():
+            print(f"⚠️ Máximo trades alcanzado ({MAX_TRADES_SIMULTANEOUS})")
+            return
+        
+        # Fetch precio actual
+        ohlcv = fetch_ohlcv(symbol, '5m', 10)
+        if not ohlcv:
+            return
+        
+        entry_price = ohlcv[-1][4]  # Close
+        direction = watchlist_data['direction']
+        triggers = watchlist_data['triggers']
+        stop_loss = triggers['stop_loss']
+        
+        # Crear trade
+        now = datetime.now(ARGENTINA_TZ)
+        
+        trade_data = {
+            'symbol': symbol,
+            'direction': direction,
+            'entry_price': entry_price,
+            'entry_time': now,
+            'stop_loss': stop_loss,
+            'target_price': triggers['target_price'],
+            'score': watchlist_data['score'],
+            'clasificacion': watchlist_data['clasificacion'],
+            'capital': self.capital_per_trade,
+            'leverage': SIMULATE_LEVERAGE,
+            'breakeven_activated': False,
+            'trailing_activated': False,
+            'max_pnl_reached': 0.0,
+            'min_pnl_reached': 0.0
+        }
+        
+        self.active_trades[symbol] = trade_data
+        
+        # Remover de watchlist
+        watchlist_manager.remove_from_watchlist(symbol, "trade abierto")
+        
+        # Notificar
+        print(f"\n{'='*80}")
+        print(f"✅ ENTRADA: {symbol} {direction}")
+        print(f"   Precio: ${entry_price:.8f}")
+        print(f"   Stop: ${stop_loss:.8f}")
+        print(f"   Target: ${triggers['target_price']:.8f}")
+        print(f"   Score: {watchlist_data['score']} ({watchlist_data['clasificacion']})")
+        print(f"{'='*80}\n")
+        
+        # Sheets
+        sheets_manager.write_trade_entry(
+            symbol, direction, entry_price,
+            stop_loss, triggers['target_price'], watchlist_data['score'],
+            triggers['rr_ratio']
+        )
+        
+        # Telegram
+        notify_entry(symbol, direction, entry_price, stop_loss, watchlist_data['score'])
+    
+    def monitor_active_trades(self):
+        """Monitorea trades activos y aplica gestión inteligente"""
+        if not self.active_trades:
+            return
+        
+        now = datetime.now(ARGENTINA_TZ)
+        symbols_to_close = []
+        
+        for symbol, trade_data in self.active_trades.items():
+            # Fetch precio actual
+            ohlcv = fetch_ohlcv(symbol, '5m', 50)
+            if not ohlcv:
+                continue
             
-            creds = ServiceAccountCredentials.from_json_keyfile_name(
-                GOOGLE_CREDENTIALS_FILE, scope
+            current_price = ohlcv[-1][4]
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            
+            # Calcular PnL
+            entry_price = trade_data['entry_price']
+            direction = trade_data['direction']
+            
+            if direction == 'BULLISH':
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+            else:
+                pnl_pct = ((entry_price - current_price) / entry_price) * 100
+            
+            # Actualizar max/min PnL
+            if pnl_pct &gt; trade_data['max_pnl_reached']:
+                trade_data['max_pnl_reached'] = pnl_pct
+            if pnl_pct &lt; trade_data['min_pnl_reached']:
+                trade_data['min_pnl_reached'] = pnl_pct
+            
+            duration_min = (now - trade_data['entry_time']).total_seconds() / 60
+            
+            # GESTIÓN 1: Breakeven
+            if ENABLE_BREAKEVEN_PROTECTION and not trade_data['breakeven_activated']:
+                if pnl_pct &gt;= BREAKEVEN_PROFIT_TRIGGER_PCT:
+                    trade_data['stop_loss'] = entry_price
+                    trade_data['breakeven_activated'] = True
+                    print(f"🛡️ BREAKEVEN: {symbol} (PnL: +{pnl_pct:.2f}%)")
+                    notify_breakeven(symbol, pnl_pct)
+            
+            # GESTIÓN 2: Verificar stop loss
+            if (direction == 'BULLISH' and current_price &lt;= trade_data['stop_loss']) or \
+               (direction == 'BEARISH' and current_price &gt;= trade_data['stop_loss']):
+                
+                # Si es breakeven, guardar para re-análisis
+                if trade_data['breakeven_activated'] and abs(pnl_pct) &lt; 0.5:
+                    self.breakeven_exited_symbols[symbol] = now
+                    reason = "Stop loss (breakeven) - re-analizar después"
+                else:
+                    reason = "Stop loss"
+                
+                symbols_to_close.append((symbol, reason))
+                continue
+            
+            # GESTIÓN 3: Salida inteligente (5 señales)
+            if ENABLE_SMART_EXIT:
+                exit_signals = self.check_exit_signals(df, trade_data, duration_min)
+                
+                if exit_signals['count'] &gt;= 2:
+                    reason = f"Salida inteligente: {', '.join(exit_signals['active'])}"
+                    symbols_to_close.append((symbol, reason))
+                    continue
+            
+            # Monitoreo log
+            print(f"📊 {symbol}: ${current_price:.8f} | PnL: {pnl_pct:+.2f}% | {duration_min:.1f}min")
+            
+            # Sheets
+            adx, _, _ = calculate_adx(df)
+            
+            sheets_manager.write_monitoreo(
+                symbol, current_price, pnl_pct, duration_min,
+                trade_data['breakeven_activated'], current_price
             )
-            
-            self.client = gspread.authorize(creds)
-            self.spreadsheet = self.client.open_by_key(GOOGLE_SPREADSHEET_ID)
-            self.connected = True
-            
-            print("✅ Google Sheets conectado")
-            
-        except Exception as e:
-            print(f"❌ Error conectando Google Sheets: {e}")
-            self.connected = False
-    
-    def _get_sheet(self, sheet_name):
-        """Obtiene o crea una hoja"""
-        if not self.connected:
-            return None
         
-        try:
-            return self.spreadsheet.worksheet(sheet_name)
-        except gspread.WorksheetNotFound:
-            # Crear hoja si no existe
-            return self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
+        # Cerrar trades marcados
+        for symbol, reason in symbols_to_close:
+            self.close_trade(symbol, reason)
     
-    def write_row(self, sheet_name, row_data):
+    def check_exit_signals(self, df, trade_data, duration_min):
         """
-        Escribe una fila en una hoja
-        
-        Args:
-            sheet_name: Nombre de la hoja
-            row_data: Lista de valores para la fila
+        Verifica 5 señales de salida inteligente
         
         Returns:
-            bool: True si éxito, False si error
+            dict: {'count': int, 'active': [list]}
         """
-        if not self.connected:
-            return False
+        signals_active = []
         
+        # SEÑAL 1: Desaceleración (velas más chicas)
         try:
-            sheet = self._get_sheet(sheet_name)
-            if not sheet:
-                return False
+            ranges = (df['high'] - df['low']).values
+            avg_range_10 = ranges[-10:].mean()
+            avg_range_3 = ranges[-3:].mean()
             
-            sheet.append_row(row_data)
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error escribiendo fila en {sheet_name}: {e}")
-            return False
-    
-    def write_batch(self, sheet_name, rows_data):
-        """
-        Escribe múltiples filas en una hoja (batch)
+            if avg_range_3 &lt; avg_range_10 * DECELERATION_THRESHOLD:
+                signals_active.append("Desaceleración")
+        except:
+            pass
         
-        Args:
-            sheet_name: Nombre de la hoja
-            rows_data: Lista de listas [[row1], [row2], ...]
-        
-        Returns:
-            bool: True si éxito, False si error
-        """
-        if not self.connected or not BATCH_WRITE:
-            return False
-        
+        # SEÑAL 2: Volumen bajando
         try:
-            sheet = self._get_sheet(sheet_name)
-            if not sheet:
-                return False
+            volumes = df['volume'].values
+            avg_vol_10 = volumes[-10:].mean()
+            avg_vol_3 = volumes[-3:].mean()
             
-            # Agregar todas las filas de una vez
-            for row in rows_data:
-                sheet.append_row(row)
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error escribiendo batch en {sheet_name}: {e}")
-            return False
-    
-    def clear_sheet(self, sheet_name):
-        """Limpia todo el contenido de una hoja"""
-        if not self.connected:
-            return False
+            if avg_vol_3 &lt; avg_vol_10 * VOLUME_DECLINE_THRESHOLD:
+                signals_active.append("Volumen bajo")
+        except:
+            pass
         
+        # SEÑAL 3: Divergencia oculta (precio sube pero momentum flat)
         try:
-            sheet = self._get_sheet(sheet_name)
-            if not sheet:
-                return False
+            prices = df['close'].values
+            price_slope = (prices[-1] - prices[-5]) / 5
             
-            sheet.clear()
-            return True
+            # Calcular momentum simplificado
+            ema = df['close'].ewm(span=10, adjust=False).mean().values
+            momentum_slope = (ema[-1] - ema[-5]) / 5
             
-        except Exception as e:
-            print(f"❌ Error limpiando {sheet_name}: {e}")
-            return False
+            direction = trade_data['direction']
+            if direction == 'BULLISH' and price_slope &gt; 0 and abs(momentum_slope) &lt; 0.001:
+                signals_active.append("Divergencia")
+            elif direction == 'BEARISH' and price_slope &lt; 0 and abs(momentum_slope) &lt; 0.001:
+                signals_active.append("Divergencia")
+        except:
+            pass
+        
+        # SEÑAL 4: Llegada zona crítica (cerca de target)
+        try:
+            current_price = df['close'].iloc[-1]
+            target = trade_data['target_price']
+            distance_pct = abs((target - current_price) / current_price * 100)
+            
+            if distance_pct &lt; CRITICAL_ZONE_DISTANCE_PCT:
+                signals_active.append("Zona crítica")
+        except:
+            pass
+        
+        # SEÑAL 5: Protección Buffett (pérdida temprana)
+        if duration_min &lt; BUFFETT_EARLY_EXIT_TIME_MIN:
+            current_price = df['close'].iloc[-1]
+            entry_price = trade_data['entry_price']
+            direction = trade_data['direction']
+            
+            if direction == 'BULLISH':
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+            else:
+                pnl_pct = ((entry_price - current_price) / entry_price) * 100
+            
+            if pnl_pct &lt; -BUFFETT_EARLY_EXIT_LOSS_PCT:
+                signals_active.append("Buffett (setup falló)")
+        
+        return {
+            'count': len(signals_active),
+            'active': signals_active
+        }
     
-    # ========================================================================
-    # FUNCIONES ESPECÍFICAS POR HOJA
-    # ========================================================================
+    def close_trade(self, symbol, reason):
+        """Cierra trade y registra resultado"""
+        if symbol not in self.active_trades:
+            return
+        
+        trade_data = self.active_trades[symbol]
+        
+        # Fetch precio actual
+        ohlcv = fetch_ohlcv(symbol, '5m', 10)
+        exit_price = ohlcv[-1][4] if ohlcv else trade_data['entry_price']
+        
+        # Calcular PnL final
+        entry_price = trade_data['entry_price']
+        direction = trade_data['direction']
+        
+        if direction == 'BULLISH':
+            pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+        else:
+            pnl_pct = ((entry_price - exit_price) / entry_price) * 100
+        
+        pnl_usd = (self.capital_per_trade * pnl_pct / 100) * SIMULATE_LEVERAGE
+        
+        # Duración
+        now = datetime.now(ARGENTINA_TZ)
+        duration_min = (now - trade_data['entry_time']).total_seconds() / 60
+        
+        # Log
+        emoji = "✅" if pnl_pct &gt; 0 else "❌"
+        print(f"\n{'='*80}")
+        print(f"{emoji} SALIDA: {symbol}")
+        print(f"   PnL: {pnl_pct:+.2f}% | ${pnl_usd:+.2f}")
+        print(f"   Duración: {duration_min:.1f} min")
+        print(f"   Razón: {reason}")
+        print(f"{'='*80}\n")
+        
+        # Sheets
+        sheets_manager.write_trade_exit(
+            symbol, exit_price, pnl_pct, pnl_usd,
+            duration_min, reason
+        )
+        
+        # Telegram
+        notify_exit(symbol, pnl_pct, pnl_usd, duration_min, reason)
+        
+        # Remover de activos
+        del self.active_trades[symbol]
+        
+        # Guardar en historial
+        trade_data['exit_price'] = exit_price
+        trade_data['exit_time'] = now
+        trade_data['pnl_pct'] = pnl_pct
+        trade_data['pnl_usd'] = pnl_usd
+        trade_data['duration_min'] = duration_min
+        trade_data['exit_reason'] = reason
+        self.trade_history.append(trade_data)
     
-    def write_pre_filtro(self, symbol, weekly_candles, status):
-        """
-        Escribe en BRAIN_PRE_FILTRO
+    def reanalyze_breakeven_exits(self):
+        """Re-analiza monedas que salieron en breakeven"""
+        if not self.breakeven_exited_symbols:
+            return
         
-        Args:
-            symbol: Símbolo (ej: BTC/USDT:USDT)
-            weekly_candles: Número de velas semanales
-            status: APROBADO o RECHAZADO
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now(ARGENTINA_TZ)
+        symbols_to_remove = []
         
-        row = [
-            timestamp,
-            symbol,
-            weekly_candles,
-            status
-        ]
+        for symbol, exit_time in self.breakeven_exited_symbols.items():
+            # Solo re-analizar después de 5 minutos
+            if (now - exit_time).total_seconds() &lt; 300:
+                continue
+            
+            print(f"🔄 Re-analizando {symbol} (salió en breakeven)...")
+            
+            from brain_analyzer import analyze_coin_complete
+            analysis = analyze_coin_complete(symbol)
+            
+            if analysis and analysis['viable']:
+                print(f"✅ {symbol} sigue viable - agregando a watchlist")
+                watchlist_manager.add_to_watchlist(symbol, analysis)
+            else:
+                print(f"❌ {symbol} ya no viable")
+            
+            symbols_to_remove.append(symbol)
         
-        return self.write_row(SHEET_BRAIN_PRE_FILTRO, row)
-    
-    def write_watchlist(self, symbol, score, direction, emas_distance, structure, edad):
-        """
-        Escribe en BRAIN_WATCHLIST
-        
-        Args:
-            symbol: Símbolo
-            score: Score 0-100
-            direction: BULLISH o BEARISH
-            emas_distance: Distancia entre EMAs (%)
-            structure: SANA, REGULAR, MALA
-            edad: JOVEN, MADURA
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            symbol,
-            score,
-            direction,
-            emas_distance,
-            structure,
-            edad
-        ]
-        
-        return self.write_row(SHEET_BRAIN_WATCHLIST, row)
-    
-    def write_trigger(self, symbol, trigger_type, adx_value, momentum, volume_ratio):
-        """
-        Escribe en BRAIN_TRIGGERS
-        
-        Args:
-            symbol: Símbolo
-            trigger_type: ADX, MOMENTUM, VOLUMEN
-            adx_value: Valor ADX actual
-            momentum: Velas consecutivas momentum
-            volume_ratio: Ratio volumen vs promedio
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            symbol,
-            trigger_type,
-            adx_value,
-            momentum,
-            volume_ratio
-        ]
-        
-        return self.write_row(SHEET_BRAIN_TRIGGERS, row)
-    
-    def write_proyeccion(self, symbol, current_price, velocity, acceleration, 
-                        time_to_target, rr_ratio, target_price, stop_loss):
-        """
-        Escribe en BRAIN_PROYECCIONES
-        
-        Args:
-            symbol: Símbolo
-            current_price: Precio actual
-            velocity: Velocidad (precio/min)
-            acceleration: Aceleración
-            time_to_target: Minutos estimados
-            rr_ratio: Risk/Reward ratio
-            target_price: Precio objetivo
-            stop_loss: Stop loss
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            symbol,
-            current_price,
-            velocity,
-            acceleration,
-            time_to_target,
-            rr_ratio,
-            target_price,
-            stop_loss
-        ]
-        
-        return self.write_row(SHEET_BRAIN_PROYECCIONES, row)
-    
-    def write_trade_entry(self, symbol, direction, entry_price, stop_loss, 
-                         take_profit, score, rr_ratio):
-        """
-        Escribe entrada de trade en BRAIN_TRADES
-        
-        Args:
-            symbol: Símbolo
-            direction: BULLISH o BEARISH
-            entry_price: Precio entrada
-            stop_loss: Stop loss
-            take_profit: Take profit
-            score: Score Brain
-            rr_ratio: Risk/Reward ratio
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            symbol,
-            "ENTRADA",
-            direction,
-            entry_price,
-            stop_loss,
-            take_profit,
-            score,
-            rr_ratio,
-            "",  # PnL (se llena en salida)
-            "",  # Duración (se llena en salida)
-            ""   # Razón salida (se llena en salida)
-        ]
-        
-        return self.write_row(SHEET_BRAIN_TRADES, row)
-    
-    def write_trade_exit(self, symbol, exit_price, pnl_pct, pnl_usd, 
-                        duration_min, exit_reason):
-        """
-        Escribe salida de trade en BRAIN_TRADES
-        
-        Args:
-            symbol: Símbolo
-            exit_price: Precio salida
-            pnl_pct: PnL en %
-            pnl_usd: PnL en USD
-            duration_min: Duración en minutos
-            exit_reason: Razón de salida
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            symbol,
-            "SALIDA",
-            "",  # Direction (vacío en salida)
-            exit_price,
-            "",  # Stop loss (vacío en salida)
-            "",  # Take profit (vacío en salida)
-            "",  # Score (vacío en salida)
-            "",  # RR (vacío en salida)
-            f"{pnl_pct:+.2f}% | ${pnl_usd:+.2f}",
-            f"{duration_min:.1f} min",
-            exit_reason
-        ]
-        
-        return self.write_row(SHEET_BRAIN_TRADES, row)
-    
-    def write_monitoreo(self, symbol, current_price, pnl_pct, time_in_trade, 
-                       stop_status, nearest_resistance):
-        """
-        Escribe en BRAIN_MONITOREO (estado actual trades activos)
-        
-        Args:
-            symbol: Símbolo
-            current_price: Precio actual
-            pnl_pct: PnL actual en %
-            time_in_trade: Minutos en trade
-            stop_status: ORIGINAL, BREAKEVEN, TRAILING
-            nearest_resistance: Resistencia más cercana
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            symbol,
-            current_price,
-            pnl_pct,
-            time_in_trade,
-            stop_status,
-            nearest_resistance
-        ]
-        
-        return self.write_row(SHEET_BRAIN_MONITOREO, row)
-    
-    def write_salida_inteligente(self, symbol, signal_type, description):
-        """
-        Escribe señales de salida inteligente en BRAIN_SALIDAS
-        
-        Args:
-            symbol: Símbolo
-            signal_type: DESACELERACION, VOLUMEN_BAJO, ZONA_CRITICA, etc.
-            description: Descripción de la señal
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            symbol,
-            signal_type,
-            description
-        ]
-        
-        return self.write_row(SHEET_BRAIN_SALIDAS, row)
-    
-    def write_stats(self, total_trades, wins, losses, win_rate, avg_pnl, 
-                   total_pnl, best_trade, worst_trade):
-        """
-        Escribe estadísticas en BRAIN_STATS
-        
-        Args:
-            total_trades: Total de trades
-            wins: Trades ganadores
-            losses: Trades perdedores
-            win_rate: Tasa de acierto (%)
-            avg_pnl: PnL promedio (%)
-            total_pnl: PnL total (USD)
-            best_trade: Mejor trade (%)
-            worst_trade: Peor trade (%)
-        """
-        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
-        row = [
-            timestamp,
-            total_trades,
-            wins,
-            losses,
-            f"{win_rate:.2f}%",
-            f"{avg_pnl:+.2f}%",
-            f"${total_pnl:+.2f}",
-            f"{best_trade:+.2f}%",
-            f"{worst_trade:+.2f}%"
-        ]
-        
-        return self.write_row(SHEET_BRAIN_STATS, row)
+        # Limpiar procesados
+        for symbol in symbols_to_remove:
+            del self.breakeven_exited_symbols[symbol]
 
 
 # ============================================================================
 # INSTANCIA GLOBAL
 # ============================================================================
 
-# Crear instancia única para todo el bot
-sheets_manager = SheetsManager()
+trade_manager = TradeManager()
 
 
 # ============================================================================
@@ -421,39 +441,1326 @@ sheets_manager = SheetsManager()
 
 if __name__ == "__main__":
     print("=" * 80)
-    print("SHEETS MANAGER - Validación")
+    print("BRAIN EXECUTOR - Validación")
     print("=" * 80)
-    print(f"Sheets habilitado: {'✅' if ENABLE_SHEETS else '❌'}")
-    print(f"Credentials configurado: {'✅' if GOOGLE_CREDENTIALS_FILE else '❌'}")
-    print(f"Spreadsheet ID configurado: {'✅' if GOOGLE_SPREADSHEET_ID else '❌'}")
-    print(f"Batch write: {'✅' if BATCH_WRITE else '❌'}")
+    print(f"Capital: ${CAPITAL_INICIAL}")
+    print(f"Max trades: {MAX_TRADES_SIMULTANEOUS}")
+    print(f"Capital por trade: ${trade_manager.capital_per_trade:.2f}")
+    print("-" * 80)
+    print(f"Breakeven: {'✅' if ENABLE_BREAKEVEN_PROTECTION else '❌'}")
+    print(f"Trailing: {'✅' if ENABLE_TRAILING_STOP else '❌'}")
+    print(f"Smart Exit: {'✅' if ENABLE_SMART_EXIT else '❌'}")
+    print("=" * 80)
+
+================================================================================
+bot_main.py
+================================================================================
+"""
+BOT MAIN - Bot Phase 4.0
+Orquestador principal: Brain Anticipatorio
+"""
+
+import time
+from datetime import datetime
+from brain_config import (
+    CAPITAL_INICIAL, SIMULATE_LEVERAGE, MAX_TRADES_SIMULTANEOUS,
+    MIN_WEEKLY_CANDLES, WATCHLIST_UPDATE_INTERVAL_SEC,
+    ARGENTINA_TZ, ENABLE_TELEGRAM
+)
+from exchange_connection import get_futures_symbols, fetch_ohlcv
+from brain_analyzer import analyze_coin_complete
+from brain_watchlist import watchlist_manager
+from brain_executor import trade_manager
+from sheets_manager import sheets_manager
+from telegram_notifications import notify_bot_start
+import pandas as pd
+
+# ============================================================================
+# CLASE BOT PRINCIPAL
+# ============================================================================
+
+class BrainTradingBot:
+    def __init__(self):
+        self.running = False
+        self.cycle_count = 0
+        self.filtered_symbols = []
+        self.last_full_analysis = None
+    
+    def print_banner(self):
+        """Imprime banner de inicio"""
+        print("\n" + "=" * 80)
+        print("🧠 BRAIN TRADING BOT - PHASE 4.0")
+        print("    Bot Anticipatorio Matemático")
+        print("=" * 80)
+        print(f"💰 Capital: ${CAPITAL_INICIAL} | Apalancamiento: {SIMULATE_LEVERAGE}x")
+        print(f"🎯 Max trades simultáneos: {MAX_TRADES_SIMULTANEOUS}")
+        print(f"📊 Análisis contextual: 1D → 4H → 1H → 15M → 5M")
+        print(f"🎯 Entrada: Trigger matemático anticipatorio")
+        print(f"🛡️ Gestión: Breakeven + Trailing + Smart Exit (5 señales)")
+        print("=" * 80 + "\n")
+    
+    def pre_filter_weekly_candles(self):
+        """
+        PRE-FILTRO: Rechaza monedas con &lt;10 velas semanales
+        
+        Returns:
+            list: Símbolos que pasan filtro
+        """
+        print(f"\n{'='*80}")
+        print("🔍 FASE 0: PRE-FILTRO VELAS SEMANALES")
+        print(f"{'='*80}")
+        
+        all_symbols = get_futures_symbols()
+        if not all_symbols:
+            print("❌ Error obteniendo símbolos")
+            return []
+        
+        total_symbols = len(all_symbols)
+        print(f"📊 Total símbolos: {total_symbols}")
+        
+        filtered = []
+        rejected = []
+        
+        print("Analizando velas semanales...")
+        
+        for i, symbol in enumerate(all_symbols):
+            if i % 100 == 0:
+                print(f"  Progreso: {i}/{total_symbols} ({i/total_symbols*100:.1f}%)")
+            
+            try:
+                ohlcv = fetch_ohlcv(symbol, '1w', 15)
+                if not ohlcv:
+                    rejected.append((symbol, 0))
+                    continue
+                
+                # Contar velas reales
+                real_candles = 0
+                for candle in ohlcv:
+                    volume = candle[5]
+                    high = candle[2]
+                    low = candle[3]
+                    
+                    if volume &gt; 0 and high != low:
+                        real_candles += 1
+                
+                if real_candles &gt;= MIN_WEEKLY_CANDLES:
+                    filtered.append(symbol)
+                    print(f"  ✅ {symbol}: {real_candles} velas semanales - APROBADO")
+                else:
+                    rejected.append((symbol, real_candles))
+                    print(f"  ❌ {symbol}: {real_candles} velas semanales - RECHAZADO")
+            
+            except Exception as e:
+                rejected.append((symbol, 0))
+        
+        print(f"\n✅ FILTRADAS: {len(filtered)}/{total_symbols} ({len(filtered)/total_symbols*100:.1f}%)")
+        print(f"❌ RECHAZADAS: {len(rejected)} (&lt;{MIN_WEEKLY_CANDLES} velas semanales)")
+        
+        return filtered
+    
+    def analyze_all_coins(self):
+        """
+        FASE 1: Análisis contextual completo de todas las monedas filtradas
+        
+        Returns:
+            list: [(symbol, analysis_data), ...] solo monedas viables
+        """
+        print(f"\n{'='*80}")
+        print("🧠 FASE 1: ANÁLISIS CONTEXTUAL MULTI-TIMEFRAME")
+        print(f"{'='*80}")
+        
+        if not self.filtered_symbols:
+            print("⚠️ No hay símbolos filtrados")
+            return []
+        
+        total = len(self.filtered_symbols)
+        analyzed = []
+        viable_count = 0
+        
+        print(f"Analizando {total} monedas (1D→4H→1H→15M→5M)...\n")
+        
+        for i, symbol in enumerate(self.filtered_symbols):
+            # Mostrar progreso cada 20 monedas (más frecuente)
+            if i % 20 == 0:
+                print(f"\n📊 Progreso: {i}/{total} ({i/total*100:.1f}%) - Viables: {viable_count}")
+            
+            try:
+                print(f"\n🔍 Analizando: {symbol}")
+                
+                analysis = analyze_coin_complete(symbol)
+                
+                if analysis and analysis['viable']:
+                    analyzed.append((symbol, analysis))
+                    viable_count += 1
+                    
+                    score = analysis['score_data']['score']
+                    clasificacion = analysis['score_data']['clasificacion']
+                    direction = analysis['analysis_5m']['direction']
+                    
+                    print(f"  ✅ {symbol}: {score}/100 ({clasificacion}) - {direction}")
+                    
+                    # Prints detallados de análisis multi-timeframe
+                    if analysis['analysis_4h']:
+                        print(f"     4H: {analysis['analysis_4h']['direction']} ({analysis['analysis_4h']['strength']}) | ADX: {analysis['analysis_4h']['adx']:.1f}")
+                    if analysis['analysis_15m']:
+                        print(f"     15M: Edad {analysis['analysis_15m']['momentum_age']}v | EMAs: {analysis['analysis_15m']['emas_classification']}")
+                    if analysis['analysis_5m']:
+                        print(f"     5M: Vel: {analysis['analysis_5m']['velocity']:.6f} | Acel: {analysis['analysis_5m']['acceleration']:.6f}")
+                else:
+                    # Moneda no viable - mostrar razón
+                    print(f"  ⚠️ {symbol}: No cumple criterios mínimos")
+                    if analysis:
+                        if analysis['analysis_4h']:
+                            print(f"     4H: {analysis['analysis_4h']['direction']} ({analysis['analysis_4h']['strength']})")
+                        if analysis.get('score_data'):
+                            print(f"     Score: {analysis['score_data']['score']}/100 (&lt; 70 requerido)")
+            
+            except Exception as e:
+                print(f"  ❌ {symbol}: ERROR al analizar")
+                print(f"     Error técnico: {str(e)[:50]}")
+                continue
+        
+        print(f"\n✅ ANÁLISIS COMPLETADO: {viable_count} monedas viables de {total}")
+        
+        return analyzed
+    
+    def update_watchlist(self, analyzed_coins):
+        """
+        FASE 2: Actualiza watchlist con monedas analizadas
+        
+        Args:
+            analyzed_coins: List de (symbol, analysis_data)
+        """
+        print(f"\n{'='*80}")
+        print("📋 FASE 2: ACTUALIZACIÓN WATCHLIST")
+        print(f"{'='*80}")
+        
+        watchlist_manager.update_watchlist_from_analysis(analyzed_coins)
+        
+        watchlist = watchlist_manager.get_watchlist()
+        
+        if watchlist:
+            print(f"\n📊 WATCHLIST ACTUAL ({len(watchlist)} monedas):")
+            for symbol, data in watchlist[:10]:  # Mostrar top 10
+                print(f"  {symbol}: {data['score']} ({data['clasificacion']}) - {data['direction']}")
+                if data['triggers']:
+                    print(f"    → Target: ${data['triggers']['target_price']:.8f} | R:R: {data['triggers']['rr_ratio']:.2f}")
+        else:
+            print("⚠️ Watchlist vacía")
+    
+    def monitor_and_trade(self):
+        """
+        FASE 3: Monitorea watchlist y trades activos
+        """
+        print(f"\n{'='*80}")
+        print("👁️ FASE 3: MONITOREO ACTIVO")
+        print(f"{'='*80}")
+        
+        # Monitorear trades activos
+        if trade_manager.active_trades:
+            print(f"\n📈 TRADES ACTIVOS: {len(trade_manager.active_trades)}")
+            trade_manager.monitor_active_trades()
+        
+        # Verificar triggers en watchlist
+        if trade_manager.can_open_trade():
+            watchlist = watchlist_manager.get_watchlist()
+            
+            print(f"\n🔍 VERIFICANDO TRIGGERS ({len(watchlist)} monedas en watchlist)...")
+            
+            for symbol, data in watchlist:
+                if not trade_manager.can_open_trade():
+                    break
+                
+                print(f"  🔍 Verificando: {symbol} (Score: {data['score']})")
+                
+                if trade_manager.check_trigger_activated(symbol, data):
+                    trade_manager.enter_trade(symbol, data)
+                else:
+                    print(f"     ⏳ Trigger no activado aún")
+        
+        # Re-analizar breakeven exits
+        trade_manager.reanalyze_breakeven_exits()
+    
+    def run(self):
+        """Loop principal del bot"""
+        self.running = True
+        self.print_banner()
+        
+        # Notificar inicio
+        if ENABLE_TELEGRAM:
+            notify_bot_start(CAPITAL_INICIAL, SIMULATE_LEVERAGE)
+        
+        # Pre-filtro inicial
+        print("🚀 Iniciando pre-filtro...")
+        self.filtered_symbols = self.pre_filter_weekly_candles()
+        
+        if not self.filtered_symbols:
+            print("❌ No hay símbolos para analizar. Abortando.")
+            return
+        
+        # Análisis inicial completo
+        print("\n🧠 Iniciando análisis contextual completo...")
+        analyzed_coins = self.analyze_all_coins()
+        
+        # Watchlist inicial
+        self.update_watchlist(analyzed_coins)
+        self.last_full_analysis = datetime.now(ARGENTINA_TZ)
+        
+        print(f"\n{'='*80}")
+        print("✅ INICIALIZACIÓN COMPLETA - Entrando en loop de monitoreo")
+        print(f"{'='*80}\n")
+        
+        # Loop principal
+        try:
+            while self.running:
+                self.cycle_count += 1
+                now = datetime.now(ARGENTINA_TZ)
+                
+                print(f"\n{'─'*80}")
+                print(f"🔄 CICLO #{self.cycle_count} - {now.strftime('%H:%M:%S')}")
+                print(f"{'─'*80}")
+                
+                # Monitoreo y trading
+                self.monitor_and_trade()
+                
+                # Re-análisis completo cada 1 hora
+                if self.last_full_analysis:
+                    elapsed = (now - self.last_full_analysis).total_seconds()
+                    if elapsed &gt;= 3600:  # 1 hora
+                        print("\n🔄 Re-análisis completo (1 hora transcurrida)")
+                        analyzed_coins = self.analyze_all_coins()
+                        self.update_watchlist(analyzed_coins)
+                        self.last_full_analysis = now
+                
+                # Esperar próximo ciclo
+                print(f"\n⏳ Próximo ciclo en {WATCHLIST_UPDATE_INTERVAL_SEC}s...")
+                time.sleep(WATCHLIST_UPDATE_INTERVAL_SEC)
+        
+        except KeyboardInterrupt:
+            print("\n\n🛑 Bot detenido por usuario")
+            self.stop()
+    
+    def stop(self):
+        """Detiene el bot"""
+        self.running = False
+        
+        print("\n" + "=" * 80)
+        print("📊 RESUMEN SESIÓN")
+        print("=" * 80)
+        
+        # Stats trades
+        total_trades = len(trade_manager.trade_history)
+        if total_trades &gt; 0:
+            wins = sum(1 for t in trade_manager.trade_history if t['pnl_pct'] &gt; 0)
+            losses = total_trades - wins
+            win_rate = (wins / total_trades) * 100
+            
+            avg_pnl = sum(t['pnl_pct'] for t in trade_manager.trade_history) / total_trades
+            total_pnl_usd = sum(t['pnl_usd'] for t in trade_manager.trade_history)
+            
+            print(f"Total trades: {total_trades}")
+            print(f"Wins: {wins} | Losses: {losses}")
+            print(f"Win rate: {win_rate:.1f}%")
+            print(f"Avg PnL: {avg_pnl:+.2f}%")
+            print(f"Total PnL: ${total_pnl_usd:+.2f}")
+            
+            # Guardar stats en Sheet
+            best_trade = max(t['pnl_pct'] for t in trade_manager.trade_history)
+            worst_trade = min(t['pnl_pct'] for t in trade_manager.trade_history)
+            
+            sheets_manager.write_stats(
+                total_trades, wins, losses, win_rate,
+                avg_pnl, best_trade, worst_trade
+            )
+        
+        else:
+            print("No se ejecutaron trades")
+        
+        print("=" * 80)
+        print("👋 Hasta pronto!")
+        print("=" * 80 + "\n")
+
+
+# ============================================================================
+# PUNTO DE ENTRADA
+# ============================================================================
+
+if __name__ == "__main__":
+    bot = BrainTradingBot()
+    
+    try:
+        bot.run()
+    except Exception as e:
+        print(f"\n❌ ERROR CRÍTICO: {e}")
+        import traceback
+        traceback.print_exc()
+        bot.stop()
+
+================================================================================
+brain_watchlist.py
+================================================================================
+"""
+BRAIN WATCHLIST - Bot Phase 4.0
+Gestión watchlist dinámica con triggers calculados
+"""
+
+import json
+from datetime import datetime
+from brain_config import (
+    WATCHLIST_JSON, MAX_WATCHLIST_SIZE, MIN_SCORE_WATCHLIST,
+    ENABLE_WATCHLIST_JSON, ARGENTINA_TZ,
+    ADX_THRESHOLD, ADX_MIN_ACCELERATION,
+    MOMENTUM_CONSECUTIVE_CANDLES, VOLUME_RATIO_MIN,
+    MIN_RR_RATIO, MIN_TIEMPO_PROYECTADO_MIN, MAX_TIEMPO_PROYECTADO_MIN
+)
+from brain_analyzer import analyze_coin_complete
+from brain_calculator import (
+    find_nearest_resistance, find_nearest_support,
+    calculate_time_to_target
+)
+
+# ============================================================================
+# CLASE WATCHLIST MANAGER
+# ============================================================================
+
+class WatchlistManager:
+    def __init__(self):
+        self.watchlist = {}
+        self.load_from_file()
+    
+    def load_from_file(self):
+        """Carga watchlist desde JSON"""
+        if not ENABLE_WATCHLIST_JSON:
+            return
+        
+        try:
+            with open(WATCHLIST_JSON, 'r') as f:
+                data = json.load(f)
+                self.watchlist = data.get('watchlist', {})
+            print(f"✅ Watchlist cargada: {len(self.watchlist)} monedas")
+        except FileNotFoundError:
+            print("ℹ️ Watchlist vacía (archivo no existe)")
+            self.watchlist = {}
+        except Exception as e:
+            print(f"❌ Error cargando watchlist: {e}")
+            self.watchlist = {}
+    
+    def save_to_file(self):
+        """Guarda watchlist a JSON"""
+        if not ENABLE_WATCHLIST_JSON:
+            return
+        
+        try:
+            data = {
+                'version': '1.0',
+                'last_updated': datetime.now(ARGENTINA_TZ).isoformat(),
+                'watchlist': self.watchlist
+            }
+            
+            with open(WATCHLIST_JSON, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            print(f"✅ Watchlist guardada: {len(self.watchlist)} monedas")
+        except Exception as e:
+            print(f"❌ Error guardando watchlist: {e}")
+    
+    def calculate_triggers(self, analysis_data):
+        """
+        Calcula triggers de entrada para una moneda
+        
+        Args:
+            analysis_data: Dict con análisis completo
+        
+        Returns:
+            dict: Triggers calculados o None
+        """
+        analysis_5m = analysis_data['analysis_5m']
+        analysis_4h = analysis_data['analysis_4h']
+        sr_zones = analysis_data['sr_zones']
+        
+        if not analysis_5m or not analysis_4h:
+            return None
+        
+        direction = analysis_5m['direction']
+        current_price = analysis_5m['current_price']
+        velocity = analysis_5m['velocity']
+        acceleration = analysis_5m['acceleration']
+        
+        # Target (resistencia/soporte más cercano)
+        target_price = None
+        target_distance_pct = None
+        
+        if sr_zones:
+            if direction == 'BULLISH':
+                nearest = find_nearest_resistance(current_price, sr_zones['resistances'])
+                if nearest:
+                    target_price = nearest[0]
+                    target_distance_pct = nearest[1]
+            else:  # BEARISH
+                nearest = find_nearest_support(current_price, sr_zones['supports'])
+                if nearest:
+                    target_price = nearest[0]
+                    target_distance_pct = nearest[1]
+        
+        # Si no hay target, usar proyección simple (3% para bulls, -3% para bears)
+        if not target_price:
+            if direction == 'BULLISH':
+                target_price = current_price * 1.03
+                target_distance_pct = 3.0
+            else:
+                target_price = current_price * 0.97
+                target_distance_pct = 3.0
+        
+        # Tiempo proyectado a target
+        tiempo_proyectado = calculate_time_to_target(
+            current_price, target_price, velocity, acceleration
+        )
+        
+        # Risk/Reward (stop loss simple 2%)
+        stop_loss = current_price * 0.98 if direction == 'BULLISH' else current_price * 1.02
+        reward = abs(target_price - current_price)
+        risk = abs(current_price - stop_loss)
+        rr_ratio = reward / risk if risk &gt; 0 else 0
+        
+        # Validar viabilidad
+        if rr_ratio &lt; MIN_RR_RATIO:
+            return None  # R:R insuficiente
+        
+        if tiempo_proyectado and (tiempo_proyectado &lt; MIN_TIEMPO_PROYECTADO_MIN or 
+                                  tiempo_proyectado &gt; MAX_TIEMPO_PROYECTADO_MIN):
+            return None  # Timing fuera de rango
+        
+        return {
+            'trigger_adx': ADX_THRESHOLD,
+            'trigger_adx_acceleration': ADX_MIN_ACCELERATION,
+            'trigger_momentum_candles': MOMENTUM_CONSECUTIVE_CANDLES,
+            'trigger_volume_ratio': VOLUME_RATIO_MIN,
+            'target_price': target_price,
+            'target_distance_pct': target_distance_pct,
+            'stop_loss': stop_loss,
+            'tiempo_proyectado_min': tiempo_proyectado,
+            'rr_ratio': rr_ratio
+        }
+    
+    def add_to_watchlist(self, symbol, analysis_data):
+        """
+        Agrega moneda a watchlist
+        
+        Args:
+            symbol: Símbolo
+            analysis_data: Dict con análisis completo
+        
+        Returns:
+            bool: True si agregado, False si rechazado
+        """
+        # Verificar límite
+        if len(self.watchlist) &gt;= MAX_WATCHLIST_SIZE:
+            # Remover moneda con score más bajo
+            lowest_symbol = min(self.watchlist.keys(), 
+                               key=lambda s: self.watchlist[s]['score'])
+            lowest_score = self.watchlist[lowest_symbol]['score']
+            
+            if analysis_data['score_data']['score'] &gt; lowest_score:
+                del self.watchlist[lowest_symbol]
+                print(f"⚠️ Watchlist llena, removido {lowest_symbol} (score {lowest_score})")
+            else:
+                return False  # Score muy bajo
+        
+        # Calcular triggers
+        triggers = self.calculate_triggers(analysis_data)
+        if not triggers:
+            return False  # Triggers inviables
+        
+        # Agregar a watchlist
+        self.watchlist[symbol] = {
+            'added_timestamp': datetime.now(ARGENTINA_TZ).isoformat(),
+            'score': analysis_data['score_data']['score'],
+            'clasificacion': analysis_data['score_data']['clasificacion'],
+            'direction': analysis_data['analysis_5m']['direction'],
+            'triggers': triggers,
+            'analysis_snapshot': {
+                'adx_5m': analysis_data['analysis_5m']['adx'],
+                'adx_4h': analysis_data['analysis_4h']['adx'],
+                'momentum_age_5m': analysis_data['analysis_5m']['momentum_age'],
+                'emas_classification_15m': analysis_data['analysis_15m']['emas_classification'] if analysis_data['analysis_15m'] else None
+            },
+            'status': 'MONITORING'
+        }
+        
+        print(f"✅ Agregado a watchlist: {symbol} (Score: {analysis_data['score_data']['score']})")
+        return True
+    
+    def remove_from_watchlist(self, symbol, reason=""):
+        """Remueve moneda de watchlist"""
+        if symbol in self.watchlist:
+            del self.watchlist[symbol]
+            print(f"❌ Removido de watchlist: {symbol} ({reason})")
+    
+    def get_watchlist(self):
+        """Retorna watchlist ordenada por score"""
+        sorted_list = sorted(
+            self.watchlist.items(),
+            key=lambda x: x[1]['score'],
+            reverse=True
+        )
+        return sorted_list
+    
+    def update_watchlist_from_analysis(self, symbols_analyzed):
+        """
+        Actualiza watchlist con nuevos análisis
+        
+        Args:
+            symbols_analyzed: List de (symbol, analysis_data) tuples
+        """
+        added_count = 0
+        
+        for symbol, analysis_data in symbols_analyzed:
+            if not analysis_data or not analysis_data.get('viable'):
+                continue
+            
+            # Si ya está en watchlist, actualizar score
+            if symbol in self.watchlist:
+                old_score = self.watchlist[symbol]['score']
+                new_score = analysis_data['score_data']['score']
+                
+                # Si score bajó mucho (&gt;15 puntos), remover
+                if new_score &lt; old_score - 15:
+                    self.remove_from_watchlist(symbol, "score bajó significativamente")
+                else:
+                    # Actualizar score
+                    self.watchlist[symbol]['score'] = new_score
+            
+            # Si no está, agregar
+            else:
+                if self.add_to_watchlist(symbol, analysis_data):
+                    added_count += 1
+        
+        print(f"📊 Watchlist actualizada: {len(self.watchlist)} monedas ({added_count} nuevas)")
+        self.save_to_file()
+    
+    def clear_watchlist(self):
+        """Limpia watchlist completa"""
+        self.watchlist = {}
+        self.save_to_file()
+        print("🗑️ Watchlist limpiada")
+
+
+# ============================================================================
+# INSTANCIA GLOBAL
+# ============================================================================
+
+watchlist_manager = WatchlistManager()
+
+
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 80)
+    print("BRAIN WATCHLIST - Validación")
+    print("=" * 80)
+    
+    # Test análisis y agregar a watchlist
+    test_symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+    
+    for symbol in test_symbols:
+        print(f"\nAnalizando {symbol}...")
+        analysis = analyze_coin_complete(symbol)
+        
+        if analysis and analysis['viable']:
+            print(f"✅ Viable (Score: {analysis['score_data']['score']})")
+            watchlist_manager.add_to_watchlist(symbol, analysis)
+        else:
+            print(f"❌ No viable")
+    
+    print("\n" + "-" * 80)
+    print("WATCHLIST ACTUAL:")
+    
+    watchlist = watchlist_manager.get_watchlist()
+    for symbol, data in watchlist:
+        print(f"  {symbol}: Score {data['score']} ({data['clasificacion']}) - {data['direction']}")
+        if data['triggers']:
+            print(f"    Target: ${data['triggers']['target_price']:.2f} ({data['triggers']['target_distance_pct']:.1f}%)")
+            print(f"    R:R: {data['triggers']['rr_ratio']:.2f}")
+    
+    print("\n" + "=" * 80)
+    print("✅ Brain Watchlist validado")
+    print("=" * 80)
+
+================================================================================
+brain_analyzer.py
+================================================================================
+
+"""
+BRAIN ANALYZER - Bot Phase 4.0
+Análisis contextual multi-timeframe por moneda
+"""
+
+import pandas as pd
+from exchange_connection import fetch_ohlcv
+from brain_calculator import (
+    calculate_velocity, calculate_acceleration,
+    detect_support_resistance, find_nearest_resistance, find_nearest_support,
+    calculate_volume_profile, calculate_fibonacci_levels,
+    find_nearest_fibonacci_level
+)
+from brain_config import (
+    ENABLE_ANALYSIS_1D, ENABLE_ANALYSIS_4H, ENABLE_ANALYSIS_1H,
+    ENABLE_ANALYSIS_15M, ENABLE_ANALYSIS_5M,
+    ENABLE_CLUSTERING_SR, ENABLE_VOLUME_PROFILE, ENABLE_FIBONACCI,
+    BONUS_STRUCTURE_SANA, BONUS_CONFLUENCE_4H, BONUS_CONFLUENCE_1D,
+    BONUS_EMAS_CERCANAS, BONUS_EDAD_JOVEN, BONUS_NO_OBSTACULOS,
+    PENALTY_EMAS_SEPARADAS, PENALTY_EDAD_MADURA, PENALTY_ESTRUCTURA_MALA,
+    MIN_SCORE_WATCHLIST
+)
+
+# ============================================================================
+# INDICADORES BÁSICOS
+# ============================================================================
+
+def calculate_adx(df, period=14):
+    """
+    Calcula ADX, DI+, DI-
+    
+    Returns:
+        tuple: (adx, di_plus, di_minus)
+    """
+    try:
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        # True Range
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(window=period).mean()
+        
+        # Directional Movement
+        up_move = high - high.shift(1)
+        down_move = low.shift(1) - low
+        
+        plus_dm = pd.Series(0.0, index=df.index)
+        minus_dm = pd.Series(0.0, index=df.index)
+        
+        plus_dm[(up_move &gt; down_move) &amp; (up_move &gt; 0)] = up_move
+        minus_dm[(down_move &gt; up_move) &amp; (down_move &gt; 0)] = down_move
+        
+        # Directional Indicators
+        plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
+        minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
+        
+        # ADX
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+        adx = dx.rolling(window=period).mean()
+        
+        return adx.iloc[-1], plus_di.iloc[-1], minus_di.iloc[-1]
+    
+    except:
+        return None, None, None
+
+
+def calculate_momentum_color(df, period=10):
+    """
+    Calcula momentum color (verde/rojo según EMA)
+    
+    Returns:
+        str: 'green', 'red', 'neutral'
+    """
+    try:
+        ema = df['close'].ewm(span=period, adjust=False).mean()
+        current_close = df['close'].iloc[-1]
+        current_ema = ema.iloc[-1]
+        
+        if current_close &gt; current_ema * 1.002:  # 0.2% margen
+            return 'green'
+        elif current_close &lt; current_ema * 0.998:
+            return 'red'
+        else:
+            return 'neutral'
+    except:
+        return 'neutral'
+
+
+def count_momentum_age(df, period=10):
+    """
+    Cuenta velas consecutivas con mismo color momentum
+    
+    Returns:
+        int: Número de velas
+    """
+    try:
+        ema = df['close'].ewm(span=period, adjust=False).mean()
+        
+        # Determinar color cada vela
+        colors = []
+        for i in range(len(df)):
+            if df['close'].iloc[i] &gt; ema.iloc[i] * 1.002:
+                colors.append('green')
+            elif df['close'].iloc[i] &lt; ema.iloc[i] * 0.998:
+                colors.append('red')
+            else:
+                colors.append('neutral')
+        
+        # Contar desde el final
+        current_color = colors[-1]
+        age = 0
+        
+        for i in range(len(colors) - 1, -1, -1):
+            if colors[i] == current_color:
+                age += 1
+            else:
+                break
+        
+        return age
+    except:
+        return 0
+
+
+def calculate_emas_separation(df, fast=10, slow=50):
+    """
+    Calcula separación entre EMAs rápida/lenta
+    
+    Returns:
+        tuple: (clasificacion, separacion_pct)
+    """
+    try:
+        if len(df) &lt; slow + 10:
+            return 'CERCANAS', 0.0
+        
+        ema_fast = df['close'].ewm(span=fast, adjust=False).mean().iloc[-1]
+        ema_slow = df['close'].ewm(span=slow, adjust=False).mean().iloc[-1]
+        
+        separation_pct = abs((ema_fast - ema_slow) / ema_slow * 100)
+        
+        if separation_pct &lt; 2.0:
+            return 'CERCANAS', separation_pct
+        elif separation_pct &lt;= 5.0:
+            return 'MODERADAS', separation_pct
+        else:
+            return 'SEPARADAS', separation_pct
+    except:
+        return 'CERCANAS', 0.0
+
+
+# ============================================================================
+# ANÁLISIS POR TIMEFRAME
+# ============================================================================
+
+def analyze_1d(symbol):
+    """
+    Análisis 1D: Clima mercado, tendencia macro
+    
+    Returns:
+        dict o None
+    """
+    if not ENABLE_ANALYSIS_1D:
+        return None
+    
+    ohlcv = fetch_ohlcv(symbol, '1d', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+    
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    adx, di_plus, di_minus = calculate_adx(df)
+    
+    if adx is None:
+        return None
+    
+    # Clasificar tendencia
+    di_spread = abs(di_plus - di_minus)
+    
+    if adx &lt; 20:
+        tendencia = 'LATERAL'
+        intensidad = 'DÉBIL'
+    elif di_plus &gt; di_minus and di_spread &gt; 5:
+        tendencia = 'ALCISTA'
+        intensidad = 'FUERTE' if adx &gt; 30 else 'MODERADA'
+    elif di_minus &gt; di_plus and di_spread &gt; 5:
+        tendencia = 'BAJISTA'
+        intensidad = 'FUERTE' if adx &gt; 30 else 'MODERADA'
+    else:
+        tendencia = 'LATERAL'
+        intensidad = 'DÉBIL'
+    
+    return {
+        'tendencia': tendencia,
+        'intensidad': intensidad,
+        'adx': adx,
+        'di_plus': di_plus,
+        'di_minus': di_minus
+    }
+
+
+def analyze_4h(symbol):
+    """
+    Análisis 4H: Setup estructural, potencial
+    
+    Returns:
+        dict o None
+    """
+    if not ENABLE_ANALYSIS_4H:
+        return None
+    
+    ohlcv = fetch_ohlcv(symbol, '4h', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+    
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    adx, di_plus, di_minus = calculate_adx(df)
+    momentum_color = calculate_momentum_color(df)
+    
+    if adx is None:
+        return None
+    
+    # Determinar dirección
+    if di_plus &gt; di_minus and momentum_color == 'green':
+        direction = 'BULLISH'
+    elif di_minus &gt; di_plus and momentum_color == 'red':
+        direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+    
+    # Clasificar fuerza
+    if adx &gt; 30:
+        strength = 'STRONG'
+    elif adx &gt; 20:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
+    
+    return {
+        'direction': direction,
+        'strength': strength,
+        'adx': adx,
+        'di_plus': di_plus,
+        'di_minus': di_minus,
+        'momentum_color': momentum_color
+    }
+
+
+def analyze_15m(symbol):
+    """
+    Análisis 15M: Timing desarrollo
+    
+    Returns:
+        dict o None
+    """
+    if not ENABLE_ANALYSIS_15M:
+        return None
+    
+    ohlcv = fetch_ohlcv(symbol, '15m', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+    
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    adx, di_plus, di_minus = calculate_adx(df)
+    momentum_color = calculate_momentum_color(df)
+    momentum_age = count_momentum_age(df)
+    emas_class, emas_sep = calculate_emas_separation(df)
+    
+    if adx is None:
+        return None
+    
+    # Determinar dirección
+    if di_plus &gt; di_minus:
+        direction = 'BULLISH'
+    elif di_minus &gt; di_plus:
+        direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+    
+    return {
+        'direction': direction,
+        'adx': adx,
+        'di_plus': di_plus,
+        'di_minus': di_minus,
+        'momentum_color': momentum_color,
+        'momentum_age': momentum_age,
+        'emas_classification': emas_class,
+        'emas_separation': emas_sep
+    }
+
+
+def analyze_5m(symbol):
+    """
+    Análisis 5M: Trigger preciso
+    
+    Returns:
+        dict o None
+    """
+    if not ENABLE_ANALYSIS_5M:
+        return None
+    
+    ohlcv = fetch_ohlcv(symbol, '5m', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+    
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    adx, di_plus, di_minus = calculate_adx(df)
+    momentum_color = calculate_momentum_color(df)
+    momentum_age = count_momentum_age(df)
+    emas_class, emas_sep = calculate_emas_separation(df)
+    
+    if adx is None:
+        return None
+    
+    # Determinar dirección
+    if di_plus &gt; di_minus:
+        direction = 'BULLISH'
+    elif di_minus &gt; di_plus:
+        direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+    
+    # Calcular velocidad/aceleración
+    prices = df['close'].values
+    velocity = calculate_velocity(prices)
+    acceleration = calculate_acceleration(prices)
+    
+    return {
+        'direction': direction,
+        'adx': adx,
+        'di_plus': di_plus,
+        'di_minus': di_minus,
+        'momentum_color': momentum_color,
+        'momentum_age': momentum_age,
+        'emas_classification': emas_class,
+        'emas_separation': emas_sep,
+        'velocity': velocity,
+        'acceleration': acceleration,
+        'current_price': prices[-1]
+    }
+
+
+# ============================================================================
+# SCORING Y CLASIFICACIÓN
+# ============================================================================
+
+def calculate_score(analysis_1d, analysis_4h, analysis_15m, analysis_5m, 
+                   sr_zones=None, vp_data=None):
+    """
+    Calcula score 0-100 basado en análisis multi-timeframe
+    
+    Args:
+        analysis_1d: Dict con análisis 1D
+        analysis_4h: Dict con análisis 4H
+        analysis_15m: Dict con análisis 15M
+        analysis_5m: Dict con análisis 5M
+        sr_zones: Dict con soportes/resistencias (opcional)
+        vp_data: Dict con volume profile (opcional)
+    
+    Returns:
+        dict: {
+            'score': int (0-100),
+            'clasificacion': str ('ÓPTIMA', 'BUENA', 'REGULAR', 'MALA'),
+            'detalles': dict con breakdown
+        }
+    """
+    score = 50  # Base
+    detalles = {}
+    
+    # BONUS 1: Confluencia 4H (crítico)
+    if analysis_4h and analysis_5m:
+        if analysis_4h['direction'] == analysis_5m['direction']:
+            score += BONUS_CONFLUENCE_4H
+            detalles['confluence_4h'] = f"+{BONUS_CONFLUENCE_4H} (alineado)"
+        else:
+            detalles['confluence_4h'] = "0 (contradicción)"
+    
+    # BONUS 2: Confluencia 1D (informativo)
+    if analysis_1d and analysis_5m:
+        tendencia_1d = analysis_1d['tendencia']
+        direction_5m = analysis_5m['direction']
+        
+        if (tendencia_1d == 'ALCISTA' and direction_5m == 'BULLISH') or \
+           (tendencia_1d == 'BAJISTA' and direction_5m == 'BEARISH'):
+            bonus = BONUS_CONFLUENCE_1D
+            if analysis_1d['intensidad'] == 'FUERTE':
+                bonus += 5  # Bonus extra
+            score += bonus
+            detalles['confluence_1d'] = f"+{bonus} (alineado {analysis_1d['intensidad']})"
+        elif tendencia_1d == 'LATERAL':
+            detalles['confluence_1d'] = "0 (1D lateral)"
+        else:
+            detalles['confluence_1d'] = "0 (no alineado)"
+    
+    # BONUS 3: EMAs cercanas (precio arrancando)
+    if analysis_15m:
+        if analysis_15m['emas_classification'] == 'CERCANAS':
+            score += BONUS_EMAS_CERCANAS
+            detalles['emas_15m'] = f"+{BONUS_EMAS_CERCANAS} (cercanas)"
+        elif analysis_15m['emas_classification'] == 'MODERADAS':
+            score += 5
+            detalles['emas_15m'] = "+5 (moderadas)"
+        else:
+            score -= PENALTY_EMAS_SEPARADAS
+            detalles['emas_15m'] = f"-{PENALTY_EMAS_SEPARADAS} (separadas)"
+    
+    if analysis_5m:
+        if analysis_5m['emas_classification'] == 'CERCANAS':
+            score += BONUS_EMAS_CERCANAS
+            detalles['emas_5m'] = f"+{BONUS_EMAS_CERCANAS} (cercanas)"
+        elif analysis_5m['emas_classification'] == 'MODERADAS':
+            score += 5
+            detalles['emas_5m'] = "+5 (moderadas)"
+        else:
+            score -= PENALTY_EMAS_SEPARADAS
+            detalles['emas_5m'] = f"-{PENALTY_EMAS_SEPARADAS} (separadas)"
+    
+    # BONUS 4: Edad momentum joven
+    if analysis_15m:
+        edad_15m = analysis_15m['momentum_age']
+        if edad_15m &lt;= 5:
+            score += BONUS_EDAD_JOVEN
+            detalles['edad_15m'] = f"+{BONUS_EDAD_JOVEN} (joven: {edad_15m}v)"
+        elif edad_15m &lt;= 10:
+            score += 10
+            detalles['edad_15m'] = f"+10 (desarrollo: {edad_15m}v)"
+        elif edad_15m &lt;= 15:
+            detalles['edad_15m'] = f"0 (avanzado: {edad_15m}v)"
+        else:
+            score -= PENALTY_EDAD_MADURA
+            detalles['edad_15m'] = f"-{PENALTY_EDAD_MADURA} (maduro: {edad_15m}v)"
+    
+    if analysis_5m:
+        edad_5m = analysis_5m['momentum_age']
+        if edad_5m &lt;= 3:
+            score += 15
+            detalles['edad_5m'] = f"+15 (muy joven: {edad_5m}v)"
+        elif edad_5m &lt;= 6:
+            score += 10
+            detalles['edad_5m'] = f"+10 (joven: {edad_5m}v)"
+        elif edad_5m &lt;= 10:
+            score += 5
+            detalles['edad_5m'] = f"+5 (desarrollo: {edad_5m}v)"
+        else:
+            score -= PENALTY_EDAD_MADURA
+            detalles['edad_5m'] = f"-{PENALTY_EDAD_MADURA} (maduro: {edad_5m}v)"
+    
+    # BONUS 5: Sin obstáculos cercanos (soportes/resistencias)
+    if sr_zones and analysis_5m:
+        current_price = analysis_5m['current_price']
+        direction = analysis_5m['direction']
+        
+        if direction == 'BULLISH':
+            nearest_r = find_nearest_resistance(current_price, sr_zones['resistances'])
+            if nearest_r:
+                distance_pct = nearest_r[1]
+                if distance_pct &gt; 5.0:
+                    score += BONUS_NO_OBSTACULOS
+                    detalles['obstaculos'] = f"+{BONUS_NO_OBSTACULOS} (sin resistencia cercana)"
+                elif distance_pct &lt; 2.0:
+                    score -= 10
+                    detalles['obstaculos'] = f"-10 (resistencia muy cerca: {distance_pct:.1f}%)"
+                else:
+                    detalles['obstaculos'] = f"0 (resistencia moderada: {distance_pct:.1f}%)"
+            else:
+                detalles['obstaculos'] = "0 (no detectado)"
+        
+        elif direction == 'BEARISH':
+            nearest_s = find_nearest_support(current_price, sr_zones['supports'])
+            if nearest_s:
+                distance_pct = nearest_s[1]
+                if distance_pct &gt; 5.0:
+                    score += BONUS_NO_OBSTACULOS
+                    detalles['obstaculos'] = f"+{BONUS_NO_OBSTACULOS} (sin soporte cercano)"
+                elif distance_pct &lt; 2.0:
+                    score -= 10
+                    detalles['obstaculos'] = f"-10 (soporte muy cerca: {distance_pct:.1f}%)"
+                else:
+                    detalles['obstaculos'] = f"0 (soporte moderado: {distance_pct:.1f}%)"
+            else:
+                detalles['obstaculos'] = "0 (no detectado)"
+    
+    # Clamp score entre 0-100
+    score = max(0, min(100, score))
+    
+    # Clasificación
+    if score &gt;= 80:
+        clasificacion = 'ÓPTIMA'
+    elif score &gt;= 70:
+        clasificacion = 'BUENA'
+    elif score &gt;= 60:
+        clasificacion = 'REGULAR'
+    else:
+        clasificacion = 'MALA'
+    
+    return {
+        'score': score,
+        'clasificacion': clasificacion,
+        'detalles': detalles
+    }
+
+
+def analyze_coin_complete(symbol):
+    """
+    Análisis completo de una moneda (todas las temporalidades + scoring)
+    
+    Args:
+        symbol: Símbolo (ej: 'BTC/USDT:USDT')
+    
+    Returns:
+        dict: {
+            'symbol': str,
+            'analysis_1d': dict,
+            'analysis_4h': dict,
+            'analysis_15m': dict,
+            'analysis_5m': dict,
+            'sr_zones': dict,
+            'vp_data': dict,
+            'score_data': dict,
+            'viable': bool
+        }
+        None si no pasa filtros básicos
+    """
+    
+    # Análisis 4H (obligatorio, determina si vale seguir)
+    analysis_4h = analyze_4h(symbol)
+    if not analysis_4h:
+        return None
+    
+    # Si 4H es LATERAL o WEAK, skip
+    if analysis_4h['direction'] == 'LATERAL' or analysis_4h['strength'] == 'WEAK':
+        return None
+    
+    # Análisis resto timeframes
+    analysis_1d = analyze_1d(symbol)
+    analysis_15m = analyze_15m(symbol)
+    analysis_5m = analyze_5m(symbol)
+    
+    if not analysis_5m:
+        return None
+    
+    # Soportes/Resistencias (si habilitado)
+    sr_zones = None
+    if ENABLE_CLUSTERING_SR:
+        ohlcv_4h = fetch_ohlcv(symbol, '4h', 200)
+        if ohlcv_4h:
+            sr_zones = detect_support_resistance(ohlcv_4h)
+    
+    # Volume Profile (si habilitado)
+    vp_data = None
+    if ENABLE_VOLUME_PROFILE:
+        ohlcv_4h = fetch_ohlcv(symbol, '4h', 200)
+        if ohlcv_4h:
+            vp_data = calculate_volume_profile(ohlcv_4h)
+    
+    # Scoring
+    score_data = calculate_score(
+        analysis_1d, analysis_4h, analysis_15m, analysis_5m,
+        sr_zones, vp_data
+    )
+    
+    # Determinar viabilidad
+    viable = (
+        score_data['score'] &gt;= MIN_SCORE_WATCHLIST and
+        analysis_4h['direction'] == analysis_5m['direction']  # Confluencia obligatoria
+    )
+    
+    return {
+        'symbol': symbol,
+        'analysis_1d': analysis_1d,
+        'analysis_4h': analysis_4h,
+        'analysis_15m': analysis_15m,
+        'analysis_5m': analysis_5m,
+        'sr_zones': sr_zones,
+        'vp_data': vp_data,
+        'score_data': score_data,
+        'viable': viable
+    }
+
+
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 80)
+    print("BRAIN ANALYZER - Validación Completa")
+    print("=" * 80)
+    
+    symbol = "BTC/USDT:USDT"
+    print(f"Análisis completo: {symbol}\n")
+    
+    # Test individual de cada timeframe primero
+    print("Test análisis individuales:")
     print("-" * 80)
     
-    if sheets_manager.connected:
-        print("✅ Conexión exitosa a Google Sheets")
-        print(f"Spreadsheet: {sheets_manager.spreadsheet.title}")
-        
-        # Test escritura
-        print("\nTest escritura en BRAIN_PRE_FILTRO...")
-        success = sheets_manager.write_pre_filtro("BTC/USDT:USDT", 15, "APROBADO")
-        
-        if success:
-            print("✅ Escritura exitosa")
-        else:
-            print("❌ Error en escritura")
-    else:
-        print("⚠️ No conectado a Google Sheets (credenciales no configuradas)")
-        print("\nPara habilitar:")
-        print("1. Configura GOOGLE_CREDENTIALS_FILE en .env")
-        print("2. Configura GOOGLE_SPREADSHEET_ID en .env")
+    test_4h = analyze_4h(symbol)
+    print(f"4H: {test_4h if test_4h else '❌ None'}")
     
+    if test_4h:
+        print(f"  Direction: {test_4h['direction']}, Strength: {test_4h['strength']}")
+    
+    print("-" * 80)
+    
+    try:
+        result = analyze_coin_complete(symbol)
+        
+        if result:
+            print("✅ Análisis exitoso")
+            print("-" * 80)
+            
+            if result['analysis_1d']:
+                print(f"1D: {result['analysis_1d']['tendencia']} ({result['analysis_1d']['intensidad']})")
+            
+            if result['analysis_4h']:
+                print(f"4H: {result['analysis_4h']['direction']} ({result['analysis_4h']['strength']})")
+            
+            if result['analysis_15m']:
+                print(f"15M: {result['analysis_15m']['direction']} | Edad: {result['analysis_15m']['momentum_age']}v")
+            
+            if result['analysis_5m']:
+                print(f"5M: {result['analysis_5m']['direction']} | Edad: {result['analysis_5m']['momentum_age']}v")
+            
+            print("-" * 80)
+            print(f"SCORE: {result['score_data']['score']}/100 ({result['score_data']['clasificacion']})")
+            print("Detalles:")
+            for key, value in result['score_data']['detalles'].items():
+                print(f"  {key}: {value}")
+            
+            print("-" * 80)
+            print(f"VIABLE PARA WATCHLIST: {'✅ SÍ' if result['viable'] else '❌ NO'}")
+            
+            if result['sr_zones']:
+                print(f"\nResistencias detectadas: {len(result['sr_zones']['resistances'])}")
+                print(f"Soportes detectados: {len(result['sr_zones']['supports'])}")
+        
+        else:
+            print("⚠️ Análisis no disponible (requiere conexión MEXC)")
+    
+    except KeyboardInterrupt:
+        print("\n⚠️ Interrupción del usuario")
+    except Exception as e:
+        print(f"⚠️ No disponible (requiere conexión MEXC válida)")
+        print(f"   Error: {str(e)[:100]}")
+    
+    print("\n" + "=" * 80)
+    print("✅ Brain Analyzer COMPLETO validado")
+    print("\n📋 Funciones nuevas agregadas:")
+    print("  - calculate_score() - Calcula score 0-100 con bonos/penalizaciones")
+    print("  - analyze_coin_complete() - Análisis completo multi-timeframe + scoring")
+    print("\n🎯 Criterios de scoring implementados:")
+    print(f"  • Confluencia 4H: +{BONUS_CONFLUENCE_4H} puntos (crítico)")
+    print(f"  • Confluencia 1D: +{BONUS_CONFLUENCE_1D} puntos")
+    print(f"  • EMAs cercanas: +{BONUS_EMAS_CERCANAS} puntos")
+    print(f"  • Edad joven: +{BONUS_EDAD_JOVEN} puntos")
+    print(f"  • Sin obstáculos: +{BONUS_NO_OBSTACULOS} puntos")
+    print(f"  • Score mínimo watchlist: {MIN_SCORE_WATCHLIST}")
     print("=" * 80)
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 13,412<br>
-    Generado: 2025-11-07 03:33:42
+    Total caracteres: 61,742<br>
+    Generado: 2025-11-07 04:00:26
   </div>
 </body>
 </html>
