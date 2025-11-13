@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-13 01:53:53</div>
+  <div class="meta">Última actualización: 2025-11-13 02:13:50</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -60,7 +60,18 @@ from brain_config import *
 # ============================================================================
 
 def analyze_4h(symbol):
-    """4H: Define contexto dominante"""
+    """
+    4H: Define contexto dominante y clima de mercado
+    
+    NUNCA RECHAZA - Solo informa dirección y fuerza
+    
+    Args:
+        symbol (str): Par trading (ej: 'BTC/USDT')
+    
+    Returns:
+        dict: Análisis completo con direction, strength, indicadores
+        None: Solo si no hay datos (caso extremo)
+    """
     # Fetch datos
     ohlcv = fetch_ohlcv(symbol, '4h', 100)
     if not ohlcv or len(ohlcv) &lt; 50:
@@ -162,26 +173,12 @@ def analyze_4h(symbol):
     # ===== Zig Zag (INFORMATIVO) =====
     zigzag = calculate_zigzag(df, threshold_pct=3.0)
     
-    # ===== SCORING 4H (0-40 puntos) =====
-    score_4h = 20  # Base
-    
-    # REGLA 1: Fuerza ADX (+15)
-    if strength == 'STRONG':
-        score_4h += 15
-    elif strength == 'MODERATE':
-        score_4h += 8
-    
-    # REGLA 2: Momentum fuerte (+5)
-    if momentum_data['consecutive_count'] &gt;= 5:
-        score_4h += 5
-    
     # Output compacto: una línea
-    print(f"📊 4H | {symbol} | {direction} {strength} | Score: {score_4h}/40 | ADX:{adx_data['adx_current']:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Estructura:{structure['structure']}")
+    print(f"📊 4H | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Estructura:{structure['structure']}")
     
     return {
         'direction': direction,
         'strength': strength,
-        'score_4h': score_4h,
         'adx': adx_data,
         'momentum': momentum_data,
         'rsi': rsi_data,
@@ -198,128 +195,75 @@ def analyze_4h(symbol):
 # FUNCIÓN 2: analyze_1h() - CONFIRMACIÓN INTERMEDIA
 # ============================================================================
 
-def analyze_1h(symbol, analysis_4h):
-    """1H: Contexto adaptativo CON MEMORIA - SCORING 0-30"""
+def analyze_1h(symbol):
+    """1H: Confirma tendencia 4H"""
     ohlcv = fetch_ohlcv(symbol, '1h', 100)
     if not ohlcv or len(ohlcv) &lt; 50:
         return None
     
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
-    # ===== ADX con memoria =====
+    # ===== ADX =====
     adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
     
-    # ===== ANTICIPACIÓN 1H (igual que 4H) =====
-    adx_now = adx_data['adx_current']
-    adx_trend = adx_data['adx_trend']
+    if adx_data['adx_trend'] != 'creciendo':
+        return None
     
-    if len(adx_data['adx_history']) &gt;= 5:
-        adx_5_velas_atras = adx_data['adx_history'][-5]
-        adx_velocity_1h = (adx_now - adx_5_velas_atras) / 5
-    else:
-        adx_velocity_1h = 0
+    if adx_data['adx_current'] &lt; 22:
+        return None
     
-    adx_proyectado_1h = adx_now + (adx_velocity_1h * 3)
-    
-    # ===== Determinar dirección =====
     if adx_data['dominance'] == 'DI+':
         direction = 'BULLISH'
     elif adx_data['dominance'] == 'DI-':
         direction = 'BEARISH'
     else:
-        direction = 'LATERAL'
+        return None
     
-    # ===== Evaluar fuerza (ANTICIPATORIO) =====
-    strength = 'WEAK'
-    
-    if adx_now &gt;= 22:
-        if adx_now &gt; 30:
-            strength = 'STRONG'
-        elif adx_now &gt; 25:
-            strength = 'MODERATE'
-        else:
-            strength = 'WEAK'
-        print(f"   ✅ 1H {symbol}: ADX {adx_now:.1f}")
-    
-    # ANTICIPAR si ADX subiendo rápido
-    elif adx_now &gt;= 15 and adx_velocity_1h &gt; 1.0:
-        strength = 'MODERATE'
-        print(f"   ⚡ ANTICIPANDO 1H {symbol}: ADX {adx_now:.1f} subiendo {adx_velocity_1h:+.1f}/vela")
-    
-    else:
-        direction = 'LATERAL'
-        strength = 'WEAK'
-        print(f"   ⚠️ 1H {symbol}: ADX bajo {adx_now:.1f} → LATERAL")
-    
-    # Verificar spread
-    if direction != 'LATERAL' and abs(adx_data['spread']) &lt; 4.0:
-        if strength == 'STRONG':
-            strength = 'MODERATE'
-        elif strength == 'MODERATE':
-            strength = 'WEAK'
+    if abs(adx_data['spread']) &lt; 4.0:
+        return None
     
     # ===== Momentum =====
     momentum_data = calculate_momentum_with_memory(df, lookback=10)
     expected_color = 'green' if direction == 'BULLISH' else 'red'
     
-    if direction != 'LATERAL' and momentum_data['color_current'] != expected_color:
-        print(f"   ⚠️ 1H {symbol}: Momentum {momentum_data['color_current']} → Ajustando LATERAL")
-        direction = 'LATERAL'
-        strength = 'WEAK'
+    if momentum_data['color_current'] != expected_color:
+        return None
     
-    # ===== RSI, EMAs, etc. =====
+    if momentum_data['consecutive_count'] &lt; 2:
+        return None
+    
+    # ===== RSI =====
     rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    
+    # ===== EMAs =====
     emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+    
+    # ===== Estructura (INFORMATIVO - NO rechazar) =====
     structure = detect_price_structure(df, lookback=20)
+    
+    # ===== Zig Zag (INFORMATIVO - NO rechazar) =====
     zigzag = calculate_zigzag(df, threshold_pct=2.5)
     
-    # ===== SCORING ADAPTATIVO (0-30 puntos) =====
-    score_1h = 15  # Base
-    strength_4h = analysis_4h['strength']
+    # ===== Strength =====
+    if adx_data['adx_current'] &gt; 32:
+        strength = 'STRONG'
+    elif adx_data['adx_current'] &gt; 25:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
     
-    # REGLA 1: Alineación direccional (+10)
-    if direction == analysis_4h['direction']:
-        score_1h += 10
-    elif direction == 'LATERAL' and analysis_4h['direction'] != 'LATERAL':
-        # Si 1H LATERAL pero 4H tiene dirección, tolerar si 4H STRONG
-        if strength_4h == 'STRONG':
-            score_1h += 7  # Bonus parcial
-    
-    # REGLA 2: Fuerza adaptativa
-    if strength_4h == 'STRONG':
-        score_1h += 5  # Siempre aprueba
-    elif strength_4h == 'MODERATE':
-        if strength in ['MODERATE', 'STRONG']:
-            score_1h += 5
-        elif direction == analysis_4h['direction']:
-            score_1h += 3
-    else:  # 4H WEAK
-        if strength == 'STRONG':
-            score_1h += 5
-    
-    # REGLA 3: ADX creciendo (+5)
-    if adx_trend == 'creciendo' or adx_velocity_1h &gt; 0.5:
-        score_1h += 5
-    
-    # REGLA 4: Momentum alineado (+5)
-    if momentum_data['color_current'] == expected_color:
-        score_1h += 5
-    elif momentum_data['color_current'] == 'neutral':
-        score_1h += 2
-    
-    print(f"   📈 1H | {symbol} | {direction} {strength} | Score: {score_1h}/30 | ADX:{adx_now:.1f} (vel:{adx_velocity_1h:+.1f})")
+    print(f"   📈 1H | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v")
     
     return {
         'direction': direction,
         'strength': strength,
-        'score_1h': score_1h,
         'adx': adx_data,
         'momentum': momentum_data,
         'rsi': rsi_data,
         'emas': emas_data,
         'structure': structure,
         'zigzag': zigzag,
-        'context': f"1H {direction} {strength} - Score {score_1h}/30",
+        'context': f"1H {direction} {strength} - ADX {adx_data['adx_current']:.1f}",
         'timestamp': datetime.now().isoformat()
     }
 
@@ -328,108 +272,75 @@ def analyze_1h(symbol, analysis_4h):
 # FUNCIÓN 3: analyze_15m() - TIMING Y DESARROLLO
 # ============================================================================
 
-def analyze_15m(symbol, analysis_4h, analysis_1h):
-    """15M: Timing final CON MEMORIA - SCORING 0-30"""
+def analyze_15m(symbol):
+    """15M: Timing de entrada"""
     ohlcv = fetch_ohlcv(symbol, '15m', 100)
     if not ohlcv or len(ohlcv) &lt; 50:
         return None
     
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
-    # ===== ADX con memoria =====
+    # ===== ADX =====
     adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
     
-    # ===== ANTICIPACIÓN 15M =====
-    adx_now = adx_data['adx_current']
-    adx_trend = adx_data['adx_trend']
+    if adx_data['adx_current'] &lt; 20:
+        return None
     
-    if len(adx_data['adx_history']) &gt;= 5:
-        adx_5_velas_atras = adx_data['adx_history'][-5]
-        adx_velocity_15m = (adx_now - adx_5_velas_atras) / 5
-    else:
-        adx_velocity_15m = 0
-    
-    adx_proyectado_15m = adx_now + (adx_velocity_15m * 3)
-    
-    # ===== Determinar dirección =====
     if adx_data['dominance'] == 'DI+':
         direction = 'BULLISH'
     elif adx_data['dominance'] == 'DI-':
         direction = 'BEARISH'
     else:
-        direction = 'LATERAL'
+        return None
     
-    # ===== Evaluar fuerza (ANTICIPATORIO) =====
-    strength = 'WEAK'
+    if abs(adx_data['spread']) &lt; 3.0:
+        return None
     
-    if adx_now &gt;= 20:
-        if adx_now &gt; 26:
-            strength = 'STRONG'
-        elif adx_now &gt; 22:
-            strength = 'MODERATE'
-        else:
-            strength = 'WEAK'
-    
-    # ANTICIPAR si ADX subiendo rápido
-    elif adx_now &gt;= 12 and adx_velocity_15m &gt; 0.8:
-        strength = 'MODERATE'
-        print(f"      ⚡ ANTICIPANDO 15M {symbol}: ADX {adx_now:.1f} subiendo {adx_velocity_15m:+.1f}/vela")
-    
-    else:
-        direction = 'LATERAL'
-        strength = 'WEAK'
-    
-    # ===== Momentum, RSI, etc. =====
+    # ===== Momentum =====
     momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    expected_color = 'green' if direction == 'BULLISH' else 'red'
+    
+    if momentum_data['color_current'] != expected_color:
+        return None
+    
+    if momentum_data['consecutive_count'] &lt; 2:
+        return None
+    
+    # ===== RSI =====
     rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    
+    # ===== EMAs =====
     emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+    
+    # ===== Estructura (flexible) =====
     structure = detect_price_structure(df, lookback=15)
+    
+    # ===== Zig Zag =====
     zigzag = calculate_zigzag(df, threshold_pct=2.0)
+    
+    # ===== Support/Resistance =====
     sr_data = detect_support_resistance_with_memory(df, lookback=30)
+    
+    # ===== Velocity &amp; Acceleration =====
     velocity_data = calculate_velocity(df, lookback=10)
     acceleration_data = calculate_acceleration(df, lookback=10)
+    
     current_price = float(df['close'].iloc[-1])
     
-    # ===== SCORING 15M (0-30 puntos) =====
-    score_15m = 10  # Base
+    # ===== Strength =====
+    if adx_data['adx_current'] &gt; 28:
+        strength = 'STRONG'
+    elif adx_data['adx_current'] &gt; 22:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
     
-    # REGLA 1: Alineación direccional (+10)
-    if direction == analysis_4h['direction'] == analysis_1h['direction']:
-        score_15m += 10
-    elif direction == analysis_4h['direction']:
-        score_15m += 7
-    elif direction == 'LATERAL' and analysis_4h['direction'] != 'LATERAL':
-        # Si 15M LATERAL pero contexto superior fuerte
-        if analysis_4h['strength'] == 'STRONG':
-            score_15m += 5
-    
-    # REGLA 2: ADX timing (+8)
-    if adx_now &gt;= 20:
-        score_15m += 8
-    elif adx_now &gt;= 15 or adx_velocity_15m &gt; 0.5:
-        score_15m += 5
-    elif adx_now &gt;= 10 and adx_velocity_15m &gt; 1.0:
-        score_15m += 6  # Anticipando
-    
-    # REGLA 3: Momentum (+7)
-    expected_momentum = 'green' if analysis_4h['direction'] == 'BULLISH' else 'red'
-    if momentum_data['color_current'] == expected_momentum:
-        score_15m += 7
-    elif momentum_data['color_current'] == 'neutral':
-        score_15m += 3
-    
-    # REGLA 4: Velocity positiva (+5)
-    if (analysis_4h['direction'] == 'BULLISH' and velocity_data['velocity_current'] &gt; 0) or \
-       (analysis_4h['direction'] == 'BEARISH' and velocity_data['velocity_current'] &lt; 0):
-        score_15m += 5
-    
-    print(f"      ⏱️ 15M | {symbol} | {direction} {strength} | Score: {score_15m}/30 | ADX:{adx_now:.1f} (vel:{adx_velocity_15m:+.1f})")
+    print(f"      ⏱️  15M | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Precio:${current_price:.6f}")
     
     return {
         'direction': direction,
         'strength': strength,
         'current_price': current_price,
-        'score_15m': score_15m,
         'adx': adx_data,
         'momentum': momentum_data,
         'rsi': rsi_data,
@@ -439,7 +350,7 @@ def analyze_15m(symbol, analysis_4h, analysis_1h):
         'sr': sr_data,
         'velocity': velocity_data,
         'acceleration': acceleration_data,
-        'context': f"15M {direction} {strength} - Score {score_15m}/30",
+        'context': f"15M {direction} {strength} - Timing setup",
         'timestamp': datetime.now().isoformat()
     }
 
@@ -576,108 +487,78 @@ def analyze_coin_complete(symbol):
     if direction_dominant == 'LATERAL':
         return {'viable': False, 'reason': '4H lateral - sin dirección clara'}
     
-    # ===== PASO 2: 1H - Confirmación ADAPTATIVA =====
-    analysis_1h = analyze_1h(symbol, analysis_4h)
+    # ===== PASO 2: 1H - Confirmación =====
+    analysis_1h = analyze_1h(symbol)
     
     if not analysis_1h:
         return {
             'viable': False,
-            'reason': '1H datos insuficientes',
+            'reason': '1H no confirma tendencia 4H',
             'analysis_4h': analysis_4h,
             'timestamp': datetime.now().isoformat()
         }
     
-    # ===== PASO 3: 15M - Timing ADAPTATIVO =====
-    analysis_15m = analyze_15m(symbol, analysis_4h, analysis_1h)
-    
-    if not analysis_15m:
+    if analysis_1h['direction'] != direction_dominant:
         return {
             'viable': False,
-            'reason': '15M datos insuficientes',
+            'reason': f"1H dirección {analysis_1h['direction']} contradice 4H {direction_dominant}",
             'analysis_4h': analysis_4h,
             'analysis_1h': analysis_1h,
             'timestamp': datetime.now().isoformat()
         }
     
-    # ===== PASO 4: 5M - Ejecución (SIEMPRE) =====
-    analysis_5m = analyze_5m(symbol)
+    # ===== PASO 3: 15M - Timing =====
+    analysis_15m = analyze_15m(symbol)
     
-    # ===== PASO 5: Scoring TOTAL =====
-    # Score = 4H (0-40) + 1H (0-30) + 15M (0-30) = 0-100
-    score_total = (
-        analysis_4h.get('score_4h', 0) +
-        analysis_1h.get('score_1h', 0) +
-        analysis_15m.get('score_15m', 0)
-    )
-    
-    # Clasificación (RANGOS MÁS PERMISIVOS)
-    if score_total &gt;= 70:
-        classification = 'ÓPTIMA'
-    elif score_total &gt;= 55:
-        classification = 'BUENA'
-    elif score_total &gt;= 40:
-        classification = 'REGULAR'
-    else:
-        classification = 'DÉBIL'
-    
-    # VIABLE si score &gt;45 (MÁS PERMISIVO)
-    viable = score_total &gt; 45
-    
-    if not viable:
+    if not analysis_15m:
         return {
             'viable': False,
-            'reason': f'Score {score_total}/100 &lt; 45',
+            'reason': '15M no proporciona timing adecuado',
+            'analysis_4h': analysis_4h,
+            'analysis_1h': analysis_1h,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    if analysis_15m['direction'] != direction_dominant:
+        return {
+            'viable': False,
+            'reason': f"15M dirección {analysis_15m['direction']} contradice dominante {direction_dominant}",
             'analysis_4h': analysis_4h,
             'analysis_1h': analysis_1h,
             'analysis_15m': analysis_15m,
             'timestamp': datetime.now().isoformat()
         }
     
-    # ===== PASO 6: Calcular Triggers (Entry/Stop/Target) =====
-    direction = analysis_4h['direction']
-    triggers = calculate_triggers(analysis_15m, analysis_5m, direction)
+    # ===== PASO 4: 5M - Ejecución (SIEMPRE) =====
+    analysis_5m = analyze_5m(symbol)
     
-    # ===== PASO 7: Datos SR (Support/Resistance) =====
-    sr_zones = analysis_15m.get('sr', {
-        'resistances': [],
-        'supports': [],
-        'nearest_resistance': (None, None),
-        'nearest_support': (None, None)
-    })
+    # ===== PASO 5: Calcular Score 0-100 =====
+    score_data = calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m)
     
-    # ===== PASO 8: Resumen Contextual =====
+    # ===== PASO 6: Calcular Triggers =====
+    triggers = calculate_triggers(analysis_15m, analysis_5m, direction_dominant)
+    
+    # ===== Resumen Final =====
     context_summary = (
-        f"{direction} setup | "
+        f"{direction_dominant} - "
         f"4H:{analysis_4h['strength']} "
         f"1H:{analysis_1h['strength']} "
         f"15M:{analysis_15m['strength']} | "
-        f"Score {score_total}/100 ({classification})"
+        f"Score:{score_data['score']}/100"
     )
     
-    print(f"\n✅ VIABLE: {symbol}")
-    print(f"   Score: {score_total}/100 ({classification})")
-    print(f"   Dirección: {direction}")
-    print(f"   Entry: ${triggers['entry_price']:.6f}")
-    print(f"   Target: ${triggers['target_price']:.6f} (R:R {triggers['rr_ratio']:.2f})")
+    print(f"✅ {symbol} | {direction_dominant} | Score:{score_data['score']}/100 ({score_data['clasificacion']}) | 4H={analysis_4h['strength']} 1H={analysis_1h['strength']} 15M={analysis_15m['strength']} | Entry:${triggers['entry_price']:.6f} R:R={triggers['rr_ratio']:.2f}:1")
     
-    # ===== RETURN COMPLETO =====
     return {
         'viable': True,
-        'symbol': symbol,
-        'direction': direction,
-        'score_data': {
-            'score': score_total,
-            'clasificacion': classification,
-            'score_4h': analysis_4h.get('score_4h', 0),
-            'score_1h': analysis_1h.get('score_1h', 0),
-            'score_15m': analysis_15m.get('score_15m', 0)
-        },
+        'score_data': score_data,
+        'direction': direction_dominant,
         'analysis_4h': analysis_4h,
         'analysis_1h': analysis_1h,
         'analysis_15m': analysis_15m,
         'analysis_5m': analysis_5m,
+        'sr_zones': analysis_5m.get('sr', {}),
         'triggers': triggers,
-        'sr_zones': sr_zones,
         'context_summary': context_summary,
         'timestamp': datetime.now().isoformat()
     }
@@ -1096,1791 +977,11 @@ if __name__ == "__main__":
     else:
         print(f"\n❌ Setup no viable: {result.get('reason', 'Desconocido')}")
 
-
-
-"""
-brain_calculator.py - Módulo de Análisis Técnico con Memoria Temporal
-======================================================================
-
-FILOSOFÍA:
-Cada indicador retorna HISTORIA + TENDENCIA, no solo valor puntual.
-Bot inteligente que analiza EVOLUCIÓN temporal, no snapshots binarios.
-
-ESTRUCTURA:
-1. Indicadores con Memoria (ADX, DI+/DI-, Momentum, RSI, EMAs)
-2. Análisis de Patrones (HH/LL, Zig Zag)
-3. Zonas y Niveles (SR, Volume Profile, Fibonacci)
-"""
-
-import pandas as pd
-import numpy as np
-from datetime import datetime
-
-
-# ================================================================================
-# FUNCIONES AUXILIARES
-# ================================================================================
-
-def calculate_linear_regression_slope(values):
-    """
-    Calcula pendiente de regresión lineal simple
-    
-    Args:
-        values: Lista de valores (últimas N velas)
-        
-    Returns:
-        float: Pendiente (slope)
-    """
-    n = len(values)
-    if n &lt; 2:
-        return 0.0
-    
-    x = np.arange(n)
-    y = np.array(values)
-    
-    # y = mx + b → m = (n*Σxy - Σx*Σy) / (n*Σx² - (Σx)²)
-    x_mean = np.mean(x)
-    y_mean = np.mean(y)
-    
-    numerator = np.sum((x - x_mean) * (y - y_mean))
-    denominator = np.sum((x - x_mean) ** 2)
-    
-    if denominator == 0:
-        return 0.0
-    
-    slope = numerator / denominator
-    return slope
-
-
-def classify_trend(slope, threshold=0.3):
-    """
-    Clasifica tendencia según pendiente
-    
-    Args:
-        slope: Pendiente calculada
-        threshold: Umbral para considerar creciendo/decreciendo
-        
-    Returns:
-        str: 'creciendo', 'decreciendo', 'estable'
-    """
-    if slope &gt; threshold:
-        return 'creciendo'
-    elif slope &lt; -threshold:
-        return 'decreciendo'
-    else:
-        return 'estable'
-
-
-def calculate_velocity(df, lookback=10):
-    """
-    Calcula velocidad de precio con memoria temporal
-    
-    Args:
-        df: DataFrame con columna 'close'
-        lookback: Velas a analizar
-        
-    Returns:
-        dict: {
-            'velocity_current': float (cambio precio por vela),
-            'velocity_history': [list últimos lookback],
-            'trend': 'acelerando'/'desacelerando'/'constante'
-        }
-    """
-    if len(df) &lt; lookback + 1:
-        return {
-            'velocity_current': 0.0,
-            'velocity_history': [],
-            'trend': 'constante'
-        }
-    
-    prices = df['close'].values
-    velocities = []
-    
-    # Calcular velocidad para cada par de velas
-    for i in range(len(prices) - lookback, len(prices)):
-        if i &gt; 0:
-            vel = prices[i] - prices[i-1]
-            velocities.append(vel)
-    
-    velocity_current = velocities[-1] if velocities else 0.0
-    
-    # Calcular tendencia (velocidad creciendo/decreciendo)
-    if len(velocities) &gt;= 3:
-        # Pendiente de las velocidades
-        x = list(range(len(velocities)))
-        y = velocities
-        n = len(x)
-        
-        sum_x = sum(x)
-        sum_y = sum(y)
-        sum_xy = sum(x[i] * y[i] for i in range(n))
-        sum_x2 = sum(x[i] ** 2 for i in range(n))
-        
-        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
-        
-        if slope &gt; 0.0001:
-            trend = 'acelerando'
-        elif slope &lt; -0.0001:
-            trend = 'desacelerando'
-        else:
-            trend = 'constante'
-    else:
-        trend = 'constante'
-    
-    return {
-        'velocity_current': velocity_current,
-        'velocity_history': velocities,
-        'trend': trend
-    }
-
-
-def calculate_acceleration(df, lookback=5):
-    """
-    Calcula aceleración (cambio de velocidad) con memoria temporal
-    
-    Args:
-        df: DataFrame con columna 'close'
-        lookback: Velas a analizar
-        
-    Returns:
-        dict: {
-            'acceleration_current': float (cambio de velocidad),
-            'acceleration_history': [list],
-            'trend': 'aumentando'/'disminuyendo'/'constante'
-        }
-    """
-    if len(df) &lt; lookback + 2:
-        return {
-            'acceleration_current': 0.0,
-            'acceleration_history': [],
-            'trend': 'constante'
-        }
-    
-    # Primero calcular velocidades
-    velocity_data = calculate_velocity(df, lookback=lookback + 1)
-    velocities = velocity_data['velocity_history']
-    
-    if len(velocities) &lt; 2:
-        return {
-            'acceleration_current': 0.0,
-            'acceleration_history': [],
-            'trend': 'constante'
-        }
-    
-    # Calcular aceleración (cambio de velocidad)
-    accelerations = []
-    for i in range(1, len(velocities)):
-        accel = velocities[i] - velocities[i-1]
-        accelerations.append(accel)
-    
-    acceleration_current = accelerations[-1] if accelerations else 0.0
-    
-    # Calcular tendencia
-    if len(accelerations) &gt;= 3:
-        x = list(range(len(accelerations)))
-        y = accelerations
-        n = len(x)
-        
-        sum_x = sum(x)
-        sum_y = sum(y)
-        sum_xy = sum(x[i] * y[i] for i in range(n))
-        sum_x2 = sum(x[i] ** 2 for i in range(n))
-        
-        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
-        
-        if slope &gt; 0.0001:
-            trend = 'aumentando'
-        elif slope &lt; -0.0001:
-            trend = 'disminuyendo'
-        else:
-            trend = 'constante'
-    else:
-        trend = 'constante'
-    
-    return {
-        'acceleration_current': acceleration_current,
-        'acceleration_history': accelerations,
-        'trend': trend
-    }
-
-
-# ================================================================================
-# SECCIÓN 1: INDICADORES BASE CON MEMORIA
-# ================================================================================
-
-def calculate_adx_with_memory(df, period=14, lookback=10):
-    """
-    ADX con memoria temporal - Wilder's Smoothing EXACTO (manual)
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close']
-        period: Período para ADX (default 14)
-        lookback: Cuántos valores históricos guardar
-        
-    Returns:
-        dict: {
-            'adx_current': float,
-            'adx_history': [list de últimos lookback valores],
-            'adx_trend': 'creciendo'/'decreciendo'/'estable',
-            'di_plus_current': float,
-            'di_plus_history': [list],
-            'di_plus_trend': str,
-            'di_minus_current': float,
-            'di_minus_history': [list],
-            'di_minus_trend': str,
-            'dominance': 'DI+'/'DI-'/'neutral',
-            'spread': float (diferencia DI+ - DI-)
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # Inicializar arrays
-    tr = np.zeros(n)
-    dm_plus = np.zeros(n)
-    dm_minus = np.zeros(n)
-    
-    # 1. Calcular True Range y Directional Movements
-    for i in range(1, n):
-        high = df['high'].iloc[i]
-        low = df['low'].iloc[i]
-        prev_close = df['close'].iloc[i-1]
-        prev_high = df['high'].iloc[i-1]
-        prev_low = df['low'].iloc[i-1]
-        
-        # True Range = max(high-low, |high-prev_close|, |low-prev_close|)
-        tr[i] = max(
-            high - low,
-            abs(high - prev_close),
-            abs(low - prev_close)
-        )
-        
-        # Directional Movements
-        high_diff = high - prev_high
-        low_diff = prev_low - low
-        
-        # DM+ si high_diff &gt; low_diff Y high_diff &gt; 0
-        if high_diff &gt; low_diff and high_diff &gt; 0:
-            dm_plus[i] = high_diff
-        else:
-            dm_plus[i] = 0
-        
-        # DM- si low_diff &gt; high_diff Y low_diff &gt; 0
-        if low_diff &gt; high_diff and low_diff &gt; 0:
-            dm_minus[i] = low_diff
-        else:
-            dm_minus[i] = 0
-    
-    # 2. Wilder's Smoothing (manual, NO pandas.ewm)
-    smoothed_tr = np.zeros(n)
-    smoothed_dm_plus = np.zeros(n)
-    smoothed_dm_minus = np.zeros(n)
-    
-    # Primera suavización = suma de los primeros 'period' valores
-    smoothed_tr[period] = np.sum(tr[1:period+1])
-    smoothed_dm_plus[period] = np.sum(dm_plus[1:period+1])
-    smoothed_dm_minus[period] = np.sum(dm_minus[1:period+1])
-    
-    # Wilder's smoothing: valor[i] = valor[i-1] - (valor[i-1]/period) + valor_actual[i]
-    for i in range(period + 1, n):
-        smoothed_tr[i] = smoothed_tr[i-1] - (smoothed_tr[i-1] / period) + tr[i]
-        smoothed_dm_plus[i] = smoothed_dm_plus[i-1] - (smoothed_dm_plus[i-1] / period) + dm_plus[i]
-        smoothed_dm_minus[i] = smoothed_dm_minus[i-1] - (smoothed_dm_minus[i-1] / period) + dm_minus[i]
-    
-    # 3. Calcular DI+ y DI-
-    di_plus = np.zeros(n)
-    di_minus = np.zeros(n)
-    
-    for i in range(period, n):
-        if smoothed_tr[i] != 0:
-            di_plus[i] = (smoothed_dm_plus[i] / smoothed_tr[i]) * 100
-            di_minus[i] = (smoothed_dm_minus[i] / smoothed_tr[i]) * 100
-    
-    # 4. Calcular DX
-    dx = np.zeros(n)
-    for i in range(period, n):
-        di_sum = di_plus[i] + di_minus[i]
-        if di_sum != 0:
-            dx[i] = (abs(di_plus[i] - di_minus[i]) / di_sum) * 100
-    
-    # 5. Calcular ADX (smoothing de DX)
-    adx = np.zeros(n)
-    adx[period * 2 - 1] = np.mean(dx[period:period * 2])
-    
-    for i in range(period * 2, n):
-        adx[i] = ((adx[i-1] * (period - 1)) + dx[i]) / period
-    
-    # 6. Extraer últimos lookback valores
-    start_idx = max(0, n - lookback)
-    valid_start = max(period * 2, start_idx)
-    
-    adx_history = adx[valid_start:n].tolist()
-    di_plus_history = di_plus[valid_start:n].tolist()
-    di_minus_history = di_minus[valid_start:n].tolist()
-    
-    # 7. Calcular tendencias (pendiente lineal últimas 5 velas)
-    adx_slope = calculate_linear_regression_slope(adx_history[-5:]) if len(adx_history) &gt;= 5 else 0
-    di_plus_slope = calculate_linear_regression_slope(di_plus_history[-5:]) if len(di_plus_history) &gt;= 5 else 0
-    di_minus_slope = calculate_linear_regression_slope(di_minus_history[-5:]) if len(di_minus_history) &gt;= 5 else 0
-    
-    adx_trend = classify_trend(adx_slope)
-    di_plus_trend = classify_trend(di_plus_slope)
-    di_minus_trend = classify_trend(di_minus_slope)
-    
-    # 8. Valores actuales
-    adx_current = adx[-1]
-    di_plus_current = di_plus[-1]
-    di_minus_current = di_minus[-1]
-    
-    # 9. Dominancia y spread
-    spread = di_plus_current - di_minus_current
-    if spread &gt; 5:
-        dominance = 'DI+'
-    elif spread &lt; -5:
-        dominance = 'DI-'
-    else:
-        dominance = 'neutral'
-    
-    return {
-        'adx_current': round(adx_current, 2),
-        'adx_history': [round(x, 2) for x in adx_history],
-        'adx_trend': adx_trend,
-        'di_plus_current': round(di_plus_current, 2),
-        'di_plus_history': [round(x, 2) for x in di_plus_history],
-        'di_plus_trend': di_plus_trend,
-        'di_minus_current': round(di_minus_current, 2),
-        'di_minus_history': [round(x, 2) for x in di_minus_history],
-        'di_minus_trend': di_minus_trend,
-        'dominance': dominance,
-        'spread': round(spread, 2)
-    }
-
-
-def calculate_momentum_with_memory(df, ema_period=34, lookback=10):
-    """
-    Momentum color con historia (LazyBear style)
-    
-    Args:
-        df: DataFrame con columna 'close'
-        ema_period: Período para EMA (default 34)
-        lookback: Cuántos valores históricos guardar
-        
-    Returns:
-        dict: {
-            'color_current': 'green'/'red'/'neutral',
-            'color_history': [list],
-            'consecutive_count': int (velas consecutivas mismo color),
-            'strength': 'fuerte'/'moderada'/'débil'
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # Calcular EMA manualmente
-    multiplier = 2 / (ema_period + 1)
-    ema = np.zeros(n)
-    ema[0] = df['close'].iloc[0]
-    
-    for i in range(1, n):
-        ema[i] = (df['close'].iloc[i] * multiplier) + (ema[i-1] * (1 - multiplier))
-    
-    # Determinar color por vela (close vs EMA)
-    colors = []
-    for i in range(n):
-        if df['close'].iloc[i] &gt; ema[i]:
-            colors.append('green')
-        elif df['close'].iloc[i] &lt; ema[i]:
-            colors.append('red')
-        else:
-            colors.append('neutral')
-    
-    # Extraer últimos lookback colores
-    start_idx = max(0, n - lookback)
-    color_history = colors[start_idx:n]
-    color_current = colors[-1]
-    
-    # Contar velas consecutivas mismo color (desde el final)
-    consecutive_count = 1
-    for i in range(len(color_history) - 2, -1, -1):
-        if color_history[i] == color_current:
-            consecutive_count += 1
-        else:
-            break
-    
-    # Determinar strength
-    if consecutive_count &gt;= 5:
-        strength = 'fuerte'
-    elif consecutive_count &gt;= 3:
-        strength = 'moderada'
-    else:
-        strength = 'débil'
-    
-    return {
-        'color_current': color_current,
-        'color_history': color_history,
-        'consecutive_count': consecutive_count,
-        'strength': strength
-    }
-
-
-def calculate_rsi_with_memory(df, period=14, lookback=10):
-    """
-    RSI con tendencia
-    
-    Args:
-        df: DataFrame con columna 'close'
-        period: Período para RSI (default 14)
-        lookback: Cuántos valores históricos guardar
-        
-    Returns:
-        dict: {
-            'rsi_current': float,
-            'rsi_history': [list],
-            'zone': 'sobrecompra'/'sobreventa'/'neutral',
-            'trend': 'subiendo'/'bajando'/'estable'
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # Calcular cambios de precio
-    deltas = df['close'].diff()
-    
-    gains = deltas.copy()
-    losses = deltas.copy()
-    
-    gains[gains &lt; 0] = 0
-    losses[losses &gt; 0] = 0
-    losses = abs(losses)
-    
-    # Wilder's smoothing para average gain/loss
-    avg_gain = np.zeros(n)
-    avg_loss = np.zeros(n)
-    
-    # Primera media = promedio simple de primeros 'period' valores
-    avg_gain[period] = gains.iloc[1:period+1].mean()
-    avg_loss[period] = losses.iloc[1:period+1].mean()
-    
-    # Wilder's smoothing
-    for i in range(period + 1, n):
-        avg_gain[i] = (avg_gain[i-1] * (period - 1) + gains.iloc[i]) / period
-        avg_loss[i] = (avg_loss[i-1] * (period - 1) + losses.iloc[i]) / period
-    
-    # Calcular RSI
-    rsi = np.zeros(n)
-    for i in range(period, n):
-        if avg_loss[i] == 0:
-            rsi[i] = 100
-        else:
-            rs = avg_gain[i] / avg_loss[i]
-            rsi[i] = 100 - (100 / (1 + rs))
-    
-    # Extraer últimos lookback valores
-    start_idx = max(period, n - lookback)
-    rsi_history = rsi[start_idx:n].tolist()
-    rsi_current = rsi[-1]
-    
-    # Calcular tendencia (pendiente lineal últimas 5 velas)
-    rsi_slope = calculate_linear_regression_slope(rsi_history[-5:]) if len(rsi_history) &gt;= 5 else 0
-    
-    if rsi_slope &gt; 0.5:
-        trend = 'subiendo'
-    elif rsi_slope &lt; -0.5:
-        trend = 'bajando'
-    else:
-        trend = 'estable'
-    
-    # Determinar zona
-    if rsi_current &gt;= 70:
-        zone = 'sobrecompra'
-    elif rsi_current &lt;= 30:
-        zone = 'sobreventa'
-    else:
-        zone = 'neutral'
-    
-    return {
-        'rsi_current': round(rsi_current, 2),
-        'rsi_history': [round(x, 2) for x in rsi_history],
-        'zone': zone,
-        'trend': trend
-    }
-
-
-def calculate_emas_with_memory(df, periods=None, fast=10, slow=50, lookback=10):
-    """
-    EMAs con evolución - Soporta múltiples períodos o fast/slow tradicional
-    
-    Args:
-        df: DataFrame con columna 'close'
-        periods: Lista de períodos [9, 21, 50, 200] (si se proporciona, ignora fast/slow)
-        fast: Período EMA rápida (default 10, usado si periods=None)
-        slow: Período EMA lenta (default 50, usado si periods=None)
-        lookback: Cuántos valores históricos guardar
-        
-    Returns:
-        dict: {
-            # Si periods proporcionado:
-            'emas': {9: valor, 21: valor, ...},
-            'emas_aligned': bool (todas ordenadas correctamente),
-            'separation_pct': float (entre más rápida y más lenta),
-            
-            # Si fast/slow tradicional:
-            'ema_fast_current': float,
-            'ema_slow_current': float,
-            'separation_pct': float,
-            'separation_history': [list],
-            'trend': 'alejándose'/'acercándose'/'estable',
-            'classification': 'CERCANAS'/'MODERADAS'/'SEPARADAS'
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # MODO 1: Múltiples períodos (usado por brain_analyzer)
-    if periods is not None:
-        emas_values = {}
-        
-        for period in periods:
-            multiplier = 2 / (period + 1)
-            ema = np.zeros(n)
-            ema[0] = df['close'].iloc[0]
-            
-            for i in range(1, n):
-                ema[i] = (df['close'].iloc[i] * multiplier) + (ema[i-1] * (1 - multiplier))
-            
-            emas_values[period] = round(ema[-1], 4)
-        
-        # Verificar alineación (orden correcto según tendencia)
-        sorted_periods = sorted(periods)
-        emas_aligned = True
-        
-        # Para BULLISH: EMA9 &gt; EMA21 &gt; EMA50 &gt; EMA200
-        for i in range(len(sorted_periods) - 1):
-            if emas_values[sorted_periods[i]] &lt;= emas_values[sorted_periods[i+1]]:
-                emas_aligned = False
-                break
-        
-        # Calcular separación entre más rápida y más lenta
-        fastest = min(periods)
-        slowest = max(periods)
-        
-        if emas_values[slowest] != 0:
-            separation_pct = ((emas_values[fastest] - emas_values[slowest]) / emas_values[slowest]) * 100
-        else:
-            separation_pct = 0.0
-        
-        return {
-            'emas': emas_values,
-            'emas_aligned': emas_aligned,
-            'separation_pct': round(separation_pct, 2)
-        }
-    
-    # MODO 2: Fast/Slow tradicional (legacy)
-    # Calcular EMA rápida
-    multiplier_fast = 2 / (fast + 1)
-    ema_fast = np.zeros(n)
-    ema_fast[0] = df['close'].iloc[0]
-    
-    for i in range(1, n):
-        ema_fast[i] = (df['close'].iloc[i] * multiplier_fast) + (ema_fast[i-1] * (1 - multiplier_fast))
-    
-    # Calcular EMA lenta
-    multiplier_slow = 2 / (slow + 1)
-    ema_slow = np.zeros(n)
-    ema_slow[0] = df['close'].iloc[0]
-    
-    for i in range(1, n):
-        ema_slow[i] = (df['close'].iloc[i] * multiplier_slow) + (ema_slow[i-1] * (1 - multiplier_slow))
-    
-    # Calcular separación porcentual
-    separation_pct_array = np.zeros(n)
-    for i in range(n):
-        if ema_slow[i] != 0:
-            separation_pct_array[i] = ((ema_fast[i] - ema_slow[i]) / ema_slow[i]) * 100
-    
-    # Extraer últimos lookback valores
-    start_idx = max(0, n - lookback)
-    separation_history = separation_pct_array[start_idx:n].tolist()
-    
-    ema_fast_current = ema_fast[-1]
-    ema_slow_current = ema_slow[-1]
-    separation_pct_current = separation_pct_array[-1]
-    
-    # Calcular tendencia (pendiente lineal últimas 5 velas)
-    sep_slope = calculate_linear_regression_slope(separation_history[-5:]) if len(separation_history) &gt;= 5 else 0
-    
-    if sep_slope &gt; 0.05:
-        trend = 'alejándose'
-    elif sep_slope &lt; -0.05:
-        trend = 'acercándose'
-    else:
-        trend = 'estable'
-    
-    # Clasificación
-    abs_sep = abs(separation_pct_current)
-    if abs_sep &lt; 1:
-        classification = 'CERCANAS'
-    elif abs_sep &lt; 3:
-        classification = 'MODERADAS'
-    else:
-        classification = 'SEPARADAS'
-    
-    return {
-        'ema_fast_current': round(ema_fast_current, 4),
-        'ema_slow_current': round(ema_slow_current, 4),
-        'separation_pct': round(separation_pct_current, 2),
-        'separation_history': [round(x, 2) for x in separation_history],
-        'trend': trend,
-        'classification': classification
-    }
-
-
-# ================================================================================
-# SECCIÓN 2: ANÁLISIS DE PATRONES
-# ================================================================================
-
-def detect_price_structure(df, lookback=20, pivot_window=5):
-    """
-    Detecta estructura de precio HH/HL (BULLISH) o LH/LL (BEARISH)
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close']
-        lookback: Cuántas velas analizar
-        pivot_window: Ventana para detectar pivots (máx/mín locales)
-        
-    Returns:
-        dict: {
-            'structure': 'BULLISH'/'BEARISH'/'LATERAL',
-            'pivot_highs': [list de máximos],
-            'pivot_lows': [list de mínimos],
-            'strength': 'fuerte'/'moderada'/'débil'
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    start_idx = max(0, n - lookback)
-    df_window = df.iloc[start_idx:n].reset_index(drop=True)
-    
-    # Encontrar pivots (máximos/mínimos locales)
-    pivot_highs = []
-    pivot_lows = []
-    
-    for i in range(pivot_window, len(df_window) - pivot_window):
-        # Pivot High: high[i] es mayor que ventana antes y después
-        is_pivot_high = True
-        for j in range(i - pivot_window, i + pivot_window + 1):
-            if j != i and df_window['high'].iloc[j] &gt;= df_window['high'].iloc[i]:
-                is_pivot_high = False
-                break
-        
-        if is_pivot_high:
-            pivot_highs.append({
-                'index': i,
-                'price': df_window['high'].iloc[i]
-            })
-        
-        # Pivot Low: low[i] es menor que ventana antes y después
-        is_pivot_low = True
-        for j in range(i - pivot_window, i + pivot_window + 1):
-            if j != i and df_window['low'].iloc[j] &lt;= df_window['low'].iloc[i]:
-                is_pivot_low = False
-                break
-        
-        if is_pivot_low:
-            pivot_lows.append({
-                'index': i,
-                'price': df_window['low'].iloc[i]
-            })
-    
-    # Analizar estructura HH/HL vs LH/LL
-    hh_count = 0  # Higher Highs
-    lh_count = 0  # Lower Highs
-    hl_count = 0  # Higher Lows
-    ll_count = 0  # Lower Lows
-    
-    # Comparar pivots consecutivos
-    for i in range(1, len(pivot_highs)):
-        if pivot_highs[i]['price'] &gt; pivot_highs[i-1]['price']:
-            hh_count += 1
-        else:
-            lh_count += 1
-    
-    for i in range(1, len(pivot_lows)):
-        if pivot_lows[i]['price'] &gt; pivot_lows[i-1]['price']:
-            hl_count += 1
-        else:
-            ll_count += 1
-    
-    # Determinar estructura
-    bullish_score = hh_count + hl_count
-    bearish_score = lh_count + ll_count
-    
-    if bullish_score &gt; bearish_score and bullish_score &gt;= 2:
-        structure = 'BULLISH'
-        strength_value = bullish_score
-    elif bearish_score &gt; bullish_score and bearish_score &gt;= 2:
-        structure = 'BEARISH'
-        strength_value = bearish_score
-    else:
-        structure = 'LATERAL'
-        strength_value = 0
-    
-    # Clasificar fuerza
-    if strength_value &gt;= 4:
-        strength = 'fuerte'
-    elif strength_value &gt;= 2:
-        strength = 'moderada'
-    else:
-        strength = 'débil'
-    
-    return {
-        'structure': structure,
-        'pivot_highs': [p['price'] for p in pivot_highs],
-        'pivot_lows': [p['price'] for p in pivot_lows],
-        'strength': strength
-    }
-
-
-def calculate_zigzag(df, threshold_pct=3.0):
-    """
-    Zig Zag para identificar tendencia claramente
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close']
-        threshold_pct: Porcentaje mínimo de cambio para marcar swing
-        
-    Returns:
-        dict: {
-            'direction': 'up'/'down'/'sideways',
-            'last_swing_high': float,
-            'last_swing_low': float,
-            'swings': [list de pivots significativos]
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    swings = []
-    current_trend = None  # 'up' o 'down'
-    last_swing_price = df['close'].iloc[0]
-    last_swing_idx = 0
-    
-    for i in range(1, n):
-        high = df['high'].iloc[i]
-        low = df['low'].iloc[i]
-        
-        # Calcular cambio porcentual desde último swing
-        change_from_swing = ((high - last_swing_price) / last_swing_price) * 100
-        
-        if current_trend is None:
-            # Inicializar tendencia
-            if change_from_swing &gt;= threshold_pct:
-                current_trend = 'up'
-                swings.append({'type': 'low', 'price': last_swing_price, 'index': last_swing_idx})
-                last_swing_price = high
-                last_swing_idx = i
-            elif change_from_swing &lt;= -threshold_pct:
-                current_trend = 'down'
-                swings.append({'type': 'high', 'price': last_swing_price, 'index': last_swing_idx})
-                last_swing_price = low
-                last_swing_idx = i
-        
-        elif current_trend == 'up':
-            # En tendencia alcista, buscamos nuevo máximo o reversión
-            if high &gt; last_swing_price:
-                last_swing_price = high
-                last_swing_idx = i
-            
-            change_down = ((low - last_swing_price) / last_swing_price) * 100
-            if change_down &lt;= -threshold_pct:
-                # Reversión bajista
-                swings.append({'type': 'high', 'price': last_swing_price, 'index': last_swing_idx})
-                current_trend = 'down'
-                last_swing_price = low
-                last_swing_idx = i
-        
-        elif current_trend == 'down':
-            # En tendencia bajista, buscamos nuevo mínimo o reversión
-            if low &lt; last_swing_price:
-                last_swing_price = low
-                last_swing_idx = i
-            
-            change_up = ((high - last_swing_price) / last_swing_price) * 100
-            if change_up &gt;= threshold_pct:
-                # Reversión alcista
-                swings.append({'type': 'low', 'price': last_swing_price, 'index': last_swing_idx})
-                current_trend = 'up'
-                last_swing_price = high
-                last_swing_idx = i
-    
-    # Determinar dirección general
-    if len(swings) &lt; 2:
-        direction = 'sideways'
-        last_swing_high = df['high'].max()
-        last_swing_low = df['low'].min()
-    else:
-        # Comparar últimos swings
-        last_highs = [s['price'] for s in swings if s['type'] == 'high']
-        last_lows = [s['price'] for s in swings if s['type'] == 'low']
-        
-        last_swing_high = last_highs[-1] if last_highs else df['high'].iloc[-1]
-        last_swing_low = last_lows[-1] if last_lows else df['low'].iloc[-1]
-        
-        if len(last_highs) &gt;= 2 and len(last_lows) &gt;= 2:
-            if last_highs[-1] &gt; last_highs[-2] and last_lows[-1] &gt; last_lows[-2]:
-                direction = 'up'
-            elif last_highs[-1] &lt; last_highs[-2] and last_lows[-1] &lt; last_lows[-2]:
-                direction = 'down'
-            else:
-                direction = 'sideways'
-        else:
-            direction = current_trend if current_trend else 'sideways'
-    
-    return {
-        'direction': direction,
-        'last_swing_high': round(last_swing_high, 4),
-        'last_swing_low': round(last_swing_low, 4),
-        'swings': [{'type': s['type'], 'price': round(s['price'], 4)} for s in swings]
-    }
-
-
-# ================================================================================
-# SECCIÓN 3: ZONAS Y NIVELES
-# ================================================================================
-
-def detect_support_resistance_with_memory(df, num_clusters=5, lookback=100):
-    """
-    SR con evolución temporal usando clustering de precios
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close']
-        num_clusters: Número de niveles SR a detectar
-        lookback: Cuántas velas analizar
-        
-    Returns:
-        dict: {
-            'resistances': [list ordenado descendente],
-            'supports': [list ordenado ascendente],
-            'nearest_resistance': (precio, distancia_pct),
-            'nearest_support': (precio, distancia_pct)
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    start_idx = max(0, n - lookback)
-    df_window = df.iloc[start_idx:n]
-    
-    # Recolectar todos los máximos y mínimos
-    all_levels = []
-    all_levels.extend(df_window['high'].tolist())
-    all_levels.extend(df_window['low'].tolist())
-    
-    # Clustering simple por proximidad
-    all_levels = sorted(set(all_levels))
-    
-    if len(all_levels) &lt; num_clusters:
-        clusters = all_levels
-    else:
-        # Dividir en clusters por rango
-        min_price = min(all_levels)
-        max_price = max(all_levels)
-        step = (max_price - min_price) / num_clusters
-        
-        clusters = []
-        for i in range(num_clusters):
-            cluster_min = min_price + (i * step)
-            cluster_max = min_price + ((i + 1) * step)
-            
-            # Encontrar niveles en este rango
-            cluster_levels = [p for p in all_levels if cluster_min &lt;= p &lt; cluster_max]
-            
-            if cluster_levels:
-                # Nivel del cluster = precio más tocado (moda aproximada)
-                cluster_level = np.median(cluster_levels)
-                clusters.append(cluster_level)
-    
-    # Separar en soportes y resistencias
-    current_price = df['close'].iloc[-1]
-    
-    resistances = sorted([c for c in clusters if c &gt; current_price], reverse=True)
-    supports = sorted([c for c in clusters if c &lt; current_price], reverse=True)
-    
-    # Nearest resistance/support
-    if resistances:
-        nearest_resistance = resistances[-1]  # La más cercana (menor)
-        resistance_dist_pct = ((nearest_resistance - current_price) / current_price) * 100
-    else:
-        nearest_resistance = None
-        resistance_dist_pct = None
-    
-    if supports:
-        nearest_support = supports[0]  # La más cercana (mayor)
-        support_dist_pct = ((current_price - nearest_support) / current_price) * 100
-    else:
-        nearest_support = None
-        support_dist_pct = None
-    
-    return {
-        'resistances': [round(r, 4) for r in resistances],
-        'supports': [round(s, 4) for s in supports],
-        'nearest_resistance': (round(nearest_resistance, 4), round(resistance_dist_pct, 2)) if nearest_resistance else (None, None),
-        'nearest_support': (round(nearest_support, 4), round(support_dist_pct, 2)) if nearest_support else (None, None)
-    }
-
-
-def calculate_volume_profile_with_memory(df, num_levels=10, lookback=50):
-    """
-    Volume Profile con POC temporal (Point of Control)
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close', 'volume']
-        num_levels: Número de niveles de precio para profile
-        lookback: Cuántas velas analizar
-        
-    Returns:
-        dict: {
-            'poc_current': float,
-            'poc_history': [list de POCs históricos],
-            'poc_trend': 'subiendo'/'bajando'/'estable',
-            'high_volume_nodes': [list de precios con alto volumen],
-            'low_volume_nodes': [list de precios con bajo volumen]
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # Calcular POC para múltiples ventanas (para obtener historia)
-    poc_history = []
-    window_size = 20  # Ventana para cada cálculo de POC
-    
-    for end_idx in range(window_size, n + 1, 5):  # Cada 5 velas
-        start_idx = max(0, end_idx - lookback)
-        df_window = df.iloc[start_idx:end_idx]
-        
-        # Crear niveles de precio
-        min_price = df_window['low'].min()
-        max_price = df_window['high'].max()
-        
-        if max_price == min_price:
-            continue
-        
-        price_levels = np.linspace(min_price, max_price, num_levels)
-        volume_per_level = np.zeros(num_levels)
-        
-        # Distribuir volumen por nivel
-        for i, row in df_window.iterrows():
-            candle_range = row['high'] - row['low']
-            if candle_range == 0:
-                continue
-            
-            # Asignar volumen a niveles que intersectan la vela
-            for j, level in enumerate(price_levels):
-                if row['low'] &lt;= level &lt;= row['high']:
-                    volume_per_level[j] += row['volume'] / candle_range
-        
-        # POC = nivel con más volumen
-        poc_idx = np.argmax(volume_per_level)
-        poc = price_levels[poc_idx]
-        poc_history.append(poc)
-    
-    # POC actual (última ventana)
-    start_idx = max(0, n - lookback)
-    df_current = df.iloc[start_idx:n]
-    
-    min_price = df_current['low'].min()
-    max_price = df_current['high'].max()
-    price_levels = np.linspace(min_price, max_price, num_levels)
-    volume_per_level = np.zeros(num_levels)
-    
-    for i, row in df_current.iterrows():
-        candle_range = row['high'] - row['low']
-        if candle_range == 0:
-            continue
-        
-        for j, level in enumerate(price_levels):
-            if row['low'] &lt;= level &lt;= row['high']:
-                volume_per_level[j] += row['volume'] / candle_range
-    
-    poc_current = price_levels[np.argmax(volume_per_level)]
-    
-    # Calcular tendencia del POC
-    if len(poc_history) &gt;= 5:
-        poc_slope = calculate_linear_regression_slope(poc_history[-5:])
-        poc_trend = classify_trend(poc_slope, threshold=0.0001)  # Threshold menor para precios
-    else:
-        poc_trend = 'estable'
-    
-    # High/Low volume nodes
-    volume_threshold_high = np.percentile(volume_per_level, 70)
-    volume_threshold_low = np.percentile(volume_per_level, 30)
-    
-    high_volume_nodes = [price_levels[i] for i in range(num_levels) if volume_per_level[i] &gt;= volume_threshold_high]
-    low_volume_nodes = [price_levels[i] for i in range(num_levels) if volume_per_level[i] &lt;= volume_threshold_low]
-    
-    return {
-        'poc_current': round(poc_current, 4),
-        'poc_history': [round(p, 4) for p in poc_history[-10:]],  # Últimos 10
-        'poc_trend': poc_trend,
-        'high_volume_nodes': [round(h, 4) for h in high_volume_nodes],
-        'low_volume_nodes': [round(l, 4) for l in low_volume_nodes]
-    }
-
-
-def calculate_fibonacci_levels(df, lookback=100):
-    """
-    Fibonacci basado en swing high/low recientes
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close']
-        lookback: Cuántas velas analizar para encontrar swing
-        
-    Returns:
-        dict: {
-            'levels': {0.236: precio, 0.382: precio, ...},
-            'nearest_level': (level_name, precio, distancia_pct),
-            'swing_high': float,
-            'swing_low': float
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    start_idx = max(0, n - lookback)
-    df_window = df.iloc[start_idx:n]
-    
-    # Encontrar swing high/low
-    swing_high = df_window['high'].max()
-    swing_low = df_window['low'].min()
-    
-    # Determinar dirección (si estamos más cerca del high o low)
-    current_price = df['close'].iloc[-1]
-    
-    # Calcular niveles de Fibonacci
-    diff = swing_high - swing_low
-    
-    fib_ratios = {
-        '0.0': swing_low,
-        '0.236': swing_low + (diff * 0.236),
-        '0.382': swing_low + (diff * 0.382),
-        '0.5': swing_low + (diff * 0.5),
-        '0.618': swing_low + (diff * 0.618),
-        '0.786': swing_low + (diff * 0.786),
-        '1.0': swing_high,
-        '1.272': swing_high + (diff * 0.272),
-        '1.618': swing_high + (diff * 0.618)
-    }
-    
-    # Encontrar nivel más cercano
-    min_distance = float('inf')
-    nearest_level_name = None
-    nearest_level_price = None
-    
-    for level_name, level_price in fib_ratios.items():
-        distance = abs(current_price - level_price)
-        if distance &lt; min_distance:
-            min_distance = distance
-            nearest_level_name = level_name
-            nearest_level_price = level_price
-    
-    distance_pct = (min_distance / current_price) * 100
-    
-    return {
-        'levels': {k: round(v, 4) for k, v in fib_ratios.items()},
-        'nearest_level': (nearest_level_name, round(nearest_level_price, 4), round(distance_pct, 2)),
-        'swing_high': round(swing_high, 4),
-        'swing_low': round(swing_low, 4)
-    }
-
-
-# ================================================================================
-# FUNCIÓN PRINCIPAL DE DEMOSTRACIÓN
-# ================================================================================
-
-def main():
-    """
-    Función de ejemplo/testing
-    """
-    print("=" * 80)
-    print("brain_calculator.py - Módulo de Análisis Técnico con Memoria Temporal")
-    print("=" * 80)
-    print()
-    print("MÓDULO CARGADO CORRECTAMENTE")
-    print()
-    print("Funciones disponibles:")
-    print()
-    print("SECCIÓN 1: Indicadores con Memoria")
-    print("  - calculate_adx_with_memory()")
-    print("  - calculate_momentum_with_memory()")
-    print("  - calculate_rsi_with_memory()")
-    print("  - calculate_emas_with_memory()")
-    print()
-    print("SECCIÓN 2: Análisis de Patrones")
-    print("  - detect_price_structure()")
-    print("  - calculate_zigzag()")
-    print()
-    print("SECCIÓN 3: Zonas y Niveles")
-    print("  - detect_support_resistance_with_memory()")
-    print("  - calculate_volume_profile_with_memory()")
-    print("  - calculate_fibonacci_levels()")
-    print()
-    print("Para usar: import brain_calculator")
-    print()
-    print("Ejemplo de uso:")
-    print("  import pandas as pd")
-    print("  import brain_calculator as bc")
-    print()
-    print("  # Cargar datos OHLCV")
-    print("  df = pd.DataFrame({")
-    print("      'high': [...],")
-    print("      'low': [...],")
-    print("      'close': [...],")
-    print("      'volume': [...]")
-    print("  })")
-    print()
-    print("  # Calcular ADX con memoria")
-    print("  adx_data = bc.calculate_adx_with_memory(df, period=14, lookback=10)")
-    print("  print(adx_data['adx_current'])  # Valor actual")
-    print("  print(adx_data['adx_trend'])    # 'creciendo'/'decreciendo'/'estable'")
-    print("  print(adx_data['dominance'])    # 'DI+'/'DI-'/'neutral'")
-    print()
-    print("=" * 80)
-
-
-# ================================================================================
-# FUNCIONES LEGACY (Compatibilidad con código existente)
-# ================================================================================
-
-def find_nearest_resistance(current_price, resistances):
-    """
-    Encuentra resistencia más cercana por encima del precio actual
-    
-    Args:
-        current_price: Precio actual
-        resistances: Lista de niveles de resistencia
-        
-    Returns:
-        tuple: (precio, distancia_pct) o None si no hay resistencias
-    """
-    if not resistances:
-        return None
-    
-    # Filtrar solo resistencias por encima del precio actual
-    above = [r for r in resistances if r &gt; current_price]
-    if not above:
-        return None
-    
-    # Tomar la más cercana
-    nearest = min(above)
-    distance_pct = ((nearest - current_price) / current_price) * 100
-    
-    return (round(nearest, 4), round(distance_pct, 2))
-
-
-def find_nearest_support(current_price, supports):
-    """
-    Encuentra soporte más cercano por debajo del precio actual
-    
-    Args:
-        current_price: Precio actual
-        supports: Lista de niveles de soporte
-        
-    Returns:
-        tuple: (precio, distancia_pct) o None si no hay soportes
-    """
-    if not supports:
-        return None
-    
-    # Filtrar solo soportes por debajo del precio actual
-    below = [s for s in supports if s &lt; current_price]
-    if not below:
-        return None
-    
-    # Tomar el más cercano
-    nearest = max(below)
-    distance_pct = ((current_price - nearest) / current_price) * 100
-    
-    return (round(nearest, 4), round(distance_pct, 2))
-
-
-def calculate_time_to_target(current_price, target_price, velocity, candle_duration_min=5):
-    """
-    Proyecta tiempo para alcanzar objetivo basado en velocidad
-    
-    Args:
-        current_price: Precio actual
-        target_price: Precio objetivo
-        velocity: Velocidad de movimiento (cambio por vela o dict)
-        candle_duration_min: Duración de vela en minutos
-        
-    Returns:
-        float: Minutos estimados o None si no alcanzable
-    """
-    # Extraer valores si vienen como dict
-    if isinstance(velocity, dict):
-        velocity = velocity.get('velocity_current', 0)
-    
-    # Extraer valor si candle_duration_min viene como dict
-    if isinstance(candle_duration_min, dict):
-        candle_duration_min = 5  # Default 5 minutos
-    elif not isinstance(candle_duration_min, (int, float)):
-        candle_duration_min = 5
-    
-    if velocity == 0:
-        return None
-    
-    distance = target_price - current_price
-    candles_needed = distance / velocity
-    
-    # Si necesita velas negativas, no es alcanzable
-    if candles_needed &lt; 0:
-        return None
-    
-    return candles_needed * candle_duration_min
-
-
-# ================================================================================
-# ALIASES (Compatibilidad con nombres legacy)
-# ================================================================================
-
-# Alias para brain_executor.py que usa nombre sin "_with_memory"
-calculate_volume_profile = calculate_volume_profile_with_memory
-
-
-if __name__ == "__main__":
-    main()
-
-"""
-BRAIN CONFIG - Bot Phase 4.0 - Trading Anticipatorio
-====================================================
-Archivo central de configuración con flags activar/desactivar features,
-parámetros ajustables, paths. Lee credenciales desde .env (seguridad).
-"""
-
-# ============================================================================
-# IMPORTS
-# ============================================================================
-from datetime import datetime
-from dotenv import load_dotenv
-import os
-import pytz
-
-# Cargar variables de entorno desde .env
-load_dotenv()
-
-# ============================================================================
-# ZONA HORARIA
-# ============================================================================
-ARGENTINA_TZ = pytz.timezone('America/Argentina/Buenos_Aires')
-
-# ============================================================================
-# EXCHANGE (MEXC) - Lee desde .env
-# ============================================================================
-MEXC_API_KEY = os.getenv("MEXC_API_KEY", "")
-MEXC_SECRET_KEY = os.getenv("MEXC_SECRET_KEY", "")
-EXCHANGE_NAME = "MEXC"
-DEFAULT_TYPE = "swap"  # Futuros
-RATE_LIMIT = 200
-ENABLE_RATE_LIMIT = True
-
-# ============================================================================
-# TELEGRAM - Lee desde .env
-# ============================================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-ENABLE_TELEGRAM = True
-
-# ============================================================================
-# GOOGLE SHEETS - Lee desde .env
-# ============================================================================
-GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "")
-GOOGLE_SPREADSHEET_ID = os.getenv("GOOGLE_SPREADSHEET_ID", "")
-ENABLE_SHEETS = True
-BATCH_WRITE = True  # Escribir en lotes (más rápido)
-
-# ============================================================================
-# NOMBRES DE HOJAS (Google Sheets)
-# ============================================================================
-SHEET_BRAIN_PRE_FILTRO = "BRAIN_PRE_FILTRO"
-SHEET_BRAIN_WATCHLIST = "BRAIN_WATCHLIST"
-SHEET_BRAIN_TRIGGERS = "BRAIN_TRIGGERS"
-SHEET_BRAIN_PROYECCIONES = "BRAIN_PROYECCIONES"
-SHEET_BRAIN_TRADES = "BRAIN_TRADES"
-SHEET_BRAIN_MONITOREO = "BRAIN_MONITOREO"
-SHEET_BRAIN_SALIDAS = "BRAIN_SALIDAS"
-SHEET_BRAIN_CONFIG_REMOTE = "BRAIN_CONFIG_REMOTE"
-SHEET_BRAIN_STATS = "BRAIN_STATS"
-
-# ============================================================================
-# TRADING BÁSICO
-# ============================================================================
-SIMULATE_LEVERAGE = 1  # Apalancamiento
-CAPITAL_INICIAL = 1000  # USD
-MAX_TRADES_SIMULTANEOUS = 3  # Máximo trades paralelos
-MIN_TRADE_DURATION_MIN = 5  # Mínimo duración trade
-
-# ============================================================================
-# FLAGS BRAIN (true/false para activar/desactivar)
-# ============================================================================
-# Pre-filtro
-ENABLE_WEEKLY_CANDLES_FILTER = True
-MIN_WEEKLY_CANDLES = 10
-
-# Análisis contextual
-ENABLE_ANALYSIS_1D = True
-ENABLE_ANALYSIS_4H = True
-ENABLE_ANALYSIS_1H = True
-ENABLE_ANALYSIS_15M = True
-ENABLE_ANALYSIS_5M = True
-
-# Herramientas matemáticas
-ENABLE_VELOCITY_ACCELERATION = True
-ENABLE_CLUSTERING_SR = True  # Soportes/Resistencias
-ENABLE_VOLUME_PROFILE = True
-ENABLE_FIBONACCI = True
-ENABLE_DIVERGENCE_DETECTION = True
-
-# Gestión trade
-ENABLE_BREAKEVEN_PROTECTION = True
-ENABLE_TRAILING_STOP = True
-ENABLE_SMART_EXIT = True  # 5 señales
-
-# Persistencia
-ENABLE_WATCHLIST_JSON = True
-ENABLE_HISTORY_JSON = True
-
-# ============================================================================
-# PARÁMETROS WATCHLIST
-# ============================================================================
-MAX_WATCHLIST_SIZE = 20  # Máximo monedas monitoreadas
-MIN_SCORE_WATCHLIST = 70  # Score mínimo para agregar
-WATCHLIST_UPDATE_INTERVAL_SEC = 60  # Cada 1 min
-
-# ============================================================================
-# ⚠️ REMOVIDO: THRESHOLDS BINARIOS (ahora scoring contextual)
-# ============================================================================
-# Estos valores YA NO se usan para RECHAZAR
-# Solo informativos para brain_analyzer scoring interno
-
-# ADX + Directional Indicators (INFORMATIVOS)
-ADX_THRESHOLD = 22  # Usado solo para scoring interno
-ADX_MIN_ACCELERATION = 0.1  # Scoring interno
-DI_MIN_SPREAD = 5.0  # Scoring interno
-
-# Momentum (INFORMATIVO)
-MOMENTUM_CONSECUTIVE_CANDLES = 3  # Scoring interno
-
-# Volumen (INFORMATIVO)
-VOLUME_RATIO_MIN = 1.5  # Scoring interno
-
-# ============================================================================
-# PARÁMETROS SCORING CONTEXTUAL (0-100)
-# ============================================================================
-# Sistema no binario: Moneda acumula puntos, no se rechaza
-
-# Score mínimo para ENTRADA (único threshold real)
-MIN_SCORE_ENTRY = 50  # De 100 posibles (antes era 60, ahora más permisivo)
-
-# Bonos por indicadores fuertes
-BONUS_ADX_STRONG = 15       # ADX &gt;30
-BONUS_ADX_MODERATE = 8      # ADX &gt;22
-BONUS_MOMENTUM_STRONG = 10  # &gt;5 velas consecutivas
-BONUS_VOLUME_HIGH = 8       # &gt;2.0x promedio
-BONUS_STRUCTURE_PERFECT = 10 # HH/LL perfecto
-
-# Penalties (restan puntos, NO rechazan)
-PENALTY_ADX_WEAK = -10      # ADX &lt;15
-PENALTY_MOMENTUM_WEAK = -5  # &lt;2 velas
-PENALTY_VOLUME_LOW = -5     # &lt;1.2x
-
-# ============================================================================
-# PARÁMETROS RISK MANAGEMENT
-# ============================================================================
-STOP_LOSS_PERCENT = 2.1  # -2.1% del entry
-MIN_RR_RATIO = 2.0  # Risk/Reward mínimo
-BREAKEVEN_PROFIT_TRIGGER_PCT = 2.0  # +2% → breakeven
-
-# ============================================================================
-# SMART EXIT - 5 SEÑALES (NO BINARIO)
-# ============================================================================
-# Sistema acumulativo: ≥2 señales → salida
-
-DECELERATION_THRESHOLD = 0.7  # Velas &lt;70% promedio
-VOLUME_DECLINE_THRESHOLD = 0.6  # Volumen &lt;60%
-CRITICAL_ZONE_DISTANCE_PCT = 1.0  # &lt;1% del target
-BUFFETT_EARLY_EXIT_TIME_MIN = 10  # Primeros 10min
-BUFFETT_EARLY_EXIT_LOSS_PCT = 2.0  # Pérdida &gt;2%
-
-# ============================================================================
-# TIMING PROYECCIONES
-# ============================================================================
-MIN_TIEMPO_PROYECTADO_MIN = 5
-MAX_TIEMPO_PROYECTADO_MIN = 60
-
-# ============================================================================
-# PERSISTENCIA
-# ============================================================================
-WATCHLIST_JSON = "data/brain_watchlist.json"
-HISTORY_JSON = "data/brain_history.json"
-
-# ============================================================================
-# LOGGING
-# ============================================================================
-ENABLE_VERBOSE_LOGS = True
-LOG_FILE = "logs/brain_bot.log"
-
-        expected_momentum = 'green' if expected_direction == 'BULLISH' else 'red'
-
-"""
-BRAIN WATCHLIST - Bot Phase 4.0
-Gestión watchlist dinámica con triggers calculados
-"""
-
-import json
-from datetime import datetime
-from brain_config import (
-    WATCHLIST_JSON, MAX_WATCHLIST_SIZE, MIN_SCORE_WATCHLIST,
-    ENABLE_WATCHLIST_JSON, ARGENTINA_TZ,
-    ADX_THRESHOLD, ADX_MIN_ACCELERATION,
-    MOMENTUM_CONSECUTIVE_CANDLES, VOLUME_RATIO_MIN,
-    MIN_RR_RATIO, MIN_TIEMPO_PROYECTADO_MIN, MAX_TIEMPO_PROYECTADO_MIN
-)
-from brain_analyzer import analyze_coin_complete
-from brain_calculator import (
-    find_nearest_resistance, find_nearest_support,
-    calculate_time_to_target
-)
-
-# ============================================================================
-# CLASE WATCHLIST MANAGER
-# ============================================================================
-
-class WatchlistManager:
-    def __init__(self):
-        self.watchlist = {}
-        self.load_from_file()
-    
-    def load_from_file(self):
-        """Carga watchlist desde JSON"""
-        if not ENABLE_WATCHLIST_JSON:
-            return
-        
-        try:
-            with open(WATCHLIST_JSON, 'r') as f:
-                data = json.load(f)
-                self.watchlist = data.get('watchlist', {})
-            print(f"✅ Watchlist cargada: {len(self.watchlist)} monedas")
-        except FileNotFoundError:
-            print("ℹ️ Watchlist vacía (archivo no existe)")
-            self.watchlist = {}
-        except Exception as e:
-            print(f"❌ Error cargando watchlist: {e}")
-            self.watchlist = {}
-    
-    def save_to_file(self):
-        """Guarda watchlist a JSON"""
-        if not ENABLE_WATCHLIST_JSON:
-            return
-        
-        try:
-            data = {
-                'version': '1.0',
-                'last_updated': datetime.now(ARGENTINA_TZ).isoformat(),
-                'watchlist': self.watchlist
-            }
-            
-            with open(WATCHLIST_JSON, 'w') as f:
-                json.dump(data, f, indent=2)
-            
-            print(f"✅ Watchlist guardada: {len(self.watchlist)} monedas")
-        except Exception as e:
-            print(f"❌ Error guardando watchlist: {e}")
-    
-    def calculate_triggers(self, analysis_data):
-        """
-        Calcula triggers de entrada para una moneda
-        
-        Args:
-            analysis_data: Dict con análisis completo
-        
-        Returns:
-            dict: Triggers calculados o None
-        """
-        analysis_5m = analysis_data['analysis_5m']
-        analysis_4h = analysis_data['analysis_4h']
-        sr_zones = analysis_data['sr_zones']
-        
-        if not analysis_5m or not analysis_4h:
-            return None
-        
-        direction = analysis_5m['direction']
-        current_price = analysis_5m['current_price']
-        velocity = analysis_5m['velocity']
-        acceleration = analysis_5m['acceleration']
-        
-        # Target (resistencia/soporte más cercano)
-        target_price = None
-        target_distance_pct = None
-        
-        if sr_zones:
-            if direction == 'BULLISH':
-                nearest = find_nearest_resistance(current_price, sr_zones['resistances'])
-                if nearest:
-                    target_price = nearest[0]
-                    target_distance_pct = nearest[1]
-            else:  # BEARISH
-                nearest = find_nearest_support(current_price, sr_zones['supports'])
-                if nearest:
-                    target_price = nearest[0]
-                    target_distance_pct = nearest[1]
-        
-        # Si no hay target, usar proyección simple (3% para bulls, -3% para bears)
-        if not target_price:
-            if direction == 'BULLISH':
-                target_price = current_price * 1.03
-                target_distance_pct = 3.0
-            else:
-                target_price = current_price * 0.97
-                target_distance_pct = 3.0
-        
-        # Tiempo proyectado a target
-        tiempo_proyectado = calculate_time_to_target(
-            current_price, target_price, velocity, acceleration
-        )
-        
-        # Risk/Reward (stop loss simple 2%)
-        stop_loss = current_price * 0.98 if direction == 'BULLISH' else current_price * 1.02
-        reward = abs(target_price - current_price)
-        risk = abs(current_price - stop_loss)
-        rr_ratio = reward / risk if risk &gt; 0 else 0
-        
-        # Validar viabilidad
-        if rr_ratio &lt; MIN_RR_RATIO:
-            return None  # R:R insuficiente
-        
-        if tiempo_proyectado and (tiempo_proyectado &lt; MIN_TIEMPO_PROYECTADO_MIN or 
-                                  tiempo_proyectado &gt; MAX_TIEMPO_PROYECTADO_MIN):
-            return None  # Timing fuera de rango
-        
-        return {
-            'trigger_adx': ADX_THRESHOLD,
-            'trigger_adx_acceleration': ADX_MIN_ACCELERATION,
-            'trigger_momentum_candles': MOMENTUM_CONSECUTIVE_CANDLES,
-            'trigger_volume_ratio': VOLUME_RATIO_MIN,
-            'target_price': target_price,
-            'target_distance_pct': target_distance_pct,
-            'stop_loss': stop_loss,
-            'tiempo_proyectado_min': tiempo_proyectado,
-            'rr_ratio': rr_ratio,
-            'entry_price': current_price  # &lt;-- AGREGADO
-        }
-    
-    def add_to_watchlist(self, symbol, analysis_data):
-        """Agrega moneda a watchlist"""
-        # Verificar límite
-        if len(self.watchlist) &gt;= MAX_WATCHLIST_SIZE:
-            # Remover moneda con score más bajo
-            lowest_symbol = min(self.watchlist.keys(), 
-                               key=lambda s: self.watchlist[s]['score'])
-            lowest_score = self.watchlist[lowest_symbol]['score']
-            
-            if analysis_data['score_data']['score'] &gt; lowest_score:
-                del self.watchlist[lowest_symbol]
-                print(f"⚠️ Watchlist llena, removido {lowest_symbol} (score {lowest_score})")
-            else:
-                return False  # Score muy bajo
-        
-        # Calcular triggers
-        triggers = self.calculate_triggers(analysis_data)
-        if not triggers:
-            return False  # Triggers inviables
-        
-        # ===== CAMBIO: Guardar análisis completos =====
-        # Agregar a watchlist
-        self.watchlist[symbol] = {
-            'added_timestamp': datetime.now(ARGENTINA_TZ).isoformat(),
-            'last_check_timestamp': datetime.now(ARGENTINA_TZ).isoformat(),
-            'checks_without_trigger': 0,
-            'score': analysis_data['score_data']['score'],
-            'clasificacion': analysis_data['score_data']['clasificacion'],
-            'direction': analysis_data['direction'],
-            'triggers': triggers,
-            # ===== AGREGADO: Análisis completos 4H y 1H =====
-            'analysis_4h': analysis_data.get('analysis_4h'),
-            'analysis_1h': analysis_data.get('analysis_1h'),
-            'analysis_snapshot': {
-                'adx_5m': analysis_data['analysis_5m']['adx']['adx_current'],
-                'adx_4h': analysis_data['analysis_4h']['adx']['adx_current'],
-                'momentum_age_5m': analysis_data['analysis_5m']['momentum']['consecutive_count'],
-                'emas_separation_15m': analysis_data.get('analysis_15m', {}).get('emas', {}).get('separation_pct', 0)
-            },
-            'status': 'MONITORING'
-        }
-        
-        print(f"✅ Agregado a watchlist: {symbol} (Score: {analysis_data['score_data']['score']})")
-        return True
-    
-    def remove_from_watchlist(self, symbol, reason=""):
-        """Remueve moneda de watchlist"""
-        if symbol in self.watchlist:
-            del self.watchlist[symbol]
-            print(f"❌ Removido de watchlist: {symbol} ({reason})")
-    
-    def get_watchlist(self):
-        """Retorna watchlist ordenada por score"""
-        sorted_list = sorted(
-            self.watchlist.items(),
-            key=lambda x: x[1]['score'],
-            reverse=True
-        )
-        return sorted_list
-    
-    def update_watchlist_from_analysis(self, symbols_analyzed):
-        """
-        Actualiza watchlist con nuevos análisis
-        
-        Args:
-            symbols_analyzed: List de (symbol, analysis_data) tuples
-        """
-        added_count = 0
-        
-        for symbol, analysis_data in symbols_analyzed:
-            if not analysis_data or not analysis_data.get('viable'):
-                continue
-            
-            # Si ya está en watchlist, actualizar score
-            if symbol in self.watchlist:
-                old_score = self.watchlist[symbol]['score']
-                new_score = analysis_data['score_data']['score']
-                
-                # Si score bajó mucho (&gt;15 puntos), remover
-                if new_score &lt; old_score - 15:
-                    self.remove_from_watchlist(symbol, "score bajó significativamente")
-                else:
-                    # Actualizar score
-                    self.watchlist[symbol]['score'] = new_score
-            
-            # Si no está, agregar
-            else:
-                if self.add_to_watchlist(symbol, analysis_data):
-                    added_count += 1
-        
-        print(f"📊 Watchlist actualizada: {len(self.watchlist)} monedas ({added_count} nuevas)")
-        self.save_to_file()
-    
-    def cleanup_stale_symbols(self, max_age_minutes=30, max_checks=20):
-        """
-        Remueve monedas que llevan mucho tiempo sin activar trigger
-        
-        Args:
-            max_age_minutes: Tiempo máximo en watchlist sin trigger (30min)
-            max_checks: Verificaciones máximas sin activar (20 checks)
-        
-        Returns:
-            int: Cantidad de monedas removidas
-        """
-        now = datetime.now(ARGENTINA_TZ)
-        to_remove = []
-        
-        for symbol, data in self.watchlist.items():
-            # Calcular tiempo en watchlist
-            added = datetime.fromisoformat(data['added_timestamp'])
-            age_minutes = (now - added).total_seconds() / 60
-            
-            # Calcular checks sin trigger
-            checks = data.get('checks_without_trigger', 0)
-            
-            # Remover si lleva mucho tiempo O muchos checks sin trigger
-            if age_minutes &gt; max_age_minutes or checks &gt; max_checks:
-                to_remove.append(symbol)
-                print(f"🗑️ Removiendo {symbol} de watchlist:")
-                print(f"   Tiempo: {age_minutes:.1f}min | Checks sin trigger: {checks}")
-        
-        for symbol in to_remove:
-            del self.watchlist[symbol]
-        
-        if to_remove:
-            print(f"✅ Limpieza watchlist: {len(to_remove)} monedas removidas")
-            self.save_to_file()
-        
-        return len(to_remove)
-    
-    def increment_check_counter(self, symbol):
-        """Incrementa contador de verificaciones sin trigger"""
-        if symbol in self.watchlist:
-            self.watchlist[symbol]['checks_without_trigger'] = \
-                self.watchlist[symbol].get('checks_without_trigger', 0) + 1
-            self.watchlist[symbol]['last_check_timestamp'] = \
-                datetime.now(ARGENTINA_TZ).isoformat()
-    
-    def reset_check_counter(self, symbol):
-        """Resetea contador cuando trigger se activa (casi)"""
-        if symbol in self.watchlist:
-            self.watchlist[symbol]['checks_without_trigger'] = 0
-    
-    def clear_watchlist(self):
-        """Limpia watchlist completa"""
-        self.watchlist = {}
-        self.save_to_file()
-        print("🗑️ Watchlist limpiada")
-
-
-# ============================================================================
-# INSTANCIA GLOBAL
-# ============================================================================
-
-watchlist_manager = WatchlistManager()
-
-
-# ============================================================================
-# VALIDACIÓN
-# ============================================================================
-
-if __name__ == "__main__":
-    print("=" * 80)
-    print("BRAIN WATCHLIST - Validación")
-    print("=" * 80)
-    
-    # Test análisis y agregar a watchlist
-    test_symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
-    
-    for symbol in test_symbols:
-        print(f"\nAnalizando {symbol}...")
-        analysis = analyze_coin_complete(symbol)
-        
-        if analysis and analysis['viable']:
-            print(f"✅ Viable (Score: {analysis['score_data']['score']})")
-            watchlist_manager.add_to_watchlist(symbol, analysis)
-        else:
-            print(f"❌ No viable")
-    
-    print("\n" + "-" * 80)
-    print("WATCHLIST ACTUAL:")
-    
-    watchlist = watchlist_manager.get_watchlist()
-    for symbol, data in watchlist:
-        print(f"  {symbol}: Score {data['score']} ({data['clasificacion']}) - {data['direction']}")
-        if data['triggers']:
-            print(f"    Target: ${data['triggers']['target_price']:.2f} ({data['triggers']['target_distance_pct']:.1f}%)")
-            print(f"    R:R: {data['triggers']['rr_ratio']:.2f}")
-    
-    print("\n" + "=" * 80)
-    print("✅ Brain Watchlist validado")
-    print("=" * 80)
-
-
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 99,749<br>
-    Generado: 2025-11-13 01:53:53
+    Total caracteres: 34,330<br>
+    Generado: 2025-11-13 02:13:50
   </div>
 </body>
 </html>
