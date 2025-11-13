@@ -15,17 +15,1028 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-13 18:16:45</div>
+  <div class="meta">Última actualización: 2025-11-13 18:33:32</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-asd
+"""
+SHEETS MANAGER - Bot Phase 4.0
+Gestión de escritura a Google Sheets
+"""
+
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+from brain_config import (
+    GOOGLE_CREDENTIALS_FILE, GOOGLE_SPREADSHEET_ID,
+    ENABLE_SHEETS, BATCH_WRITE, ARGENTINA_TZ,
+    SHEET_BRAIN_PRE_FILTRO, SHEET_BRAIN_WATCHLIST,
+    SHEET_BRAIN_TRIGGERS, SHEET_BRAIN_PROYECCIONES,
+    SHEET_BRAIN_TRADES, SHEET_BRAIN_MONITOREO,
+    SHEET_BRAIN_SALIDAS, SHEET_BRAIN_CONFIG_REMOTE,
+    SHEET_BRAIN_STATS
+)
+
+# ============================================================================
+# SHEETS MANAGER CLASS
+# ============================================================================
+
+class SheetsManager:
+    """Gestiona conexión y escritura a Google Sheets"""
+    
+    def __init__(self):
+        self.client = None
+        self.spreadsheet = None
+        self.connected = False
+        
+        if ENABLE_SHEETS and GOOGLE_CREDENTIALS_FILE and GOOGLE_SPREADSHEET_ID:
+            self._connect()
+    
+    def _connect(self):
+        """Establece conexión con Google Sheets"""
+        try:
+            scope = [
+                'https://spreadsheets.google.com/feeds',
+                'https://www.googleapis.com/auth/drive'
+            ]
+            
+            creds = ServiceAccountCredentials.from_json_keyfile_name(
+                GOOGLE_CREDENTIALS_FILE, scope
+            )
+            
+            self.client = gspread.authorize(creds)
+            self.spreadsheet = self.client.open_by_key(GOOGLE_SPREADSHEET_ID)
+            self.connected = True
+            
+            print("✅ Google Sheets conectado")
+            
+        except Exception as e:
+            print(f"❌ Error conectando Google Sheets: {e}")
+            self.connected = False
+    
+    def _get_sheet(self, sheet_name):
+        """Obtiene o crea una hoja"""
+        if not self.connected:
+            return None
+        
+        try:
+            return self.spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            # Crear hoja si no existe
+            return self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
+    
+    def write_row(self, sheet_name, row_data):
+        """
+        Escribe una fila en una hoja
+        
+        Args:
+            sheet_name: Nombre de la hoja
+            row_data: Lista de valores para la fila
+        
+        Returns:
+            bool: True si éxito, False si error
+        """
+        if not self.connected:
+            return False
+        
+        try:
+            sheet = self._get_sheet(sheet_name)
+            if not sheet:
+                return False
+            
+            sheet.append_row(row_data)
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error escribiendo fila en {sheet_name}: {e}")
+            return False
+    
+    def write_batch(self, sheet_name, rows_data):
+        """
+        Escribe múltiples filas en una hoja (batch)
+        
+        Args:
+            sheet_name: Nombre de la hoja
+            rows_data: Lista de listas [[row1], [row2], ...]
+        
+        Returns:
+            bool: True si éxito, False si error
+        """
+        if not self.connected or not BATCH_WRITE:
+            return False
+        
+        try:
+            sheet = self._get_sheet(sheet_name)
+            if not sheet:
+                return False
+            
+            # Escribir TODAS las filas en un solo request API
+            sheet.append_rows(rows_data, value_input_option='USER_ENTERED')
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error escribiendo batch en {sheet_name}: {e}")
+            return False
+    
+    def clear_sheet(self, sheet_name):
+        """Limpia todo el contenido de una hoja"""
+        if not self.connected:
+            return False
+        
+        try:
+            sheet = self._get_sheet(sheet_name)
+            if not sheet:
+                return False
+            
+            sheet.clear()
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error limpiando {sheet_name}: {e}")
+            return False
+    
+    # ========================================================================
+    # FUNCIONES ESPECÍFICAS POR HOJA
+    # ========================================================================
+    
+    def write_pre_filtro(self, symbol, weekly_candles, status):
+        """
+        Escribe en BRAIN_PRE_FILTRO
+        
+        Args:
+            symbol: Símbolo (ej: BTC/USDT:USDT)
+            weekly_candles: Número de velas semanales
+            status: APROBADO o RECHAZADO
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            weekly_candles,
+            status
+        ]
+        
+        return self.write_row(SHEET_BRAIN_PRE_FILTRO, row)
+    
+    def write_watchlist(self, symbol, score, direction, emas_distance, structure, edad, tiempo_proyectado_min, rr_ratio):
+        """
+        Escribe en BRAIN_WATCHLIST
+        
+        Args:
+            symbol: Símbolo
+            score: Score 0-100
+            direction: BULLISH o BEARISH
+            emas_distance: Distancia entre EMAs (%)
+            structure: SANA, REGULAR, MALA
+            edad: JOVEN, MADURA
+            tiempo_proyectado_min: Minutos proyectados a target
+            rr_ratio: Risk/Reward ratio
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            score,
+            direction,
+            emas_distance,
+            structure,
+            edad,
+            tiempo_proyectado_min,
+            rr_ratio
+        ]
+        
+        return self.write_row(SHEET_BRAIN_WATCHLIST, row)
+    
+    def write_trigger(self, symbol, trigger_type, adx_value, momentum, volume_ratio):
+        """
+        Escribe en BRAIN_TRIGGERS
+        
+        Args:
+            symbol: Símbolo
+            trigger_type: ADX, MOMENTUM, VOLUMEN
+            adx_value: Valor ADX actual
+            momentum: Velas consecutivas momentum
+            volume_ratio: Ratio volumen vs promedio
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            trigger_type,
+            adx_value,
+            momentum,
+            volume_ratio
+        ]
+        
+        return self.write_row(SHEET_BRAIN_TRIGGERS, row)
+    
+    def write_proyeccion(self, symbol, current_price, velocity, acceleration, 
+                        time_to_target, rr_ratio, target_price, stop_loss):
+        """
+        Escribe en BRAIN_PROYECCIONES
+        
+        Args:
+            symbol: Símbolo
+            current_price: Precio actual
+            velocity: Velocidad (precio/min)
+            acceleration: Aceleración
+            time_to_target: Minutos estimados
+            rr_ratio: Risk/Reward ratio
+            target_price: Precio objetivo
+            stop_loss: Stop loss
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            current_price,
+            velocity,
+            acceleration,
+            time_to_target,
+            rr_ratio,
+            target_price,
+            stop_loss
+        ]
+        
+        return self.write_row(SHEET_BRAIN_PROYECCIONES, row)
+    
+    def write_trade_entry(self, symbol, direction, entry_price, stop_loss, 
+                         take_profit, score, rr_ratio):
+        """
+        Escribe entrada de trade en BRAIN_TRADES
+        
+        Args:
+            symbol: Símbolo
+            direction: BULLISH o BEARISH
+            entry_price: Precio entrada
+            stop_loss: Stop loss
+            take_profit: Take profit
+            score: Score Brain
+            rr_ratio: Risk/Reward ratio
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            "ENTRADA",
+            direction,
+            entry_price,
+            stop_loss,
+            take_profit,
+            score,
+            rr_ratio,
+            "",  # PnL (se llena en salida)
+            "",  # Duración (se llena en salida)
+            ""   # Razón salida (se llena en salida)
+        ]
+        
+        return self.write_row(SHEET_BRAIN_TRADES, row)
+    
+    def write_trade_exit(self, symbol, exit_price, pnl_pct, pnl_usd, 
+                        duration_min, exit_reason):
+        """
+        Escribe salida de trade en BRAIN_TRADES
+        
+        Args:
+            symbol: Símbolo
+            exit_price: Precio salida
+            pnl_pct: PnL en %
+            pnl_usd: PnL en USD
+            duration_min: Duración en minutos
+            exit_reason: Razón de salida
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            "SALIDA",
+            "",  # Direction (vacío en salida)
+            exit_price,
+            "",  # Stop loss (vacío en salida)
+            "",  # Take profit (vacío en salida)
+            "",  # Score (vacío en salida)
+            "",  # RR (vacío en salida)
+            f"{pnl_pct:+.2f}% | ${pnl_usd:+.2f}",
+            f"{duration_min:.1f} min",
+            exit_reason
+        ]
+        
+        return self.write_row(SHEET_BRAIN_TRADES, row)
+    
+    def write_monitoreo(self, symbol, current_price, pnl_pct, time_in_trade, 
+                       stop_status, nearest_resistance):
+        """
+        Escribe en BRAIN_MONITOREO (estado actual trades activos)
+        
+        Args:
+            symbol: Símbolo
+            current_price: Precio actual
+            pnl_pct: PnL actual en %
+            time_in_trade: Minutos en trade
+            stop_status: ORIGINAL, BREAKEVEN, TRAILING
+            nearest_resistance: Resistencia más cercana
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            current_price,
+            pnl_pct,
+            time_in_trade,
+            stop_status,
+            nearest_resistance
+        ]
+        
+        return self.write_row(SHEET_BRAIN_MONITOREO, row)
+    
+    def write_salida_inteligente(self, symbol, signal_type, description):
+        """
+        Escribe señales de salida inteligente en BRAIN_SALIDAS
+        
+        Args:
+            symbol: Símbolo
+            signal_type: DESACELERACION, VOLUMEN_BAJO, ZONA_CRITICA, etc.
+            description: Descripción de la señal
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            signal_type,
+            description
+        ]
+        
+        return self.write_row(SHEET_BRAIN_SALIDAS, row)
+    
+    def write_stats(self, total_trades, wins, losses, win_rate, avg_pnl, 
+                   total_pnl, best_trade, worst_trade):
+        """
+        Escribe estadísticas en BRAIN_STATS
+        
+        Args:
+            total_trades: Total de trades
+            wins: Trades ganadores
+            losses: Trades perdedores
+            win_rate: Tasa de acierto (%)
+            avg_pnl: PnL promedio (%)
+            total_pnl: PnL total (USD)
+            best_trade: Mejor trade (%)
+            worst_trade: Peor trade (%)
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            total_trades,
+            wins,
+            losses,
+            f"{win_rate:.2f}%",
+            f"{avg_pnl:+.2f}%",
+            f"${total_pnl:+.2f}",
+            f"{best_trade:+.2f}%",
+            f"{worst_trade:+.2f}%"
+        ]
+        
+        return self.write_row(SHEET_BRAIN_STATS, row)
+
+
+# ============================================================================
+# INSTANCIA GLOBAL
+# ============================================================================
+
+# Crear instancia única para todo el bot
+sheets_manager = SheetsManager()
+
+
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 80)
+    print("SHEETS MANAGER - Validación")
+    print("=" * 80)
+    print(f"Sheets habilitado: {'✅' if ENABLE_SHEETS else '❌'}")
+    print(f"Credentials configurado: {'✅' if GOOGLE_CREDENTIALS_FILE else '❌'}")
+    print(f"Spreadsheet ID configurado: {'✅' if GOOGLE_SPREADSHEET_ID else '❌'}")
+    print(f"Batch write: {'✅' if BATCH_WRITE else '❌'}")
+    print("-" * 80)
+    
+    if sheets_manager.connected:
+        print("✅ Conexión exitosa a Google Sheets")
+        print(f"Spreadsheet: {sheets_manager.spreadsheet.title}")
+        
+        # Test escritura
+        print("\nTest escritura en BRAIN_PRE_FILTRO...")
+        success = sheets_manager.write_pre_filtro("BTC/USDT:USDT", 15, "APROBADO")
+        
+        if success:
+            print("✅ Escritura exitosa")
+        else:
+            print("❌ Error en escritura")
+    else:
+        print("⚠️ No conectado a Google Sheets (credenciales no configuradas)")
+        print("\nPara habilitar:")
+        print("1. Configura GOOGLE_CREDENTIALS_FILE en .env")
+        print("2. Configura GOOGLE_SPREADSHEET_ID en .env")
+    
+    print("=" * 80)
+
+
+"""
+EXCHANGE CONNECTION - Bot Phase 4.0
+Conexión CCXT al exchange MEXC
+"""
+
+import ccxt
+from brain_config import (
+    MEXC_API_KEY, MEXC_SECRET_KEY, EXCHANGE_NAME,
+    DEFAULT_TYPE, RATE_LIMIT, ENABLE_RATE_LIMIT
+)
+
+# ============================================================================
+# INICIALIZAR EXCHANGE
+# ============================================================================
+
+exchange = ccxt.mexc({
+    'apiKey': MEXC_API_KEY,
+    'secret': MEXC_SECRET_KEY,
+    'options': {'defaultType': DEFAULT_TYPE},
+    'enableRateLimit': ENABLE_RATE_LIMIT,
+    'rateLimit': RATE_LIMIT
+})
+
+# ============================================================================
+# FUNCIONES FETCH
+# ============================================================================
+
+def fetch_ohlcv(symbol, timeframe='5m', limit=100):
+    """
+    Obtiene datos OHLCV para símbolo y timeframe
+    
+    Args:
+        symbol: Símbolo (ej: 'BTC/USDT:USDT')
+        timeframe: Timeframe (1d, 4h, 1h, 15m, 5m)
+        limit: Número de velas
+    
+    Returns:
+        list: OHLCV [[timestamp, open, high, low, close, volume], ...]
+        None: Si error
+    """
+    try:
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        
+        if not ohlcv or len(ohlcv) &lt; 10:
+            return None
+            
+        return ohlcv
+        
+    except Exception as e:
+        print(f"❌ Error fetch_ohlcv {symbol} {timeframe}: {e}")
+        return None
+
+
+def fetch_markets():
+    """
+    Obtiene lista de mercados disponibles
+    
+    Returns:
+        dict: Markets {symbol: market_info}
+        None: Si error
+    """
+    try:
+        markets = exchange.load_markets()
+        return markets
+    except Exception as e:
+        print(f"❌ Error fetch_markets: {e}")
+        return None
+
+
+def get_futures_symbols():
+    """
+    Obtiene lista de símbolos futuros USDT
+    
+    Returns:
+        list: ['BTC/USDT:USDT', 'ETH/USDT:USDT', ...]
+        None: Si error
+    """
+    try:
+        markets = fetch_markets()
+        if not markets:
+            return None
+        
+        # Filtrar solo futuros USDT
+        symbols = [
+            symbol for symbol, market in markets.items()
+            if market.get('type') == 'swap' and symbol.endswith(':USDT')
+        ]
+        
+        return sorted(symbols)
+        
+    except Exception as e:
+        print(f"❌ Error get_futures_symbols: {e}")
+        return None
+
+
+def get_top_symbols_by_volume(limit=100):
+    """
+    Obtiene símbolos ordenados por volumen 24h (top movers)
+    
+    Args:
+        limit: Cantidad de símbolos a retornar
+    
+    Returns:
+        list: Símbolos ordenados por volumen descendente
+    """
+    try:
+        tickers = exchange.fetch_tickers()
+        
+        # Filtrar y ordenar por volumen
+        volume_list = []
+        for symbol, ticker in tickers.items():
+            if ':USDT' in symbol and ticker.get('quoteVolume'):
+                volume_list.append((symbol, ticker['quoteVolume']))
+        
+        # Ordenar por volumen descendente
+        volume_list.sort(key=lambda x: x[1], reverse=True)
+        
+        # Retornar top N
+        return [symbol for symbol, _ in volume_list[:limit]]
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo top symbols: {e}")
+        return []
+
+
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 80)
+    print("EXCHANGE CONNECTION - Validación")
+    print("=" * 80)
+    print(f"Exchange: {EXCHANGE_NAME}")
+    print(f"API configurada: {'✅' if MEXC_API_KEY else '❌'}")
+    print("-" * 80)
+    
+    # Test conexión
+    print("Obteniendo símbolos futuros...")
+    symbols = get_futures_symbols()
+    
+    if symbols:
+        print(f"✅ {len(symbols)} símbolos encontrados")
+        print(f"Ejemplos: {symbols[:5]}")
+        
+        # Test fetch OHLCV
+        print("-" * 80)
+        print(f"Test fetch OHLCV: {symbols[0]}")
+        ohlcv = fetch_ohlcv(symbols[0], '5m', 10)
+        
+        if ohlcv:
+            print(f"✅ {len(ohlcv)} velas obtenidas")
+            print(f"Última vela: {ohlcv[-1]}")
+        else:
+            print("❌ Error obteniendo OHLCV")
+    else:
+        print("❌ Error obteniendo símbolos")
+    
+    print("=" * 80)
+
+"""
+TELEGRAM NOTIFICATIONS - Bot Phase 4.0
+Envía notificaciones de actividad del bot
+"""
+
+import requests
+from datetime import datetime
+from brain_config import (
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+    ENABLE_TELEGRAM, ARGENTINA_TZ
+)
+
+# ============================================================================
+# FUNCIÓN BASE
+# ============================================================================
+
+def send_telegram(message):
+    """
+    Envía mensaje a Telegram
+    
+    Args:
+        message: Texto del mensaje
+    
+    Returns:
+        bool: True si éxito, False si error
+    """
+    if not ENABLE_TELEGRAM or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            'chat_id': TELEGRAM_CHAT_ID,
+            'text': message,
+            'parse_mode': 'HTML'
+        }
+        
+        response = requests.post(url, data=payload, timeout=10)
+        return response.status_code == 200
+        
+    except Exception as e:
+        print(f"❌ Error Telegram: {e}")
+        return False
+
+
+# ============================================================================
+# NOTIFICACIONES ESPECÍFICAS
+# ============================================================================
+
+def notify_bot_start(capital, leverage):
+    """Notifica inicio del bot"""
+    now = datetime.now(ARGENTINA_TZ).strftime("%H:%M:%S")
+    message = f"""
+🤖 &lt;b&gt;BOT PHASE 4.0 INICIADO&lt;/b&gt;
+⏰ {now}
+💰 ${capital} | {leverage}x
+
+🧠 &lt;b&gt;BRAIN ANTICIPATORIO&lt;/b&gt;
+📊 Análisis contextual multi-timeframe
+🎯 Entrada inteligente + salida 5 señales
+✅ Protección breakeven activa
+"""
+    send_telegram(message)
+
+
+def notify_entry(symbol, direction, price, stop_loss, score):
+    """Notifica entrada a trade"""
+    now = datetime.now(ARGENTINA_TZ).strftime("%H:%M:%S")
+    
+    emoji = "🟢" if direction == "BULLISH" else "🔴"
+    
+    message = f"""
+{emoji} &lt;b&gt;ENTRADA - {symbol}&lt;/b&gt;
+⏰ {now}
+
+📊 &lt;b&gt;Dirección:&lt;/b&gt; {direction}
+💵 &lt;b&gt;Precio:&lt;/b&gt; ${price:.8f}
+🛑 &lt;b&gt;Stop Loss:&lt;/b&gt; ${stop_loss:.8f}
+⭐ &lt;b&gt;Score Brain:&lt;/b&gt; {score}/100
+
+🧠 Setup óptimo confirmado
+"""
+    send_telegram(message)
+
+
+def notify_exit(symbol, pnl_pct, pnl_usd, duration_min, reason):
+    """Notifica salida de trade"""
+    now = datetime.now(ARGENTINA_TZ).strftime("%H:%M:%S")
+    
+    emoji = "✅" if pnl_pct &gt; 0 else "❌"
+    
+    message = f"""
+{emoji} &lt;b&gt;SALIDA - {symbol}&lt;/b&gt;
+⏰ {now}
+
+📈 &lt;b&gt;PnL:&lt;/b&gt; {pnl_pct:+.2f}% | ${pnl_usd:+.2f}
+⏱️ &lt;b&gt;Duración:&lt;/b&gt; {duration_min:.1f} min
+🔚 &lt;b&gt;Razón:&lt;/b&gt; {reason}
+"""
+    send_telegram(message)
+
+
+def notify_breakeven(symbol, current_pnl_pct):
+    """Notifica activación breakeven"""
+    message = f"""
+🛡️ &lt;b&gt;BREAKEVEN ACTIVADO&lt;/b&gt;
+💰 {symbol}
+
+📈 &lt;b&gt;PnL actual:&lt;/b&gt; +{current_pnl_pct:.2f}%
+🔒 Stop movido a entrada (riesgo = 0)
+"""
+    send_telegram(message)
+
+
+def notify_error(error_message):
+    """Notifica error crítico"""
+    now = datetime.now(ARGENTINA_TZ).strftime("%H:%M:%S")
+    message = f"""
+⚠️ &lt;b&gt;ERROR CRÍTICO&lt;/b&gt;
+⏰ {now}
+
+{error_message}
+"""
+    send_telegram(message)
+
+
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 80)
+    print("TELEGRAM NOTIFICATIONS - Validación")
+    print("=" * 80)
+    print(f"Telegram habilitado: {'✅' if ENABLE_TELEGRAM else '❌'}")
+    print(f"Token configurado: {'✅' if TELEGRAM_BOT_TOKEN else '❌'}")
+    print(f"Chat ID configurado: {'✅' if TELEGRAM_CHAT_ID else '❌'}")
+    print("-" * 80)
+    
+    if ENABLE_TELEGRAM and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+        print("Enviando mensaje de prueba...")
+        success = send_telegram("🧪 Test de conexión - Bot Phase 4.0")
+        
+        if success:
+            print("✅ Mensaje enviado correctamente")
+        else:
+            print("❌ Error enviando mensaje")
+    else:
+        print("⚠️ Telegram no configurado completamente")
+    
+    print("=" * 80)
+
+"""
+VALIDACIÓN FINAL - Bot Phase 4.0
+Verifica que todos los módulos estén operacionales
+"""
+
+import sys
+from datetime import datetime
+
+# ============================================================================
+# COLORES PARA OUTPUT
+# ============================================================================
+
+def print_header(text):
+    print("\n" + "=" * 80)
+    print(f"  {text}")
+    print("=" * 80)
+
+def print_section(text):
+    print("\n" + "-" * 80)
+    print(f"  {text}")
+    print("-" * 80)
+
+def check_module(module_name):
+    """Intenta importar módulo y reporta resultado"""
+    try:
+        __import__(module_name)
+        print(f"  ✅ {module_name}")
+        return True
+    except Exception as e:
+        print(f"  ❌ {module_name}: {e}")
+        return False
+
+
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
+
+if __name__ == "__main__":
+    print_header("🧠 BRAIN TRADING BOT - PHASE 4.0")
+    print("     Validación Final del Sistema")
+    
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"\n     Fecha: {now}")
+    
+    # ========================================================================
+    # 1. MÓDULOS CORE
+    # ========================================================================
+    print_section("1️⃣  MÓDULOS CORE")
+    
+    modules_core = {
+        'brain_config': 'Configuración central',
+        'exchange_connection': 'Conexión MEXC',
+        'telegram_notifications': 'Notificaciones',
+        'sheets_manager': 'Google Sheets'
+    }
+    
+    core_ok = 0
+    for module, description in modules_core.items():
+        if check_module(module):
+            core_ok += 1
+    
+    print(f"\n  Total: {core_ok}/{len(modules_core)} ✓")
+    
+    # ========================================================================
+    # 2. MÓDULOS BRAIN
+    # ========================================================================
+    print_section("2️⃣  MÓDULOS BRAIN (Análisis)")
+    
+    modules_brain = {
+        'brain_calculator': 'Funciones matemáticas',
+        'brain_analyzer': 'Análisis multi-timeframe',
+        'brain_watchlist': 'Gestión watchlist',
+        'brain_executor': 'Ejecución trades'
+    }
+    
+    brain_ok = 0
+    for module, description in modules_brain.items():
+        if check_module(module):
+            brain_ok += 1
+    
+    print(f"\n  Total: {brain_ok}/{len(modules_brain)} ✓")
+    
+    # ========================================================================
+    # 3. ORQUESTADOR
+    # ========================================================================
+    print_section("3️⃣  ORQUESTADOR PRINCIPAL")
+    
+    if check_module('bot_main'):
+        orchestrator_ok = 1
+    else:
+        orchestrator_ok = 0
+    
+    print(f"\n  Total: {orchestrator_ok}/1 ✓")
+    
+    # ========================================================================
+    # 4. DEPENDENCIAS EXTERNAS
+    # ========================================================================
+    print_section("4️⃣  DEPENDENCIAS EXTERNAS")
+    
+    dependencies = {
+        'ccxt': 'Exchange connectivity',
+        'pandas': 'Data manipulation',
+        'numpy': 'Numerical computing',
+        'pytz': 'Timezone handling',
+        'dotenv': 'Environment variables',
+        'requests': 'HTTP requests',
+        'gspread': 'Google Sheets API',
+        'oauth2client': 'OAuth2 authentication'
+    }
+    
+    deps_ok = 0
+    for dep, description in dependencies.items():
+        if check_module(dep):
+            deps_ok += 1
+    
+    print(f"\n  Total: {deps_ok}/{len(dependencies)} ✓")
+    
+    # ========================================================================
+    # 5. CONFIGURACIÓN
+    # ========================================================================
+    print_section("5️⃣  CONFIGURACIÓN")
+    
+    try:
+        from brain_config import (
+            MEXC_API_KEY, TELEGRAM_BOT_TOKEN,
+            GOOGLE_CREDENTIALS_FILE, CAPITAL_INICIAL,
+            MAX_TRADES_SIMULTANEOUS, MAX_WATCHLIST_SIZE
+        )
+        
+        checks = [
+            ("MEXC API Key", bool(MEXC_API_KEY)),
+            ("Telegram Token", bool(TELEGRAM_BOT_TOKEN)),
+            ("Google Credentials", bool(GOOGLE_CREDENTIALS_FILE)),
+            ("Capital Inicial", CAPITAL_INICIAL &gt; 0),
+            ("Max Trades", 1 &lt;= MAX_TRADES_SIMULTANEOUS &lt;= 5),
+            ("Watchlist Size", 10 &lt;= MAX_WATCHLIST_SIZE &lt;= 50)
+        ]
+        
+        config_ok = 0
+        for name, check in checks:
+            if check:
+                print(f"  ✅ {name}")
+                config_ok += 1
+            else:
+                print(f"  ⚠️  {name}")
+        
+        print(f"\n  Total: {config_ok}/{len(checks)} ✓")
+    
+    except Exception as e:
+        print(f"  ❌ Error cargando configuración: {e}")
+        config_ok = 0
+    
+    # ========================================================================
+    # 6. ARCHIVOS
+    # ========================================================================
+    print_section("6️⃣  ARCHIVOS DEL PROYECTO")
+    
+    import os
+    
+    files_expected = [
+        'bot_main.py',
+        'brain_config.py',
+        'brain_calculator.py',
+        'brain_analyzer.py',
+        'brain_watchlist.py',
+        'brain_executor.py',
+        'exchange_connection.py',
+        'telegram_notifications.py',
+        'sheets_manager.py',
+        '.env',
+        '.gitignore',
+        'README.md'
+    ]
+    
+    files_ok = 0
+    for filename in files_expected:
+        if os.path.exists(filename):
+            size = os.path.getsize(filename)
+            if filename.endswith('.py'):
+                with open(filename, 'r', encoding='utf-8') as f:
+                    lines = len(f.readlines())
+                print(f"  ✅ {filename} ({lines} líneas, {size:,} bytes)")
+            else:
+                print(f"  ✅ {filename} ({size:,} bytes)")
+            files_ok += 1
+        else:
+            print(f"  ❌ {filename} (no encontrado)")
+    
+    print(f"\n  Total: {files_ok}/{len(files_expected)} ✓")
+    
+    # ========================================================================
+    # RESUMEN FINAL
+    # ========================================================================
+    print_header("📊 RESUMEN FINAL")
+    
+    total_checks = core_ok + brain_ok + orchestrator_ok + deps_ok + config_ok + files_ok
+    total_possible = len(modules_core) + len(modules_brain) + 1 + len(dependencies) + 6 + len(files_expected)
+    
+    percentage = (total_checks / total_possible) * 100
+    
+    print(f"\n  Total verificaciones: {total_checks}/{total_possible} ({percentage:.1f}%)")
+    
+    if percentage &gt;= 95:
+        status = "🎉 EXCELENTE - Sistema completamente operacional"
+    elif percentage &gt;= 80:
+        status = "✅ BUENO - Sistema operacional con alertas menores"
+    elif percentage &gt;= 60:
+        status = "⚠️  ADVERTENCIA - Revisar componentes faltantes"
+    else:
+        status = "❌ CRÍTICO - Sistema no operacional"
+    
+    print(f"\n  Estado: {status}")
+    
+    # ========================================================================
+    # ESTADÍSTICAS CÓDIGO
+    # ========================================================================
+    print_section("📈 ESTADÍSTICAS DEL CÓDIGO")
+    
+    total_lines = 0
+    py_files = [f for f in files_expected if f.endswith('.py')]
+    
+    for filename in py_files:
+        if os.path.exists(filename):
+            with open(filename, 'r', encoding='utf-8') as f:
+                lines = len(f.readlines())
+                total_lines += lines
+    
+    print(f"\n  Total archivos Python: {len(py_files)}")
+    print(f"  Total líneas de código: {total_lines:,}")
+    print(f"  Promedio por archivo: {total_lines // len(py_files):,} líneas")
+    
+    # ========================================================================
+    # PRÓXIMOS PASOS
+    # ========================================================================
+    print_header("🚀 PRÓXIMOS PASOS")
+    
+    print("""
+  1. Verificar credenciales en .env:
+     - MEXC_API_KEY y MEXC_SECRET_KEY
+     - TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID
+     - GOOGLE_CREDENTIALS_FILE y GOOGLE_SPREADSHEET_ID
+  
+  2. Probar conexiones individuales:
+     python exchange_connection.py
+     python telegram_notifications.py
+     python sheets_manager.py
+  
+  3. Ejecutar análisis de prueba:
+     python brain_analyzer.py
+  
+  4. Iniciar bot:
+     python bot_main.py
+  
+  5. Monitorear:
+     - Logs en consola
+     - Notificaciones Telegram
+     - Registros en Google Sheets
+    """)
+    
+    print("=" * 80)
+    print("✅ Validación completada\n")
+    
+    # Exit code basado en resultado
+    if percentage &gt;= 80:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3<br>
-    Generado: 2025-11-13 18:16:45
+    Total caracteres: 30,760<br>
+    Generado: 2025-11-13 18:33:32
   </div>
 </body>
 </html>
