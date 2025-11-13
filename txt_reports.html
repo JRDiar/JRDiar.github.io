@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-13 02:13:50</div>
+  <div class="meta">Última actualización: 2025-11-13 02:41:04</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -176,9 +176,25 @@ def analyze_4h(symbol):
     # Output compacto: una línea
     print(f"📊 4H | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Estructura:{structure['structure']}")
     
+    # ==== SCORING 0-40 ====
+    score_4h = 0
+    if strength == 'STRONG':
+        score_4h += 20
+    elif strength == 'MODERATE':
+        score_4h += 12
+    else:
+        score_4h += 5
+    if adx_trend == 'creciendo':
+        score_4h += 10
+    if momentum_data['consecutive_count'] &gt;= 5:
+        score_4h += 5
+    if abs(adx_data['spread']) &gt; 7:
+        score_4h += 5
+    
     return {
         'direction': direction,
         'strength': strength,
+        'score_4h': score_4h,  # ← AGREGADO
         'adx': adx_data,
         'momentum': momentum_data,
         'rsi': rsi_data,
@@ -199,38 +215,40 @@ def analyze_1h(symbol):
     """1H: Confirma tendencia 4H"""
     ohlcv = fetch_ohlcv(symbol, '1h', 100)
     if not ohlcv or len(ohlcv) &lt; 50:
-        return None
+        # Retornar análisis vacío con score 0
+        return {
+            'direction': 'UNKNOWN',
+            'strength': 'WEAK',
+            'score_1h': 0,
+            'adx': {},
+            'momentum': {},
+            'rsi': {},
+            'emas': {},
+            'structure': {},
+            'zigzag': {},
+            'context': '1H - Datos insuficientes',
+            'timestamp': datetime.now().isoformat()
+        }
     
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
     # ===== ADX =====
     adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
-    
-    if adx_data['adx_trend'] != 'creciendo':
-        return None
-    
-    if adx_data['adx_current'] &lt; 22:
-        return None
+    adx_trend = adx_data['adx_trend']
+    adx_current = adx_data['adx_current']
+    spread = abs(adx_data['spread'])
     
     if adx_data['dominance'] == 'DI+':
         direction = 'BULLISH'
     elif adx_data['dominance'] == 'DI-':
         direction = 'BEARISH'
     else:
-        return None
-    
-    if abs(adx_data['spread']) &lt; 4.0:
-        return None
+        direction = 'LATERAL'
     
     # ===== Momentum =====
     momentum_data = calculate_momentum_with_memory(df, lookback=10)
     expected_color = 'green' if direction == 'BULLISH' else 'red'
-    
-    if momentum_data['color_current'] != expected_color:
-        return None
-    
-    if momentum_data['consecutive_count'] &lt; 2:
-        return None
+    momentum_color = momentum_data['color_current']
     
     # ===== RSI =====
     rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
@@ -245,25 +263,37 @@ def analyze_1h(symbol):
     zigzag = calculate_zigzag(df, threshold_pct=2.5)
     
     # ===== Strength =====
-    if adx_data['adx_current'] &gt; 32:
+    if adx_current &gt; 32:
         strength = 'STRONG'
-    elif adx_data['adx_current'] &gt; 25:
+    elif adx_current &gt; 25:
         strength = 'MODERATE'
     else:
         strength = 'WEAK'
     
-    print(f"   📈 1H | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v")
+    # ==== SCORING 0-30 ====
+    score_1h = 0
+    if adx_trend == 'creciendo':
+        score_1h += 10
+    if adx_current &gt;= 22:
+        score_1h += 5
+    if momentum_color == expected_color:
+        score_1h += 10
+    if spread &gt; 4.0:
+        score_1h += 5
+    
+    print(f"   📈 1H | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Score1H:{score_1h}")
     
     return {
         'direction': direction,
         'strength': strength,
+        'score_1h': score_1h,  # ← AGREGADO
         'adx': adx_data,
         'momentum': momentum_data,
         'rsi': rsi_data,
         'emas': emas_data,
         'structure': structure,
         'zigzag': zigzag,
-        'context': f"1H {direction} {strength} - ADX {adx_data['adx_current']:.1f}",
+        'context': f"1H {direction} {strength} - ADX {adx_current:.1f}",
         'timestamp': datetime.now().isoformat()
     }
 
@@ -276,7 +306,23 @@ def analyze_15m(symbol):
     """15M: Timing de entrada"""
     ohlcv = fetch_ohlcv(symbol, '15m', 100)
     if not ohlcv or len(ohlcv) &lt; 50:
-        return None
+        return {
+            'direction': 'UNKNOWN',
+            'strength': 'WEAK',
+            'score_15m': 0,
+            'current_price': 0,
+            'adx': {},
+            'momentum': {},
+            'rsi': {},
+            'emas': {},
+            'structure': {},
+            'zigzag': {},
+            'sr': {},
+            'velocity': {},
+            'acceleration': {},
+            'context': '15M - Datos insuficientes',
+            'timestamp': datetime.now().isoformat()
+        }
     
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
@@ -284,27 +330,30 @@ def analyze_15m(symbol):
     adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
     
     if adx_data['adx_current'] &lt; 20:
-        return None
-    
-    if adx_data['dominance'] == 'DI+':
+        direction = 'LATERAL'
+        strength = 'WEAK'
+    elif adx_data['dominance'] == 'DI+':
         direction = 'BULLISH'
+        strength = 'MODERATE'
     elif adx_data['dominance'] == 'DI-':
         direction = 'BEARISH'
+        strength = 'MODERATE'
     else:
-        return None
+        direction = 'LATERAL'
+        strength = 'WEAK'
     
     if abs(adx_data['spread']) &lt; 3.0:
-        return None
+        strength = 'WEAK'
     
     # ===== Momentum =====
     momentum_data = calculate_momentum_with_memory(df, lookback=10)
     expected_color = 'green' if direction == 'BULLISH' else 'red'
     
     if momentum_data['color_current'] != expected_color:
-        return None
+        strength = 'WEAK'
     
     if momentum_data['consecutive_count'] &lt; 2:
-        return None
+        strength = 'WEAK'
     
     # ===== RSI =====
     rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
@@ -335,11 +384,27 @@ def analyze_15m(symbol):
     else:
         strength = 'WEAK'
     
-    print(f"      ⏱️  15M | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Precio:${current_price:.6f}")
+    # ==== SCORING 0-30 ====
+    score_15m = 0
+    if strength == 'STRONG':
+        score_15m += 15
+    elif strength == 'MODERATE':
+        score_15m += 8
+    else:
+        score_15m += 2
+    if abs(adx_data['spread']) &gt; 4:
+        score_15m += 5
+    if momentum_data['consecutive_count'] &gt;= 3:
+        score_15m += 5
+    if velocity_data.get('velocity_current', 0) &gt; 0:
+        score_15m += 5
+    
+    print(f"      ⏱️  15M | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Precio:${current_price:.6f} | Score15M:{score_15m}")
     
     return {
         'direction': direction,
         'strength': strength,
+        'score_15m': score_15m,  # ← AGREGADO
         'current_price': current_price,
         'adx': adx_data,
         'momentum': momentum_data,
@@ -483,57 +548,33 @@ def analyze_coin_complete(symbol):
     
     direction_dominant = analysis_4h['direction']
     
-    # Si 4H es LATERAL, no viable para trading
-    if direction_dominant == 'LATERAL':
-        return {'viable': False, 'reason': '4H lateral - sin dirección clara'}
+    # 4H siempre informa, nunca bloquea
+    # LATERAL es dato válido (mercado lateralizando)
     
     # ===== PASO 2: 1H - Confirmación =====
     analysis_1h = analyze_1h(symbol)
     
-    if not analysis_1h:
-        return {
-            'viable': False,
-            'reason': '1H no confirma tendencia 4H',
-            'analysis_4h': analysis_4h,
-            'timestamp': datetime.now().isoformat()
-        }
-    
-    if analysis_1h['direction'] != direction_dominant:
-        return {
-            'viable': False,
-            'reason': f"1H dirección {analysis_1h['direction']} contradice 4H {direction_dominant}",
-            'analysis_4h': analysis_4h,
-            'analysis_1h': analysis_1h,
-            'timestamp': datetime.now().isoformat()
-        }
-    
     # ===== PASO 3: 15M - Timing =====
     analysis_15m = analyze_15m(symbol)
-    
-    if not analysis_15m:
-        return {
-            'viable': False,
-            'reason': '15M no proporciona timing adecuado',
-            'analysis_4h': analysis_4h,
-            'analysis_1h': analysis_1h,
-            'timestamp': datetime.now().isoformat()
-        }
-    
-    if analysis_15m['direction'] != direction_dominant:
-        return {
-            'viable': False,
-            'reason': f"15M dirección {analysis_15m['direction']} contradice dominante {direction_dominant}",
-            'analysis_4h': analysis_4h,
-            'analysis_1h': analysis_1h,
-            'analysis_15m': analysis_15m,
-            'timestamp': datetime.now().isoformat()
-        }
     
     # ===== PASO 4: 5M - Ejecución (SIEMPRE) =====
     analysis_5m = analyze_5m(symbol)
     
     # ===== PASO 5: Calcular Score 0-100 =====
-    score_data = calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m)
+    score_total = (
+        analysis_4h.get('score_4h', 20) +
+        analysis_1h.get('score_1h', 0) +
+        analysis_15m.get('score_15m', 0)
+    )
+    
+    # Bonus por evolución temporal
+    evolution_bonus = calculate_evolution_score(symbol)
+    score_total += evolution_bonus
+    
+    # Guardar snapshot actual
+    save_analysis_snapshot(symbol, analysis_4h, analysis_1h, analysis_15m)
+    
+    viable = score_total &gt;= 45  # Threshold ajustable
     
     # ===== PASO 6: Calcular Triggers =====
     triggers = calculate_triggers(analysis_15m, analysis_5m, direction_dominant)
@@ -544,14 +585,14 @@ def analyze_coin_complete(symbol):
         f"4H:{analysis_4h['strength']} "
         f"1H:{analysis_1h['strength']} "
         f"15M:{analysis_15m['strength']} | "
-        f"Score:{score_data['score']}/100"
+        f"Score:{score_total}/100"
     )
     
-    print(f"✅ {symbol} | {direction_dominant} | Score:{score_data['score']}/100 ({score_data['clasificacion']}) | 4H={analysis_4h['strength']} 1H={analysis_1h['strength']} 15M={analysis_15m['strength']} | Entry:${triggers['entry_price']:.6f} R:R={triggers['rr_ratio']:.2f}:1")
+    print(f"✅ {symbol} | {direction_dominant} | Score:{score_total}/100 | 4H={analysis_4h['strength']} 1H={analysis_1h['strength']} 15M={analysis_15m['strength']} | Entry:${triggers['entry_price']:.6f} R:R={triggers['rr_ratio']:.2f}:1")
     
     return {
-        'viable': True,
-        'score_data': score_data,
+        'viable': viable,
+        'score_total': score_total,
         'direction': direction_dominant,
         'analysis_4h': analysis_4h,
         'analysis_1h': analysis_1h,
@@ -977,11 +1018,104 @@ if __name__ == "__main__":
     else:
         print(f"\n❌ Setup no viable: {result.get('reason', 'Desconocido')}")
 
+# ═══════════════════════════════════════════════════════════════════════════
+# SISTEMA DE MEMORIA HISTÓRICA
+# ═══════════════════════════════════════════════════════════════════════════
+
+coin_memory = {}  # {symbol: [snapshots históricos]}
+
+def save_analysis_snapshot(symbol, analysis_4h, analysis_1h, analysis_15m):
+    """Guarda snapshot completo para comparación futura"""
+    if symbol not in coin_memory:
+        coin_memory[symbol] = []
+    
+    snapshot = {
+        'timestamp': datetime.now().isoformat(),
+        'adx_4h': analysis_4h['adx']['adx_current'],
+        'di_plus_4h': analysis_4h['adx']['di_plus_current'],
+        'momentum_4h': analysis_4h['momentum']['consecutive_count'],
+        'price': analysis_15m.get('current_price', 0)
+    }
+    
+    coin_memory[symbol].append(snapshot)
+    
+    # Mantener últimos 20 snapshots (evitar memoria infinita)
+    if len(coin_memory[symbol]) &gt; 20:
+        coin_memory[symbol] = coin_memory[symbol][-20:]
+
+def get_historical_context(symbol):
+    """Retorna contexto histórico si existe"""
+    return coin_memory.get(symbol, [])
+
+def calculate_evolution_score(symbol):
+    """Score basado en PROGRESO temporal (+0 a +20 puntos)"""
+    history = get_historical_context(symbol)
+    
+    if len(history) &lt; 3:
+        return 0  # Sin historia suficiente
+    
+    score = 0
+    
+    # ADX creciendo últimas 3 mediciones: +10
+    adx_values = [h['adx_4h'] for h in history[-3:]]
+    if adx_values[-1] &gt; adx_values[-2] &gt; adx_values[-3]:
+        score += 10
+    
+    # Momentum madurando: +5
+    mom_values = [h['momentum_4h'] for h in history[-3:]]
+    if mom_values[-1] &gt;= mom_values[-2] &gt;= mom_values[-3]:
+        score += 5
+    
+    # Precio subiendo consistente: +5
+    price_values = [h['price'] for h in history[-3:]]
+    if price_values[-1] &gt; price_values[-2] &gt; price_values[-3]:
+        score += 5
+    
+    return score
+
+
+
+Notas
+2025-11-12 00:59:39	SUPRA/USDT:USDT	ENTRADA	BEARISH	0.001478	0.00149532	0.0014	90	2.251023192			
+2025-11-12 01:01:00	SUPRA/USDT:USDT	SALIDA		0.001473					+0.34% | $+1.13	1.4 min	Salida inteligente: Desaceleración, Volumen bajo
+
+Supra no vio el contexto, entro en zona de fuerte soporte
+El adx rojo estaba bajando, aunque estaba en posicion de short, el rebote del fuerte soporte visto desd e4 horas las veces que toco es impresionante, obiviamente no es zona de entrar en short, zona de soporte fuerte
+La caida fuerte habia pasado y el bot entro tarde, no vio el contexto, no espero, el bot esta mal hecho, no analiza antes de entrar
+El PNL era negativo
+El stop loss no estaba en el precio de entrada
+aun asi el bot salio ganando
+En el supuesto monto de ganancia, como esta calculado? tiene comision de la exchange el calculo?
+OBS: El bot tiene que mirar el volume profile y los soportes y resistencias para ver si es un buen momento de entrada
+Chequear si esta por entrar en una zona de rebote, ver donde toco el precio y los precios anteriores
+Esperar a confirmar la tendencia de correccion
+Que el bot no sea restrictivo por el adx y momentum, por sus valores, que tenga en cuenta la fuerza del movimiento y si al entrar puede tomar ganancias, analizar hasta donde llegaria su ganancia por el tema del volumen y soportes y resistencias, ademas del zig zag
+Emmas
+Como el bot antiguo, brain tendria que ver, contexto en 4 horas, alineado con 1 dia para ver si es una correccion del precio, una vez vi un trade del bot anterior que tomo como bullish una correccion de una gran caida, esa gran caida se podia apreciar en 1 dia, en cambio en 4 horas era como si fuera que estaba subiendo el precio
+Al entrar el bot a operar, corrigio ese rebote y salio con una gran perdida
+
+El bullish de Spell en 5 minutos es pobre, el adx, las tres lineas adx+,adx- y adx que da la fuerza estan juntos, momentum pequeño
+en 15 minutos no salio todavia del valle rojo la moneda, adx con poca fuerza, muy parecido a 5 minutos, lo unico que resalto son las emas
+Esta para dejar el trade corriendo sin stoploss hasta llegar a la subida, pero en 15 minutos se ve un alto más bajo o sea tuvo un pico alto el precio
+luego intento de nuevo subir pero no llego y este es el tercer intento, quizas termine en perdida porque no fue un buen momento para entrar
+2025-11-12 01:13:01	SPELL/USDT:USDT	ENTRADA	BULLISH	0.0003261	0.000331806	0.0003	103	3.888718106			
+Veremos que pasa
+Obtuvo ganancia de 2 dolares.
+Ahora veo que POP lateraliza, entro a operar.
+2025-11-12 03:07:15	POP/USDT:USDT	ENTRADA	BEARISH	0.001043	0.00106386	0.001	70	2.061361457
+2025-11-12 03:15:05	POP/USDT:USDT	ENTRADA	BEARISH	0.001033	0.001071	0.001	73	2.380952381
+El bot tiene que ser realmente inteligente, tiene que ver el contexto, no importa cuanto tarda, lo importante es que encuentre las monedas adecuadas donde operar
+si no para de analizar y no es tan estricto el bot, para eso lo estamos haciendo inteligente, que no tome datos estaticos, que tome deciones en vez de ver numeros fijos, ve el contexto.
+
+Todos los brains tienen que modificarse, todo tiene que dejar de ser binario, por eso te pase todos los módulos, acordate que tiene que ver el contexto brain, todos los indicadores, tomar en cuenta, en la temporalidad de 1 dia tendria que ver el contexto para que 4 horas sea la referencia, una vez paso en el bot anterior que entró en long a operar porque en 4 horas se veia adx momentum todo en condiciones para entrar, en ese entonces todavia no veia los altos más altos y bajos más bajos, solo veia el momentum y adx fuertes, empezo a operar y era un rebote de una caida que tuvo esa moneda en 1 día se podia observar perfectamente, a eso me refiero que las temporalidades más altas tienen que ser de referencia, no puede entrar en long cuando en 1 dia esta corrigiendo, lo mismo pasa con 4 horas, y el resto de las temporalidades una vez confirmada la tendencia entre 1 día y 4 horas, 4 horas va a ser la que decide la tendencia ya que ese trade se desarrolla entre 8 a 12 horas. Yendo a un ejemplo si en 4 horas la tendencia esta bajista, en 1 hora bajista, en 15 es un rebote, brain no ve el contexto y entra en long en 5 minutos, se revierte la tendencia y sale con perdidas, otra cosa el el stoploss inteligente, el stop que guarda ganancias, no recierdo el nombre ahora, ese stop causa perdidas grandes porque cierra muy abajo de la entrada al operar: 
+2025-11-12 23:41:06	BAGWORK/USDT:USDT	SALIDA		0,005473					-7.39% | $-24.65	36.1 min	Salida inteligente: Desaceleración, Divergencia
+Deberia haber dos stoploss, el que es fijo, que tiene un porcentaje segun la gestion de riesgo y el otro stop que resguarda las ganancias para no perder 24 usd.
+Que el stop de gestion de riesgo tenga prioridad sonbre el de ganancias, asi si pasa el precio de entrada el stop de gestion de riesgo frena la perdida, otra idea era que el stop se active en el precio de entrada, pero eso lo vamos a dejar para más adelante cuando el bot sea realmente inteligente y encuentre buenos puntos de entrada y la volatilidad no lo saque del trade.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 34,330<br>
-    Generado: 2025-11-13 02:13:50
+    Total caracteres: 42,315<br>
+    Generado: 2025-11-13 02:41:04
   </div>
 </body>
 </html>
