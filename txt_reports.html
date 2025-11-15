@@ -15,17 +15,265 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-14 04:34:55</div>
+  <div class="meta">Última actualización: 2025-11-15 02:51:32</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-1
+    def check_trigger_activated(self, symbol, watchlist_data):
+        """
+        Verifica si trigger está activado para entrada
+        
+        Args:
+            symbol: Símbolo
+            watchlist_data: Dict con datos de watchlist
+        
+        Returns:
+            dict: {'activated': bool, 'adx': float, 'momentum_age': int, 'volume_ratio': float}
+                  o None si error
+        """
+        # ================================================================
+        # VERIFICACIÓN MULTI-TIMEFRAME: DI+/DI- y Momentum (CRÍTICO)
+        # ================================================================
+        from brain_analyzer import analyze_4h, analyze_1h, analyze_15m
+        from brain_config import DI_MIN_SPREAD
+        
+        print(f"   🔍 Verificando cascada multi-timeframe completa...")
+        
+        # Re-analizar TODAS las temporalidades
+        analysis_4h_fresh = analyze_4h(symbol)
+        analysis_1h_fresh = analyze_1h(symbol)
+        analysis_15m_fresh = analyze_15m(symbol)
+        
+        if not analysis_4h_fresh or not analysis_1h_fresh or not analysis_15m_fresh:
+            print(f"   ❌ No se pudo obtener análisis completo multi-timeframe")
+            return None
+        
+        expected_direction = watchlist_data['direction']
+        
+        # ================================================================
+        # VERIFICACIÓN 1: 4H - Timeframe dominante
+        # ================================================================
+        direction_4h = analysis_4h_fresh['direction']
+        di_plus_4h = analysis_4h_fresh['adx']['di_plus_current']
+        di_minus_4h = analysis_4h_fresh['adx']['di_minus_current']
+        momentum_4h = analysis_4h_fresh['momentum']['color_current']
+        
+        print(f"   📊 4H: Direction={direction_4h}, DI+={di_plus_4h:.1f}, DI-={di_minus_4h:.1f}, Momentum={momentum_4h}")
+        
+        # Verificar dirección 4H
+        if direction_4h != expected_direction:
+            print(f"   ❌ 4H contradice: {direction_4h} ≠ {expected_direction}")
+            return None
+        
+        # Verificar DI spread 4H
+        if expected_direction == 'BULLISH':
+            spread_4h = di_plus_4h - di_minus_4h
+            if spread_4h &lt; DI_MIN_SPREAD:
+                print(f"   ❌ 4H: DI+ no domina (spread: {spread_4h:.1f} &lt; {DI_MIN_SPREAD})")
+                return None
+            if di_plus_4h &lt; 20:
+                print(f"   ❌ 4H: DI+ muy bajo ({di_plus_4h:.1f} &lt; 20)")
+                return None
+        elif expected_direction == 'BEARISH':
+            spread_4h = di_minus_4h - di_plus_4h
+            if spread_4h &lt; DI_MIN_SPREAD:
+                print(f"   ❌ 4H: DI- no domina (spread: {spread_4h:.1f} &lt; {DI_MIN_SPREAD})")
+                return None
+            if di_minus_4h &lt; 20:
+                print(f"   ❌ 4H: DI- muy bajo ({di_minus_4h:.1f} &lt; 20)")
+                return None
+        
+        # Verificar momentum 4H
+        expected_momentum = 'green' if expected_direction == 'BULLISH' else 'red'
+        if momentum_4h != expected_momentum and momentum_4h != 'neutral':
+            print(f"   ❌ 4H: Momentum {momentum_4h} contradice {expected_momentum}")
+            return None
+        
+        print(f"   ✅ 4H: Alineado correctamente")
+        
+        # ================================================================
+        # VERIFICACIÓN 2: 1H - Confirmación intermedia
+        # ================================================================
+        direction_1h = analysis_1h_fresh['direction']
+        di_plus_1h = analysis_1h_fresh['adx']['di_plus_current']
+        di_minus_1h = analysis_1h_fresh['adx']['di_minus_current']
+        momentum_1h = analysis_1h_fresh['momentum']['color_current']
+        
+        print(f"   📊 1H: Direction={direction_1h}, DI+={di_plus_1h:.1f}, DI-={di_minus_1h:.1f}, Momentum={momentum_1h}")
+        
+        # Verificar dirección 1H
+        if direction_1h != expected_direction:
+            print(f"   ❌ 1H contradice: {direction_1h} ≠ {expected_direction}")
+            return None
+        
+        # Verificar DI spread 1H
+        if expected_direction == 'BULLISH':
+            spread_1h = di_plus_1h - di_minus_1h
+            if spread_1h &lt; DI_MIN_SPREAD:
+                print(f"   ❌ 1H: DI+ no domina (spread: {spread_1h:.1f} &lt; {DI_MIN_SPREAD})")
+                return None
+            if di_plus_1h &lt; 20:
+                print(f"   ❌ 1H: DI+ muy bajo ({di_plus_1h:.1f} &lt; 20)")
+                return None
+        elif expected_direction == 'BEARISH':
+            spread_1h = di_minus_1h - di_plus_1h
+            if spread_1h &lt; DI_MIN_SPREAD:
+                print(f"   ❌ 1H: DI- no domina (spread: {spread_1h:.1f} &lt; {DI_MIN_SPREAD})")
+                return None
+            if di_minus_1h &lt; 20:
+                print(f"   ❌ 1H: DI- muy bajo ({di_minus_1h:.1f} &lt; 20)")
+                return None
+        
+        # Verificar momentum 1H
+        if momentum_1h != expected_momentum and momentum_1h != 'neutral':
+            print(f"   ❌ 1H: Momentum {momentum_1h} contradice {expected_momentum}")
+            return None
+        
+        print(f"   ✅ 1H: Alineado correctamente")
+        
+        # ================================================================
+        # VERIFICACIÓN 3: 15M - Timing preciso
+        # ================================================================
+        direction_15m = analysis_15m_fresh['direction']
+        di_plus_15m = analysis_15m_fresh['adx']['di_plus_current']
+        di_minus_15m = analysis_15m_fresh['adx']['di_minus_current']
+        momentum_15m = analysis_15m_fresh['momentum']['color_current']
+        adx_15m = analysis_15m_fresh['adx']['adx_current']
+        
+        print(f"   📊 15M: Direction={direction_15m}, DI+={di_plus_15m:.1f}, DI-={di_minus_15m:.1f}, Momentum={momentum_15m}")
+        
+        # Verificar dirección 15M
+        if direction_15m != expected_direction:
+            print(f"   ❌ 15M contradice: {direction_15m} ≠ {expected_direction}")
+            return None
+        
+        # Verificar DI spread 15M
+        if expected_direction == 'BULLISH':
+            spread_15m = di_plus_15m - di_minus_15m
+            if spread_15m &lt; DI_MIN_SPREAD:
+                print(f"   ❌ 15M: DI+ no domina (spread: {spread_15m:.1f} &lt; {DI_MIN_SPREAD})")
+                return None
+            if di_plus_15m &lt; 20:
+                print(f"   ❌ 15M: DI+ muy bajo ({di_plus_15m:.1f} &lt; 20)")
+                return None
+        elif expected_direction == 'BEARISH':
+            spread_15m = di_minus_15m - di_plus_15m
+            if spread_15m &lt; DI_MIN_SPREAD:
+                print(f"   ❌ 15M: DI- no domina (spread: {spread_15m:.1f} &lt; {DI_MIN_SPREAD})")
+                return None
+            if di_minus_15m &lt; 20:
+                print(f"   ❌ 15M: DI- muy bajo ({di_minus_15m:.1f} &lt; 20)")
+                return None
+        
+        # Verificar momentum 15M (debe coincidir EXACTAMENTE, no tolerar neutral)
+        if momentum_15m != expected_momentum:
+            print(f"   ❌ 15M: Momentum {momentum_15m} ≠ {expected_momentum}")
+            return None
+        
+        print(f"   ✅ 15M: Alineado correctamente")
+        
+        # ================================================================
+        # RESUMEN: Todas las temporalidades alineadas
+        # ================================================================
+        print(f"   ✅✅✅ CASCADA COMPLETA CONFIRMADA:")
+        print(f"      4H={direction_4h}, 1H={direction_1h}, 15M={direction_15m}")
+        print(f"      Momentum: 4H={momentum_4h}, 1H={momentum_1h}, 15M={momentum_15m}")
+        
+        # Usar ADX de 15M para verificaciones posteriores
+        adx = adx_15m
+        momentum_color = momentum_15m
+        momentum_age = analysis_15m_fresh['momentum']['consecutive_count']
+        
+        # Verificar estructura de precio (HH/HL para BULLISH, LH/LL para BEARISH)
+        ohlcv_structure = fetch_ohlcv(symbol, '15m', 50)
+        if ohlcv_structure:
+            # ✅ CONVERTIR OHLCV (lista) A DATAFRAME
+            df_structure = pd.DataFrame(
+                ohlcv_structure,
+                columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+            )
+            
+            price_structure = detect_price_structure(df_structure, lookback=20)
+            
+            if price_structure['structure'] != expected_direction:
+                print(f"   ❌ Estructura de precio incorrecta: {price_structure['structure']} (esperaba {expected_direction})")
+                print(f"      → Sin Higher Highs/Lower Lows confirmados")
+                return None
+        
+        # Verificar ADX
+        if adx is None or adx &lt; ADX_THRESHOLD:
+            print(f"   ❌ ADX insuficiente: {adx if adx else 'None'} &lt; {ADX_THRESHOLD}")
+            return None
+        
+        # Verificar momentum color (ya validado en analyze_15m pero re-verificamos por seguridad)
+        if (expected_direction == 'BULLISH' and momentum_color != 'green') or \
+           (expected_direction == 'BEARISH' and momentum_color != 'red'):
+            print(f"   ❌ Momentum incorrecto: {momentum_color} (esperaba {'green' if expected_direction == 'BULLISH' else 'red'})")
+            return None
+        
+        # Fetch solo para volumen ratio (analyze_5m no lo calcula)
+        ohlcv = fetch_ohlcv(symbol, '5m', 50)
+        if not ohlcv:
+            return None
+        
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        # Verificar volumen ratio
+        volumes = df['volume'].values
+        volume_current = volumes[-1]
+        volume_avg = volumes[-20:].mean()
+        volume_ratio = volume_current / volume_avg if volume_avg &gt; 0 else 0
+        
+        if volume_ratio &lt; VOLUME_RATIO_MIN:
+            print(f"   ❌ Volumen bajo: {volume_ratio:.2f}x &lt; {VOLUME_RATIO_MIN}")
+            return None
+        
+        # Verificar distancia desde Volume Profile POC
+        try:
+            ohlcv_extended = fetch_ohlcv(symbol, '5m', 200)
+            if ohlcv_extended:
+                vp_data = calculate_volume_profile(ohlcv_extended)
+                if vp_data and 'poc' in vp_data:
+                    current_price = df['close'].iloc[-1]
+                    poc = vp_data['poc']
+                    distancia_pct = ((current_price - poc) / poc) * 100
+                    
+                    if expected_direction == 'BULLISH' and distancia_pct &gt; 2.5:
+                        print(f"⚠️ {symbol}: Rechazado - precio {distancia_pct:.1f}% arriba POC (zona reversión)")
+                        return None
+                    elif expected_direction == 'BEARISH' and distancia_pct &lt; -2.5:
+                        print(f"⚠️ {symbol}: Rechazado - precio {distancia_pct:.1f}% debajo POC (zona reversión)")
+                        return None
+        except Exception as e:
+            pass  # Si falla cálculo VP, continuar sin filtro
+        
+        # Verificar aceleración ADX usando datos frescos
+        # Fetch extendido para calcular ADX pasado
+        if len(ohlcv) &gt;= 60:
+            df_extended = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df_past = df_extended.iloc[:-5]
+            adx_past, _, _ = calculate_adx(df_past)
+            if adx_past:
+                adx_acceleration = (adx - adx_past) / 5  # Cambio por minuto
+                if adx_acceleration &lt; ADX_MIN_ACCELERATION:
+                    print(f"   ❌ ADX sin aceleración: {adx_acceleration:.4f} &lt; {ADX_MIN_ACCELERATION}")
+                    return None
+        
+        print(f"🎯 TRIGGER ACTIVADO: {symbol}")
+        print(f"   ADX: {adx:.1f} | Momentum age: {momentum_age}v | Vol ratio: {volume_ratio:.2f}x")
+        
+        return {
+            'activated': True,
+            'adx': adx,
+            'momentum_age': momentum_age,
+            'volume_ratio': volume_ratio
+        }
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 1<br>
-    Generado: 2025-11-14 04:34:55
+    Total caracteres: 11,888<br>
+    Generado: 2025-11-15 02:51:32
   </div>
 </body>
 </html>
