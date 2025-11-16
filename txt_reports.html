@@ -15,17 +15,147 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-15 02:56:17</div>
+  <div class="meta">Última actualización: 2025-11-16 00:51:49</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-asd
+def calculate_velocity(df, lookback=10):
+    """
+    Calcula velocidad de precio con memoria temporal
+    
+    Args:
+        df: DataFrame con columna 'close'
+        lookback: Velas a analizar
+        
+    Returns:
+        dict: {
+            'velocity_current': float (cambio precio por vela),
+            'velocity_history': [list últimos lookback],
+            'trend': 'acelerando'/'desacelerando'/'constante'
+        }
+    """
+    if len(df) &lt; lookback + 1:
+        return {
+            'velocity_current': 0.0,
+            'velocity_history': [],
+            'trend': 'constante'
+        }
+    
+    prices = df['close'].values
+    velocities = []
+    
+    # Calcular velocidad para cada par de velas
+    for i in range(len(prices) - lookback, len(prices)):
+        if i &gt; 0:
+            vel = prices[i] - prices[i-1]
+            velocities.append(vel)
+    
+    velocity_current = velocities[-1] if velocities else 0.0
+    
+    # Calcular tendencia (velocidad creciendo/decreciendo)
+    if len(velocities) &gt;= 3:
+        # Pendiente de las velocidades
+        x = list(range(len(velocities)))
+        y = velocities
+        n = len(x)
+        
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(x[i] * y[i] for i in range(n))
+        sum_x2 = sum(x[i] ** 2 for i in range(n))
+        
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
+        
+        if slope &gt; 0.0001:
+            trend = 'acelerando'
+        elif slope &lt; -0.0001:
+            trend = 'desacelerando'
+        else:
+            trend = 'constante'
+    else:
+        trend = 'constante'
+    
+    return {
+        'velocity_current': velocity_current,
+        'velocity_history': velocities,
+        'trend': trend
+    }
+
+
+def calculate_acceleration(df, lookback=5):
+    """
+    Calcula aceleración (cambio de velocidad) con memoria temporal
+    
+    Args:
+        df: DataFrame con columna 'close'
+        lookback: Velas a analizar
+        
+    Returns:
+        dict: {
+            'acceleration_current': float (cambio de velocidad),
+            'acceleration_history': [list],
+            'trend': 'aumentando'/'disminuyendo'/'constante'
+        }
+    """
+    if len(df) &lt; lookback + 2:
+        return {
+            'acceleration_current': 0.0,
+            'acceleration_history': [],
+            'trend': 'constante'
+        }
+    
+    # Primero calcular velocidades
+    velocity_data = calculate_velocity(df, lookback=lookback + 1)
+    velocities = velocity_data['velocity_history']
+    
+    if len(velocities) &lt; 2:
+        return {
+            'acceleration_current': 0.0,
+            'acceleration_history': [],
+            'trend': 'constante'
+        }
+    
+    # Calcular aceleración (cambio de velocidad)
+    accelerations = []
+    for i in range(1, len(velocities)):
+        accel = velocities[i] - velocities[i-1]
+        accelerations.append(accel)
+    
+    acceleration_current = accelerations[-1] if accelerations else 0.0
+    
+    # Calcular tendencia
+    if len(accelerations) &gt;= 3:
+        x = list(range(len(accelerations)))
+        y = accelerations
+        n = len(x)
+        
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(x[i] * y[i] for i in range(n))
+        sum_x2 = sum(x[i] ** 2 for i in range(n))
+        
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
+        
+        if slope &gt; 0.0001:
+            trend = 'aumentando'
+        elif slope &lt; -0.0001:
+            trend = 'disminuyendo'
+        else:
+            trend = 'constante'
+    else:
+        trend = 'constante'
+    
+    return {
+        'acceleration_current': acceleration_current,
+        'acceleration_history': accelerations,
+        'trend': trend
+    }
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3<br>
-    Generado: 2025-11-15 02:56:17
+    Total caracteres: 3,787<br>
+    Generado: 2025-11-16 00:51:49
   </div>
 </body>
 </html>
