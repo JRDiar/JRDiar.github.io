@@ -15,146 +15,248 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-17 00:16:16</div>
+  <div class="meta">Última actualización: 2025-11-17 00:22:54</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-def calculate_adx_with_memory(df, period=14, lookback=10):
-    """
-    ADX con memoria temporal - Wilder's Smoothing EXACTO (manual)
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close']
-        period: Período para ADX (default 14)
-        lookback: Cuántos valores históricos guardar
-        
-    Returns:
-        dict: {
-            'adx_current': float,
-            'adx_history': [list de últimos lookback valores],
-            'adx_trend': 'creciendo'/'decreciendo'/'estable',
-            'di_plus_current': float,
-            'di_plus_history': [list],
-            'di_plus_trend': str,
-            'di_minus_current': float,
-            'di_minus_history': [list],
-            'di_minus_trend': str,
-            'dominance': 'DI+'/'DI-'/'neutral',
-            'spread': float (diferencia DI+ - DI-)
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # Inicializar arrays
-    tr = np.zeros(n)
-    dm_plus = np.zeros(n)
-    dm_minus = np.zeros(n)
-    
-    # 1. Calcular True Range y Directional Movements
-    for i in range(1, n):
-        high = df['high'].iloc[i]
-        low = df['low'].iloc[i]
-        prev_close = df['close'].iloc[i-1]
-        prev_high = df['high'].iloc[i-1]
-        prev_low = df['low'].iloc[i-1]
-        
-        # True Range = max(high-low, |high-prev_close|, |low-prev_close|)
-        tr[i] = max(
-            high - low,
-            abs(high - prev_close),
-            abs(low - prev_close)
-        )
-        
-        # Directional Movements
-        high_diff = high - prev_high
-        low_diff = prev_low - low
+# indicators.py - FASE 3.5
+# Cálculo de indicadores técnicos
+# AGREGADO: calculate_atr() para Stop Loss
 
+import pandas as pd
+import numpy as np
 
+# Importar parámetros de config
+from config import BB_LENGTH, BB_MULT, KC_LENGTH, KC_MULT, USE_TRUE_RANGE, ADX_LENGTH, VOLUME_SHORT, VOLUME_LONG
 
-def calculate_momentum_with_memory(df, ema_period=34, lookback=10):
-    """
-    Momentum color con historia (LazyBear style)
-    
-    Args:
-        df: DataFrame con columna 'close'
-        ema_period: Período para EMA (default 34)
-        lookback: Cuántos valores históricos guardar
+def calculate_lazybear_momentum(df):
+    """LazyBear exacto"""
+    try:
+        source = df['close']
+        high = df['high']
+        low = df['low']
         
-    Returns:
-        dict: {
-            'color_current': 'green'/'red'/'neutral',
-            'color_history': [list],
-            'consecutive_count': int (velas consecutivas mismo color),
-            'strength': 'fuerte'/'moderada'/'débil'
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # Calcular EMA manualmente
-    multiplier = 2 / (ema_period + 1)
-    ema = np.zeros(n)
-    ema[0] = df['close'].iloc[0]
-    
-    for i in range(1, n):
-        ema[i] = (df['close'].iloc[i] * multiplier) + (ema[i-1] * (1 - multiplier))
-    
-    # Determinar color por vela (close vs EMA)
-    colors = []
-    for i in range(n):
-        if df['close'].iloc[i] &gt; ema[i]:
-            colors.append('green')
-        elif df['close'].iloc[i] &lt; ema[i]:
-            colors.append('red')
+        basis = source.rolling(BB_LENGTH).mean()
+        dev = BB_MULT * source.rolling(BB_LENGTH).std()
+        upperBB = basis + dev
+        lowerBB = basis - dev
+        
+        ma = source.rolling(KC_LENGTH).mean()
+        
+        if USE_TRUE_RANGE:
+            prev_close = source.shift(1)
+            tr1 = high - low
+            tr2 = abs(high - prev_close)
+            tr3 = abs(low - prev_close)
+            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            range_ma = true_range.rolling(KC_LENGTH).mean()
         else:
-            colors.append('neutral')
+            range_ma = (high - low).rolling(KC_LENGTH).mean()
+        
+        upperKC = ma + range_ma * KC_MULT
+        lowerKC = ma - range_ma * KC_MULT
+        
+        sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
+        sqzOff = (lowerBB &lt; lowerKC) &amp; (upperBB &gt; upperKC)
+        noSqz = ~sqzOn &amp; ~sqzOff
+        
+        highest_high = high.rolling(KC_LENGTH).max()
+        lowest_low = low.rolling(KC_LENGTH).min()
+        avg_hl = (highest_high + lowest_low) / 2
+        sma_close = source.rolling(KC_LENGTH).mean()
+        avg_combined = (avg_hl + sma_close) / 2
+
+        momentum_values = []
+        for i in range(len(df)):
+            if i &lt; KC_LENGTH - 1:
+                momentum_values.append(np.nan)
+            else:
+                start_idx = i - KC_LENGTH + 1
+                end_idx = i + 1
+                y_values = (source.iloc[start_idx:end_idx] - avg_combined.iloc[start_idx:end_idx]).values
+                x_values = np.arange(KC_LENGTH)
+                x_mean = np.mean(x_values)
+                y_mean = np.mean(y_values)
+                numerator = np.sum((x_values - x_mean) * (y_values - y_mean))
+                denominator = np.sum((x_values - x_mean) ** 2)
+                if denominator != 0:
+                    slope = numerator / denominator
+                    val = slope * (KC_LENGTH - 1 - x_mean) + y_mean
+                    momentum_values.append(val)
+                else:
+                    momentum_values.append(0)
+
+        df['LAZYBEAR_MOMENTUM'] = momentum_values
+        df['SQUEEZE_ON'] = sqzOn
+        df['SQUEEZE_OFF'] = sqzOff
+        df['NO_SQUEEZE'] = noSqz
+
+        momentum = pd.Series(momentum_values)
+        prev_momentum = momentum.shift(1)
+        color_conditions = []
+        for i in range(len(momentum)):
+            if pd.isna(momentum.iloc[i]) or pd.isna(prev_momentum.iloc[i]):
+                color_conditions.append('gray')
+            elif momentum.iloc[i] &gt; 0:
+                if momentum.iloc[i] &gt; prev_momentum.iloc[i]:
+                    color_conditions.append('lime')
+                else:
+                    color_conditions.append('green')
+            else:
+                if momentum.iloc[i] &lt; prev_momentum.iloc[i]:
+                    color_conditions.append('red')
+                else:
+                    color_conditions.append('maroon')
+        
+        df['MOMENTUM_COLOR'] = color_conditions
+        return True
+    except:
+        return False
+
+def calculate_manual_adx(df):
+    """ADX manual exacto"""
+    try:
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        prev_close = close.shift(1)
+        prev_high = high.shift(1)
+        prev_low = low.shift(1)
+
+        tr1 = high - low
+        tr2 = abs(high - prev_close)
+        tr3 = abs(low - prev_close)
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+        dm_plus = pd.Series(index=df.index, dtype=float)
+        dm_minus = pd.Series(index=df.index, dtype=float)
+
+        for i in range(len(df)):
+            if i == 0:
+                dm_plus.iloc[i] = 0
+                dm_minus.iloc[i] = 0
+            else:
+                move_up = high.iloc[i] - prev_high.iloc[i]
+                move_down = prev_low.iloc[i] - low.iloc[i]
+
+                if move_up &gt; move_down and move_up &gt; 0:
+                    dm_plus.iloc[i] = move_up
+                else:
+                    dm_plus.iloc[i] = 0
+
+                if move_down &gt; move_up and move_down &gt; 0:
+                    dm_minus.iloc[i] = move_down
+                else:
+                    dm_minus.iloc[i] = 0
+
+        smoothed_tr = pd.Series(index=df.index, dtype=float)
+        smoothed_dm_plus = pd.Series(index=df.index, dtype=float)
+        smoothed_dm_minus = pd.Series(index=df.index, dtype=float)
+
+        for i in range(len(df)):
+            if i &lt; ADX_LENGTH:
+                if i == ADX_LENGTH - 1:
+                    smoothed_tr.iloc[i] = true_range.iloc[:i+1].sum()
+                    smoothed_dm_plus.iloc[i] = dm_plus.iloc[:i+1].sum()
+                    smoothed_dm_minus.iloc[i] = dm_minus.iloc[:i+1].sum()
+                else:
+                    smoothed_tr.iloc[i] = np.nan
+                    smoothed_dm_plus.iloc[i] = np.nan
+                    smoothed_dm_minus.iloc[i] = np.nan
+            else:
+                smoothed_tr.iloc[i] = smoothed_tr.iloc[i-1] - (smoothed_tr.iloc[i-1] / ADX_LENGTH) + true_range.iloc[i]
+                smoothed_dm_plus.iloc[i] = smoothed_dm_plus.iloc[i-1] - (smoothed_dm_plus.iloc[i-1] / ADX_LENGTH) + dm_plus.iloc[i]
+                smoothed_dm_minus.iloc[i] = smoothed_dm_minus.iloc[i-1] - (smoothed_dm_minus.iloc[i-1] / ADX_LENGTH) + dm_minus.iloc[i]
+
+        di_plus = (smoothed_dm_plus / smoothed_tr) * 100
+        di_minus = (smoothed_dm_minus / smoothed_tr) * 100
+        dx = abs(di_plus - di_minus) / (di_plus + di_minus) * 100
+        adx = dx.rolling(ADX_LENGTH).mean()
+
+        df['ADX_MANUAL'] = adx
+        df['DI_PLUS_MANUAL'] = di_plus
+        df['DI_MINUS_MANUAL'] = di_minus
+
+        return True
+    except:
+        return False
+
+def calculate_volume_oscillator(df):
+    """Volume Oscillator"""
+    try:
+        volume = df['volume']
+        short_ema = volume.ewm(span=VOLUME_SHORT, adjust=False).mean()
+        long_ema = volume.ewm(span=VOLUME_LONG, adjust=False).mean()
+        vol_osc = ((short_ema - long_ema) / long_ema) * 100
+        df['VOLUME_OSC'] = vol_osc
+        
+        vol_trend = []
+        for val in vol_osc:
+            if pd.isna(val):
+                vol_trend.append('NEUTRAL')
+            elif val &lt; -10:
+                vol_trend.append('DECLINING')
+            elif val &gt; 10:
+                vol_trend.append('RISING')
+            else:
+                vol_trend.append('NEUTRAL')
+        
+        df['VOLUME_TREND'] = vol_trend
+        return True
+    except:
+        return False
+
+def calculate_atr(df, period=14):
+    """
+    Calcula Average True Range (ATR) para Stop Loss.
     
-    # Extraer últimos lookback colores
-    start_idx = max(0, n - lookback)
-    color_history = colors[start_idx:n]
-    color_current = colors[-1]
+    Parameters:
+    - df: DataFrame con columnas 'high', 'low', 'close'
+    - period: Período para ATR (default 14)
     
-    # Contar velas consecutivas mismo color (desde el final)
-    consecutive_count = 1
-    for i in range(len(color_history) - 2, -1, -1):
-        if color_history[i] == color_current:
-            consecutive_count += 1
-        else:
-            break
-
-
-Resumen de lo que usan:
-
-Wilder's smoothing: MANUAL (no usa pandas.ewm)
-True Range: MANUAL (no usa ATR estándar)
-Regresión lineal: Se usa función propia (calculate_linear_regression_slope), no numpy.polyfit.
-
-Le pregunte a copilot: Espero que te sirva:
-
-Claro. Los parámetros base para el cálculo de ADX y Momentum (LazyBear) en tu bot se definen en el archivo de configuración [config.py](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\config.py):
-
-Para ADX:
-ADX_LENGTH = 14 ← longitud de la ventana para el cálculo del ADX.
-ADX_THRESHOLD = 20 ← umbral para considerar ADX relevante.
-Para Momentum LazyBear:
-BB_LENGTH = 20 ← longitud de la media móvil de las Bandas de Bollinger.
-BB_MULT = 2.0 ← multiplicador de desviación estándar para las Bandas de Bollinger.
-KC_LENGTH = 20 ← longitud de la media móvil de Keltner Channel.
-KC_MULT = 1.5 ← multiplicador para el canal de Keltner.
-USE_TRUE_RANGE = True ← si se usa True Range para el canal de Keltner.
-Estos parámetros se importan y usan en los cálculos de indicadores en [indicators.py](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\indicators.py) en las funciones [calculate_lazybear_momentum](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\indicators.py) y [calculate_manual_adx](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\indicators.py).
-
-Resumen:
-El bot reconoce y calcula ADX y Momentum usando los parámetros definidos en [config.py](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\config.py), y estos no deben modificarse para mantener la lógica original de LazyBear y ADX.](https://microsoft.com)))
+    Returns:
+    - float: Valor ATR actual (última vela)
+    - None si falla o datos insuficientes
+    """
+    try:
+        # Validar datos suficientes
+        if len(df) &lt; period + 1:
+            return None
+        
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        prev_close = close.shift(1)
+        
+        # Calcular True Range
+        tr1 = high - low
+        tr2 = abs(high - prev_close)
+        tr3 = abs(low - prev_close)
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        # Calcular ATR (media móvil del True Range)
+        atr = true_range.rolling(window=period).mean()
+        
+        # Agregar columna al DataFrame
+        df['ATR'] = atr
+        
+        # Retornar valor actual (última vela)
+        atr_current = atr.iloc[-1]
+        
+        if pd.isna(atr_current):
+            return None
+        
+        return atr_current
+        
+    except Exception as e:
+        print(f"❌ Error calculando ATR: {e}")
+        return None
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,478<br>
-    Generado: 2025-11-17 00:16:16
+    Total caracteres: 8,099<br>
+    Generado: 2025-11-17 00:22:54
   </div>
 </body>
 </html>
