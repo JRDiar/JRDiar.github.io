@@ -15,198 +15,146 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-16 21:37:20</div>
+  <div class="meta">Última actualización: 2025-11-17 00:16:16</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-================================================================================
-BRAIN PHASE 4.0 - ANÁLISIS RECHAZOS
-Generado: 2025-11-16 21:37:12
-================================================================================
+def calculate_adx_with_memory(df, period=14, lookback=10):
+    """
+    ADX con memoria temporal - Wilder's Smoothing EXACTO (manual)
+    
+    Args:
+        df: DataFrame con columnas ['high', 'low', 'close']
+        period: Período para ADX (default 14)
+        lookback: Cuántos valores históricos guardar
+        
+    Returns:
+        dict: {
+            'adx_current': float,
+            'adx_history': [list de últimos lookback valores],
+            'adx_trend': 'creciendo'/'decreciendo'/'estable',
+            'di_plus_current': float,
+            'di_plus_history': [list],
+            'di_plus_trend': str,
+            'di_minus_current': float,
+            'di_minus_history': [list],
+            'di_minus_trend': str,
+            'dominance': 'DI+'/'DI-'/'neutral',
+            'spread': float (diferencia DI+ - DI-)
+        }
+    """
+    
+    df = df.copy()
+    n = len(df)
+    
+    # Inicializar arrays
+    tr = np.zeros(n)
+    dm_plus = np.zeros(n)
+    dm_minus = np.zeros(n)
+    
+    # 1. Calcular True Range y Directional Movements
+    for i in range(1, n):
+        high = df['high'].iloc[i]
+        low = df['low'].iloc[i]
+        prev_close = df['close'].iloc[i-1]
+        prev_high = df['high'].iloc[i-1]
+        prev_low = df['low'].iloc[i-1]
+        
+        # True Range = max(high-low, |high-prev_close|, |low-prev_close|)
+        tr[i] = max(
+            high - low,
+            abs(high - prev_close),
+            abs(low - prev_close)
+        )
+        
+        # Directional Movements
+        high_diff = high - prev_high
+        low_diff = prev_low - low
 
-Total analizadas: 307
-Score promedio: 34.4
 
---- TOP RAZONES RECHAZO ---
-Score insuficiente (37/100): 57 (18.6%)
-Score insuficiente (32/100): 47 (15.3%)
-Score insuficiente (42/100): 38 (12.4%)
-Score insuficiente (27/100): 35 (11.4%)
-Score insuficiente (43/100): 28 (9.1%)
 
---- TOP WARNINGS ---
-4H débil, 1H débil: 253 (82.4%)
-1H débil: 28 (9.1%)
-4H débil: 25 (8.1%)
+def calculate_momentum_with_memory(df, ema_period=34, lookback=10):
+    """
+    Momentum color con historia (LazyBear style)
+    
+    Args:
+        df: DataFrame con columna 'close'
+        ema_period: Período para EMA (default 34)
+        lookback: Cuántos valores históricos guardar
+        
+    Returns:
+        dict: {
+            'color_current': 'green'/'red'/'neutral',
+            'color_history': [list],
+            'consecutive_count': int (velas consecutivas mismo color),
+            'strength': 'fuerte'/'moderada'/'débil'
+        }
+    """
+    
+    df = df.copy()
+    n = len(df)
+    
+    # Calcular EMA manualmente
+    multiplier = 2 / (ema_period + 1)
+    ema = np.zeros(n)
+    ema[0] = df['close'].iloc[0]
+    
+    for i in range(1, n):
+        ema[i] = (df['close'].iloc[i] * multiplier) + (ema[i-1] * (1 - multiplier))
+    
+    # Determinar color por vela (close vs EMA)
+    colors = []
+    for i in range(n):
+        if df['close'].iloc[i] &gt; ema[i]:
+            colors.append('green')
+        elif df['close'].iloc[i] &lt; ema[i]:
+            colors.append('red')
+        else:
+            colors.append('neutral')
+    
+    # Extraer últimos lookback colores
+    start_idx = max(0, n - lookback)
+    color_history = colors[start_idx:n]
+    color_current = colors[-1]
+    
+    # Contar velas consecutivas mismo color (desde el final)
+    consecutive_count = 1
+    for i in range(len(color_history) - 2, -1, -1):
+        if color_history[i] == color_current:
+            consecutive_count += 1
+        else:
+            break
 
-================================================================================
-TOP 20 MONEDAS MÁS CERCANAS A TRADE
-================================================================================
 
-#1 ACT/USDT:USDT | Score: 44 | 2025-11-16 18:21:23
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=30.01 1H=24 15M=15.33
-  Mom: 4H=10v 1H=2v 15M=2v
-  Precio: $0.01772
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=20 15M=2
+Resumen de lo que usan:
 
-#2 HARRY/USDT:USDT | Score: 44 | 2025-11-16 18:39:23
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=33.64 1H=14.85 15M=19.39
-  Mom: 4H=10v 1H=9v 15M=2v
-  Precio: $0.0434
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=10 15M=12
+Wilder's smoothing: MANUAL (no usa pandas.ewm)
+True Range: MANUAL (no usa ATR estándar)
+Regresión lineal: Se usa función propia (calculate_linear_regression_slope), no numpy.polyfit.
 
-#3 MERL/USDT:USDT | Score: 44 | 2025-11-16 18:46:11
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=29.11 1H=21.51 15M=21.95
-  Mom: 4H=4v 1H=1v 15M=3v
-  Precio: $0.35706
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=27 1H=0 15M=17
+Le pregunte a copilot: Espero que te sirva:
 
-#4 MORPHO/USDT:USDT | Score: 44 | 2025-11-16 18:47:03
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=38.77 1H=16.45 15M=20.35
-  Mom: 4H=2v 1H=10v 15M=10v
-  Precio: $1.9949
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=17 1H=10 15M=17
+Claro. Los parámetros base para el cálculo de ADX y Momentum (LazyBear) en tu bot se definen en el archivo de configuración [config.py](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\config.py):
 
-#5 SFP/USDT:USDT | Score: 44 | 2025-11-16 18:55:57
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=30.98 1H=21.36 15M=16
-  Mom: 4H=8v 1H=3v 15M=10v
-  Precio: $0.3516
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=17 1H=10 15M=17
+Para ADX:
+ADX_LENGTH = 14 ← longitud de la ventana para el cálculo del ADX.
+ADX_THRESHOLD = 20 ← umbral para considerar ADX relevante.
+Para Momentum LazyBear:
+BB_LENGTH = 20 ← longitud de la media móvil de las Bandas de Bollinger.
+BB_MULT = 2.0 ← multiplicador de desviación estándar para las Bandas de Bollinger.
+KC_LENGTH = 20 ← longitud de la media móvil de Keltner Channel.
+KC_MULT = 1.5 ← multiplicador para el canal de Keltner.
+USE_TRUE_RANGE = True ← si se usa True Range para el canal de Keltner.
+Estos parámetros se importan y usan en los cálculos de indicadores en [indicators.py](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\indicators.py) en las funciones [calculate_lazybear_momentum](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\indicators.py) y [calculate_manual_adx](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\indicators.py).
 
-#6 ACT/USDT:USDT | Score: 44 | 2025-11-16 19:18:10
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=30.01 1H=24.31 15M=13.17
-  Mom: 4H=10v 1H=3v 15M=2v
-  Precio: $0.01795
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=20 15M=2
-
-#7 PAAL/USDT:USDT | Score: 44 | 2025-11-16 19:45:35
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=30.14 1H=24.61 15M=13.37
-  Mom: 4H=10v 1H=10v 15M=1v
-  Precio: $0.02268
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=17 1H=20 15M=7
-
-#8 SFP/USDT:USDT | Score: 44 | 2025-11-16 19:51:15
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=30.98 1H=20.59 15M=13.98
-  Mom: 4H=8v 1H=1v 15M=1v
-  Precio: $0.3562
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=17 1H=15 15M=12
-
-#9 XPL/USDT:USDT | Score: 44 | 2025-11-16 20:06:12
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=32.22 1H=20.1 15M=20.44
-  Mom: 4H=10v 1H=10v 15M=1v
-  Precio: $0.2219
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=15 15M=2
-
-#10 FLR/USDT:USDT | Score: 44 | 2025-11-16 20:27:40
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=34.19 1H=18.75 15M=12.62
-  Mom: 4H=10v 1H=9v 15M=1v
-  Precio: $0.01409
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=15 15M=7
-
-#11 L3/USDT:USDT | Score: 44 | 2025-11-16 20:33:38
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=29.43 1H=21.52 15M=21.13
-  Mom: 4H=6v 1H=10v 15M=1v
-  Precio: $0.01305
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=15 15M=7
-
-#12 PAAL/USDT:USDT | Score: 44 | 2025-11-16 20:40:30
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=30.14 1H=25.22 15M=11.93
-  Mom: 4H=10v 1H=10v 15M=2v
-  Precio: $0.02314
-  Probability: 0% | Scores: 4H=17 1H=20 15M=7
-
-#13 SYN/USDT:USDT | Score: 44 | 2025-11-16 20:49:41
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=32.84 1H=19.48 15M=17.54
-  Mom: 4H=10v 1H=2v 15M=9v
-  Precio: $0.0657
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=32 1H=0 15M=12
-
-#14 TST/USDT:USDT | Score: 44 | 2025-11-16 20:51:39
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=29.39 1H=21.41 15M=16.14
-  Mom: 4H=10v 1H=1v 15M=5v
-  Precio: $0.01646
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=32 1H=0 15M=12
-
-#15 TUT/USDT:USDT | Score: 44 | 2025-11-16 20:51:46
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=28.96 1H=17.32 15M=21.33
-  Mom: 4H=6v 1H=1v 15M=5v
-  Precio: $0.01742
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=17 1H=15 15M=12
-
-#16 UB/USDT:USDT | Score: 44 | 2025-11-16 20:52:10
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=31.57 1H=16.3 15M=20.15
-  Mom: 4H=10v 1H=3v 15M=10v
-  Precio: $0.040872
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=5 15M=17
-
-#17 AA/USDT:USDT | Score: 44 | 2025-11-16 21:08:46
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=28.81 1H=21.37 15M=16.27
-  Mom: 4H=10v 1H=10v 15M=2v
-  Precio: $0.09144
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=17 1H=10 15M=7
-
-#18 COOK/USDT:USDT | Score: 44 | 2025-11-16 21:18:53
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=31.75 1H=14.51 15M=13.49
-  Mom: 4H=10v 1H=10v 15M=1v
-  Precio: $0.00586
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=10 15M=2
-
-#19 HARRY/USDT:USDT | Score: 44 | 2025-11-16 21:27:37
-  Razón: Score insuficiente (44/100)
-  ADX: 4H=32.19 1H=12.88 15M=19.06
-  Mom: 4H=10v 1H=3v 15M=10v
-  Precio: $0.0445
-  ⚠️ 1H débil
-  Probability: 0% | Scores: 4H=22 1H=0 15M=12
-
-#20 HYPE/USDT:USDT | Score: 43 | 2025-11-16 18:40:30
-  Razón: Score insuficiente (43/100)
-  ADX: 4H=21.17 1H=14.53 15M=26.05
-  Mom: 4H=3v 1H=9v 15M=5v
-  Precio: $37.646
-  ⚠️ 4H débil, 1H débil
-  Probability: 0% | Scores: 4H=5 1H=15 15M=23
+Resumen:
+El bot reconoce y calcula ADX y Momentum usando los parámetros definidos en [config.py](c:\Users\Joel\Trading automatizado\Old codes\Backups Modulos Bot y Sheet Fase 3.5\Backup 25-10-25 Con errores de trades, 27 entradas, sin stop loss, 26-10-25 todo corregido incluyendo el Sheet\ModulosBot\config.py), y estos no deben modificarse para mantener la lógica original de LazyBear y ADX.](https://microsoft.com)))
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,402<br>
-    Generado: 2025-11-16 21:37:20
+    Total caracteres: 5,478<br>
+    Generado: 2025-11-17 00:16:16
   </div>
 </body>
 </html>
