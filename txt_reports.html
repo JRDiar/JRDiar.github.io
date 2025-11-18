@@ -15,206 +15,71 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-18 02:22:56</div>
+  <div class="meta">Última actualización: 2025-11-18 02:43:52</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-🔧 PROMPT #3 NUEVO Aplico? esta ok?
-# ...existing code...
+Me mostras y me explicas de donde vienen estos errores y como los puedo solucionar? PS C:\Users\Joel&gt; &amp; C:/Python314/python.exe "c:/Users/Joel/Trading automatizado/Braintrader/bot_main.py"
+Traceback (most recent call last):
+  File "c:\Users\Joel\Trading automatizado\Braintrader\bot_main.py", line 14, in &lt;module&gt;
+    from brain_analyzer import analyze_coin_complete
+  File "c:\Users\Joel\Trading automatizado\Braintrader\brain_analyzer.py", line 19, in &lt;module&gt;
+    from brain_calculator import (
+    ...&lt;11 lines&gt;...
+    )
+ImportError: cannot import name 'calculate_momentum_with_memory' from 'brain_calculator' (c:\Users\Joel\Trading automatizado\Braintrader\brain_calculator.py). Did you mean: 'calculate_adx_with_memory'?
+Solo mostrame el código y dame las sugerencias, no toques nada del código. Gracias.
 
-def calculate_adx_with_memory(df, period=14, lookback=10):
-    """
-    ADX con Wilder's Smoothing EXACTO del Bot 3.5.
-    Retorna dict con valores actuales + memoria temporal.
-    """
-    df = df.copy()
-    n = len(df)
-    
-    if n &lt; period + 1:
-        return {
-            'adx_current': 0.0,
-            'adx_history': [],
-            'adx_trend': 'insuficiente',
-            'di_plus_current': 0.0,
-            'di_plus_history': [],
-            'di_plus_trend': 'insuficiente',
-            'di_minus_current': 0.0,
-            'di_minus_history': [],
-            'di_minus_trend': 'insuficiente',
-            'dominance': 'neutral',
-            'spread': 0.0
-        }
-    
-    high = df['high'].values
-    low = df['low'].values
-    close = df['close'].values
-    
-    # 1. Calcular True Range y Directional Movements
-    tr = np.zeros(n)
-    dm_plus = np.zeros(n)
-    dm_minus = np.zeros(n)
-    
-    for i in range(1, n):
-        prev_close = close[i-1]
-        prev_high = high[i-1]
-        prev_low = low[i-1]
-        
-        # True Range (máximo de 3 valores)
-        tr1 = high[i] - low[i]
-        tr2 = abs(high[i] - prev_close)
-        tr3 = abs(low[i] - prev_close)
-        tr[i] = max(tr1, tr2, tr3)
-        
-        # Directional Movement
-        move_up = high[i] - prev_high
-        move_down = prev_low - low[i]
-        
-        if move_up &gt; move_down and move_up &gt; 0:
-            dm_plus[i] = move_up
-        else:
-            dm_plus[i] = 0
-            
-        if move_down &gt; move_up and move_down &gt; 0:
-            dm_minus[i] = move_down
-        else:
-            dm_minus[i] = 0
-    
-    # 2. Wilder's Smoothing MANUAL
-    smoothed_tr = np.zeros(n)
-    smoothed_dm_plus = np.zeros(n)
-    smoothed_dm_minus = np.zeros(n)
-    
-    for i in range(n):
-        if i &lt; period:
-            if i == period - 1:
-                # Primera suavización: suma de los primeros 'period' valores
-                smoothed_tr[i] = tr[:i+1].sum()
-                smoothed_dm_plus[i] = dm_plus[:i+1].sum()
-                smoothed_dm_minus[i] = dm_minus[:i+1].sum()
-            else:
-                smoothed_tr[i] = np.nan
-                smoothed_dm_plus[i] = np.nan
-                smoothed_dm_minus[i] = np.nan
-        else:
-            # Wilder's smoothing: prev - (prev/period) + current
-            smoothed_tr[i] = smoothed_tr[i-1] - (smoothed_tr[i-1] / period) + tr[i]
-            smoothed_dm_plus[i] = smoothed_dm_plus[i-1] - (smoothed_dm_plus[i-1] / period) + dm_plus[i]
-            smoothed_dm_minus[i] = smoothed_dm_minus[i-1] - (smoothed_dm_minus[i-1] / period) + dm_minus[i]
-    
-    # 3. Calcular DI+ y DI-
-    di_plus = (smoothed_dm_plus / smoothed_tr) * 100
-    di_minus = (smoothed_dm_minus / smoothed_tr) * 100
-    
-    # 4. Calcular DX y ADX
-    dx = np.abs(di_plus - di_minus) / (di_plus + di_minus) * 100
-    
-    # ADX es la media móvil simple de DX
-    adx = np.zeros(n)
-    for i in range(n):
-        if i &lt; period * 2 - 1:
-            adx[i] = np.nan
-        elif i == period * 2 - 1:
-            adx[i] = np.nanmean(dx[period:i+1])
-        else:
-            # Continuar con Wilder's smoothing para ADX también
-            adx[i] = (adx[i-1] * (period - 1) + dx[i]) / period
-    
-    # 5. Extraer historia y calcular tendencias
-    start_idx = max(0, n - lookback)
-    
-    adx_history = [float(x) for x in adx[start_idx:n] if not np.isnan(x)]
-    di_plus_history = [float(x) for x in di_plus[start_idx:n] if not np.isnan(x)]
-    di_minus_history = [float(x) for x in di_minus[start_idx:n] if not np.isnan(x)]
-    
-    adx_current = float(adx[-1]) if not np.isnan(adx[-1]) else 0.0
-    di_plus_current = float(di_plus[-1]) if not np.isnan(di_plus[-1]) else 0.0
-    di_minus_current = float(di_minus[-1]) if not np.isnan(di_minus[-1]) else 0.0
-    
-    # 6. Determinar tendencias
-    def get_trend(history):
-        if len(history) &lt; 3:
-            return 'insuficiente'
-        if history[-1] &gt; history[-2] &gt; history[-3]:
-            return 'creciendo'
-        elif history[-1] &lt; history[-2] &lt; history[-3]:
-            return 'decreciendo'
-        else:
-            return 'estable'
-    
-    adx_trend = get_trend(adx_history)
-    di_plus_trend = get_trend(di_plus_history)
-    di_minus_trend = get_trend(di_minus_history)
-    
-    # 7. Dominancia y spread
-    spread = abs(di_plus_current - di_minus_current)
-    
-    if di_plus_current &gt; di_minus_current + 5:
-        dominance = 'DI+'
-    elif di_minus_current &gt; di_plus_current + 5:
-        dominance = 'DI-'
-    else:
-        dominance = 'neutral'
-    
-    return {
-        'adx_current': adx_current,
-        'adx_history': adx_history,
-        'adx_trend': adx_trend,
-        'di_plus_current': di_plus_current,
-        'di_plus_history': di_plus_history,
-        'di_plus_trend': di_plus_trend,
-        'di_minus_current': di_minus_current,
-        'di_minus_history': di_minus_history,
-        'di_minus_trend': di_minus_trend,
-        'dominance': dominance,
-        'spread': spread
-    }
+Origen del error
+El error es:
 
-def calculate_volume_oscillator(df, short=5, long=10):
-    """
-    Volume Oscillator del Bot 3.5.
-    Detecta aceleración/desaceleración de volumen.
-    """
-    try:
-        volume = df['volume']
-        
-        # EMAs corta y larga del volumen
-        short_ema = volume.ewm(span=short, adjust=False).mean()
-        long_ema = volume.ewm(span=long, adjust=False).mean()
-        
-        # Oscilador: diferencia porcentual
-        vol_osc = ((short_ema - long_ema) / long_ema) * 100
-        
-        # Clasificar tendencia del volumen
-        vol_trend = []
-        for val in vol_osc:
-            if pd.isna(val):
-                vol_trend.append('NEUTRAL')
-            elif val &lt; -10:
-                vol_trend.append('DECLINING')
-            elif val &gt; 10:
-                vol_trend.append('RISING')
-            else:
-                vol_trend.append('NEUTRAL')
-        
-        return {
-            'oscillator_current': float(vol_osc.iloc[-1]) if not pd.isna(vol_osc.iloc[-1]) else 0.0,
-            'oscillator_history': vol_osc.tail(10).tolist(),
-            'trend_current': vol_trend[-1],
-            'trend_history': vol_trend[-10:]
-        }
-    except Exception as e:
-        return {
-            'oscillator_current': 0.0,
-            'oscillator_history': [],
-            'trend_current': 'NEUTRAL',
-            'trend_history': []
-        }
+ImportError: cannot import name 'calculate_momentum_with_memory' from 'brain_calculator' (c:\Users\Joel\Trading automatizado\Braintrader\brain_calculator.py). Did you mean: 'calculate_adx_with_memory'?
+Esto ocurre porque en tu archivo brain_analyzer.py (línea 19) intentás importar la función calculate_momentum_with_memory desde brain_calculator.py, pero esa función no existe (o no está definida correctamente) en ese archivo.
+
+Código relevante
+En brain_analyzer.py:
+from brain_calculator import (
+    calculate_adx_with_memory,
+    calculate_momentum_with_memory,
+    calculate_rsi_with_memory,
+    calculate_emas_with_memory,
+    detect_price_structure,
+    calculate_zigzag,
+    detect_support_resistance_with_memory,
+    calculate_volume_profile_with_memory,
+    calculate_fibonacci_levels,
+    calculate_velocity,
+    calculate_acceleration
+)
+Sugerencias para solucionar
+Verifica que la función esté definida
+Asegúrate de que en brain_calculator.py exista la función:
+def calculate_momentum_with_memory(df, lookback=10):
+    ...
+
+y que no esté comentada ni con errores de indentación.
+
+Verifica que no haya errores de sintaxis
+Si la función está mal indentada, incompleta o con errores de sintaxis, Python no la reconocerá y no podrá importarla.
+
+Reinicia el entorno
+Si hiciste cambios recientes, guarda todos los archivos y reinicia el intérprete de Python o Visual Studio Code para limpiar el caché de imports.
+
+Chequea duplicados o nombres incorrectos
+Asegúrate de que no haya dos archivos llamados brain_calculator.py en diferentes carpetas, y que el nombre de la función esté escrito exactamente igual en la definición y en el import.
+
+Verifica el orden de las funciones
+Si la función depende de otras funciones o variables, asegúrate de que todo esté definido antes de su uso.
+
+
+Resumen:
+El error ocurre porque calculate_momentum_with_memory no está disponible para importar desde brain_calculator.py. Debes asegurarte de que la función esté correctamente definida y sin errores en ese archivo.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 6,397<br>
-    Generado: 2025-11-18 02:22:56
+    Total caracteres: 2,850<br>
+    Generado: 2025-11-18 02:43:52
   </div>
 </body>
 </html>
