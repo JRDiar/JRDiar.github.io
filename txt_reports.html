@@ -15,364 +15,107 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-18 01:23:59</div>
+  <div class="meta">Última actualización: 2025-11-18 01:32:08</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-# indicators.py - FASE 3.5
-# Cálculo de indicadores técnicos
-# AGREGADO: calculate_atr() para Stop Loss
+Las funciones que calculan momentum en brain_calculator.py son:
+def calculate_momentum_with_memory(df, lookback=10):
+    """
+    LazyBear Momentum (versión 3.5) con historia y fuerza.
+    Devuelve color, historia, fuerza y valores de bandas.
+    Requiere columnas: 'high', 'low', 'close', 'volume'
+    """
+    df = df.copy()
+    n = len(df)
+    if n &lt; max(BB_LENGTH, KC_LENGTH) + 2:
+        return {
+            'color_current': 'neutral',
+            'color_history': [],
+            'consecutive_count': 0,
+            'strength': 'débil',
+            'value': 0.0,
+            'bb_upper': 0.0,
+            'bb_lower': 0.0,
+            'kc_upper': 0.0,
+            'kc_lower': 0.0
+        }
+
+
+ADX 
+
+def calculate_adx_with_memory(df, period=14, lookback=10):
+    """
+    ADX con memoria temporal - Wilder's Smoothing EXACTO (manual)
+    
+    Args:
+        df: DataFrame con columnas ['high', 'low', 'close']
+        period: Período para ADX (default 14)
+        lookback: Cuántos valores históricos guardar
+        
+    Returns:
+        dict: {
+            'adx_current': float,
+            'adx_history': [list de últimos lookback valores],
+            'adx_trend': 'creciendo'/'decreciendo'/'estable',
+            'di_plus_current': float,
+            'di_plus_history': [list],
+            'di_plus_trend': str,
+            'di_minus_current': float,
+            'di_minus_history': [list],
+            'di_minus_trend': str,
+            'dominance': 'DI+'/'DI-'/'neutral',
+            'spread': float (diferencia DI+ - DI-)
+        }
+    """
+    
+    df = df.copy()
+    n = len(df)
+    
+    # Inicializar arrays
+    tr = np.zeros(n)
+    dm_plus = np.zeros(n)
+    dm_minus = np.zeros(n)
+    
+    # 1. Calcular True Range y Directional Movements
+    for i in range(1, n):
+        high = df['high'].iloc[i]
+        low = df['low'].iloc[i]
+        prev_close = df['close'].iloc[i-1]
+        prev_high = df['high'].iloc[i-1]
+        prev_low = df['low'].iloc[i-1]
+
+No hay más funciones con "adx" en el nombre en este archivo.
+
+
+
+Muestra los imports al inicio del archivo (primeras 30 líneas)
+
+"""
+brain_calculator.py - Módulo de Análisis Técnico con Memoria Temporal
+======================================================================
+
+FILOSOFÍA:
+Cada indicador retorna HISTORIA + TENDENCIA, no solo valor puntual.
+Bot inteligente que analiza EVOLUCIÓN temporal, no snapshots binarios.
+
+ESTRUCTURA:
+1. Indicadores con Memoria (ADX, DI+/DI-, Momentum, RSI, EMAs)
+2. Análisis de Patrones (HH/LL, Zig Zag)
+3. Zonas y Niveles (SR, Volume Profile, Fibonacci)
+"""
 
 import pandas as pd
 import numpy as np
-
-# Importar parámetros de config
-from config import BB_LENGTH, BB_MULT, KC_LENGTH, KC_MULT, USE_TRUE_RANGE, ADX_LENGTH, VOLUME_SHORT, VOLUME_LONG
-
-def calculate_lazybear_momentum(df):
-    """LazyBear exacto"""
-    try:
-        source = df['close']
-        high = df['high']
-        low = df['low']
-        
-        basis = source.rolling(BB_LENGTH).mean()
-        dev = BB_MULT * source.rolling(BB_LENGTH).std()
-        upperBB = basis + dev
-        lowerBB = basis - dev
-        
-        ma = source.rolling(KC_LENGTH).mean()
-        
-        if USE_TRUE_RANGE:
-            prev_close = source.shift(1)
-            tr1 = high - low
-            tr2 = abs(high - prev_close)
-            tr3 = abs(low - prev_close)
-            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            range_ma = true_range.rolling(KC_LENGTH).mean()
-        else:
-            range_ma = (high - low).rolling(KC_LENGTH).mean()
-        
-        upperKC = ma + range_ma * KC_MULT
-        lowerKC = ma - range_ma * KC_MULT
-        
-        sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
-        sqzOff = (lowerBB &lt; lowerKC) &amp; (upperBB &gt; upperKC)
-        noSqz = ~sqzOn &amp; ~sqzOff
-        
-        highest_high = high.rolling(KC_LENGTH).max()
-        lowest_low = low.rolling(KC_LENGTH).min()
-        avg_hl = (highest_high + lowest_low) / 2
-        sma_close = source.rolling(KC_LENGTH).mean()
-        avg_combined = (avg_hl + sma_close) / 2
-
-        momentum_values = []
-        for i in range(len(df)):
-            if i &lt; KC_LENGTH - 1:
-                momentum_values.append(np.nan)
-            else:
-                start_idx = i - KC_LENGTH + 1
-                end_idx = i + 1
-                y_values = (source.iloc[start_idx:end_idx] - avg_combined.iloc[start_idx:end_idx]).values
-                x_values = np.arange(KC_LENGTH)
-                x_mean = np.mean(x_values)
-                y_mean = np.mean(y_values)
-                numerator = np.sum((x_values - x_mean) * (y_values - y_mean))
-                denominator = np.sum((x_values - x_mean) ** 2)
-                if denominator != 0:
-                    slope = numerator / denominator
-                    val = slope * (KC_LENGTH - 1 - x_mean) + y_mean
-                    momentum_values.append(val)
-                else:
-                    momentum_values.append(0)
-
-        df['LAZYBEAR_MOMENTUM'] = momentum_values
-        df['SQUEEZE_ON'] = sqzOn
-        df['SQUEEZE_OFF'] = sqzOff
-        df['NO_SQUEEZE'] = noSqz
-
-        momentum = pd.Series(momentum_values)
-        prev_momentum = momentum.shift(1)
-        color_conditions = []
-        for i in range(len(momentum)):
-            if pd.isna(momentum.iloc[i]) or pd.isna(prev_momentum.iloc[i]):
-                color_conditions.append('gray')
-            elif momentum.iloc[i] &gt; 0:
-                if momentum.iloc[i] &gt; prev_momentum.iloc[i]:
-                    color_conditions.append('lime')
-                else:
-                    color_conditions.append('green')
-            else:
-                if momentum.iloc[i] &lt; prev_momentum.iloc[i]:
-                    color_conditions.append('red')
-                else:
-                    color_conditions.append('maroon')
-        
-        df['MOMENTUM_COLOR'] = color_conditions
-        return True
-    except:
-        return False
-
-def calculate_manual_adx(df):
-    """ADX manual exacto"""
-    try:
-        high = df['high']
-        low = df['low']
-        close = df['close']
-        prev_close = close.shift(1)
-        prev_high = high.shift(1)
-        prev_low = low.shift(1)
-
-        tr1 = high - low
-        tr2 = abs(high - prev_close)
-        tr3 = abs(low - prev_close)
-        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-        dm_plus = pd.Series(index=df.index, dtype=float)
-        dm_minus = pd.Series(index=df.index, dtype=float)
-
-        for i in range(len(df)):
-            if i == 0:
-                dm_plus.iloc[i] = 0
-                dm_minus.iloc[i] = 0
-            else:
-                move_up = high.iloc[i] - prev_high.iloc[i]
-                move_down = prev_low.iloc[i] - low.iloc[i]
-
-                if move_up &gt; move_down and move_up &gt; 0:
-                    dm_plus.iloc[i] = move_up
-                else:
-                    dm_plus.iloc[i] = 0
-
-                if move_down &gt; move_up and move_down &gt; 0:
-                    dm_minus.iloc[i] = move_down
-                else:
-                    dm_minus.iloc[i] = 0
-
-        smoothed_tr = pd.Series(index=df.index, dtype=float)
-        smoothed_dm_plus = pd.Series(index=df.index, dtype=float)
-        smoothed_dm_minus = pd.Series(index=df.index, dtype=float)
-
-        for i in range(len(df)):
-            if i &lt; ADX_LENGTH:
-                if i == ADX_LENGTH - 1:
-                    smoothed_tr.iloc[i] = true_range.iloc[:i+1].sum()
-                    smoothed_dm_plus.iloc[i] = dm_plus.iloc[:i+1].sum()
-                    smoothed_dm_minus.iloc[i] = dm_minus.iloc[:i+1].sum()
-                else:
-                    smoothed_tr.iloc[i] = np.nan
-                    smoothed_dm_plus.iloc[i] = np.nan
-                    smoothed_dm_minus.iloc[i] = np.nan
-            else:
-                smoothed_tr.iloc[i] = smoothed_tr.iloc[i-1] - (smoothed_tr.iloc[i-1] / ADX_LENGTH) + true_range.iloc[i]
-                smoothed_dm_plus.iloc[i] = smoothed_dm_plus.iloc[i-1] - (smoothed_dm_plus.iloc[i-1] / ADX_LENGTH) + dm_plus.iloc[i]
-                smoothed_dm_minus.iloc[i] = smoothed_dm_minus.iloc[i-1] - (smoothed_dm_minus.iloc[i-1] / ADX_LENGTH) + dm_minus.iloc[i]
-
-        di_plus = (smoothed_dm_plus / smoothed_tr) * 100
-        di_minus = (smoothed_dm_minus / smoothed_tr) * 100
-        dx = abs(di_plus - di_minus) / (di_plus + di_minus) * 100
-        adx = dx.rolling(ADX_LENGTH).mean()
-
-        df['ADX_MANUAL'] = adx
-        df['DI_PLUS_MANUAL'] = di_plus
-        df['DI_MINUS_MANUAL'] = di_minus
-
-        return True
-    except:
-        return False
-
-def calculate_volume_oscillator(df):
-    """Volume Oscillator"""
-    try:
-        volume = df['volume']
-        short_ema = volume.ewm(span=VOLUME_SHORT, adjust=False).mean()
-        long_ema = volume.ewm(span=VOLUME_LONG, adjust=False).mean()
-        vol_osc = ((short_ema - long_ema) / long_ema) * 100
-        df['VOLUME_OSC'] = vol_osc
-        
-        vol_trend = []
-        for val in vol_osc:
-            if pd.isna(val):
-                vol_trend.append('NEUTRAL')
-            elif val &lt; -10:
-                vol_trend.append('DECLINING')
-            elif val &gt; 10:
-                vol_trend.append('RISING')
-            else:
-                vol_trend.append('NEUTRAL')
-        
-        df['VOLUME_TREND'] = vol_trend
-        return True
-    except:
-        return False
-
-def calculate_atr(df, period=14):
-    """
-    Calcula Average True Range (ATR) para Stop Loss.
-    
-    Parameters:
-    - df: DataFrame con columnas 'high', 'low', 'close'
-    - period: Período para ATR (default 14)
-    
-    Returns:
-    - float: Valor ATR actual (última vela)
-    - None si falla o datos insuficientes
-    """
-    try:
-        # Validar datos suficientes
-        if len(df) &lt; period + 1:
-            return None
-        
-        high = df['high']
-        low = df['low']
-        close = df['close']
-        prev_close = close.shift(1)
-        
-        # Calcular True Range
-        tr1 = high - low
-        tr2 = abs(high - prev_close)
-        tr3 = abs(low - prev_close)
-        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        
-        # Calcular ATR (media móvil del True Range)
-        atr = true_range.rolling(window=period).mean()
-        
-        # Agregar columna al DataFrame
-        df['ATR'] = atr
-        
-        # Retornar valor actual (última vela)
-        atr_current = atr.iloc[-1]
-        
-        if pd.isna(atr_current):
-            return None
-        
-        return atr_current
-        
-    except Exception as e:
-        print(f"❌ Error calculando ATR: {e}")
-        return None
-
-Este es un modulo adicional, no se si sirve, por eso te decia que es importante que conozcas los modulos brain actuales.
-
 from datetime import datetime
-from config import ARGENTINA_TZ
-
-# ==================== HISTORIAL CON EDAD DE TENDENCIA ====================
-class IndicatorHistoryPhase3:
-    """Sistema de historial con edad de tendencia"""
-    
-    def __init__(self):
-        self.history = {}
-        self.MAX_HISTORY = 200
-    
-    def add_reading(self, symbol, timeframe, indicators_data):
-        """Agrega lectura a historial"""
-        if symbol not in self.history:
-            self.history[symbol] = {}
-        
-        if timeframe not in self.history[symbol]:
-            self.history[symbol][timeframe] = []
-        
-        reading = {
-            'timestamp': datetime.now(ARGENTINA_TZ),
-            'adx': indicators_data.get('adx_value', 0),
-            'adx_plus': indicators_data.get('di_plus', 0),
-            'adx_minus': indicators_data.get('di_minus', 0),
-            'momentum': indicators_data.get('momentum_value', 0),
-            'momentum_color': indicators_data.get('momentum_color', 'gray'),
-            'entry_score': indicators_data.get('entry_score', 0)
-        }
-        
-        self.history[symbol][timeframe].append(reading)
-        
-        if len(self.history[symbol][timeframe]) &gt; self.MAX_HISTORY:
-            self.history[symbol][timeframe] = self.history[symbol][timeframe][-self.MAX_HISTORY:]
-    
-    def count_momentum_age(self, symbol, timeframe='5m'):
-        """Cuenta cuántas velas consecutivas momentum tiene el mismo color"""
-        if symbol not in self.history or timeframe not in self.history[symbol]:
-            return 0, "gray"
-        
-        readings = self.history[symbol][timeframe]
-        if len(readings) &lt; 2:
-            return 0, "gray"
-        
-        current_color = readings[-1]['momentum_color']
-        age = 1
-        
-        for i in range(len(readings)-2, -1, -1):
-            if readings[i]['momentum_color'] == current_color:
-                age += 1
-            else:
-                break
-        
-        return age, current_color
-    
-    def is_momentum_developing(self, symbol, timeframe='5m', max_age=10):
-        """Determina si momentum está en desarrollo (no maduro)"""
-        age, color = self.count_momentum_age(symbol, timeframe)
-        
-        if age == 0:
-            return False, "SIN_HISTORIAL"
-        
-        if color in ['lime', 'green'] and age &lt;= max_age:
-            return True, f"DESARROLLO_ALCISTA_{age}v"
-        elif color in ['red', 'maroon'] and age &lt;= max_age:
-            return True, f"DESARROLLO_BAJISTA_{age}v"
-        elif age &gt; max_age:
-            return False, f"MADURO_{color}_{age}v"
-        else:
-            return False, f"NEUTRO_{color}"
-    
-    def is_adx_declining(self, symbol, timeframe='5m', lookback=5):
-        """Detecta si ADX+ y ADX están declinando"""
-        if symbol not in self.history or timeframe not in self.history[symbol]:
-            return False
-        
-        readings = self.history[symbol][timeframe][-lookback:]
-        if len(readings) &lt; lookback:
-            return False
-        
-        adx_values = [r['adx'] for r in readings]
-        adx_plus_values = [r['adx_plus'] for r in readings]
-        
-        adx_declining = all(adx_values[i] &gt;= adx_values[i+1] for i in range(len(adx_values)-1))
-        adx_plus_declining = all(adx_plus_values[i] &gt;= adx_plus_values[i+1] for i in range(len(adx_plus_values)-1))
-        
-        return adx_declining and adx_plus_declining
-    
-    def check_simple_exit_conditions(self, symbol, timeframe='5m'):
-        """Sistema de salida SIMPLIFICADO según estrategia"""
-        if symbol not in self.history or timeframe not in self.history[symbol]:
-            return False, "SIN_DATOS"
-        
-        readings = self.history[symbol][timeframe]
-        if len(readings) &lt; 5:
-            return False, "HISTORIAL_INSUFICIENTE"
-        
-        if self.is_adx_declining(symbol, timeframe, lookback=5):
-            return True, "ADX_DECLINANDO_5v"
-        
-        recent_colors = [r['momentum_color'] for r in readings[-3:]]
-        
-        if recent_colors[0] in ['lime', 'green'] and recent_colors[-1] in ['maroon', 'red']:
-            return True, "MOMENTUM_REVIRTIENDO_alcista_bajista"
-        
-        if recent_colors[0] in ['red', 'maroon'] and recent_colors[-1] in ['green', 'lime']:
-            return True, "MOMENTUM_REVIRTIENDO_bajista_alcista"
-        
-        return False, "CONDICIONES_NO_CUMPLIDAS"
-
-__all__ = ['IndicatorHistoryPhase3']
-
-
+from brain_config import BB_LENGTH, BB_MULT, KC_LENGTH, KC_MULT, USE_TRUE_RANGE
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 12,660<br>
-    Generado: 2025-11-18 01:23:59
+    Total caracteres: 2,711<br>
+    Generado: 2025-11-18 01:32:08
   </div>
 </body>
 </html>
