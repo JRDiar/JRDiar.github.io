@@ -15,12 +15,18 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-18 01:32:08</div>
+  <div class="meta">Última actualización: 2025-11-18 01:38:34</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Las funciones que calculan momentum en brain_calculator.py son:
+Respuestas a tus puntos:
+
+Bollinger Bands: Sí, calcula bb_upper y bb_lower.
+Keltner Channels: Sí, calcula kc_upper y kc_lower.
+Squeeze detection: Sí, revisa la columna 'SQUEEZE_ON' y retorna squeeze si está activa.
+Regresión lineal manual: No, esta función no realiza regresión lineal manual.
+
 def calculate_momentum_with_memory(df, lookback=10):
     """
     LazyBear Momentum (versión 3.5) con historia y fuerza.
@@ -42,80 +48,239 @@ def calculate_momentum_with_memory(df, lookback=10):
             'kc_lower': 0.0
         }
 
+    # 1. Cálculo de Media y Desviación (Bollinger)
+    close = df['close'].values
+    bb_mid = np.zeros(n)
+    bb_std = np.zeros(n)
+    for i in range(BB_LENGTH - 1, n):
+        window = close[i - BB_LENGTH + 1:i + 1]
+        bb_mid[i] = np.mean(window)
+        bb_std[i] = np.std(window)
 
-ADX 
+    bb_upper = bb_mid + BB_MULT * bb_std
+    bb_lower = bb_mid - BB_MULT * bb_std
 
-def calculate_adx_with_memory(df, period=14, lookback=10):
-    """
-    ADX con memoria temporal - Wilder's Smoothing EXACTO (manual)
-    
-    Args:
-        df: DataFrame con columnas ['high', 'low', 'close']
-        period: Período para ADX (default 14)
-        lookback: Cuántos valores históricos guardar
-        
-    Returns:
-        dict: {
-            'adx_current': float,
-            'adx_history': [list de últimos lookback valores],
-            'adx_trend': 'creciendo'/'decreciendo'/'estable',
-            'di_plus_current': float,
-            'di_plus_history': [list],
-            'di_plus_trend': str,
-            'di_minus_current': float,
-            'di_minus_history': [list],
-            'di_minus_trend': str,
-            'dominance': 'DI+'/'DI-'/'neutral',
-            'spread': float (diferencia DI+ - DI-)
-        }
-    """
-    
-    df = df.copy()
-    n = len(df)
-    
-    # Inicializar arrays
+    # 2. Keltner Channel (con True Range o rango simple)
+    high = df['high'].values
+    low = df['low'].values
     tr = np.zeros(n)
-    dm_plus = np.zeros(n)
-    dm_minus = np.zeros(n)
-    
-    # 1. Calcular True Range y Directional Movements
     for i in range(1, n):
-        high = df['high'].iloc[i]
-        low = df['low'].iloc[i]
-        prev_close = df['close'].iloc[i-1]
-        prev_high = df['high'].iloc[i-1]
-        prev_low = df['low'].iloc[i-1]
+        tr[i] = max(
+            high[i] - low[i],
+            abs(high[i] - close[i - 1]),
+            abs(low[i] - close[i - 1])
+        ) if USE_TRUE_RANGE else (high[i] - low[i])
 
-No hay más funciones con "adx" en el nombre en este archivo.
+    atr = np.zeros(n)
+    atr[KC_LENGTH] = np.mean(tr[1:KC_LENGTH + 1])
+    for i in range(KC_LENGTH + 1, n):
+        atr[i] = (atr[i - 1] * (KC_LENGTH - 1) + tr[i]) / KC_LENGTH
 
+    kc_mid = np.zeros(n)
+    for i in range(KC_LENGTH - 1, n):
+        kc_mid[i] = np.mean(close[i - KC_LENGTH + 1:i + 1])
 
+    kc_upper = kc_mid + KC_MULT * atr
+    kc_lower = kc_mid - KC_MULT * atr
 
-Muestra los imports al inicio del archivo (primeras 30 líneas)
+    # 3. Momentum Value (LazyBear)
+    value = (close - (bb_upper + bb_lower + kc_upper + kc_lower) / 4)
 
-"""
-brain_calculator.py - Módulo de Análisis Técnico con Memoria Temporal
-======================================================================
+    # 4. Color y fuerza
+    colors = []
+    for i in range(n):
+        if value[i] &gt; 0:
+            colors.append('green')
+        elif value[i] &lt; 0:
+            colors.append('red')
+        else:
+            colors.append('neutral')
 
-FILOSOFÍA:
-Cada indicador retorna HISTORIA + TENDENCIA, no solo valor puntual.
-Bot inteligente que analiza EVOLUCIÓN temporal, no snapshots binarios.
+    # Historia y fuerza
+    start_idx = max(0, n - lookback)
+    color_history = colors[start_idx:n]
+    color_current = colors[-1]
+    consecutive_count = 1
+    for i in range(len(color_history) - 2, -1, -1):
+        if color_history[i] == color_current:
+            consecutive_count += 1
+        else:
+            break
 
-ESTRUCTURA:
-1. Indicadores con Memoria (ADX, DI+/DI-, Momentum, RSI, EMAs)
-2. Análisis de Patrones (HH/LL, Zig Zag)
-3. Zonas y Niveles (SR, Volume Profile, Fibonacci)
-"""
+    if consecutive_count &gt;= 5:
+        strength = 'fuerte'
+    elif consecutive_count &gt;= 3:
+        strength = 'moderada'
+    else:
+        strength = 'débil'
 
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from brain_config import BB_LENGTH, BB_MULT, KC_LENGTH, KC_MULT, USE_TRUE_RANGE
+    # Verificar squeeze (DI juntos = no operar)
+    squeeze_on = df['SQUEEZE_ON'].iloc[-1] if 'SQUEEZE_ON' in df.columns else False
+
+    if squeeze_on:
+        return {
+            'color_current': 'neutral',
+            'color_history': [],
+            'consecutive_count': 0,
+            'strength': 'débil',
+            'squeeze_active': True
+        }
+
+    return {
+        'color_current': color_current,
+        'color_history': color_history,
+        'consecutive_count': consecutive_count,
+        'strength': strength,
+        'value': float(value[-1]),
+        'bb_upper': float(bb_upper[-1]),
+        'bb_lower': float(bb_lower[-1]),
+        'kc_upper': float(kc_upper[-1]),
+        'kc_lower': float(kc_lower[-1])
+    }
+
+BRAIN PHASE 4.0 - ESTADO ACTUAL Y DIAGNÓSTICO COMPLETO
+________________________________________
+ARQUITECTURA Y FILOSOFÍA
+Concepto: Bot anticipatorio multi-timeframe (1D→4H→1H→15M→5M) con scoring probabilístico 0-100 y análisis contextual profundo.
+Fortalezas arquitectónicas:
+•	Cascada de filtros inteligente
+•	Sistema de memoria temporal
+•	Exit inteligente multi-señal
+•	Breakeven protection
+•	Google Sheets logging (9 categorías)
+Debilidad crítica: Implementación de indicadores SIN VERIFICAR vs TradingView.
+________________________________________
+PROBLEMA FUNDAMENTAL IDENTIFICADO
+Brain 4.0 usa implementaciones CASERAS de indicadores:
+•	Solo import pandas as pd y numpy
+•	NO usa pandas_ta (verificado por compañero del usuario)
+•	Indicadores generados por IA (yo) sin validación
+•	Resultado: Valores aproximados, NO exactos como TradingView
+Bot 3.5 funcionaba porque:
+•	Conversión MANUAL de Pine Script → Python
+•	LazyBear Momentum COMPLETO (BB + KC + Squeeze + Regresión lineal)
+•	ADX con Wilder's Smoothing EXACTO
+•	100% sincronización con TradingView
+________________________________________
+INDICADORES BRAIN 4.0 (SIN VERIFICAR)
+Del 3.5 pero SIMPLIFICADOS:
+1.	calculate_adx_with_memory() - Wilder's manual pero falta validación
+2.	calculate_momentum_with_memory() - Simple EMA vs close (NO es LazyBear completo)
+Nuevos en 4.0 (NUNCA verificados): 3. calculate_rsi_with_memory() 4. calculate_emas_with_memory() - retorna emas_aligned NO ema_trend 5. detect_price_structure() 6. calculate_zigzag() 7. detect_support_resistance_with_memory() 8. calculate_volume_profile_with_memory() 9. calculate_fibonacci_levels() 10. calculate_velocity() 11. calculate_acceleration()
+Total: 2 heredados + 12 no verificados = 14 indicadores no confiables
+________________________________________
+TRADES REALES EJECUTADOS
+Trade ULTI (23:19):
+•	Entry: SHORT en corrección
+•	Problema: ADX 5M/15M con DI+ y DI- juntos (sin separación = sin fuerza)
+•	Diagnóstico: Bot verificó DI spread en 15M pero NO en 5M momento de entrada
+•	Resultado: Entrada mala en zona sin dirección
+Trade POP (18:51):
+•	Entry: LONG en techo de impulso
+•	Score: 80/100
+•	Problema: Entró después de +96% movimiento, en POC superior, alejado EMAs
+•	Exit: -2.89% por "Divergencia, Buffett"
+•	Diagnóstico: Deep analysis decorativo, solo ADX+Momentum importó
+________________________________________
+CAMBIOS APLICADOS ESTA SESIÓN
+1. Pre-filtro cambiado:
+•	De: fetch_ohlcv('1w', 15) con MIN_WEEKLY_CANDLES = 10
+•	A: fetch_ohlcv('1d', 50) con MIN_DAILY_CANDLES = 30
+•	Razón: LIGHT/USDT (+96% hoy) tenía datos 1d pero NO 1w
+2. Thresholds bajados para operar:
+•	MIN_DAILY_CANDLES: 10→6→30 (final)
+•	DI_MIN_SPREAD: 3→2
+•	pre_viable score: 45→40
+•	EXIT_SCORE_THRESHOLD: 65→70→75 (subió por exits prematuros)
+•	ADX_THRESHOLD: 20→15
+3. Checks agregados en trigger:
+python
+# En brain_executor.py - check_trigger_activated()
+- Verificar DI spread 15M ≥5
+- Verificar DI spread 5M ≥5  
+- Verificar momentum 15M ≥3v y alineado con dirección
+- Verificar momentum 5M ≥2v y alineado con dirección
+4. Filtros agregados en analyzer:
+python
+# En brain_analyzer.py
+- Rechazar si 4H contradice 1H (excepto si alguno LATERAL)
+- Rechazar si direction == 'LATERAL' en 4H
+5. Scoring 1H arreglado:
+•	De binario a gradual (ADX 25→15pts, 20→10pts, 15→5pts)
+•	Ambas direcciones suman (bullish=+10, bearish=+10, neutral=-5)
+•	Uso correcto de emas_aligned en lugar de ema_trend inexistente
+________________________________________
+BUGS CORREGIDOS
+1.	calculate_adx_with_memory no importado en executor
+2.	calculate_momentum_with_memory no importado en executor
+3.	emas_data['ema_trend'] no existe → usar emas_data.get('emas_aligned', False)
+4.	Código duplicado en analyzer (múltiples checks ema_trend)
+5.	Variables sin definir (adx_val, momentum, rsi, emas, structure) solucionado usando nombres correctos de dicts
+________________________________________
+ESTADO ACTUAL DEL SCORING
+Threshold actual: 40/100 para entrar watchlist
+Último análisis: 114 monedas, score máximo 39, TODAS rechazadas
+Problema: Score 1H muy bajo (0-5) mata el total
+•	4H: 5-32 puntos (OK)
+•	1H: 0-25 puntos (mejorado pero insuficiente)
+•	15M: 2-23 puntos (OK)
+________________________________________
+ARCHIVOS Y ESTRUCTURA
+Módulos principales:
+•	bot_main.py - Orchestrator
+•	brain_analyzer.py - Análisis multi-timeframe y scoring
+•	brain_calculator.py - Indicadores (AQUÍ está el problema)
+•	brain_executor.py - Gestión trades y triggers
+•	brain_deep_analyzer.py - Volume Profile, SR, divergencias
+•	brain_config.py - Parámetros
+•	exchange_connection.py - MEXC API
+Google Sheets: 9 hojas para logging completo
+________________________________________
+PLAN DE ACCIÓN ACORDADO
+FASE 1 - Indicadores Core (URGENTE):
+1.	✅ Copiar LazyBear COMPLETO del 3.5 (prompts dados, NO aplicado aún)
+2.	⏳ Copiar ADX Manual del 3.5
+3.	⏳ Copiar Volume Oscillator del 3.5
+4.	⏳ Agregar ATR para stop loss
+FASE 2 - Desactivar resto:
+•	Desactivar VP, SR, Structure, Divergencias hasta verificar
+•	Bot opere SOLO con 4 indicadores verificados del 3.5
+•	Testear 24-48h
+FASE 3 - Agregar avanzados uno por uno:
+•	Verificar cada indicador vs TradingView ANTES de integrar
+•	Si valor difiere &gt;1% → buscar bug
+________________________________________
+CONFIGURACIÓN ACTUAL
+python
+# brain_config.py
+MIN_DAILY_CANDLES = 30
+DI_MIN_SPREAD = 2
+ADX_THRESHOLD = 15
+EXIT_SCORE_THRESHOLD = 75
+
+# brain_analyzer.py
+pre_viable = score_total &gt;= 40
+________________________________________
+PROMPTS PENDIENTES DE APLICAR
+LazyBear completo (3 prompts):
+1.	Agregar parámetros en config: BB_LENGTH=20, BB_MULT=2.0, KC_LENGTH=20, KC_MULT=1.5, USE_TRUE_RANGE=True
+2.	Reemplazar calculate_momentum_with_memory() con código completo del 3.5
+3.	Agregar verificación squeeze y retornar dict con squeeze_active
+________________________________________
+LECCIONES CLAVE
+1.	Bot 3.5 &gt; Brain 4.0: Simplicidad verificada &gt; Complejidad teórica
+2.	pandas_ta funciona: Compañero del usuario lo verificó vs TradingView
+3.	Indicadores caseros = peligro: Sin verificación milimétrica, valores aproximados causan entradas/salidas incorrectas
+4.	LIGHT +96% perdida: Por pre-filtro 1w que rechazaba monedas nuevas
+5.	Scoring: Thresholds demasiado altos bloquean todo; demasiado bajos generan basura
+________________________________________
+NEXT CLAUDE: Comienza FASE 1. Copia indicadores verificados del 3.5, desactiva el resto, prueba. Arquitectura es excelente, implementación está rota.
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 2,711<br>
-    Generado: 2025-11-18 01:32:08
+    Total caracteres: 9,999<br>
+    Generado: 2025-11-18 01:38:34
   </div>
 </body>
 </html>
