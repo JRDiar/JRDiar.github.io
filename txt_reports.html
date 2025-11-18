@@ -15,77 +15,153 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-18 03:06:53</div>
+  <div class="meta">Última actualización: 2025-11-18 03:10:09</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Primeras 50 líneas del archivo:
+Esta ok?
 
-"""
-brain_calculator.py - Módulo de Análisis Técnico con Memoria Temporal
-======================================================================
+# ...existing code...
 
-FILOSOFÍA:
-Cada indicador retorna HISTORIA + TENDENCIA, no solo valor puntual.
-Bot inteligente que analiza EVOLUCIÓN temporal, no snapshots binarios.
-
-ESTRUCTURA:
-1. Indicadores con Memoria (ADX, DI+/DI-, Momentum, RSI, EMAs)
-2. Análisis de Patrones (HH/LL, Zig Zag)
-3. Zonas y Niveles (SR, Volume Profile, Fibonacci)
-"""
-
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from brain_config import BB_LENGTH, BB_MULT, KC_LENGTH, KC_MULT, USE_TRUE_RANGE
-
-
-# ================================================================================
-# FUNCIONES AUXILIARES
-# ================================================================================
-
-def calculate_linear_regression_slope(values):
+def calculate_momentum_with_memory(df, lookback=10):
     """
-    Calcula pendiente de regresión lineal simple
-    
-    Args:
-        values: Lista de valores (últimas N velas)
-        
-    Returns:
-        float: Pendiente (slope)
+    LazyBear Momentum EXACTO del 3.5 con regresión lineal manual.
+    Devuelve color, historia, fuerza y valores de bandas.
+    Requiere columnas: 'high', 'low', 'close'
     """
-    n = len(values)
-    if n &lt; 2:
-        return 0.0
+    df = df.copy()
+    n = len(df)
     
-    x = np.arange(n)
-    y = np.array(values)
+    if n &lt; max(BB_LENGTH, KC_LENGTH) + 2:
+        return {
+            'color_current': 'neutral',
+            'color_history': [],
+            'consecutive_count': 0,
+            'strength': 'débil',
+            'value': 0.0,
+            'squeeze_active': False
+        }
     
-    # y = mx + b → m = (n*Σxy - Σx*Σy) / (n*Σx² - (Σx)²)
-    x_mean = np.mean(x)
-    y_mean = np.mean(y)
+    source = df['close']
+    high = df['high']
+    low = df['low']
     
-    numerator = np.sum((x - x_mean) * (y - y_mean))
-    denominator = np.sum((x - x_mean) ** 2)
+    # 1. Bollinger Bands
+    basis = source.rolling(BB_LENGTH).mean()
+    dev = BB_MULT * source.rolling(BB_LENGTH).std()
+    upperBB = basis + dev
+    lowerBB = basis - dev
     
-    if denominator == 0:
-        return 0.0
+    # 2. Keltner Channels
+    ma = source.rolling(KC_LENGTH).mean()
     
-    slope = numerator / denominator
-    return slope
-
-Buscar la función def calculate_momentum_with_memory:
-No existe calculate_momentum_with_memory en el archivo.
-
-Resultado:
-No existe calculate_momentum_with_memory
+    if USE_TRUE_RANGE:
+        prev_close = source.shift(1)
+        tr1 = high - low
+        tr2 = abs(high - prev_close)
+        tr3 = abs(low - prev_close)
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        range_ma = true_range.rolling(KC_LENGTH).mean()
+    else:
+        range_ma = (high - low).rolling(KC_LENGTH).mean()
+    
+    upperKC = ma + range_ma * KC_MULT
+    lowerKC = ma - range_ma * KC_MULT
+    
+    # 3. Squeeze Detection
+    sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
+    
+    if sqzOn.iloc[-1]:
+        return {
+            'color_current': 'neutral',
+            'color_history': [],
+            'consecutive_count': 0,
+            'strength': 'débil',
+            'value': 0.0,
+            'squeeze_active': True
+        }
+    
+    # 4. Regresión Lineal MANUAL (LazyBear exacto)
+    highest_high = high.rolling(KC_LENGTH).max()
+    lowest_low = low.rolling(KC_LENGTH).min()
+    avg_hl = (highest_high + lowest_low) / 2
+    sma_close = source.rolling(KC_LENGTH).mean()
+    avg_combined = (avg_hl + sma_close) / 2
+    
+    momentum_values = []
+    for i in range(len(df)):
+        if i &lt; KC_LENGTH - 1:
+            momentum_values.append(np.nan)
+        else:
+            start_idx = i - KC_LENGTH + 1
+            end_idx = i + 1
+            y_values = (source.iloc[start_idx:end_idx] - avg_combined.iloc[start_idx:end_idx]).values
+            x_values = np.arange(KC_LENGTH)
+            x_mean = np.mean(x_values)
+            y_mean = np.mean(y_values)
+            
+            numerator = np.sum((x_values - x_mean) * (y_values - y_mean))
+            denominator = np.sum((x_values - x_mean) ** 2)
+            
+            if denominator != 0:
+                slope = numerator / denominator
+                val = slope * (KC_LENGTH - 1 - x_mean) + y_mean
+                momentum_values.append(val)
+            else:
+                momentum_values.append(0)
+    
+    momentum = pd.Series(momentum_values)
+    prev_momentum = momentum.shift(1)
+    
+    # 5. Colores LazyBear (lime/green/red/maroon)
+    color_conditions = []
+    for i in range(len(momentum)):
+        if pd.isna(momentum.iloc[i]) or pd.isna(prev_momentum.iloc[i]):
+            color_conditions.append('neutral')
+        elif momentum.iloc[i] &gt; 0:
+            if momentum.iloc[i] &gt; prev_momentum.iloc[i]:
+                color_conditions.append('lime')
+            else:
+                color_conditions.append('green')
+        else:
+            if momentum.iloc[i] &lt; prev_momentum.iloc[i]:
+                color_conditions.append('red')
+            else:
+                color_conditions.append('maroon')
+    
+    # 6. Historia y fuerza
+    start_idx = max(0, n - lookback)
+    color_history = color_conditions[start_idx:n]
+    color_current = color_conditions[-1]
+    
+    consecutive_count = 1
+    for i in range(len(color_history) - 2, -1, -1):
+        if color_history[i] == color_current:
+            consecutive_count += 1
+        else:
+            break
+    
+    if consecutive_count &gt;= 5:
+        strength = 'fuerte'
+    elif consecutive_count &gt;= 3:
+        strength = 'moderada'
+    else:
+        strength = 'débil'
+    
+    return {
+        'color_current': color_current,
+        'color_history': color_history,
+        'consecutive_count': consecutive_count,
+        'strength': strength,
+        'value': float(momentum.iloc[-1]),
+        'squeeze_active': False
+    }
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 1,661<br>
-    Generado: 2025-11-18 03:06:53
+    Total caracteres: 4,315<br>
+    Generado: 2025-11-18 03:10:09
   </div>
 </body>
 </html>
