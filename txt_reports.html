@@ -15,496 +15,461 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-21 19:55:14</div>
+  <div class="meta">Última actualización: 2025-11-21 19:59:56</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-LazyBear Momentum EXACTO del 3.5 con regresión lineal manual.
-    Devuelve color, historia, fuerza y valores de bandas.
-    Requiere columnas: 'high', 'low', 'close'
+"""
+BRAIN WATCHLIST - Bot Phase 4.0
+Gestión watchlist dinámica con triggers calculados
+"""
+
+import json
+from datetime import datetime
+from brain_config import (
+    WATCHLIST_JSON, MAX_WATCHLIST_SIZE, MIN_SCORE_WATCHLIST,
+    ENABLE_WATCHLIST_JSON, ARGENTINA_TZ,
+    ADX_THRESHOLD, ADX_MIN_ACCELERATION,
+    MOMENTUM_CONSECUTIVE_CANDLES, VOLUME_RATIO_MIN,
+    MIN_RR_RATIO, MIN_TIEMPO_PROYECTADO_MIN, MAX_TIEMPO_PROYECTADO_MIN
+)
+from brain_analyzer import analyze_coin_complete
+from brain_calculator import (
+    calculate_adx_with_memory,
+    calculate_momentum_with_memory,
+    calculate_time_to_target
+)
+
+# ============================================================================
+# FUNCIONES AUXILIARES (NIVEL MÓDULO)
+# ============================================================================
+
+def _extract_score(score_value, default=0):
     """
-    df = df.copy()
-    n = len(df)
-    
-    if n &lt; max(BB_LENGTH, KC_LENGTH) + 2:
-        return {
-            'color_current': 'neutral',
-            'color_history': [],
-            'consecutive_count': 0,
-            'strength': 'débil',
-            'value': 0.0,
-            'squeeze_active': False
-        }
-    
-    source = df['close']
-    high = df['high']
-    low = df['low']
-    
-    # 1. Bollinger Bands
-    basis = source.rolling(BB_LENGTH).mean()
-    dev = BB_MULT * source.rolling(BB_LENGTH).std()
-    upperBB = basis + dev
-    lowerBB = basis - dev
-    
-    # 2. Keltner Channels
-    ma = source.rolling(KC_LENGTH).mean()
-    
-    if USE_TRUE_RANGE:
-        prev_close = source.shift(1)
-        tr1 = high - low
-        tr2 = abs(high - prev_close)
-        tr3 = abs(low - prev_close)
-        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        range_ma = true_range.rolling(KC_LENGTH).mean()
-    else:
-        range_ma = (high - low).rolling(KC_LENGTH).mean()
-    
-    upperKC = ma + range_ma * KC_MULT
-    lowerKC = ma - range_ma * KC_MULT
-    
-    # 3. Squeeze Detection
-    sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
-    
-    if sqzOn.iloc[-1]:
-        return {
-            'color_current': 'neutral',
-            'color_history': [],
-            'consecutive_count': 0,
-            'strength': 'débil',
-            'value': 0.0,
-            'squeeze_active': True
-        }
-    
-    # 4. Regresión Lineal MANUAL (LazyBear exacto)
-    highest_high = high.rolling(KC_LENGTH).max()
-    lowest_low = low.rolling(KC_LENGTH).min()
-    avg_hl = (highest_high + lowest_low) / 2
-    sma_close = source.rolling(KC_LENGTH).mean()
-    avg_combined = (avg_hl + sma_close) / 2
-    
-    momentum_values = []
-    for i in range(len(df)):
-        if i &lt; KC_LENGTH - 1:
-            momentum_values.append(np.nan)
-        else:
-            start_idx = i - KC_LENGTH + 1
-            end_idx = i + 1
-            y_values = (source.iloc[start_idx:end_idx] - avg_combined.iloc[start_idx:end_idx]).values
-            x_values = np.arange(KC_LENGTH)
-            x_mean = np.mean(x_values)
-            y_mean = np.mean(y_values)
-            
-            numerator = np.sum((x_values - x_mean) * (y_values - y_mean))
-            denominator = np.sum((x_values - x_mean) ** 2)
-            
-            if denominator != 0:
-                slope = numerator / denominator
-                val = slope * (KC_LENGTH - 1 - x_mean) + y_mean
-                momentum_values.append(val)
-            else:
-                momentum_values.append(0)
-    
-    momentum = pd.Series(momentum_values)
-    prev_momentum = momentum.shift(1)
-    
-    # 5. Colores LazyBear (lime/green/red/maroon)
-    color_conditions = []
-    for i in range(len(momentum)):
-        if pd.isna(momentum.iloc[i]) or pd.isna(prev_momentum.iloc[i]):
-            color_conditions.append('neutral')
-        elif momentum.iloc[i] &gt; 0:
-            if momentum.iloc[i] &gt; prev_momentum.iloc[i]:
-                color_conditions.append('lime')
-            else:
-                color_conditions.append('green')
-        else:
-            if momentum.iloc[i] &lt; prev_momentum.iloc[i]:
-                color_conditions.append('red')
-            else:
-                color_conditions.append('maroon')
-    
-    # 6. Historia y fuerza
-    start_idx = max(0, n - lookback)
-    color_history = color_conditions[start_idx:n]
-    color_current = color_conditions[-1]
-    
-    consecutive_count = 1
-    for i in range(len(color_history) - 2, -1, -1):
-        if color_history[i] == color_current:
-            consecutive_count += 1
-        else:
-            break
-    
-    if consecutive_count &gt;= 5:
-        strength = 'fuerte'
-    elif consecutive_count &gt;= 3:
-        strength = 'moderada'
-    else:
-        strength = 'débil'
-    
-    return {
-        'color_current': color_current,
-        'color_history': color_history,
-        'consecutive_count': consecutive_count,
-        'strength': strength,
-        'value': float(momentum.iloc[-1]),
-        'squeeze_active': False
-    }
-
-def calculate_rsi_with_memory(df, period=14, lookback=10):
-    """
-    Calcula RSI con memoria temporal (Wilder's Smoothing exacto).
-    Devuelve dict con valor actual, historia y tendencia.
-    """
-    close = df['close'].values
-    n = len(close)
-    if n &lt; period + 1:
-        return {
-            'rsi_current': 0.0,
-            'rsi_history': [],
-            'rsi_trend': 'insuficiente'
-        }
-    deltas = np.diff(close)
-    seed = deltas[:period]
-    up = seed[seed &gt;= 0].sum() / period
-    down = -seed[seed &lt; 0].sum() / period
-    rs = up / down if down != 0 else 0
-    rsi = np.zeros(n)
-    rsi[:period] = np.nan
-    rsi[period] = 100. - 100. / (1. + rs)
-    up_avg = up
-    down_avg = down
-    for i in range(period + 1, n):
-        delta = deltas[i - 1]
-        upval = max(delta, 0)
-        downval = -min(delta, 0)
-        up_avg = (up_avg * (period - 1) + upval) / period
-        down_avg = (down_avg * (period - 1) + downval) / period
-        rs = up_avg / down_avg if down_avg != 0 else 0
-        rsi[i] = 100. - 100. / (1. + rs)
-    start_idx = max(0, n - lookback)
-    rsi_history = [float(x) for x in rsi[start_idx:n] if not np.isnan(x)]
-    rsi_current = float(rsi[-1]) if not np.isnan(rsi[-1]) else 0.0
-    # Tendencia simple
-    if len(rsi_history) &gt;= 3:
-        if rsi_history[-1] &gt; rsi_history[-2] &gt; rsi_history[-3]:
-            trend = 'creciendo'
-        elif rsi_history[-1] &lt; rsi_history[-2] &lt; rsi_history[-3]:
-            trend = 'decreciendo'
-        else:
-            trend = 'estable'
-    else:
-        trend = 'insuficiente'
-    return {
-        'rsi_current': rsi_current,
-        'rsi_history': rsi_history,
-        'rsi_trend': trend
-    }
-
-def calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10):
-    """
-    Calcula EMAs múltiples y su alineación.
-    Devuelve dict con valores actuales, historia y alineación.
-    """
-    result = {}
-    n = len(df)
-    if n &lt; max(periods) + 1:
-        return {
-            'emas': {},
-            'emas_history': {},
-            'emas_aligned': False,
-            'classification': 'N/A'
-        }
-    close = df['close']
-    emas = {}
-    emas_history = {}
-    for period in periods:
-        ema = close.ewm(span=period, adjust=False).mean()
-        emas[period] = float(ema.iloc[-1])
-        emas_history[period] = ema.tail(lookback).tolist()
-    # Alineación: bullish si EMA corta &gt; EMA larga para todos
-    aligned = all(emas[periods[i]] &gt; emas[periods[i+1]] for i in range(len(periods)-1))
-    # Clasificación simple
-    if aligned:
-        classification = 'CERCANAS'
-    else:
-        classification = 'SEPARADAS'
-    return {
-        'emas': emas,
-        'emas_history': emas_history,
-        'emas_aligned': aligned,
-        'classification': classification
-    }
-
-def detect_price_structure(df, lookback=20, pivot_window=5):
-    """
-    Detecta estructura de precio: pivotes altos/bajos (HH/HL/LH/LL).
-    Retorna dict con listas de pivotes y estructura dominante.
-    """
-    highs = df['high'].values[-lookback:]
-    lows = df['low'].values[-lookback:]
-    closes = df['close'].values[-lookback:]
-    pivot_highs = []
-    pivot_lows = []
-
-    for i in range(pivot_window, len(highs) - pivot_window):
-        window = highs[i - pivot_window:i + pivot_window + 1]
-        if highs[i] == max(window):
-            pivot_highs.append(highs[i])
-        window = lows[i - pivot_window:i + pivot_window + 1]
-        if lows[i] == min(window):
-            pivot_lows.append(lows[i])
-
-    # Clasificación simple de estructura
-    structure = 'INDETERMINADO'
-    if len(pivot_highs) &gt;= 2 and len(pivot_lows) &gt;= 2:
-        if pivot_highs[-1] &gt; pivot_highs[-2] and pivot_lows[-1] &gt; pivot_lows[-2]:
-            structure = 'BULLISH'
-        elif pivot_highs[-1] &lt; pivot_highs[-2] and pivot_lows[-1] &lt; pivot_lows[-2]:
-            structure = 'BEARISH'
-        else:
-            structure = 'LATERAL'
-
-    return {
-        'pivot_highs': pivot_highs,
-        'pivot_lows': pivot_lows,
-        'structure': structure
-    }
-
-def detect_support_resistance_with_memory(df, lookback=50, num_clusters=5):
-    """
-    Detección de soportes y resistencias por clustering de precios.
-    Retorna dict con listas de resistencias y soportes ordenadas por cercanía.
-    """
-    closes = df['close'].values[-lookback:]
-    if len(closes) &lt; 10:
-        return {'resistances': [], 'supports': []}
-
-    # Clustering simple por bins de precio
-    min_price = min(closes)
-    max_price = max(closes)
-    bin_size = (max_price - min_price) / num_clusters if num_clusters &gt; 0 else 1
-    bins = [min_price + i * bin_size for i in range(num_clusters + 1)]
-    counts = [0] * num_clusters
-    levels = [[] for _ in range(num_clusters)]
-
-    for price in closes:
-        for i in range(num_clusters):
-            if bins[i] &lt;= price &lt; bins[i+1]:
-                counts[i] += 1
-                levels[i].append(price)
-                break
-
-    # Soportes: bins con más toques en la parte baja
-    # Resistencias: bins con más toques en la parte alta
-    supports = []
-    resistances = []
-    for i in range(num_clusters):
-        if counts[i] &gt;= 2:  # Al menos 2 toques para considerar nivel
-            avg_level = sum(levels[i]) / len(levels[i])
-            if avg_level &lt; (min_price + max_price) / 2:
-                supports.append(avg_level)
-            else:
-                resistances.append(avg_level)
-
-    # Ordenar por cercanía al precio actual
-    current_price = closes[-1]
-    supports = sorted(supports, key=lambda x: abs(current_price - x))
-    resistances = sorted(resistances, key=lambda x: abs(current_price - x))
-
-    return {
-        'resistances': resistances,
-        'supports': supports
-    }
-
-
-def calculate_time_to_target(current_price, target_price, velocity, 
-                             acceleration=0.0, candle_duration_min=5):
-    """
-    Proyecta tiempo estimado para alcanzar target
+    Recursively extract integer score from potentially nested dict.
     
     Args:
-        current_price: Precio actual
-        target_price: Precio objetivo
-        velocity: Velocidad actual (precio/vela)
-        acceleration: Aceleración (cambio velocidad)
-        candle_duration_min: Duración vela (default 5min para 5M)
+        score_value: The value to extract (can be int, float, dict, or None)
+        default: Default value if extraction fails
     
     Returns:
-        int: Minutos estimados para alcanzar target (0-120 max)
+        int: Extracted integer score
     """
-    try:
-        if velocity == 0 or velocity is None:
-            return None
-        
-        distance = abs(target_price - current_price)
-        
-        # Si aceleración positiva, tiempo menor
-        if acceleration &gt; 0:
-            effective_velocity = velocity * (1 + acceleration / 100)
-        else:
-            effective_velocity = velocity
-        
-        if effective_velocity &lt;= 0:
-            return None
-        
-        # Velas estimadas
-        estimated_candles = distance / abs(effective_velocity) if effective_velocity != 0 else float('inf')
-        
-        # Convertir a minutos
-        time_minutes = estimated_candles * candle_duration_min
-        
-        # Limitar a máximo 120 minutos (2 horas)
-        return min(int(time_minutes), 120) if time_minutes &lt; float('inf') else None
-    
-    except Exception as e:
-        print(f"❌ Error calculate_time_to_target: {e}")
+    if score_value is None:
+        return default
+    if isinstance(score_value, (int, float)):
+        return int(score_value)
+    if isinstance(score_value, dict):
+        # Recursively extract from nested dict
+        return _extract_score(score_value.get('score', default), default)
+    # Fallback for any other type
+    return default
+
+def find_nearest_resistance(current_price, resistances):
+    """
+    Encuentra la resistencia más cercana por encima del precio actual.
+    Args:
+        current_price (float): Precio actual.
+        resistances (list): Lista de resistencias (floats).
+    Returns:
+        tuple: (precio_resistencia, distancia_pct) o None
+    """
+    if not resistances:
         return None
+    above = [r for r in resistances if r &gt; current_price]
+    if not above:
+        return None
+    nearest = min(above, key=lambda r: r - current_price)
+    distance_pct = ((nearest - current_price) / current_price) * 100
+    return (nearest, distance_pct)
 
-
-def calculate_volume_profile_with_memory(df, num_levels=10, lookback=50):
+def find_nearest_support(current_price, supports):
     """
-    Calcula Volume Profile (Perfil de Volumen)
-    
+    Encuentra el soporte más cercano por debajo del precio actual.
     Args:
-        df: DataFrame con columnas ['close', 'volume']
-        num_levels: Cantidad de niveles de precio
-        lookback: Velas a analizar
-    
+        current_price (float): Precio actual.
+        supports (list): Lista de soportes (floats).
     Returns:
-        dict: {
-            'poc_current': float (price of control - máximo volumen),
-            'poc_history': [últimos values],
-            'high_volume_nodes': [precios con alto volumen],
-            'low_volume_nodes': [precios con bajo volumen]
-        }
+        tuple: (precio_soporte, distancia_pct) o None
     """
-    try:
-        if len(df) &lt; lookback:
-            lookback = len(df)
+    if not supports:
+        return None
+    below = [s for s in supports if s &lt; current_price]
+    if not below:
+        return None
+    nearest = max(below, key=lambda s: current_price - s)
+    distance_pct = ((current_price - nearest) / current_price) * 100
+    return (nearest, distance_pct)
+
+# ============================================================================
+# CLASE WATCHLIST MANAGER
+# ============================================================================
+
+class WatchlistManager:
+    def __init__(self):
+        self.watchlist = {}
+        self.load_from_file()
+    
+    def load_from_file(self):
+        """Carga watchlist desde JSON"""
+        if not ENABLE_WATCHLIST_JSON:
+            return
         
-        # Últimas N velas
-        subset = df.tail(lookback).copy()
+        try:
+            with open(WATCHLIST_JSON, 'r') as f:
+                data = json.load(f)
+                self.watchlist = data.get('watchlist', {})
+            print(f"✅ Watchlist cargada: {len(self.watchlist)} monedas")
+        except FileNotFoundError:
+            print("ℹ️ Watchlist vacía (archivo no existe)")
+            self.watchlist = {}
+        except Exception as e:
+            print(f"❌ Error cargando watchlist: {e}")
+            self.watchlist = {}
+    
+    def save_to_file(self):
+        """Guarda watchlist a JSON"""
+        if not ENABLE_WATCHLIST_JSON:
+            return
         
-        # Crear bins de precio
-        min_price = subset['close'].min()
-        max_price = subset['close'].max()
-        
-        if min_price == max_price:
-            return {
-                'poc_current': float(min_price),
-                'poc_history': [float(min_price)],
-                'high_volume_nodes': [float(min_price)],
-                'low_volume_nodes': []
+        try:
+            data = {
+                'version': '1.0',
+                'last_updated': datetime.now(ARGENTINA_TZ).isoformat(),
+                'watchlist': self.watchlist
             }
+            
+            with open(WATCHLIST_JSON, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            print(f"✅ Watchlist guardada: {len(self.watchlist)} monedas")
+        except Exception as e:
+            print(f"❌ Error guardando watchlist: {e}")
+    
+    def calculate_triggers(self, analysis_data):
+        """
+        Calcula triggers de entrada para una moneda
         
-        # Crear niveles
-        bins = np.linspace(min_price, max_price, num_levels)
+        Args:
+            analysis_data: Dict con análisis completo
         
-        # Contar volumen en cada nivel
-        volume_per_level = {}
-        for i, price_level in enumerate(bins):
-            tolerance = (max_price - min_price) / num_levels / 2
-            # Velas que cerraron cerca de este nivel
-            mask = (subset['close'] &gt;= price_level - tolerance) &amp; \
-                   (subset['close'] &lt;= price_level + tolerance)
-            vol = subset.loc[mask, 'volume'].sum()
-            volume_per_level[price_level] = vol
+        Returns:
+            dict: Triggers calculados o None
+        """
+        analysis_5m = analysis_data['analysis_5m']
+        analysis_4h = analysis_data['analysis_4h']
+        sr_zones = analysis_data['sr_zones']
         
-        # Point of Control (mayor volumen)
-        poc = max(volume_per_level, key=volume_per_level.get)
-        max_volume = volume_per_level[poc]
-        min_volume = min(volume_per_level.values())
+        if not analysis_5m or not analysis_4h:
+            return None
         
-        # Nodos de alto/bajo volumen
-        high_volume_threshold = min_volume + (max_volume - min_volume) * 0.7
-        low_volume_threshold = min_volume + (max_volume - min_volume) * 0.3
+        direction = analysis_5m['direction']
+        current_price = analysis_5m['current_price']
+        velocity = analysis_5m['velocity']
+        acceleration = analysis_5m['acceleration']
         
-        high_volume_nodes = [price for price, vol in volume_per_level.items() if vol &gt; high_volume_threshold]
-        low_volume_nodes = [price for price, vol in volume_per_level.items() if vol &lt; low_volume_threshold]
+        # Target (resistencia/soporte más cercano)
+        target_price = None
+        target_distance_pct = None
+        
+        if sr_zones:
+            min_dist = 0.8 # Mínimo 0.8% de recorrido para que valga la pena
+            
+            if direction == 'BULLISH':
+                resistances = sorted([r for r in sr_zones['resistances'] if r &gt; current_price * (1 + min_dist/100)])
+                if resistances:
+                    target_price = resistances[0]
+                    target_distance_pct = ((target_price - current_price) / current_price) * 100
+            else:  # BEARISH
+                supports = sorted([s for s in sr_zones['supports'] if s &lt; current_price * (1 - min_dist/100)], reverse=True)
+                if supports:
+                    target_price = supports[0]
+                    target_distance_pct = ((current_price - target_price) / current_price) * 100
+        
+        # Si no hay target, usar proyección simple (3% para bulls, -3% para bears)
+        if not target_price:
+            if direction == 'BULLISH':
+                target_price = current_price * 1.03
+                target_distance_pct = 3.0
+            else:
+                target_price = current_price * 0.97
+                target_distance_pct = 3.0
+        
+        # Tiempo proyectado a target
+        tiempo_proyectado = calculate_time_to_target(
+            current_price, target_price, velocity.get('velocity_current', 0) if isinstance(velocity, dict) else velocity, 
+            acceleration.get('acceleration_current', 0) if isinstance(acceleration, dict) else acceleration
+        )
+        
+        # Risk/Reward (stop loss simple 2%)
+        stop_loss = current_price * 0.98 if direction == 'BULLISH' else current_price * 1.02
+        reward = abs(target_price - current_price)
+        risk = abs(current_price - stop_loss)
+        rr_ratio = reward / risk if risk &gt; 0 else 0
+        
+        # Validar viabilidad
+        if rr_ratio &lt; MIN_RR_RATIO:
+            return None  # R:R insuficiente
+        
+        if tiempo_proyectado and (tiempo_proyectado &lt; MIN_TIEMPO_PROYECTADO_MIN or 
+                                  tiempo_proyectado &gt; MAX_TIEMPO_PROYECTADO_MIN):
+            return None  # Timing fuera de rango
         
         return {
-            'poc_current': float(poc),
-            'poc_history': [float(poc)],
-            'high_volume_nodes': [float(p) for p in high_volume_nodes],
-            'low_volume_nodes': [float(p) for p in low_volume_nodes],
-            'profile_high': float(max(high_volume_nodes)) if high_volume_nodes else float(max_price),
-            'profile_low': float(min(high_volume_nodes)) if high_volume_nodes else float(min_price)
+            'trigger_adx': ADX_THRESHOLD,
+            'trigger_adx_acceleration': ADX_MIN_ACCELERATION,
+            'trigger_momentum_candles': MOMENTUM_CONSECUTIVE_CANDLES,
+            'trigger_volume_ratio': VOLUME_RATIO_MIN,
+            'target_price': target_price,
+            'target_distance_pct': target_distance_pct,
+            'stop_loss': stop_loss,
+            'tiempo_proyectado_min': tiempo_proyectado,
+            'rr_ratio': rr_ratio
         }
     
-    except Exception as e:
-        print(f"❌ Error calculate_volume_profile_with_memory: {e}")
-        return {
-            'poc_current': 0.0,
-            'poc_history': [],
-            'high_volume_nodes': [],
-            'low_volume_nodes': [],
-            'profile_high': 0.0,
-            'profile_low': 0.0
-        }
-
-def calculate_bollinger_bands(df, period=20, std_dev=2):
-    """
-    Calcula Bandas de Bollinger.
-    Returns dict with upper, middle, lower bands.
-    """
-    try:
-        close = df['close']
-        middle = close.rolling(window=period).mean()
-        std = close.rolling(window=period).std()
-        upper = middle + (std * std_dev)
-        lower = middle - (std * std_dev)
+    def add_to_watchlist(self, symbol, analysis_data):
+        """
+        Agrega moneda a watchlist
         
-        return {
-            'upper': upper.fillna(0).tolist(),
-            'middle': middle.fillna(0).tolist(),
-            'lower': lower.fillna(0).tolist()
+        Args:
+            symbol: Símbolo
+            analysis_data: Dict con análisis completo
+        
+        Returns:
+            bool: True si agregado, False si rechazado
+        """
+        # Verificar límite
+        if len(self.watchlist) &gt;= MAX_WATCHLIST_SIZE:
+            # Remover moneda con score más bajo
+            lowest_symbol = min(self.watchlist.keys(), 
+                               key=lambda s: _extract_score(self.watchlist[s].get('score', 0), 0))
+            lowest_score = _extract_score(self.watchlist[lowest_symbol].get('score', 0), 0)
+            
+            new_score = _extract_score(analysis_data['score_data'].get('score', 0), 0)
+            if new_score &gt; lowest_score:
+                del self.watchlist[lowest_symbol]
+                print(f"⚠️ Watchlist llena, removido {lowest_symbol} (score {lowest_score})")
+            else:
+                return False  # Score muy bajo
+        
+        # Calcular triggers
+        triggers = self.calculate_triggers(analysis_data)
+        
+        # LÓGICA HUNTER MODE: Si no hay triggers pero hay fuerza, guardar igual
+        status = 'MONITORING'
+        analysis_5m = analysis_data['analysis_5m']
+        adx_current = analysis_5m['adx']['adx_current']
+        dist_ema = analysis_5m.get('dist_ema_pct', 0)
+        
+        # Extraer estructura
+        structure = analysis_data.get('structure', {})
+        last_structure = structure.get('last_structure', 'N/A')
+
+        if not triggers:
+            if adx_current &gt; 25:
+                # Si está muy extendido (&gt;2%), esperar pullback
+                if dist_ema &gt; 2.0:
+                    status = 'WAITING_PULLBACK'
+                    print(f"🦅 HUNTER: {symbol} extendido ({dist_ema:.1f}%), esperando pullback. Estructura: {last_structure}")
+                else:
+                    status = 'HUNTING'
+                    adx_slope = analysis_5m['adx'].get('adx_slope', 0)
+                    trend_icon = "↗️" if adx_slope &gt; 0 else "↘️"
+                    print(f"🦅 HUNTER: {symbol} acechando (ADX {adx_current:.1f} {trend_icon}). Estructura: {last_structure}")
+                
+                # Crear triggers dummy o vacíos para permitir el guardado
+                triggers = {} 
+            else:
+                return False  # Triggers inviables y sin fuerza suficiente
+        
+        # Agregar a watchlist
+        final_score = _extract_score(analysis_data['score_data'].get('score', 0), 0)
+        self.watchlist[symbol] = {
+            'added_timestamp': datetime.now(ARGENTINA_TZ).isoformat(),
+            'last_check_timestamp': datetime.now(ARGENTINA_TZ).isoformat(),
+            'checks_without_trigger': 0,
+            'score': final_score,
+            'clasificacion': analysis_data['score_data'].get('clasificacion', 'REGULAR'),
+            'direction': analysis_data['analysis_5m']['direction'],
+            'triggers': triggers,
+            'analysis_snapshot': {
+                'adx_5m': analysis_data['analysis_5m'].get('adx', {}),
+                'adx_4h': analysis_data['analysis_4h'].get('adx', {}),
+                'momentum_age_5m': analysis_data['analysis_5m'].get('momentum', {}).get('consecutive_count', 0) if isinstance(analysis_data['analysis_5m'].get('momentum'), dict) else 0,
+                'emas_classification_15m': analysis_data['analysis_15m'].get('emas', {}).get('classification', 'CERCANAS') if analysis_data.get('analysis_15m') else None
+            },
+            'evolution': analysis_data.get('evolution', {}),
+            'structure': structure,
+            'status': status
         }
-    except Exception as e:
-        print(f"❌ Error calculate_bollinger_bands: {e}")
-        return {'upper': [], 'middle': [], 'lower': []}
-
-
-def calculate_atr(df, period=14):
-    """
-    Calcula el Average True Range (ATR).
+        
+        print(f"✅ Agregado a watchlist: {symbol} (Score: {final_score}) [{status}] | Estructura: {last_structure}")
+        return True
     
-    Args:
-        df: DataFrame con columnas 'high', 'low', 'close'
-        period: Período para el ATR (default 14)
+    def remove_from_watchlist(self, symbol, reason=""):
+        """Remueve moneda de watchlist"""
+        if symbol in self.watchlist:
+            del self.watchlist[symbol]
+            print(f"❌ Removido de watchlist: {symbol} ({reason})")
+    
+    def get_watchlist(self):
+        """Retorna watchlist ordenada por score"""
+        sorted_list = sorted(
+            self.watchlist.items(),
+            key=lambda x: x[1]['score'],
+            reverse=True
+        )
+        return sorted_list
+    
+    def update_watchlist_from_analysis(self, symbols_analyzed):
+        """
+        Actualiza watchlist con nuevos análisis
         
-    Returns:
-        float: Valor actual del ATR
-    """
-    try:
-        high = df['high']
-        low = df['low']
-        close = df['close']
+        Args:
+            symbols_analyzed: List de (symbol, analysis_data) tuples
+        """
+        added_count = 0
         
-        # Calculate True Range
-        tr1 = high - low
-        tr2 = abs(high - close.shift(1))
-        tr3 = abs(low - close.shift(1))
+        for symbol, analysis_data in symbols_analyzed:
+            if not analysis_data or not analysis_data.get('viable'):
+                continue
+            
+            # Si ya está en watchlist, actualizar score
+            if symbol in self.watchlist:
+                old_score = _extract_score(self.watchlist[symbol].get('score', 0), 0)
+                new_score = _extract_score(analysis_data['score_data'].get('score', 0), 0)
+                
+                # Si score bajó mucho (&gt;15 puntos), remover
+                if new_score &lt; old_score - 15:
+                    self.remove_from_watchlist(symbol, "score bajó significativamente")
+                else:
+                    # Actualizar score
+                    self.watchlist[symbol]['score'] = new_score
+            
+            # Si no está, agregar
+            else:
+                if self.add_to_watchlist(symbol, analysis_data):
+                    added_count += 1
         
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        print(f"📊 Watchlist actualizada: {len(self.watchlist)} monedas ({added_count} nuevas)")
+        self.save_to_file()
+    
+    def cleanup_stale_symbols(self, max_age_minutes=30, max_checks=20):
+        """
+        Remueve monedas que llevan mucho tiempo sin activar trigger
         
-        # Calculate ATR using rolling mean (Simple Moving Average of TR)
-        # Note: Wilder's smoothing is more standard for ATR, but SMA is often used too.
-        # Using Wilder's Smoothing to match standard TradingView ATR
-        atr = tr.ewm(alpha=1/period, adjust=False).mean()
+        Args:
+            max_age_minutes: Tiempo máximo en watchlist sin trigger (30min)
+            max_checks: Verificaciones máximas sin activar (20 checks)
         
-        return float(atr.iloc[-1]) if not pd.isna(atr.iloc[-1]) else 0.0
+        Returns:
+            int: Cantidad de monedas removidas
+        """
+        now = datetime.now(ARGENTINA_TZ)
+        to_remove = []
         
-    except Exception as e:
-        print(f"❌ Error calculate_atr: {e}")
-        return 0.0
+        for symbol, data in self.watchlist.items():
+            # Calcular tiempo en watchlist
+            added = datetime.fromisoformat(data['added_timestamp'])
+            age_minutes = (now - added).total_seconds() / 60
+            
+            # Calcular checks sin trigger
+            checks = data.get('checks_without_trigger', 0)
+            
+            # Remover si lleva mucho tiempo O muchos checks sin trigger
+            # EXCEPCIÓN HUNTER MODE: Si está acechando, dar más tiempo
+            status = data.get('status', 'MONITORING')
+            
+            limit_age = max_age_minutes
+            limit_checks = max_checks
+            
+            if status in ['HUNTING', 'WAITING_PULLBACK']:
+                limit_age = max_age_minutes * 4  # 2 horas en lugar de 30 min
+                limit_checks = max_checks * 4    # 80 checks en lugar de 20
+                
+            if age_minutes &gt; limit_age or checks &gt; limit_checks:
+                to_remove.append(symbol)
+                print(f"🗑️ Removiendo {symbol} de watchlist:")
+                print(f"   Tiempo: {age_minutes:.1f}min | Checks sin trigger: {checks}")
+        
+        for symbol in to_remove:
+            del self.watchlist[symbol]
+        
+        if to_remove:
+            print(f"✅ Limpieza watchlist: {len(to_remove)} monedas removidas")
+            self.save_to_file()
+        
+        return len(to_remove)
+    
+    def increment_check_counter(self, symbol):
+        """Incrementa contador de verificaciones sin trigger"""
+        if symbol in self.watchlist:
+            self.watchlist[symbol]['checks_without_trigger'] = \
+                self.watchlist[symbol].get('checks_without_trigger', 0) + 1
+            self.watchlist[symbol]['last_check_timestamp'] = \
+                datetime.now(ARGENTINA_TZ).isoformat()
+    
+    def reset_check_counter(self, symbol):
+        """Resetea contador cuando trigger se activa (casi)"""
+        if symbol in self.watchlist:
+            self.watchlist[symbol]['checks_without_trigger'] = 0
+    
+    def clear_watchlist(self):
+        """Limpia watchlist completa"""
+        self.watchlist = {}
+        self.save_to_file()
+        print("🗑️ Watchlist limpiada")
+
+
+# ============================================================================
+# INSTANCIA GLOBAL
+# ============================================================================
+
+watchlist_manager = WatchlistManager()
+
+
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 80)
+    print("BRAIN WATCHLIST - Validación")
+    print("=" * 80)
+    
+    # Test análisis y agregar a watchlist
+    test_symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+    
+    for symbol in test_symbols:
+        print(f"\nAnalizando {symbol}...")
+        analysis = analyze_coin_complete(symbol)
+        
+        if analysis and analysis['viable']:
+            print(f"✅ Viable (Score: {analysis['score_data']['score']})")
+            watchlist_manager.add_to_watchlist(symbol, analysis)
+        else:
+            print(f"❌ No viable")
+    
+    print("\n" + "-" * 80)
+    print("WATCHLIST ACTUAL:")
+    
+    watchlist = watchlist_manager.get_watchlist()
+    for symbol, data in watchlist:
+        print(f"  {symbol}: Score {data['score']} ({data['clasificacion']}) - {data['direction']}")
+        if data['triggers']:
+            print(f"    Target: ${data['triggers']['target_price']:.2f} ({data['triggers']['target_distance_pct']:.1f}%)")
+            print(f"    R:R: {data['triggers']['rr_ratio']:.2f}")
+    
+    print("\n" + "=" * 80)
+    print("✅ Brain Watchlist validado")
+    print("=" * 80)
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 16,231<br>
-    Generado: 2025-11-21 19:55:14
+    Total caracteres: 17,568<br>
+    Generado: 2025-11-21 19:59:56
   </div>
 </body>
 </html>
