@@ -15,646 +15,222 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-21 15:54:08</div>
+  <div class="meta">Última actualización: 2025-11-21 16:03:01</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-4️⃣ CUARTO: brain_executor.py (504 líneas)
-¿Por qué cuarto?
-
-Gestión de SALIDAS - crítico para rentabilidad
-5 señales de salida que pueden ser prematuras
-Sistema de trailing y breakeven
-
-Mejoras clave:
-
-Salidas adaptativas según profit
-Trailing stop dinámico
-Re-entrada inteligente
-
-
-📁 COMPARTIR ARCHIVOS
-Empecemos con brain_executor_entry.py
-Podrías compartirlo de estas formas:
-Opción A: Subir a GitHub Pages (como el reporte)
-Modulo: Brain_executor_entry.py
-"""
-🧠 HEMISFERIO IZQUIERDO - Entrada y Triggers
-TIME LADDER INTELLIGENCE SYSTEM
-Filosofía: Ver la película completa, no solo la foto
-"""
-
-from brain_intelligent import decide_intelligently
-from brain_config import ARGENTINA_TZ
-from datetime import datetime
-
-def check_trigger_activated_intelligent(symbol, watchlist_data):
-    """
-    Sistema de decisión con Time Ladder completo
-    Delegado al módulo brain_intelligent.py (Single Source of Truth)
-    """
-    print(f"   🧠 TIME LADDER: Verificando trigger para {symbol}...")
+ANÁLISIS PROFUNDO - ERRORES CRÍTICOS
+brain_executor.py (543 líneas)
+ERRORES FATALES:
+1. Race Condition en monitor_active_trades()
+python# LÍNEA ~190 - PELIGRO
+for symbol, trade_data in self.active_trades.items():  # ❌ Sin lock
+    # stop_loss_thread puede modificar self.active_trades aquí = CRASH
+FIX:
+pythonwith self.trades_lock:
+    trades_snapshot = list(self.active_trades.items())
+for symbol, trade_data in trades_snapshot:
+    # Ahora seguro
+2. db_manager no definido
+python# LÍNEA ~430 - Crasheará en producción
+db_manager.insert_trade(...)  # ❌ Nunca importado
+FIX:
+python# Agregar al inicio
+try:
+    from db_manager import db_manager
+except ImportError:
+    db_manager = None
     
-    try:
-        # Usar la inteligencia centralizada
-        decision = decide_intelligently(symbol)
-        
-        if decision['action'] == 'OPERAR':
-            print(f"🎯 TRIGGER ACTIVADO: {symbol}")
-            print(f"   Score: {decision['confluence_score']:.1f}/100 | Confianza: {decision['confidence']}")
-            print(f"   Razón: {decision['reason']}")
-            
-            # Mapear respuesta al formato esperado por brain_executor
-            return {
-                'activated': True,
-                'score': decision['confluence_score'],
-                'confidence': decision['confidence'],
-                'threshold_used': 65, # Referencia
-                'time_ladder': decision['context_summary'],
-                'session': 'UNKNOWN', # Se podría extraer si fuera necesario
-                'factors': decision.get('patterns_detected', []),
-                # Compatibilidad legacy para Sheets
-                'adx': _extract_legacy_metric(decision, 'adx'),
-                'momentum_age': 0, # No crítico para el log
-                'volume_ratio': _extract_legacy_metric(decision, 'volume_ratio')
-            }
-        else:
-            print(f"   ⏳ Esperando mejor setup: {symbol} ({decision['reason']})")
-            return None
-            
-    except Exception as e:
-        print(f"⚠️ Error en trigger inteligente para {symbol}: {e}")
-        return None
+# En uso:
+if db_manager:
+    db_manager.insert_trade(...)
+3. save_active_trades() no existe
+python# LÍNEA ~449
+self.save_active_trades()  # ❌ Método nunca definido
+FIX: Agregar método o eliminar llamada.
+4. watchlist_manager referencia incorrecta
+python# LÍNEA ~460
+if hasattr(self, 'watchlist_manager'):  # ❌ Nunca asignado a self
+    self.watchlist_manager.watchlist[symbol] = {...}
+FIX:
+python# Usar global directamente
+watchlist_manager.watchlist[symbol] = {...}
 
-def _extract_legacy_metric(decision, metric):
-    """Extrae métricas legacy del análisis completo si existen"""
+⚡ OPTIMIZACIONES INTELIGENTES
+1. Trailing Stop Inteligente (Actual es básico)
+Problema actual (Línea ~240):
+python# Solo verifica si new_stop &gt; old_stop
+# No considera retrocesos normales
+if new_stop &gt; trade_data['stop_loss']:
+    trade_data['stop_loss'] = new_stop
+MEJORA - Trailing Adaptativo:
+pythondef update_trailing_stop(self, trade_data, current_price, pnl_pct):
+    """Trailing adaptativo según momentum"""
+    
+    # Distancia variable según profit acumulado
+    if pnl_pct &gt; 5.0:
+        trailing_dist_pct = 1.0  # Ajustado (más profit = más cerca)
+    elif pnl_pct &gt; 3.0:
+        trailing_dist_pct = 1.5
+    else:
+        trailing_dist_pct = 2.0
+    
+    # Calcular nuevo stop
+    direction = trade_data['direction']
+    if direction == 'BULLISH':
+        new_stop = current_price * (1 - trailing_dist_pct/100)
+        # Validar que mejora posición
+        if new_stop &gt; trade_data['stop_loss']:
+            # Protección: No subir si retroceso &gt; 0.5%
+            last_max = trade_data['max_pnl_reached']
+            if pnl_pct &gt;= last_max - 0.5:
+                return new_stop
+    else:
+        new_stop = current_price * (1 + trailing_dist_pct/100)
+        if new_stop &lt; trade_data['stop_loss']:
+            last_max = trade_data['max_pnl_reached']
+            if pnl_pct &gt;= last_max - 0.5:
+                return new_stop
+    
+    return trade_data['stop_loss']  # No cambiar
+2. Exit Signals - Mejorar Divergencia
+Problema actual (Línea ~320):
+python# Slope sin normalizar por precio = inútil en rangos bajos
+price_slope = (prices[-1] - prices[-5]) / 5
+FIX:
+python# Normalizar por precio (hacer comparable)
+price_slope = ((prices[-1] - prices[-5]) / prices[-5]) * 100  # En %
+momentum_slope = ((ema[-1] - ema[-5]) / ema[-5]) * 100
+
+# Divergencia oculta REAL
+if direction == 'BULLISH':
+    if price_slope &gt; 0.5 and momentum_slope &lt; 0.2:  # Precio sube pero momentum flat
+        signals_active.append("Divergencia")
+3. Triggers Fallback Mejorado
+Problema actual (Línea ~130):
+python# Fallback fijo 2% SL / 4% TP sin considerar volatilidad
+sl_pct = 0.98 if direction == 'BULLISH' else 1.02
+MEJORA - ATR Fallback:
+python# Calcular ATR del activo
+atr_data = calculate_atr(ohlcv, period=14)
+atr_pct = (atr_data['atr_current'] / entry_price) * 100
+
+# SL dinámico basado en volatilidad
+sl_mult = max(2.0, min(3.0, atr_pct * 1.5))  # Entre 2x y 3x ATR
+tp_mult = sl_mult * 2  # R:R 2:1
+
+if direction == 'BULLISH':
+    sl_pct = 1 - (sl_mult / 100)
+    tp_pct = 1 + (tp_mult / 100)
+else:
+    sl_pct = 1 + (sl_mult / 100)
+    tp_pct = 1 - (tp_mult / 100)
+4. Smart Exit - Señal de Agotamiento ADX
+NUEVA SEÑAL (agregar a check_exit_signals):
+python# SEÑAL 6: ADX cayendo (fuerza tendencia debilitando)
+try:
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
+    adx_current = adx_data['adx_current']
+    adx_prev = adx_data['adx_memory'][-2] if len(adx_data['adx_memory']) &gt;= 2 else adx_current
+    
+    # Si ADX baja &gt;5 puntos = tendencia muriendo
+    if adx_current &lt; adx_prev - 5 and adx_current &lt; 30:
+        signals_active.append("ADX debilitando")
+except:
+    pass
+5. Re-entrada Inteligente (Línea ~460)
+Problema: Re-queue inmediato puede re-entrar en misma zona perdedora.
+MEJORA:
+python# Solo re-queue si salió con profit &gt; 0
+if "Salida inteligente" in reason and pnl_pct &gt; 0:
+    print(f"🔄 RE-QUEUE: {symbol} (salió con +{pnl_pct:.2f}%)")
+    watchlist_manager.watchlist[symbol] = {
+        'added_timestamp': now.isoformat(),
+        'status': 'WAITING_REENTRY',
+        'cooldown_until': (now + timedelta(minutes=5)).isoformat(),  # Esperar 5min
+        'last_exit_price': exit_price,
+        'reentry_threshold': exit_price * 1.005 if direction == 'BULLISH' else exit_price * 0.995
+    }
+
+📊 MEJORAS MATEMÁTICAS ADICIONALES
+6. Session Quality Multiplier (gestión salidas)
+pythondef get_session_quality_factor(self):
+    """Factor de calidad de sesión para ajustar required_signals"""
+    hour_utc = datetime.utcnow().hour
+    
+    # US Open/Prime = más confiable, menos señales para salir
+    if 13 &lt;= hour_utc &lt;= 20:
+        return 1.2  # Requiere +20% señales
+    # Asia/Late = menos confiable, salir más rápido
+    elif 0 &lt;= hour_utc &lt;= 6 or hour_utc &gt;= 22:
+        return 0.8  # Requiere -20% señales
+    else:
+        return 1.0
+
+# En monitor_active_trades, ajustar required_signals:
+required_signals = int(2 * self.get_session_quality_factor())
+7. Protección Buffett Mejorada
+Actual (Línea ~345): Solo verifica pérdida temprana.
+MEJORA - Detectar setup que falló:
+python# SEÑAL 5: Protección Buffett PLUS
+if duration_min &lt; BUFFETT_EARLY_EXIT_TIME_MIN:
+    # Verificar si estructura rompió
+    sr_zones = trade_data.get('sr_zones', {})
+    if direction == 'BULLISH' and sr_zones:
+        support = sr_zones.get('nearest_support', 0)
+        if current_price &lt; support:
+            signals_active.append("Buffett (soporte roto)")
+    
+    # Verificar pérdida
+    if pnl_pct &lt; -BUFFETT_EARLY_EXIT_LOSS_PCT:
+        signals_active.append("Buffett (setup falló)")
+
+brain_executor_entry.py (61 líneas)
+ERROR:
+Compatibilidad legacy falla silenciosamente
+python# LÍNEA ~57 - Devuelve 0 si no existe, Sheets tendrá datos falsos
+return 0
+FIX:
+pythondef _extract_legacy_metric(decision, metric):
+    """Extrae métricas con fallback inteligente"""
     try:
         full = decision.get('full_analysis', {})
         ladder = full.get('ladder_data', {})
         
         if metric == 'adx':
-            return ladder.get('5M', {}).get('adx', {}).get('adx_current', 0)
+            adx = ladder.get('5M', {}).get('adx', {}).get('adx_current')
+            return adx if adx else None  # None = dato no disponible
         elif metric == 'volume_ratio':
-            return ladder.get('5M', {}).get('volume_ratio', 0)
+            vol = ladder.get('5M', {}).get('volume_ratio')
+            return vol if vol else None
     except:
         pass
-    return 0
+    return None  # Explícito: dato no disponible
 
+✅ RESUMEN PRIORIZADO
+CRÍTICO (Arreglar YA):
 
+Race condition monitor_active_trades() → Wrap con lock
+db_manager undefined → Importar o manejar
+save_active_trades() no existe → Definir o eliminar
+self.watchlist_manager incorrecto → Usar global
 
-Modulo: brain_executor.py
-"""
-BRAIN EXECUTOR - Bot Phase 4.0
-Ejecución inteligente: monitoreo, entrada, gestión, salida
-"""
-
-import time
-import threading
-from datetime import datetime, timedelta
-from exchange_connection import fetch_ohlcv
-from brain_config import (
-    CAPITAL_INICIAL, SIMULATE_LEVERAGE, MAX_TRADES_SIMULTANEOUS,
-    ADX_THRESHOLD, ADX_MIN_ACCELERATION, MOMENTUM_CONSECUTIVE_CANDLES,
-    VOLUME_RATIO_MIN, ENABLE_BREAKEVEN_PROTECTION, ENABLE_TRAILING_STOP,
-    ENABLE_SMART_EXIT, BREAKEVEN_PROFIT_TRIGGER_PCT,
-    DECELERATION_THRESHOLD, VOLUME_DECLINE_THRESHOLD,
-    CRITICAL_ZONE_DISTANCE_PCT, BUFFETT_EARLY_EXIT_TIME_MIN,
-    BUFFETT_EARLY_EXIT_LOSS_PCT, ARGENTINA_TZ
-)
-from brain_analyzer import calculate_adx, calculate_momentum_color
-from brain_calculator import calculate_adx_with_memory, calculate_momentum_with_memory
-from brain_calculator import calculate_velocity, calculate_acceleration, calculate_volume_profile_with_memory, detect_price_structure
-from brain_watchlist import watchlist_manager
-from sheets_manager import sheets_manager
-from telegram_notifications import notify_entry, notify_exit, notify_breakeven
-
-# 🧠 HEMISFERIO IZQUIERDO: Entrada inteligente con bypass de explosiones 1M
-from brain_executor_entry import check_trigger_activated_intelligent
-
-import pandas as pd
-import json
-
-# ============================================================================
-# CLASE TRADE MANAGER
-# ============================================================================
-
-class TradeManager:
-    def __init__(self):
-        self.active_trades = {}
-        self.capital_available = CAPITAL_INICIAL
-        self.capital_per_trade = CAPITAL_INICIAL / MAX_TRADES_SIMULTANEOUS
-        self.trade_history = []
-        self.breakeven_exited_symbols = {}  # Monedas que salieron en breakeven para re-analizar
-        self.trades_lock = threading.Lock()  # Lock para thread-safety
-        self.stop_loss_thread = None  # Thread de monitoreo stop loss
-    
-    def can_open_trade(self):
-        """Verifica si puede abrir nuevo trade"""
-        return len(self.active_trades) &lt; MAX_TRADES_SIMULTANEOUS
-    
-    def check_trigger_activated(self, symbol, watchlist_data):
-        """
-        Verifica condiciones de ejecución delegando al Hemisferio Izquierdo
-        (brain_executor_entry.py) para incluir lógica de bypass inteligente.
-        """
-        return check_trigger_activated_intelligent(symbol, watchlist_data)
-    
-    def enter_trade(self, symbol, watchlist_data):
-        """
-        Entra a trade
-        
-        Args:
-            symbol: Símbolo
-            watchlist_data: Dict con datos de watchlist
-        """
-        if not self.can_open_trade():
-            print(f"⚠️ Máximo trades alcanzado ({MAX_TRADES_SIMULTANEOUS})")
-            return
-        
-        # Fetch precio actual
-        ohlcv = fetch_ohlcv(symbol, '5m', 10)
-        if not ohlcv:
-            return
-        
-        entry_price = ohlcv[-1][4]  # Close
-        direction = watchlist_data['direction']
-        triggers = watchlist_data.get('triggers', {})
-        
-        # FIX: Si triggers está vacío (HUNTING mode) o falta stop_loss, calcular on-the-fly
-        if not triggers or 'stop_loss' not in triggers:
-            print(f"⚠️ Triggers no encontrados para {symbol} (HUNTING mode). Calculando on-the-fly...")
-            
-            # Reconstruir analysis_data mínimo para calcular triggers
-            analysis_data = {
-                'analysis_5m': watchlist_data.get('analysis_5m'),
-                'analysis_4h': watchlist_data.get('analysis_4h'),
-                'sr_zones': watchlist_data.get('sr_zones')
-            }
-            
-            # Intentar calcular triggers oficiales
-            calculated = watchlist_manager.calculate_triggers(analysis_data)
-            
-            if calculated:
-                triggers = calculated
-                print(f"✅ Triggers calculados: Target ${triggers['target_price']:.4f} | SL ${triggers['stop_loss']:.4f}")
-            else:
-                # Fallback de emergencia (2% SL, 4% TP)
-                print(f"⚠️ No se pudieron calcular triggers (R:R insuficiente?). Usando DEFAULT.")
-                sl_pct = 0.98 if direction == 'BULLISH' else 1.02
-                tp_pct = 1.04 if direction == 'BULLISH' else 0.96
-                
-                triggers = {
-                    'stop_loss': entry_price * sl_pct,
-                    'target_price': entry_price * tp_pct,
-                    'rr_ratio': 2.0
-                }
-        
-        stop_loss = triggers['stop_loss']
-        
-        # Crear trade
-        now = datetime.now(ARGENTINA_TZ)
-        
-        trade_data = {
-            'symbol': symbol,
-            'direction': direction,
-            'entry_price': entry_price,
-            'entry_time': now,
-            'stop_loss': stop_loss,
-            'target_price': triggers['target_price'],
-            'score': watchlist_data['score'],
-            'clasificacion': watchlist_data['clasificacion'],
-            'capital': self.capital_per_trade,
-            'leverage': SIMULATE_LEVERAGE,
-            'breakeven_activated': False,
-            'trailing_activated': False,
-            'max_pnl_reached': 0.0,
-            'min_pnl_reached': 0.0
-        }
-        
-        # Thread-safe: Agregar trade a diccionario activo
-        with self.trades_lock:
-            self.active_trades[symbol] = trade_data
-        
-        # Remover de watchlist
-        watchlist_manager.remove_from_watchlist(symbol, "trade abierto")
-        
-        # Notificar
-        print(f"\n{'='*80}")
-        print(f"✅ ENTRADA: {symbol} {direction}")
-        print(f"   Precio: ${entry_price:.8f}")
-        print(f"   Stop: ${stop_loss:.8f}")
-        print(f"   Target: ${triggers['target_price']:.8f}")
-        print(f"   Score: {watchlist_data['score']} ({watchlist_data['clasificacion']})")
-        print(f"{'='*80}\n")
-        
-        # Sheets
-        try:
-            sheets_manager.write_trade_entry(
-                symbol, direction, entry_price,
-                stop_loss, triggers['target_price'], watchlist_data['score'],
-                triggers['rr_ratio']
-            )
-        except Exception as e:
-            print(f"⚠️ Error escribiendo entrada en Sheets: {e}")
-        
-        # Telegram
-        try:
-            notify_entry(symbol, direction, entry_price, stop_loss, watchlist_data['score'])
-        except Exception as e:
-            print(f"⚠️ Error enviando notificación Telegram: {e}")
-        
-        # Guardar trades en archivo para monitor externo
-        try:
-            with open('active_trades.json', 'w') as f:
-                # Convertir datetime a string
-                trades_serializable = {}
-                for sym, data in self.active_trades.items():
-                    trades_serializable[sym] = {
-                        'entry_price': data['entry_price'],
-                        'stop_loss': data['stop_loss'],
-                        'direction': data['direction'],
-                        'entry_time': data['entry_time'].isoformat(),
-                        'breakeven_activated': data['breakeven_activated']
-                    }
-                json.dump(trades_serializable, f)
-        except Exception as e:
-            print(f"⚠️ Error guardando active_trades.json: {e}")
-    
-    def monitor_active_trades(self):
-        """Monitorea trades activos"""
-        if not self.active_trades:
-            return
-
-        try:
-            now = datetime.now(ARGENTINA_TZ)
-            symbols_to_close = []
-            
-            for symbol, trade_data in self.active_trades.items():
-                # Fetch precio actual
-                ohlcv = fetch_ohlcv(symbol, '5m', 50)
-                if not ohlcv:
-                    continue
-                
-                current_price = ohlcv[-1][4]
-                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                
-                # Calcular PnL
-                entry_price = trade_data['entry_price']
-                direction = trade_data['direction']
-                
-                if direction == 'BULLISH':
-                    pnl_pct = ((current_price - entry_price) / entry_price) * 100
-                else:
-                    pnl_pct = ((entry_price - current_price) / entry_price) * 100
-                
-                # Actualizar max/min PnL
-                if pnl_pct &gt; trade_data['max_pnl_reached']:
-                    trade_data['max_pnl_reached'] = pnl_pct
-                if pnl_pct &lt; trade_data['min_pnl_reached']:
-                    trade_data['min_pnl_reached'] = pnl_pct
-                
-                duration_min = (now - trade_data['entry_time']).total_seconds() / 60
-                
-                # GESTIÓN 1: Breakeven
-                if ENABLE_BREAKEVEN_PROTECTION and not trade_data['breakeven_activated']:
-                    if pnl_pct &gt;= BREAKEVEN_PROFIT_TRIGGER_PCT:
-                        trade_data['stop_loss'] = entry_price
-                        trade_data['breakeven_activated'] = True
-                        print(f"🛡️ BREAKEVEN: {symbol} (PnL: +{pnl_pct:.2f}%)")
-                        notify_breakeven(symbol, pnl_pct)
-                
-                # GESTIÓN 1.5: Trailing Stop (Stop Loss Inteligente)
-                if ENABLE_TRAILING_STOP and pnl_pct &gt; 3.0:  # Activar después de 3% de ganancia
-                    # Distancia de trailing: 1.5%
-                    trailing_dist_pct = 1.5
-                    
-                    if direction == 'BULLISH':
-                        new_stop = current_price * (1 - trailing_dist_pct/100)
-                        if new_stop &gt; trade_data['stop_loss']:
-                            trade_data['stop_loss'] = new_stop
-                            trade_data['trailing_activated'] = True
-                            print(f"🪜 TRAILING STOP: {symbol} subió a ${new_stop:.4f} (PnL: +{pnl_pct:.2f}%)")
-                    else:
-                        new_stop = current_price * (1 + trailing_dist_pct/100)
-                        if new_stop &lt; trade_data['stop_loss']:
-                            trade_data['stop_loss'] = new_stop
-                            trade_data['trailing_activated'] = True
-                            print(f"🪜 TRAILING STOP: {symbol} bajó a ${new_stop:.4f} (PnL: +{pnl_pct:.2f}%)")
-                
-                # GESTIÓN 2: Salida inteligente (Adaptive Sensitivity)
-                if ENABLE_SMART_EXIT:
-                    exit_signals = self.check_exit_signals(df, trade_data, duration_min)
-                    
-                    # Phase 4.1: Adaptive Logic
-                    required_signals = 2 # Default
-                    
-                    if pnl_pct &gt; 1.0:
-                        required_signals = 1 # Protect profits: Exit faster if winning
-                    elif pnl_pct &lt; -0.5:
-                        required_signals = 3 # Give room: Exit slower if losing (unless SL hit)
-                    
-                    if exit_signals['count'] &gt;= required_signals:
-                        reason = f"Salida inteligente (Req:{required_signals}): {', '.join(exit_signals['active'])}"
-                        symbols_to_close.append((symbol, reason))
-                        continue
-                
-                # Monitoreo log
-                print(f"📊 {symbol}: ${current_price:.8f} | PnL: {pnl_pct:+.2f}% | {duration_min:.1f}min")
-                
-                # Sheets
-                adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
-                adx = adx_data['adx_current']
-                
-                sheets_manager.write_monitoreo(
-                    symbol, current_price, pnl_pct, duration_min,
-                    trade_data['breakeven_activated'], current_price
-                )
-            
-            # Cerrar trades marcados
-            for symbol, reason in symbols_to_close:
-                self.close_trade(symbol, reason)
-        except Exception as e:
-            print(f"❌ ERROR MONITOR: {e}")
-            # NO crashear, continuar
-            return
-    
-    def check_exit_signals(self, df, trade_data, duration_min):
-        """
-        Verifica 5 señales de salida inteligente
-        
-        Returns:
-            dict: {'count': int, 'active': [list]}
-        """
-        signals_active = []
-        
-        # SEÑAL 1: Desaceleración (velas más chicas)
-        try:
-            ranges = (df['high'] - df['low']).values
-            avg_range_10 = ranges[-10:].mean()
-            avg_range_3 = ranges[-3:].mean()
-            
-            if avg_range_3 &lt; avg_range_10 * DECELERATION_THRESHOLD:
-                signals_active.append("Desaceleración")
-        except:
-            pass
-        
-        # SEÑAL 2: Volumen bajando
-        try:
-            volumes = df['volume'].values
-            avg_vol_10 = volumes[-10:].mean()
-            avg_vol_3 = volumes[-3:].mean()
-            
-            if avg_vol_3 &lt; avg_vol_10 * VOLUME_DECLINE_THRESHOLD:
-                signals_active.append("Volumen bajo")
-        except:
-            pass
-        
-        # SEÑAL 3: Divergencia oculta (precio sube pero momentum flat)
-        try:
-            prices = df['close'].values
-            price_slope = (prices[-1] - prices[-5]) / 5
-            
-            # Calcular momentum simplificado
-            ema = df['close'].ewm(span=10, adjust=False).mean().values
-            momentum_slope = (ema[-1] - ema[-5]) / 5
-            
-            direction = trade_data['direction']
-            if direction == 'BULLISH' and price_slope &gt; 0 and abs(momentum_slope) &lt; 0.001:
-                signals_active.append("Divergencia")
-            elif direction == 'BEARISH' and price_slope &lt; 0 and abs(momentum_slope) &lt; 0.001:
-                signals_active.append("Divergencia")
-        except:
-            pass
-        
-        # SEÑAL 4: Llegada zona crítica (cerca de target)
-        try:
-            current_price = df['close'].iloc[-1]
-            target = trade_data['target_price']
-            distance_pct = abs((target - current_price) / current_price * 100)
-            
-            if distance_pct &lt; CRITICAL_ZONE_DISTANCE_PCT:
-                signals_active.append("Zona crítica")
-        except:
-            pass
-        
-        # SEÑAL 5: Protección Buffett (pérdida temprana)
-        if duration_min &lt; BUFFETT_EARLY_EXIT_TIME_MIN:
-            current_price = df['close'].iloc[-1]
-            entry_price = trade_data['entry_price']
-            direction = trade_data['direction']
-            
-            if direction == 'BULLISH':
-                pnl_pct = ((current_price - entry_price) / entry_price) * 100
-            else:
-                pnl_pct = ((entry_price - current_price) / entry_price) * 100
-            
-            if pnl_pct &lt; -BUFFETT_EARLY_EXIT_LOSS_PCT:
-                signals_active.append("Buffett (setup falló)")
-        
-        return {
-            'count': len(signals_active),
-            'active': signals_active
-        }
-    
-    def close_trade(self, symbol, reason):
-        """Cierra trade y registra resultado"""
-        # Thread-safe: Verificar y extraer trade
-        with self.trades_lock:
-            if symbol not in self.active_trades:
-                return
-            
-            trade_data = self.active_trades[symbol]
-        
-        # Fetch precio actual
-        ohlcv = fetch_ohlcv(symbol, '5m', 10)
-        exit_price = ohlcv[-1][4] if ohlcv else trade_data['entry_price']
-        
-        # Calcular PnL final
-        entry_price = trade_data['entry_price']
-        direction = trade_data['direction']
-        
-        if direction == 'BULLISH':
-            pnl_pct = ((exit_price - entry_price) / entry_price) * 100
-        else:
-            pnl_pct = ((entry_price - exit_price) / entry_price) * 100
-        
-        pnl_usd = (self.capital_per_trade * pnl_pct / 100) * SIMULATE_LEVERAGE
-        
-        # Duración
-        now = datetime.now(ARGENTINA_TZ)
-        duration_min = (now - trade_data['entry_time']).total_seconds() / 60
-        
-        # Log
-        emoji = "✅" if pnl_pct &gt; 0 else "❌"
-        print(f"\n{'='*80}")
-        print(f"{emoji} SALIDA: {symbol}")
-        print(f"   PnL: {pnl_pct:+.2f}% | ${pnl_usd:+.2f}")
-        print(f"   Duración: {duration_min:.1f} min")
-        print(f"   Razón: {reason}")
-        print(f"{'='*80}\n")
-        
-        # Sheets
-        sheets_manager.write_trade_exit(
-            symbol, exit_price, pnl_pct, pnl_usd,
-            duration_min, reason
-        )
-        
-        # Telegram
-        notify_exit(symbol, pnl_pct, pnl_usd, duration_min, reason)
-        
-        # Thread-safe: Remover de activos y guardar en historial
-        with self.trades_lock:
-            # Remover de activos
-            del self.active_trades[symbol]
-            
-            # Guardar en historial
-            trade_data['exit_price'] = exit_price
-            trade_data['exit_time'] = now
-            trade_data['pnl_pct'] = pnl_pct
-            trade_data['pnl_usd'] = pnl_usd
-            trade_data['duration_min'] = duration_min
-            trade_data['exit_reason'] = reason
-            self.trade_history.append(trade_data)
-
-            # Guardar en DB (SQLite) para reportes
-            try:
-                db_manager.insert_trade(
-                    entry_time=trade_data['entry_time'].strftime("%Y-%m-%d %H:%M:%S"),
-                    exit_time=now.strftime("%Y-%m-%d %H:%M:%S"),
-                    symbol=symbol,
-                    direction=trade_data['direction'],
-                    entry_price=trade_data['entry_price'],
-                    exit_price=exit_price,
-                    pnl_pct=pnl_pct,
-                    pnl_usd=pnl_usd,
-                    duration_min=duration_min,
-                    exit_reason=reason,
-                    score=trade_data.get('score', 0)
-                )
-                print(f"💾 Trade guardado en DB: {symbol}")
-            except Exception as e:
-                print(f"❌ Error guardando trade en DB: {e}")
-
-            # Guardar en JSON
-            self.save_active_trades()
-
-            # --- LÓGICA DE RE-ENTRADA (MEMORIA) ---
-            if "Salida inteligente" in reason:
-                print(f"🔄 RE-QUEUE: {symbol} vuelve a watchlist (WAITING_REENTRY) para buscar continuación.")
-                if hasattr(self, 'watchlist_manager'):
-                    self.watchlist_manager.watchlist[symbol] = {
-                        'added_timestamp': now.isoformat(),
-                        'last_check_timestamp': now.isoformat(),
-                        'checks_without_trigger': 0,
-                        'score': trade_data.get('score', 70),
-                        'clasificacion': 'REENTRY_CANDIDATE',
-                        'direction': direction,
-                        'triggers': {},
-                        'analysis_snapshot': {},
-                        'evolution': {},
-                        'structure': {'last_structure': 'Re-entry'},
-                        'status': 'WAITING_REENTRY',
-                        'reentry_count': 1
-                    }
-    
-    def monitor_stop_loss_thread(self):
-        """Thread que verifica stop loss cada 2 segundos"""
-        while True:
-            if not self.active_trades:
-                time.sleep(2)
-                continue
-            
-            # Thread-safe: Copiar lista de trades activos
-            with self.trades_lock:
-                trades_snapshot = list(self.active_trades.items())
-            
-            for symbol, trade_data in trades_snapshot:
-                # Fetch precio actual (solo último dato)
-                ohlcv = fetch_ohlcv(symbol, '5m', 2)
-                if not ohlcv:
-                    continue
-                
-                current_price = ohlcv[-1][4]
-                direction = trade_data['direction']
-                
-                # Verificar stop loss
-                if (direction == 'BULLISH' and current_price &lt;= trade_data['stop_loss']) or \
-                   (direction == 'BEARISH' and current_price &gt;= trade_data['stop_loss']):
-                    print(f"🚨 STOP LOSS ACTIVADO: {symbol} (${current_price:.8f})")
-                    self.close_trade(symbol, "Stop loss")
-            
-            time.sleep(2)
-    
-    def start_stop_loss_monitor(self):
-        """Inicia thread de monitoreo stop loss"""
-        if not self.stop_loss_thread or not self.stop_loss_thread.is_alive():
-            self.stop_loss_thread = threading.Thread(target=self.monitor_stop_loss_thread, daemon=True)
-            self.stop_loss_thread.start()
-            print("✅ Thread stop loss iniciado (verificación cada 2s)")
-    
-    def reanalyze_breakeven_exits(self):
-        """Re-analiza monedas que salieron en breakeven"""
-        if not self.breakeven_exited_symbols:
-            return
-        
-        now = datetime.now(ARGENTINA_TZ)
-        symbols_to_remove = []
-        
-        for symbol, exit_time in self.breakeven_exited_symbols.items():
-            # Solo re-analizar después de 5 minutos
-            if (now - exit_time).total_seconds() &lt; 300:
-                continue
-            
-            print(f"🔄 Re-analizando {symbol} (salió en breakeven)...")
-            
-            from brain_analyzer import analyze_coin_complete
-            analysis = analyze_coin_complete(symbol)
-            
-            if analysis and analysis['viable']:
-                print(f"✅ {symbol} sigue viable - agregando a watchlist")
-                watchlist_manager.add_to_watchlist(symbol, analysis)
-            else:
-                print(f"❌ {symbol} ya no viable")
-            
-            symbols_to_remove.append(symbol)
-        
-        # Limpiar procesados
-        for symbol in symbols_to_remove:
-            del self.breakeven_exited_symbols[symbol]
-
-
-# ============================================================================
-# INSTANCIA GLOBAL
-# ============================================================================
-
-trade_manager = TradeManager()
-
-
-# ============================================================================
-# VALIDACIÓN
-# ============================================================================
-
-if __name__ == "__main__":
-    print("=" * 80)
-    print("BRAIN EXECUTOR - Validación")
-    print("=" * 80)
-    print(f"Capital: ${CAPITAL_INICIAL}")
-    print(f"Max trades: {MAX_TRADES_SIMULTANEOUS}")
-    print(f"Capital por trade: ${trade_manager.capital_per_trade:.2f}")
-    print("-" * 80)
-    print(f"Breakeven: {'✅' if ENABLE_BREAKEVEN_PROTECTION else '❌'}")
-    print(f"Trailing: {'✅' if ENABLE_TRAILING_STOP else '❌'}")
-    print(f"Smart Exit: {'✅' if ENABLE_SMART_EXIT else '❌'}")
-    print("=" * 80)
-
-
-
+OPTIMIZACIONES INMEDIATAS:
+5. Trailing stop adaptativo
+6. Divergencia normalizada
+7. Fallback triggers con ATR
+8. Señal ADX debilitando
+MEJORAS AVANZADAS:
+9. Session quality multiplier
+10. Re-entrada con cooldown
+11. Buffett con estructura
+Todo bajo filosofía Time Ladder: contexto &gt; reglas rígidas 🎯
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 25,510<br>
-    Generado: 2025-11-21 15:54:08
+    Total caracteres: 7,467<br>
+    Generado: 2025-11-21 16:03:01
   </div>
 </body>
 </html>
