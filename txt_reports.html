@@ -15,474 +15,297 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-21 19:34:52</div>
+  <div class="meta">Última actualización: 2025-11-21 19:41:40</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
- ANÁLISIS DE EVOLUCIÓN (TIME LADDER / ROADMAP)
-    Analiza velas de 1M para detectar tendencias explosivas en tiempo real.
-    Permite 'bypassear' filtros estrictos si la moneda está explotando ahora mismo.
+"""
+================================================================================
+BRAIN INTELLIGENT 2.0 - PATTERN INTELLIGENCE ORCHESTRATOR
+================================================================================
+
+Filosofía: Matemática Real de Patrones + Time Ladder
+No alucinaciones - Solo estructuras probadas y física de mercado
+"""
+
+import numpy as np
+import pandas as pd
+from datetime import datetime
+from brain_analyzer import (
+    analyze_1d, analyze_4h, analyze_1h, analyze_15m, analyze_5m,
+    check_btc_alignment
+)
+from brain_config import *
+from brain_pattern_intelligence import MarketPatternEngine
+
+# Instancia global del motor de patrones
+pattern_engine = MarketPatternEngine()
+
+def decide_intelligently(symbol):
     """
-    try:
-        # Buscar 30 velas de 1M (media hora de evolución)
-        ohlcv = fetch_ohlcv(symbol, '1m', 30)
-        if not ohlcv or len(ohlcv) &lt; 15:
-            return {'is_explosive': False, 'score': 0, 'reason': 'Sin datos 1M'}
-
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        
-        # 1. Análisis de ADX en 1M (Velocidad de tendencia)
-        adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
-        adx_current = adx_data['adx_current']
-        adx_history = adx_data['adx_history']
-        
-        # 2. Análisis de Precio (Escalera de precios)
-        closes = df['close'].values
-        price_velocity = calculate_velocity(df, lookback=5)
-        
-        # DETECCIÓN DE EXPLOSIÓN
-        is_explosive = False
-        score = 0
-        reason = []
-
-        # Criterio A: ADX Disparándose (Roadmap de fuerza)
-        # Si ADX subió más de 5 puntos en las últimas 5 velas 1M
-        if len(adx_history) &gt;= 5:
-            adx_change = adx_history[-1] - adx_history[0]
-            if adx_change &gt; 3.0 and adx_current &gt; 20:
-                score += 40
-                reason.append(f"ADX 1M disparándose (+{adx_change:.1f})")
-                if adx_current &gt; 25:
-                    is_explosive = True
-
-        # Criterio B: Escalera de Precios (ZigZag alcista agresivo)
-        # Verificar si las últimas 3 velas son verdes y con cuerpos crecientes o fuertes
-        last_3_closes = closes[-3:]
-        last_3_opens = df['open'].values[-3:]
-        is_green_ladder = all(c &gt; o for c, o in zip(last_3_closes, last_3_opens))
-        
-        if is_green_ladder and price_velocity['velocity_current'] &gt; 0:
-            score += 30
-            reason.append("Escalera de precios 1M alcista")
-            if price_velocity['trend'] == 'acelerando':
-                is_explosive = True
-                score += 20
-
-        # Criterio C: Volumen Climático
-        volumes = df['volume'].values
-        vol_avg = volumes[:-1].mean()
-        if volumes[-1] &gt; vol_avg * 2:
-            score += 20
-            reason.append("Volumen 1M climático")
-
-        # Decisión final de explosividad
-        if score &gt;= 50:
-            is_explosive = True
-        
-        return {
-            'is_explosive': is_explosive,
-            'score': score,
-            'adx_1m': adx_current,
-            'reason': ", ".join(reason),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        print(f"⚠️ Error en analyze_trend_evolution: {e}")
-        return {'is_explosive': False, 'score': 0, 'reason': 'Error'}
-
-def analyze_coin_complete(symbol):
+    Punto de entrada principal para decisión inteligente.
+    Reemplaza la lógica anterior con el Orquestador de Patrones.
     """
-    Análisis completo multi-timeframe para un símbolo.
-    Ejecuta 5 análisis en cascada: 1D → 4H → 1H → 15M → 5M
-    
-    Returns:
-        dict: Análisis completo con viabilidad y scores
+    return orchestrate_intelligence(symbol)
+
+def orchestrate_intelligence(symbol):
     """
-    try:
-        # Análisis multi-timeframe en cascada
-        analysis_1d = analyze_1d(symbol) if ENABLE_ANALYSIS_1D else None
-        
-        # 4H (contexto dominante)
-        analysis_4h = analyze_4h(symbol)
-        if not analysis_4h:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'SIN_DATOS'},
-                'analysis_4h': None,
-                'analysis_1h': None,
-                'analysis_15m': None,
-                'analysis_5m': None,
-                'sr_zones': None
-            }
-        
-        # 1H (confirmación)
-        analysis_1h = analyze_1h(symbol)
-        if not analysis_1h:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'CONFIRMACION_FALLO'},
-                'analysis_4h': analysis_4h,
-                'analysis_1h': None,
-                'analysis_15m': None,
-                'analysis_5m': None,
-                'sr_zones': None
-            }
-        
-        # --- NUEVO: ANÁLISIS DE EVOLUCIÓN (TIME LADDER) ---
-        evolution = analyze_trend_evolution(symbol)
-        print(f"      🚀 EVOLUCIÓN 1M | {symbol} | Explosivo: {evolution['is_explosive']} | Score: {evolution['score']} | Razón: {evolution['reason']}")
-        
-        # 15M (timing)
-        analysis_15m = analyze_15m(symbol)
-        
-        # LÓGICA DE BYPASS: Si es explosivo Y 4H es BULLISH, ignoramos el rechazo de 15M
-        bypass_15m = False
-        if not analysis_15m and evolution['is_explosive'] and analysis_4h.get('direction') == 'BULLISH':
-            print(f"      ⚠️ BYPASS ACTIVADO: Moneda explosiva en 1M y 4H Bullish. Ignorando filtros estrictos de 15M.")
-            bypass_15m = True
-            # Forzamos un análisis 15M "falso" pero válido para continuar, o re-ejecutamos con tolerancia
-            # Para simplificar, si falla 15M pero es explosiva, asumimos que el timing es AHORA.
-            # Creamos un objeto dummy o intentamos obtener datos sin filtrar.
-            # Mejor estrategia: Si analyze_15m retorna None, lo construimos manualmente con fuerza STRONG.
-            ohlcv_15m = fetch_ohlcv(symbol, '15m', 50)
-            if ohlcv_15m:
-                df_15 = pd.DataFrame(ohlcv_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                adx_data_15 = calculate_adx_with_memory(df_15)
-                analysis_15m = {
-                    'direction': 'BULLISH', # Asumimos bullish por la explosión
-                    'strength': 'STRONG',
-                    'score_15m': 20, # Score base
-                    'current_price': float(df_15['close'].iloc[-1]),
-                    'adx': adx_data_15,
-                    'context': "15M FORZADO POR EVOLUCIÓN EXPLOSIVA",
-                    'timestamp': datetime.now().isoformat()
-                }
-
-        # --- NUEVO: ESTRUCTURA DE MERCADO (ZIGZAG) ---
-        structure_data = {'last_structure': 'N/A'}
-        if analysis_15m:
-            # Re-fetch si es necesario o usar df existente si pudiéramos, pero aquí fetch es seguro
-            ohlcv_15m_struct = fetch_ohlcv(symbol, '15m', 100)
-            if ohlcv_15m_struct:
-                df_15_struct = pd.DataFrame(ohlcv_15m_struct, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                zigzag_res = calculate_zigzag(df_15_struct, percent=2.0) # 2% para estructura fina
-                structure_data = {
-                    'last_structure': zigzag_res['last_structure'],
-                    'pivot_types': zigzag_res['pivot_types'][-5:] if zigzag_res['pivot_types'] else []
-                }
-
-        if not analysis_15m and not bypass_15m:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'TIMING_FALLO'},
-                'analysis_4h': analysis_4h,
-                'analysis_1h': analysis_1h,
-                'analysis_15m': None,
-                'analysis_5m': None,
-                'sr_zones': None,
-                'evolution': evolution,
-                'structure': structure_data
-            }
-        
-        # 5M (ejecución)
-        analysis_5m = analyze_5m(symbol)
-        if not analysis_5m:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'EJECUCION_FALLO'},
-                'analysis_4h': analysis_4h,
-                'analysis_1h': analysis_1h,
-                'analysis_15m': analysis_15m,
-                'analysis_5m': None,
-                'sr_zones': None
-            }
-        
-        # Calcular score (sin rechazar por LATERAL)
-        score_data = calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m)
-        
-        # --- NUEVO: AJUSTE POR CONTEXTO TEMPORAL ---
-        # Ensure score is an integer, not a dict
-        score = _extract_score(score_data.get('score', 0), 0)
-        
-        temporal_context = analyze_temporal_context(symbol)
-        score += temporal_context.get('bonus', 0)
-        score += _extract_score(evolution.get('score', 0), 0) / 2  # Sumar bonus por evolución
-        score_data['temporal_stability'] = temporal_context.get('stability', 'DESCONOCIDO')
-        
-        # Asegurar límites 0-100
-        score_data['score'] = int(max(0, min(100, score)))
-        # -------------------------------------------
-        
-        # Viabilidad: Score &gt;= 40 (REDUCIDO otra vez) + Dirección
-        direction_4h = analysis_4h.get('direction', 'LATERAL')
-        
-        # Permitir LATERAL si score alto (&gt;55)
-        if direction_4h in ['BULLISH', 'BEARISH']:
-            viable = score &gt;= 40  # Reducido de 50 → 40
-        elif direction_4h == 'LATERAL' and score &gt;= 55:  # Reducido de 65 → 55
-            viable = True  # LATERAL OK si score alto
-            print(f"      ✅ {symbol}: LATERAL pero score {score} alto. VIABLE.")
-        else:
-            viable = False
-        
-        # Chequeo BTC CONDICIONAL (no absoluto)
-        if viable and not check_btc_alignment(score=score):
-            viable = False
-            score_data['clasificacion'] = 'BTC_DUMP_PROTECTION'
-        
-        # Calcular triggers si es viable
-        triggers = None
-        if viable:
-            triggers = calculate_triggers(analysis_15m, analysis_5m, analysis_5m['direction'])
-        
-        return {
-            'viable': viable,
-            'score_data': score_data,
-            'analysis_4h': analysis_4h,
-            'analysis_1h': analysis_1h,
-            'analysis_15m': analysis_15m,
-            'analysis_5m': analysis_5m,
-            'sr_zones': analysis_15m.get('sr'),
-            'triggers': triggers,
-            'evolution': evolution,
-            'structure': structure_data
-        }
-    
-    except Exception as e:
-        print(f"❌ ERROR analyze_coin_complete({symbol}): {e}")
-        return {
-            'viable': False,
-            'score_data': {'score': 0, 'clasificacion': 'ERROR'},
-            'error_message': str(e)
-        }
-
-def _extract_score(score_value, default=0):
+    Orquesta TODO el bot con inteligencia real de patrones.
+    Combina:
+    1. Detección de Patrones (Triángulos, Flags, Estructura)
+    2. Análisis Time Ladder (Indicadores matemáticos)
+    3. Confluencia Real
     """
-    Recursively extract integer score from potentially nested dict.
+    print(f"\n🧠 ORCHESTRATING INTELLIGENCE: {symbol}")
     
-    Args:
-        score_value: The value to extract (can be int, float, dict, or None)
-        default: Default value if extraction fails
+    # 1. DETECTAR PATRONES (La nueva "visión" del bot)
+    print("   Scanning patterns...")
+    patterns_result = pattern_engine.detect_all_patterns(symbol)
     
-    Returns:
-        int: Extracted integer score
-    """
-    if score_value is None:
-        return default
-    if isinstance(score_value, (int, float)):
-        return int(score_value)
-    if isinstance(score_value, dict):\
-        # Recursively extract from nested dict
-        return _extract_score(score_value.get('score', default), default)
-    # Fallback for any other type
-    return default
-
-
-def calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m):
-    """Calcula score usando los datos reales de cada timeframe y CONTEXTO."""
-    score = 0  # Initialize as integer
+    if patterns_result['best_pattern']:
+        p = patterns_result['best_pattern']
+        print(f"   ✨ PATTERN FOUND: {p['type']} in {p['tf']} (Conf: {p['confidence']})")
     
-    # Usar los scores calculados en cada timeframe - ULTRA DEFENSIVE
-    if analysis_4h and 'score_4h' in analysis_4h:
-        score_4h_value = _extract_score(analysis_4h['score_4h'], 0)
-        try:
-            score_4h_value = int(score_4h_value) if score_4h_value is not None else 0
-        except (ValueError, TypeError):
-            score_4h_value = 0
-        score = int(score + min(int(score_4h_value), 30))
-    elif analysis_4h and analysis_4h.get('strength') == 'STRONG':
-        score = int(score + 25)
-    
-    if analysis_1h and 'score_1h' in analysis_1h:
-        score_1h_value = _extract_score(analysis_1h['score_1h'], 0)
-        try:
-            score_1h_value = int(score_1h_value) if score_1h_value is not None else 0
-        except (ValueError, TypeError):
-            score_1h_value = 0
-        score = int(score + min(int(score_1h_value), 25))
-    elif analysis_1h and analysis_1h.get('strength') == 'STRONG':
-        score = int(score + 15)
-    
-    if analysis_15m and 'score_15m' in analysis_15m:
-        score_15m_value = _extract_score(analysis_15m['score_15m'], 0)
-        try:
-            score_15m_value = int(score_15m_value) if score_15m_value is not None else 0
-        except (ValueError, TypeError):
-            score_15m_value = 0
-        score = int(score + min(int(score_15m_value), 25))
-    elif analysis_15m and analysis_15m.get('strength') == 'STRONG':
-        score = int(score + 15)
-    
-    if analysis_5m and 'score_5m' in analysis_5m:
-        score_5m_value = _extract_score(analysis_5m['score_5m'], 0)
-        try:
-            score_5m_value = int(score_5m_value) if score_5m_value is not None else 0
-        except (ValueError, TypeError):
-            score_5m_value = 0
-        score = int(score + min(int(score_5m_value), 20))
-    elif analysis_5m and analysis_5m.get('strength') == 'STRONG':
-        score = int(score + 10)
-    
-    # Bonus por alineación de direcciones
-    directions = []
-    if analysis_4h and 'direction' in analysis_4h:
-        directions.append(analysis_4h['direction'])
-    if analysis_1h and 'direction' in analysis_1h:
-        directions.append(analysis_1h['direction'])
-    if analysis_15m and 'direction' in analysis_15m:
-        directions.append(analysis_15m['direction'])
-    if analysis_5m and 'direction' in analysis_5m:
-        directions.append(analysis_5m['direction'])
-    
-    # Si 3+ direcciones coinciden (excluyendo LATERAL), suma bonus
-    non_lateral = [d for d in directions if d != 'LATERAL']
-    if len(non_lateral) &gt;= 3 and len(set(non_lateral)) == 1:
-        score = int(score + 10)
-    
-    # --- CONTEXTUAL MULTIPLIERS (Phase 4.1) ---
-    multiplier = 1.0
-    
-    # 1. Volatility (ATR)
-    if analysis_15m and 'atr' in analysis_15m and 'current_price' in analysis_15m:
-        atr = analysis_15m['atr']
-        price = analysis_15m['current_price']
-        if price &gt; 0 and (atr / price) &gt; 0.05:
-            multiplier *= 0.9
-            # print(f"⚠️ High Volatility Penalty (ATR &gt; 5%): x0.9")
-
-    # 2. Time/Liquidity (00-06 UTC assumed low volume)
-    try:
-        current_utc_hour = datetime.utcnow().hour
-        if 0 &lt;= current_utc_hour &lt; 6:
-            multiplier *= 0.95
-            # print(f"⚠️ Low Liquidity Hours: x0.95")
-    except Exception:
-        pass # Ignore if time check fails
-
-    # 3. Volume Profile (Price &gt; POC)
-    if analysis_15m and 'volume_profile' in analysis_15m and 'current_price' in analysis_15m:
-        vp = analysis_15m['volume_profile']
-        price = analysis_15m['current_price']
-        poc = vp.get('poc_current', 0)
-        if poc &gt; 0 and price &gt; poc:
-            multiplier *= 1.1
-            # print(f"✅ Price above POC Bonus: x1.1")
-
-    # 4. Session Context (Asia Penalty - REDUCIDA)
-    hour = datetime.now().hour
-    if 2 &lt;= hour &lt;= 8: # Asia Session (aprox)
-        multiplier *= 0.92  # Reducido de 0.8 a 0.92 (menos penalización)
-        # print(f"⚠️ Asia Session Penalty: x0.92")
-
-    score = int(score * multiplier)
-
-    # Ensure score is definitely an integer before comparisons
-    score = int(score)
-    
-    # Clasificación
-    clasificacion = 'REGULAR'
-    if score &gt;= 90:
-        clasificacion = 'ÓPTIMA'
-    elif score &gt;= 80:
-        clasificacion = 'ALTA'
-    elif score &gt;= 70:
-        clasificacion = 'BUENA'
-    elif score &gt;= 50:
-        clasificacion = 'BUENA'
-    else:
-        clasificacion = 'POBRE'
-
-    return {
-        'score': int(score),  # Absolutely ensure it's int
-        'clasificacion': clasificacion
+    # 2. ANÁLISIS TIME LADDER (Los "sensores" del bot)
+    print("   Analyzing Time Ladder...")
+    ladder_analysis = {
+        '4h': analyze_4h(symbol),
+        '1h': analyze_1h(symbol),
+        '15m': analyze_15m(symbol, strict=False),
+        '5m': analyze_5m(symbol)
     }
-
-
-def calculate_triggers(analysis_15m, analysis_5m, direction):
-    entry_price = analysis_5m['current_price']
     
-    # --- DYNAMIC RISK MANAGEMENT (Phase 4.1) ---
-    # Use ATR for Stop Loss if available
-    atr = analysis_15m.get('atr', 0)
+    # 3. INDICADORES MATEMÁTICOS (Validación cruzada)
+    math_signals = {
+        'adx_aligned': check_adx_alignment(ladder_analysis),
+        'momentum_propagating': check_momentum_propagation(ladder_analysis),
+        'volume_confirming': check_volume_confirmation(ladder_analysis)
+    }
     
-    if atr &gt; 0:
-        # Multiplicador dinámico: 2.0x ATR es estándar
-        atr_multiplier = 2.0
-        stop_loss_dist = atr * atr_multiplier
-        
-        if direction == 'BULLISH':
-            stop_loss = entry_price - stop_loss_dist
-        else:
-            stop_loss = entry_price + stop_loss_dist
+    # 4. DECISIÓN FINAL
+    decision = make_pattern_based_decision(patterns_result, ladder_analysis, math_signals)
+    
+    # Formatear para consumo del bot_main
+    if decision['action'] == 'ENTER':
+        return {
+            'action': 'OPERAR',
+            'trade_type': decision['strategy']['type'],
+            'confidence': decision['confidence'],
+            'pattern': decision.get('pattern'),
+            'reasons': decision['reasons'],
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'patterns': patterns_result
+            },
+            'position_size': decision['strategy']['position_size']
+        }
+    else:
+        return {
+            'action': 'NO_OPERAR',
+            'reason': f"Low confidence ({decision['confidence']}): {', '.join(decision['reasons'][:2])}",
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'patterns': patterns_result
+            }
+        }
+
+def make_pattern_based_decision(patterns, ladder, signals):
+    """Decisión basada en confluencia REAL"""
+    score = 0
+    reasons = []
+    
+    # 1. Patrón principal detectado (Base sólida)
+    if patterns['best_pattern']:
+        pattern = patterns['best_pattern']
+        score += pattern['confidence'] * 0.4
+        reasons.append(f"Pattern: {pattern['type']} ({pattern['tf']})")
+    
+    # 2. Estructura de mercado (Alineación)
+    # Dirección del patrón vs Dirección de los TFs
+    pattern_dir = patterns['confidence']['direction'] # BULLISH/BEARISH
+    
+    structure_aligned = 0
+    for tf, analysis in ladder.items():
+        if analysis and analysis.get('direction') == pattern_dir:
+            structure_aligned += 1
             
-        # Sanity Check: Ensure SL is not too close (&lt; 0.5%) or too far (&gt; 5%)
-        # If too close, force min 0.5%
-        min_dist = entry_price * 0.005
-        if stop_loss_dist &lt; min_dist:
-            if direction == 'BULLISH': stop_loss = entry_price - min_dist
-            else: stop_loss = entry_price + min_dist
-            
-    else:
-        # Fallback: Fixed 2%
-        stop_loss = entry_price * 0.98 if direction == 'BULLISH' else entry_price * 1.02
+    if structure_aligned &gt;= 3:
+        score += 30
+        reasons.append(f"Trend aligned {structure_aligned}/4")
+    elif structure_aligned &gt;= 2:
+        score += 15
+        reasons.append(f"Trend aligned {structure_aligned}/4")
 
-    # Target: 1.5x Risk (Simple initial target)
-    risk = abs(entry_price - stop_loss)
-    target_dist = risk * 1.5
+    # 3. Indicadores matemáticos (Confirmación)
+    if signals['adx_aligned']:
+        score += 15
+        reasons.append("ADX aligned")
     
-    if direction == 'BULLISH':
-        target_price = entry_price + target_dist
+    if signals['momentum_propagating']:
+        score += 15
+        reasons.append("Momentum propagating")
+        
+    if signals['volume_confirming']:
+        score += 10
+        reasons.append("Volume confirming")
+
+    # 4. SMART CONTEXT LOGIC (La "Inteligencia" real)
+    a5m = ladder.get('5m', {})
+    if a5m:
+        current_price = a5m.get('current_price', 0)
+        
+        # A. DYNAMIC OVEREXTENSION (ATR-based)
+        # En vez de % fijo, usamos ATRs de distancia
+        dist_ema = abs(a5m.get('dist_ema_pct', 0))
+        atr_pct = a5m.get('atr_pct', 1.0) # Default 1% si falla
+        
+        # Ratio de extensión: Cuántos ATRs estamos lejos de la media
+        extension_ratio = dist_ema / atr_pct if atr_pct &gt; 0 else 0
+        
+        if extension_ratio &gt; 3.0: # &gt;3 ATRs lejos (Extremo)
+            score -= 25
+            reasons.append(f"⚠️ Overextended ({extension_ratio:.1f} ATRs)")
+        elif extension_ratio &gt; 2.0: # &gt;2 ATRs lejos
+            score -= 10
+            reasons.append(f"⚠️ Extended ({extension_ratio:.1f} ATRs)")
+        elif extension_ratio &lt; 0.5:
+            score += 5
+            reasons.append("In Value Zone")
+
+        # B. ZONE AWARENESS (Soportes y Resistencias)
+        # Evitar comprar contra una pared
+        sr_data = a5m.get('sr', {})
+        if pattern_dir == 'BULLISH':
+            resistances = sr_data.get('resistances', [])
+            if resistances:
+                nearest_res = resistances[0]
+                dist_to_res = (nearest_res - current_price) / current_price * 100
+                if 0 &lt; dist_to_res &lt; 0.5: # Menos de 0.5% hasta la resistencia
+                    score -= 20
+                    reasons.append(f"⚠️ Resistance ahead (+{dist_to_res:.2f}%)")
+        elif pattern_dir == 'BEARISH':
+            supports = sr_data.get('supports', [])
+            if supports:
+                nearest_sup = supports[0]
+                dist_to_sup = (current_price - nearest_sup) / current_price * 100
+                if 0 &lt; dist_to_sup &lt; 0.5: # Menos de 0.5% hasta el soporte
+                    score -= 20
+                    reasons.append(f"⚠️ Support below (-{dist_to_sup:.2f}%)")
+
+        # C. RSI TIMING (Evitar extremos sin fuerza)
+        rsi_val = a5m.get('rsi', {}).get('rsi_current', 50)
+        mom_strength = a5m.get('momentum', {}).get('strength', 'débil')
+        
+        if pattern_dir == 'BULLISH':
+            if rsi_val &gt; 75 and mom_strength != 'fuerte':
+                score -= 15
+                reasons.append(f"⚠️ RSI Overbought ({rsi_val:.0f})")
+        elif pattern_dir == 'BEARISH':
+            if rsi_val &lt; 25 and mom_strength != 'fuerte':
+                score -= 15
+                reasons.append(f"⚠️ RSI Oversold ({rsi_val:.0f})")
+
+    # DECISIÓN FINAL
+    # Umbral 60 para ser "Inteligente pero no restrictivo"
+    if score &gt;= 60:
+        return {
+            'action': 'ENTER',
+            'confidence': score,
+            'pattern': patterns['best_pattern']['type'] if patterns['best_pattern'] else "STRUCTURE_PLAY",
+            'reasons': reasons,
+            'strategy': determine_strategy(patterns, ladder)
+        }
     else:
-        target_price = entry_price - target_dist
+        return {
+            'action': 'WAIT',
+            'confidence': score,
+            'missing': 60 - score,
+            'reasons': reasons
+        }
 
-    rr_ratio = target_dist / risk if risk &gt; 0 else 0
-    tiempo_proyectado_min = 15
-
+def determine_strategy(patterns, ladder):
+    """Define estrategia según patrón"""
+    pattern_type = "STANDARD"
+    if patterns['best_pattern']:
+        pattern_type = patterns['best_pattern']['type']
+    
+    # Reversión = Stop ajustado, target conservador
+    if 'DOUBLE' in pattern_type or 'BOS' in pattern_type:
+        return {
+            'type': 'REVERSAL',
+            'stop_multiplier': 1.5, 
+            'target_multiplier': 2.0,
+            'position_size': 'HALF' # Mitad del tamaño
+        }
+    # Continuación = Stop normal, target agresivo
+    elif 'FLAG' in pattern_type or 'TRIANGLE' in pattern_type or 'TREND' in pattern_type:
+        return {
+            'type': 'CONTINUATION',
+            'stop_multiplier': 2.0,
+            'target_multiplier': 3.0,
+            'position_size': 'FULL' # Tamaño completo
+        }
+    
+    # Default
     return {
-        'entry_price': entry_price,
-        'stop_loss': stop_loss,
-        'target_price': target_price,
-        'rr_ratio': rr_ratio,
-        'tiempo_proyectado_min': tiempo_proyectado_min,
-        'metodo_target': 'atr_dynamic' if atr &gt; 0 else 'fixed_pct'
+        'type': 'STANDARD',
+        'stop_multiplier': 2.0,
+        'target_multiplier': 2.0,
+        'position_size': 'STANDARD'
     }
 
-def get_quick_analysis(symbol):
-    return analyze_coin_complete(symbol)
+# ============================================================================
+# HELPERS MATEMÁTICOS
+# ============================================================================
 
-def calculate_adx(df, period=14):
-    adx_data = calculate_adx_with_memory(df, period=period, lookback=10)
-    return adx_data['adx_current']
+def check_adx_alignment(ladder):
+    """Verifica si ADX apoya la tendencia en TFs clave"""
+    # Ideal: ADX subiendo en 1H y 15M
+    a1h = ladder.get('1h')
+    a15m = ladder.get('15m')
+    
+    if not a1h or not a15m: return False
+    
+    # ADX &gt; 20 y subiendo es fuerte
+    # Extraer valor numérico de ADX (puede ser dict o int/float)
+    adx_1h_val = a1h.get('adx', 0)
+    if isinstance(adx_1h_val, dict):
+        adx_1h_val = adx_1h_val.get('adx_current', adx_1h_val.get('current', 0))
+        
+    adx_15m_val = a15m.get('adx', 0)
+    if isinstance(adx_15m_val, dict):
+        adx_15m_val = adx_15m_val.get('adx_current', adx_15m_val.get('current', 0))
 
-def calculate_momentum_color(df, ema_period=20):
-    mom_data = calculate_momentum_with_memory(df, lookback=10)
-    return mom_data['color_current']
+    strong_1h = float(adx_1h_val) &gt; 20
+    strong_15m = float(adx_15m_val) &gt; 20
+    
+    return strong_1h or strong_15m
 
-if __name__ == "__main__":
-    print("Brain Analyzer cargado correctamente.")
+def check_momentum_propagation(ladder):
+    """Verifica si el momentum se propaga de 4H a 5M"""
+    # Ideal: Mismo color en cascada
+    dirs = []
+    for tf in ['4h', '1h', '15m']:
+        if ladder.get(tf):
+            dirs.append(ladder[tf].get('direction'))
+            
+    # Si todos son iguales (y no None)
+    if len(dirs) == 3 and len(set(dirs)) == 1 and dirs[0] in ['BULLISH', 'BEARISH']:
+        return True
+    return False
 
-coin_memory = {}
-
-def save_analysis_snapshot(symbol, analysis_4h, analysis_1h, analysis_15m):
-    coin_memory[symbol] = {
-        'analysis_4h': analysis_4h,
-        'analysis_1h': analysis_1h,
-        'analysis_15m': analysis_15m
-    }
-
-def get_historical_context(symbol):
-    return coin_memory.get(symbol, None)
-
-def calculate_evolution_score(symbol):
-    return 0
+def check_volume_confirmation(ladder):
+    """Verifica volumen en 15M/5M"""
+    # Implementación simplificada, idealmente comparar vs media
+    # Por ahora asumimos que si pasó el análisis base, tiene volumen decente
+    return True
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 17,862<br>
-    Generado: 2025-11-21 19:34:52
+    Total caracteres: 10,188<br>
+    Generado: 2025-11-21 19:41:40
   </div>
 </body>
 </html>
