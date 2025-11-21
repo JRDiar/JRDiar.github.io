@@ -15,461 +15,295 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-21 20:02:53</div>
+  <div class="meta">Última actualización: 2025-11-21 20:06:17</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
 """
-BRAIN WATCHLIST - Bot Phase 4.0
-Gestión watchlist dinámica con triggers calculados
+BRAIN CONFIG - Bot Phase 4.0 - Trading Anticipatorio
+====================================================
+Archivo central de configuración con flags activar/desactivar features,
+parámetros ajustables, paths. Lee credenciales desde .env (seguridad).
 """
 
-import json
+# ============================================================================
+# IMPORTS
+# ============================================================================
+import os
+import pytz
 from datetime import datetime
-from brain_config import (
-    WATCHLIST_JSON, MAX_WATCHLIST_SIZE, MIN_SCORE_WATCHLIST,
-    ENABLE_WATCHLIST_JSON, ARGENTINA_TZ,
-    ADX_THRESHOLD, ADX_MIN_ACCELERATION,
-    MOMENTUM_CONSECUTIVE_CANDLES, VOLUME_RATIO_MIN,
-    MIN_RR_RATIO, MIN_TIEMPO_PROYECTADO_MIN, MAX_TIEMPO_PROYECTADO_MIN
-)
-from brain_analyzer import analyze_coin_complete
-from brain_calculator import (
-    calculate_adx_with_memory,
-    calculate_momentum_with_memory,
-    calculate_time_to_target
-)
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # ============================================================================
-# FUNCIONES AUXILIARES (NIVEL MÓDULO)
+# ZONA HORARIA
 # ============================================================================
-
-def _extract_score(score_value, default=0):
-    """
-    Recursively extract integer score from potentially nested dict.
-    
-    Args:
-        score_value: The value to extract (can be int, float, dict, or None)
-        default: Default value if extraction fails
-    
-    Returns:
-        int: Extracted integer score
-    """
-    if score_value is None:
-        return default
-    if isinstance(score_value, (int, float)):
-        return int(score_value)
-    if isinstance(score_value, dict):
-        # Recursively extract from nested dict
-        return _extract_score(score_value.get('score', default), default)
-    # Fallback for any other type
-    return default
-
-def find_nearest_resistance(current_price, resistances):
-    """
-    Encuentra la resistencia más cercana por encima del precio actual.
-    Args:
-        current_price (float): Precio actual.
-        resistances (list): Lista de resistencias (floats).
-    Returns:
-        tuple: (precio_resistencia, distancia_pct) o None
-    """
-    if not resistances:
-        return None
-    above = [r for r in resistances if r &gt; current_price]
-    if not above:
-        return None
-    nearest = min(above, key=lambda r: r - current_price)
-    distance_pct = ((nearest - current_price) / current_price) * 100
-    return (nearest, distance_pct)
-
-def find_nearest_support(current_price, supports):
-    """
-    Encuentra el soporte más cercano por debajo del precio actual.
-    Args:
-        current_price (float): Precio actual.
-        supports (list): Lista de soportes (floats).
-    Returns:
-        tuple: (precio_soporte, distancia_pct) o None
-    """
-    if not supports:
-        return None
-    below = [s for s in supports if s &lt; current_price]
-    if not below:
-        return None
-    nearest = max(below, key=lambda s: current_price - s)
-    distance_pct = ((current_price - nearest) / current_price) * 100
-    return (nearest, distance_pct)
+ARGENTINA_TZ = pytz.timezone('America/Argentina/Buenos_Aires')
 
 # ============================================================================
-# CLASE WATCHLIST MANAGER
+# EXCHANGE (MEXC) - Lee desde .env
 # ============================================================================
-
-class WatchlistManager:
-    def __init__(self):
-        self.watchlist = {}
-        self.load_from_file()
-    
-    def load_from_file(self):
-        """Carga watchlist desde JSON"""
-        if not ENABLE_WATCHLIST_JSON:
-            return
-        
-        try:
-            with open(WATCHLIST_JSON, 'r') as f:
-                data = json.load(f)
-                self.watchlist = data.get('watchlist', {})
-            print(f"✅ Watchlist cargada: {len(self.watchlist)} monedas")
-        except FileNotFoundError:
-            print("ℹ️ Watchlist vacía (archivo no existe)")
-            self.watchlist = {}
-        except Exception as e:
-            print(f"❌ Error cargando watchlist: {e}")
-            self.watchlist = {}
-    
-    def save_to_file(self):
-        """Guarda watchlist a JSON"""
-        if not ENABLE_WATCHLIST_JSON:
-            return
-        
-        try:
-            data = {
-                'version': '1.0',
-                'last_updated': datetime.now(ARGENTINA_TZ).isoformat(),
-                'watchlist': self.watchlist
-            }
-            
-            with open(WATCHLIST_JSON, 'w') as f:
-                json.dump(data, f, indent=2)
-            
-            print(f"✅ Watchlist guardada: {len(self.watchlist)} monedas")
-        except Exception as e:
-            print(f"❌ Error guardando watchlist: {e}")
-    
-    def calculate_triggers(self, analysis_data):
-        """
-        Calcula triggers de entrada para una moneda
-        
-        Args:
-            analysis_data: Dict con análisis completo
-        
-        Returns:
-            dict: Triggers calculados o None
-        """
-        analysis_5m = analysis_data['analysis_5m']
-        analysis_4h = analysis_data['analysis_4h']
-        sr_zones = analysis_data['sr_zones']
-        
-        if not analysis_5m or not analysis_4h:
-            return None
-        
-        direction = analysis_5m['direction']
-        current_price = analysis_5m['current_price']
-        velocity = analysis_5m['velocity']
-        acceleration = analysis_5m['acceleration']
-        
-        # Target (resistencia/soporte más cercano)
-        target_price = None
-        target_distance_pct = None
-        
-        if sr_zones:
-            min_dist = 0.8 # Mínimo 0.8% de recorrido para que valga la pena
-            
-            if direction == 'BULLISH':
-                resistances = sorted([r for r in sr_zones['resistances'] if r &gt; current_price * (1 + min_dist/100)])
-                if resistances:
-                    target_price = resistances[0]
-                    target_distance_pct = ((target_price - current_price) / current_price) * 100
-            else:  # BEARISH
-                supports = sorted([s for s in sr_zones['supports'] if s &lt; current_price * (1 - min_dist/100)], reverse=True)
-                if supports:
-                    target_price = supports[0]
-                    target_distance_pct = ((current_price - target_price) / current_price) * 100
-        
-        # Si no hay target, usar proyección simple (3% para bulls, -3% para bears)
-        if not target_price:
-            if direction == 'BULLISH':
-                target_price = current_price * 1.03
-                target_distance_pct = 3.0
-            else:
-                target_price = current_price * 0.97
-                target_distance_pct = 3.0
-        
-        # Tiempo proyectado a target
-        tiempo_proyectado = calculate_time_to_target(
-            current_price, target_price, velocity.get('velocity_current', 0) if isinstance(velocity, dict) else velocity, 
-            acceleration.get('acceleration_current', 0) if isinstance(acceleration, dict) else acceleration
-        )
-        
-        # Risk/Reward (stop loss simple 2%)
-        stop_loss = current_price * 0.98 if direction == 'BULLISH' else current_price * 1.02
-        reward = abs(target_price - current_price)
-        risk = abs(current_price - stop_loss)
-        rr_ratio = reward / risk if risk &gt; 0 else 0
-        
-        # Validar viabilidad
-        if rr_ratio &lt; MIN_RR_RATIO:
-            return None  # R:R insuficiente
-        
-        if tiempo_proyectado and (tiempo_proyectado &lt; MIN_TIEMPO_PROYECTADO_MIN or 
-                                  tiempo_proyectado &gt; MAX_TIEMPO_PROYECTADO_MIN):
-            return None  # Timing fuera de rango
-        
-        return {
-            'trigger_adx': ADX_THRESHOLD,
-            'trigger_adx_acceleration': ADX_MIN_ACCELERATION,
-            'trigger_momentum_candles': MOMENTUM_CONSECUTIVE_CANDLES,
-            'trigger_volume_ratio': VOLUME_RATIO_MIN,
-            'target_price': target_price,
-            'target_distance_pct': target_distance_pct,
-            'stop_loss': stop_loss,
-            'tiempo_proyectado_min': tiempo_proyectado,
-            'rr_ratio': rr_ratio
-        }
-    
-    def add_to_watchlist(self, symbol, analysis_data):
-        """
-        Agrega moneda a watchlist
-        
-        Args:
-            symbol: Símbolo
-            analysis_data: Dict con análisis completo
-        
-        Returns:
-            bool: True si agregado, False si rechazado
-        """
-        # Verificar límite
-        if len(self.watchlist) &gt;= MAX_WATCHLIST_SIZE:
-            # Remover moneda con score más bajo
-            lowest_symbol = min(self.watchlist.keys(), 
-                               key=lambda s: _extract_score(self.watchlist[s].get('score', 0), 0))
-            lowest_score = _extract_score(self.watchlist[lowest_symbol].get('score', 0), 0)
-            
-            new_score = _extract_score(analysis_data['score_data'].get('score', 0), 0)
-            if new_score &gt; lowest_score:
-                del self.watchlist[lowest_symbol]
-                print(f"⚠️ Watchlist llena, removido {lowest_symbol} (score {lowest_score})")
-            else:
-                return False  # Score muy bajo
-        
-        # Calcular triggers
-        triggers = self.calculate_triggers(analysis_data)
-        
-        # LÓGICA HUNTER MODE: Si no hay triggers pero hay fuerza, guardar igual
-        status = 'MONITORING'
-        analysis_5m = analysis_data['analysis_5m']
-        adx_current = analysis_5m['adx']['adx_current']
-        dist_ema = analysis_5m.get('dist_ema_pct', 0)
-        
-        # Extraer estructura
-        structure = analysis_data.get('structure', {})
-        last_structure = structure.get('last_structure', 'N/A')
-
-        if not triggers:
-            if adx_current &gt; 25:
-                # Si está muy extendido (&gt;2%), esperar pullback
-                if dist_ema &gt; 2.0:
-                    status = 'WAITING_PULLBACK'
-                    print(f"🦅 HUNTER: {symbol} extendido ({dist_ema:.1f}%), esperando pullback. Estructura: {last_structure}")
-                else:
-                    status = 'HUNTING'
-                    adx_slope = analysis_5m['adx'].get('adx_slope', 0)
-                    trend_icon = "↗️" if adx_slope &gt; 0 else "↘️"
-                    print(f"🦅 HUNTER: {symbol} acechando (ADX {adx_current:.1f} {trend_icon}). Estructura: {last_structure}")
-                
-                # Crear triggers dummy o vacíos para permitir el guardado
-                triggers = {} 
-            else:
-                return False  # Triggers inviables y sin fuerza suficiente
-        
-        # Agregar a watchlist
-        final_score = _extract_score(analysis_data['score_data'].get('score', 0), 0)
-        self.watchlist[symbol] = {
-            'added_timestamp': datetime.now(ARGENTINA_TZ).isoformat(),
-            'last_check_timestamp': datetime.now(ARGENTINA_TZ).isoformat(),
-            'checks_without_trigger': 0,
-            'score': final_score,
-            'clasificacion': analysis_data['score_data'].get('clasificacion', 'REGULAR'),
-            'direction': analysis_data['analysis_5m']['direction'],
-            'triggers': triggers,
-            'analysis_snapshot': {
-                'adx_5m': analysis_data['analysis_5m'].get('adx', {}),
-                'adx_4h': analysis_data['analysis_4h'].get('adx', {}),
-                'momentum_age_5m': analysis_data['analysis_5m'].get('momentum', {}).get('consecutive_count', 0) if isinstance(analysis_data['analysis_5m'].get('momentum'), dict) else 0,
-                'emas_classification_15m': analysis_data['analysis_15m'].get('emas', {}).get('classification', 'CERCANAS') if analysis_data.get('analysis_15m') else None
-            },
-            'evolution': analysis_data.get('evolution', {}),
-            'structure': structure,
-            'status': status
-        }
-        
-        print(f"✅ Agregado a watchlist: {symbol} (Score: {final_score}) [{status}] | Estructura: {last_structure}")
-        return True
-    
-    def remove_from_watchlist(self, symbol, reason=""):
-        """Remueve moneda de watchlist"""
-        if symbol in self.watchlist:
-            del self.watchlist[symbol]
-            print(f"❌ Removido de watchlist: {symbol} ({reason})")
-    
-    def get_watchlist(self):
-        """Retorna watchlist ordenada por score"""
-        sorted_list = sorted(
-            self.watchlist.items(),
-            key=lambda x: x[1]['score'],
-            reverse=True
-        )
-        return sorted_list
-    
-    def update_watchlist_from_analysis(self, symbols_analyzed):
-        """
-        Actualiza watchlist con nuevos análisis
-        
-        Args:
-            symbols_analyzed: List de (symbol, analysis_data) tuples
-        """
-        added_count = 0
-        
-        for symbol, analysis_data in symbols_analyzed:
-            if not analysis_data or not analysis_data.get('viable'):
-                continue
-            
-            # Si ya está en watchlist, actualizar score
-            if symbol in self.watchlist:
-                old_score = _extract_score(self.watchlist[symbol].get('score', 0), 0)
-                new_score = _extract_score(analysis_data['score_data'].get('score', 0), 0)
-                
-                # Si score bajó mucho (&gt;15 puntos), remover
-                if new_score &lt; old_score - 15:
-                    self.remove_from_watchlist(symbol, "score bajó significativamente")
-                else:
-                    # Actualizar score
-                    self.watchlist[symbol]['score'] = new_score
-            
-            # Si no está, agregar
-            else:
-                if self.add_to_watchlist(symbol, analysis_data):
-                    added_count += 1
-        
-        print(f"📊 Watchlist actualizada: {len(self.watchlist)} monedas ({added_count} nuevas)")
-        self.save_to_file()
-    
-    def cleanup_stale_symbols(self, max_age_minutes=30, max_checks=20):
-        """
-        Remueve monedas que llevan mucho tiempo sin activar trigger
-        
-        Args:
-            max_age_minutes: Tiempo máximo en watchlist sin trigger (30min)
-            max_checks: Verificaciones máximas sin activar (20 checks)
-        
-        Returns:
-            int: Cantidad de monedas removidas
-        """
-        now = datetime.now(ARGENTINA_TZ)
-        to_remove = []
-        
-        for symbol, data in self.watchlist.items():
-            # Calcular tiempo en watchlist
-            added = datetime.fromisoformat(data['added_timestamp'])
-            age_minutes = (now - added).total_seconds() / 60
-            
-            # Calcular checks sin trigger
-            checks = data.get('checks_without_trigger', 0)
-            
-            # Remover si lleva mucho tiempo O muchos checks sin trigger
-            # EXCEPCIÓN HUNTER MODE: Si está acechando, dar más tiempo
-            status = data.get('status', 'MONITORING')
-            
-            limit_age = max_age_minutes
-            limit_checks = max_checks
-            
-            if status in ['HUNTING', 'WAITING_PULLBACK']:
-                limit_age = max_age_minutes * 4  # 2 horas en lugar de 30 min
-                limit_checks = max_checks * 4    # 80 checks en lugar de 20
-                
-            if age_minutes &gt; limit_age or checks &gt; limit_checks:
-                to_remove.append(symbol)
-                print(f"🗑️ Removiendo {symbol} de watchlist:")
-                print(f"   Tiempo: {age_minutes:.1f}min | Checks sin trigger: {checks}")
-        
-        for symbol in to_remove:
-            del self.watchlist[symbol]
-        
-        if to_remove:
-            print(f"✅ Limpieza watchlist: {len(to_remove)} monedas removidas")
-            self.save_to_file()
-        
-        return len(to_remove)
-    
-    def increment_check_counter(self, symbol):
-        """Incrementa contador de verificaciones sin trigger"""
-        if symbol in self.watchlist:
-            self.watchlist[symbol]['checks_without_trigger'] = \
-                self.watchlist[symbol].get('checks_without_trigger', 0) + 1
-            self.watchlist[symbol]['last_check_timestamp'] = \
-                datetime.now(ARGENTINA_TZ).isoformat()
-    
-    def reset_check_counter(self, symbol):
-        """Resetea contador cuando trigger se activa (casi)"""
-        if symbol in self.watchlist:
-            self.watchlist[symbol]['checks_without_trigger'] = 0
-    
-    def clear_watchlist(self):
-        """Limpia watchlist completa"""
-        self.watchlist = {}
-        self.save_to_file()
-        print("🗑️ Watchlist limpiada")
-
+MEXC_API_KEY = os.getenv("MEXC_API_KEY", "")
+MEXC_SECRET_KEY = os.getenv("MEXC_SECRET_KEY", "")
+EXCHANGE_NAME = "MEXC"
+DEFAULT_TYPE = "swap"  # Futuros
+RATE_LIMIT = 200
+ENABLE_RATE_LIMIT = True
 
 # ============================================================================
-# INSTANCIA GLOBAL
+# TELEGRAM - Lee desde .env
 # ============================================================================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+ENABLE_TELEGRAM = True
 
-watchlist_manager = WatchlistManager()
+# ============================================================================
+# GOOGLE SHEETS - Lee desde .env
+# ============================================================================
+GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "")
+GOOGLE_SPREADSHEET_ID = os.getenv("GOOGLE_SPREADSHEET_ID", "")
+ENABLE_SHEETS = True
+BATCH_WRITE = True  # Escribir en lotes (más rápido)
 
+# ============================================================================
+# TRADING BÁSICO
+# ============================================================================
+SIMULATE_LEVERAGE = 1  # Apalancamiento
+CAPITAL_INICIAL = 1000  # USD
+MAX_TRADES_SIMULTANEOUS = 3  # Máximo trades paralelos
+MIN_TRADE_DURATION_MIN = 5  # Mínimo duración trade
+
+# ============================================================================
+# FLAGS BRAIN (true/false para activar/desactivar)
+# ============================================================================
+# Pre-filtro
+ENABLE_WEEKLY_CANDLES_FILTER = True
+MIN_DAILY_CANDLES = 15  # Reducido de 30 para permitir monedas más nuevas
+
+# Análisis contextual
+ENABLE_ANALYSIS_1D = True
+ENABLE_ANALYSIS_4H = True
+ENABLE_ANALYSIS_1H = True
+ENABLE_ANALYSIS_15M = True
+ENABLE_ANALYSIS_5M = True
+
+# 🧠 MODO INTELIGENTE (100% Holístico vs Cascada Binaria)
+ENABLE_INTELLIGENT_MODE = True  # True: análisis paralelo multi-capa | False: cascada binaria
+
+# Análisis 1D
+ENABLE_1D_ANALYSIS = True
+
+# Componentes 4H (para debugging)
+ENABLE_4H_STRUCTURE = True
+ENABLE_4H_ZIGZAG = True
+ENABLE_VELOCITY_FILTER = True
+
+# Herramientas matemáticas
+ENABLE_VELOCITY_ACCELERATION = True
+ENABLE_CLUSTERING_SR = True  # Soportes/Resistencias
+ENABLE_VOLUME_PROFILE = True
+ENABLE_FIBONACCI = True
+ENABLE_DIVERGENCE_DETECTION = True
+
+# Gestión trade
+ENABLE_BREAKEVEN_PROTECTION = True
+ENABLE_TRAILING_STOP = True
+ENABLE_SMART_EXIT = True  # 5 señales
+
+# Persistencia
+ENABLE_WATCHLIST_JSON = True
+ENABLE_HISTORY_JSON = True
+
+# ============================================================================
+# PARÁMETROS WATCHLIST
+# ============================================================================
+MAX_WATCHLIST_SIZE = 20  # Máximo monedas monitoreadas
+MIN_SCORE_WATCHLIST = 45  # Reducido de 55 para más oportunidades
+WATCHLIST_UPDATE_INTERVAL_SEC = 60  # Cada 1 min
+MIN_RR_RATIO = 1.5  # Mínimo Risk/Reward ratio
+MIN_TIEMPO_PROYECTADO_MIN = 10  # Mínimo tiempo proyectado para el trade (minutos)
+MAX_TIEMPO_PROYECTADO_MIN = 120  # Máximo tiempo proyectado para el trade (minutos)
+PRIORITY_SYMBOLS = []  # Símbolos que siempre se analizan
+
+# ============================================================================
+# TRIGGER THRESHOLDS (verificados en 15M)
+# ============================================================================
+# ADX + Directional Indicators
+ADX_THRESHOLD = 18  # Reducido de 22 para detectar tendencias más temprano
+ADX_MIN_ACCELERATION = 0.1  # Puntos/min (ajustado de 0.5 → 0.1 para ser más realista)
+DI_MIN_SPREAD = 1.5  # Reducido de 2 para menos restricción
+BTC_ALIGNMENT_STRICT = False  # Si True, bloquea todo cuando BTC cae. Si False, solo bloquea scores bajos
+
+# Momentum
+MOMENTUM_CONSECUTIVE_CANDLES = 2  # Reducido de 3 para entradas más tempranas
+
+# Volumen
+VOLUME_RATIO_MIN = 1.3  # Reducido de 1.5 para aceptar volumen moderado
+
+# ============================================================================
+# PARÁMETROS SCORING (0-100)
+# ============================================================================
+# Bonos
+BONUS_STRUCTURE_SANA = 20
+BONUS_CONFLUENCE_4H = 20
+BONUS_CONFLUENCE_1D = 15
+BONUS_EMAS_CERCANAS = 10
+BONUS_EDAD_JOVEN = 15
+BONUS_NO_OBSTACULOS = 10
+
+# Penalizaciones
+PENALTY_EMAS_SEPARADAS = 10
+PENALTY_EDAD_MADURA = 10
+PENALTY_ESTRUCTURA_MALA = 20
+
+# ============================================================================
+# PARÁMETROS RISK/REWARD
+# ============================================================================
+STOP_LOSS_PERCENT = 2.1  # Stop loss fijo en -2.1% del entry
+MIN_RR_RATIO = 2.0  # Mínimo 2:1
+OPTIMAL_RR_RATIO = 3.0  # Óptimo 3:1
+MAX_RISK_PERCENT = 2.0  # Máximo riesgo por trade
+
+# ============================================================================
+# PARÁMETROS TIMING
+# ============================================================================
+MIN_TIEMPO_PROYECTADO_MIN = 5
+MAX_TIEMPO_PROYECTADO_MIN = 60
+OPTIMAL_TIMING_MIN = 15  # Ideal 15-30 min
+OPTIMAL_TIMING_MAX = 30
+
+# ============================================================================
+# PARÁMETROS SALIDA INTELIGENTE
+# ============================================================================
+# Desaceleración (velas más chicas)
+DECELERATION_THRESHOLD = 0.7  # Rango &lt;70% promedio
+
+# Volumen bajando
+VOLUME_DECLINE_THRESHOLD = 0.6  # Vol &lt;60% promedio
+
+# Llegada zona crítica
+CRITICAL_ZONE_DISTANCE_PCT = 1.0  # &lt;1% de resistencia
+
+# Protección Buffett
+BUFFETT_EARLY_EXIT_TIME_MIN = 10
+BUFFETT_EARLY_EXIT_LOSS_PCT = 2.0
+
+# Breakeven
+BREAKEVEN_PROFIT_TRIGGER_PCT = 2.0  # +2% → stop a entrada
+
+# ============================================================================
+# PARÁMETROS CLUSTERING (Soportes/Resistencias)
+# ============================================================================
+SR_CANDLES_LOOKBACK = 200  # Velas a analizar
+SR_BIN_SIZE_PCT = 0.5  # Bins de 0.5%
+SR_MIN_TOUCHES = 3  # Mínimo toques para zona válida
+SR_STRONG_TOUCHES = 5  # 5+ toques = FUERTE
+
+# ============================================================================
+# PARÁMETROS VOLUME PROFILE
+# ============================================================================
+VP_CANDLES_LOOKBACK = 200
+VP_BIN_SIZE_PCT = 1.0  # Bins de 1%
+VP_TOP_POCS = 3  # Top 3 zonas mayor volumen
+
+# ============================================================================
+# PATHS
+# ============================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
+
+# Crear directorios si no existen
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Archivos JSON
+WATCHLIST_JSON = os.path.join(DATA_DIR, "brain_watchlist.json")
+HISTORY_JSON = os.path.join(DATA_DIR, "brain_history.json")
+PATTERNS_JSON = os.path.join(DATA_DIR, "brain_patterns.json")
+
+# Logs
+LOG_FILE = os.path.join(LOGS_DIR, f"brain_{datetime.now(ARGENTINA_TZ).strftime('%Y%m%d')}.log")
+
+# ============================================================================
+# HOJAS SHEET (nombres exactos)
+# ============================================================================
+SHEET_BRAIN_PRE_FILTRO = "BRAIN_PRE_FILTRO"
+SHEET_BRAIN_WATCHLIST = "BRAIN_WATCHLIST"
+SHEET_BRAIN_TRIGGERS = "BRAIN_TRIGGERS"
+SHEET_BRAIN_PROYECCIONES = "BRAIN_PROYECCIONES"
+SHEET_BRAIN_TRADES = "BRAIN_TRADES"
+SHEET_BRAIN_MONITOREO = "BRAIN_MONITOREO"
+SHEET_BRAIN_SALIDAS = "BRAIN_SALIDAS"
+SHEET_BRAIN_CONFIG_REMOTE = "BRAIN_CONFIG_REMOTE"
+SHEET_BRAIN_STATS = "BRAIN_STATS"
+
+# ============================================================================
+# MODO OPERACIÓN
+# ============================================================================
+MODE = "TEST"  # TEST o LIVE
 
 # ============================================================================
 # VALIDACIÓN
 # ============================================================================
-
 if __name__ == "__main__":
     print("=" * 80)
-    print("BRAIN WATCHLIST - Validación")
+    print("BRAIN CONFIG - Validación")
     print("=" * 80)
+    print(f"Zona horaria: {ARGENTINA_TZ}")
+    print(f"Exchange: {EXCHANGE_NAME}")
+    print(f"Modo: {MODE}")
+    print(f"Capital inicial: ${CAPITAL_INICIAL}")
+    print(f"Apalancamiento: {SIMULATE_LEVERAGE}x")
+    print(f"Max trades simultáneos: {MAX_TRADES_SIMULTANEOUS}")
+    print("-" * 80)
+    print(f"Data dir: {DATA_DIR}")
+    print(f"Logs dir: {LOGS_DIR}")
+    print(f"Watchlist JSON: {WATCHLIST_JSON}")
+    print(f"History JSON: {HISTORY_JSON}")
+    print(f"Log file: {LOG_FILE}")
+    print("-" * 80)
+    print("FLAGS BRAIN:")
+    print(f"  Pre-filtro weekly: {ENABLE_WEEKLY_CANDLES_FILTER}")
+    print(f"  Análisis 1D: {ENABLE_ANALYSIS_1D}")
+    print(f"  Análisis 4H: {ENABLE_ANALYSIS_4H}")
+    print(f"  Clustering S/R: {ENABLE_CLUSTERING_SR}")
+    print(f"  Volume Profile: {ENABLE_VOLUME_PROFILE}")
+    print(f"  Breakeven: {ENABLE_BREAKEVEN_PROTECTION}")
+    print(f"  Trailing Stop: {ENABLE_TRAILING_STOP}")
+    print(f"  Smart Exit: {ENABLE_SMART_EXIT}")
+    print("-" * 80)
     
-    # Test análisis y agregar a watchlist
-    test_symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+    # Validar credenciales cargadas
+    if not MEXC_API_KEY:
+        print("⚠️ MEXC_API_KEY no configurada en .env")
+    if not TELEGRAM_BOT_TOKEN:
+        print("⚠️ TELEGRAM_BOT_TOKEN no configurado en .env")
+    if not GOOGLE_SPREADSHEET_ID:
+        print("⚠️ GOOGLE_SPREADSHEET_ID no configurado en .env")
     
-    for symbol in test_symbols:
-        print(f"\nAnalizando {symbol}...")
-        analysis = analyze_coin_complete(symbol)
-        
-        if analysis and analysis['viable']:
-            print(f"✅ Viable (Score: {analysis['score_data']['score']})")
-            watchlist_manager.add_to_watchlist(symbol, analysis)
-        else:
-            print(f"❌ No viable")
+    if MEXC_API_KEY and TELEGRAM_BOT_TOKEN and GOOGLE_SPREADSHEET_ID:
+        print("✅ Todas las credenciales cargadas correctamente")
     
-    print("\n" + "-" * 80)
-    print("WATCHLIST ACTUAL:")
-    
-    watchlist = watchlist_manager.get_watchlist()
-    for symbol, data in watchlist:
-        print(f"  {symbol}: Score {data['score']} ({data['clasificacion']}) - {data['direction']}")
-        if data['triggers']:
-            print(f"    Target: ${data['triggers']['target_price']:.2f} ({data['triggers']['target_distance_pct']:.1f}%)")
-            print(f"    R:R: {data['triggers']['rr_ratio']:.2f}")
-    
-    print("\n" + "=" * 80)
-    print("✅ Brain Watchlist validado")
     print("=" * 80)
+
+# ============================================================================
+# LAZYBEAR MOMENTUM - Parámetros exactos del 3.5
+# ============================================================================
+BB_LENGTH = 20
+BB_MULT = 2.0
+KC_LENGTH = 20
+KC_MULT = 1.5
+USE_TRUE_RANGE = True
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 17,568<br>
-    Generado: 2025-11-21 20:02:53
+    Total caracteres: 10,723<br>
+    Generado: 2025-11-21 20:06:17
   </div>
 </body>
 </html>
