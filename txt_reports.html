@@ -15,17 +15,603 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-21 16:58:33</div>
+  <div class="meta">Última actualización: 2025-11-21 19:31:51</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-sd
+"""
+================================================================================
+BRAIN ANALYZER - Análisis Multi-Timeframe Contextual Acumulativo
+================================================================================
+"""
+import pandas as pd
+from datetime import datetime
+from brain_calculator import (
+    calculate_adx_with_memory,
+    calculate_momentum_with_memory,
+    calculate_velocity,
+    calculate_acceleration,
+    calculate_rsi_with_memory,
+    calculate_emas_with_memory,
+    detect_support_resistance_with_memory,
+    detect_price_structure,
+    calculate_zigzag,
+    calculate_volume_profile_with_memory,
+    calculate_bollinger_bands,
+    calculate_atr
+)
+from exchange_connection import fetch_ohlcv
+from brain_config import *
+from brain_deep_analyzer import deep_analysis_complete
+from sheets_manager import sheets_manager
+from database_manager import db_manager
+
+# Flags para desactivar componentes (debugging)
+import sys
+ENABLE_1D_ANALYSIS = getattr(sys.modules['brain_config'], 'ENABLE_1D_ANALYSIS', True)
+ENABLE_4H_STRUCTURE = getattr(sys.modules['brain_config'], 'ENABLE_4H_STRUCTURE', True)
+ENABLE_4H_ZIGZAG = getattr(sys.modules['brain_config'], 'ENABLE_4H_ZIGZAG', True)
+ENABLE_VELOCITY_FILTER = getattr(sys.modules['brain_config'], 'ENABLE_VELOCITY_FILTER', True)
+
+
+
+# ============================================================================
+# HELPER: BTC ALIGNMENT (CONDICIONAL)
+# ============================================================================
+
+def check_btc_alignment(score=0, strict=None):
+    """Verifica si BTC está estable. Ahora CONDICIONAL por score.
+    
+    Args:
+        score: Score de la moneda analizada
+        strict: Si True, bloquea siempre. Si False/None, solo bloquea scores bajos
+    
+    Returns:
+        bool: True si OK para operar, False si debe bloquearse
+    """
+    if strict is None:
+        strict = BTC_ALIGNMENT_STRICT  # Usar config
+    
+    try:
+        btc_ohlcv = fetch_ohlcv('BTC/USDT:USDT', '15m', 10)
+        if not btc_ohlcv or len(btc_ohlcv) &lt; 5:
+            return True  # Sin datos, no bloqueamos
+        
+        df_btc = pd.DataFrame(btc_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        last_5_closes = df_btc['close'].tail(5).values
+        btc_change_pct = ((last_5_closes[-1] - last_5_closes[0]) / last_5_closes[0]) * 100
+        
+        # Threshold más suave: -3% en vez de -2%
+        if btc_change_pct &lt; -3.0:
+            # Si score es alto (&gt;70), permitir operar igual (desacoplamiento)
+            if not strict and score &gt;= 70:
+                print(f"🔓 BTC cayendo {btc_change_pct:.2f}% PERO score {score} alto. Permitiendo.")
+                return True
+            else:
+                print(f"⚠️ BTC cayendo {btc_change_pct:.2f}% en 15M. Protección activada.")
+                return False
+        return True
+    except Exception as e:
+        print(f"⚠️ Error verificando BTC: {e}")
+        return True  # Error = no bloquear
+
+# ============================================================================
+# FUNCIÓN 1: analyze_4h() - CONTEXTO DOMINANTE
+# ============================================================================
+
+def analyze_4h(symbol):
+    """
+    4H: Define contexto dominante y clima de mercado
+    
+    NUNCA RECHAZA - Solo informa dirección y fuerza
+    
+    Args:
+        symbol (str): Par trading (ej: 'BTC/USDT')
+    
+    Returns:
+        dict: Análisis completo con direction, strength, indicadores
+        None: Solo si no hay datos (caso extremo)
+    """
+    # Fetch datos
+    ohlcv = fetch_ohlcv(symbol, '4h', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    current_price = float(df['close'].iloc[-1])
+    
+    # ===== ADX con memoria =====
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+    
+    # ADX ANTICIPATORIO: Proyectar evolución
+    adx_now = adx_data['adx_current']
+    adx_trend = adx_data['adx_trend']
+    
+    # Calcular velocidad ADX (puntos por vela)
+    if len(adx_data['adx_history']) &gt;= 5:
+        adx_velocity = (adx_data['adx_history'][-1] - adx_data['adx_history'][0]) / 5
+    else:
+        adx_velocity = 0.0
+    
+    # Proyección 3 velas adelante (12 horas en 4H)
+    adx_proyectado = adx_now + (adx_velocity * 3)
+    
+    # ===== Determinar dirección base por dominancia =====
+    if adx_data['dominance'] == 'DI+':
+        direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+
+    # ===== Evaluar fuerza ADX =====
+    strength = 'WEAK'  # Inicializar en WEAK
+    
+    # CASO 1: ADX ya &gt;25 (perfecto)
+    if adx_now &gt;= 25:
+        strength = 'STRONG'
+    elif adx_now &gt;= 17 and adx_velocity &gt; 1.5:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
+
+    if adx_trend == 'decreciendo' and adx_velocity &lt; -0.8:
+        strength = 'WEAK'
+
+    if direction != 'LATERAL' and abs(adx_data['spread']) &lt; 5.0:
+        strength = 'WEAK'
+
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    # FIX: Aceptar 'lime' como bullish y 'maroon' como bearish
+    expected_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
+
+    if direction != 'LATERAL' and momentum_data['color_current'] not in expected_colors:
+        direction = 'LATERAL'
+
+    if momentum_data['consecutive_count'] &lt; 3:
+        strength = 'WEAK'
+
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+
+    if ENABLE_4H_STRUCTURE:
+        structure = detect_price_structure(df, lookback=20)
+    else:
+        structure = {'structure': 'N/A'}
+
+    if ENABLE_4H_ZIGZAG:
+        zigzag = calculate_zigzag(df, threshold_pct=3.0)
+    else:
+        zigzag = {'zigzag': 'N/A'}
+
+    print(f"📊 4H | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Estructura:{structure['structure']}")
+
+    score_4h = 0
+    if strength == 'STRONG':
+        score_4h += 20
+    elif strength == 'MODERATE':
+        score_4h += 10
+    else:
+        score_4h += 0
+    if adx_trend == 'creciendo':
+        score_4h += 5
+    if momentum_data['consecutive_count'] &gt;= 5:
+        score_4h += 5
+    if abs(adx_data['spread']) &gt; 7:
+        score_4h += 5
+
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_4h': score_4h,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'structure': structure,
+        'zigzag': zigzag,
+        'current_price': current_price,
+        'context': f"4H {direction} {strength} - ADX {adx_data['adx_current']:.1f}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+
+# ============================================================================
+# FUNCIÓN 2: analyze_1h() - CONFIRMACIÓN INTERMEDIA
+# ============================================================================
+
+def analyze_1h(symbol):
+    """1H: Confirma tendencia 4H"""
+    ohlcv = fetch_ohlcv(symbol, '1h', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+    adx_trend = adx_data['adx_trend']
+    adx_current = adx_data['adx_current']
+    spread = abs(adx_data['spread'])
+
+    if adx_data['dominance'] == 'DI+':
+        direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    # FIX: Aceptar 'lime' como bullish y 'maroon' como bearish
+    expected_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
+    momentum_color = momentum_data['color_current']
+
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+    structure = detect_price_structure(df, lookback=20)
+    zigzag = calculate_zigzag(df, threshold_pct=2.5)
+
+    if adx_current &gt; 32:
+        strength = 'STRONG'
+    elif adx_current &gt; 25:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
+
+    score_1h = 0
+    if adx_trend == 'creciendo':
+        score_1h += 5
+    if adx_current &gt;= 22:
+        score_1h += 5
+    if momentum_color in expected_colors:
+        score_1h += 5
+    if spread &gt; 4.0:
+        score_1h += 5
+
+    adx_val = adx_data['adx_current']
+    momentum = momentum_data['color_current']
+    rsi = rsi_data['rsi_current']
+    emas_aligned = emas_data.get('emas_aligned', False)
+
+    if adx_val &gt;= 25:
+        score_1h += 5
+    elif adx_val &gt;= 20:
+        score_1h += 2
+
+    if momentum in ['green', 'lime', 'red', 'maroon']:
+        score_1h += 2
+
+    if 40 &lt;= rsi &lt;= 70:
+        score_1h += 2
+
+    if emas_aligned:
+        score_1h += 2
+
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_1h': score_1h,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'structure': structure,
+        'zigzag': zigzag,
+        'context': f"1H {direction} {strength} - ADX {adx_current:.1f}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+
+# ============================================================================
+# FUNCIÓN 3: analyze_15m() - TIMING Y DESARROLLO
+# ============================================================================
+
+def analyze_15m(symbol, strict=None):
+    """15M: Timing de entrada - Ahora con FUZZY SCORING"""
+    # Auto-detectar modo si no se especifica
+    if strict is None:
+        strict = not ENABLE_INTELLIGENT_MODE  # Intelligent mode = No estricto
+    
+    ohlcv = fetch_ohlcv(symbol, '15m', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    current_price = float(df['close'].iloc[-1])
+    
+    # --- ANTI-PUMP MEJORADO (Más inteligente) ---
+    vol_avg = df['volume'].iloc[:-1].mean()
+    last_vol = df['volume'].iloc[-1]
+    last_candle_pct = abs((df['close'].iloc[-1] - df['open'].iloc[-1]) / df['open'].iloc[-1]) * 100
+    
+    # Solo rechazar si volumen &gt; 15x Y vela &gt; 20% (pump claro)
+    if last_vol &gt; vol_avg * 15 and last_candle_pct &gt; 20:
+        print(f"⚠️ PUMP EXTREMO en {symbol}: Vol {last_vol/vol_avg:.1f}x + Vela {last_candle_pct:.1f}%. Rechazando.")
+        return None
+    # -----------------------------------------------
+
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50], lookback=10)
+    
+    # Determinar dirección siempre (no rechazar)
+    if adx_data['dominance'] == 'DI+':
+        direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+    
+    expected_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
+    
+    # ===== MODO ESTRICTO (Solo en modo cascada tradicional) =====
+    if strict:
+        # Rechazos HARD solo si es estricto
+        if adx_data['adx_current'] &lt; 17:  # Reducido de 20 → 17
+            return None
+        if abs(adx_data['spread']) &lt; 2.0:  # Reducido de 3.0 → 2.0
+            return None
+        if momentum_data['color_current'] not in expected_colors:
+            return None
+        if momentum_data['consecutive_count'] &lt; 1:  # Reducido de 2 → 1
+            return None
+    
+    # ===== FUZZY SCORING (Siempre calcular) =====
+    score_15m = 0
+    
+    # ADX: Gradiente (no binario)
+    adx_current = adx_data['adx_current']
+    if adx_current &gt;= 25:
+        score_15m += 15
+    elif adx_current &gt;= 20:
+        score_15m += 10
+    elif adx_current &gt;= 17:
+        score_15m += 5
+    elif adx_current &gt;= 14:
+        score_15m += 2
+    # Si ADX &lt; 14, no suma pero no rechaza
+    
+    # Spread DI: Claridad direccional
+    spread = abs(adx_data['spread'])
+    if spread &gt;= 7:
+        score_15m += 10
+    elif spread &gt;= 4:
+        score_15m += 7
+    elif spread &gt;= 2:
+        score_15m += 4
+    elif spread &gt;= 1:
+        score_15m += 2
+    
+    # Momentum alineado
+    if momentum_data['color_current'] in expected_colors:
+        score_15m += 8
+        if momentum_data['consecutive_count'] &gt;= 3:
+            score_15m += 5
+        elif momentum_data['consecutive_count'] &gt;= 2:
+            score_15m += 3
+    
+    # RSI razonable
+    rsi = rsi_data['rsi_current']
+    if rsi and 40 &lt;= rsi &lt;= 70:
+        score_15m += 5
+    elif rsi and 30 &lt;= rsi &lt;= 80:
+        score_15m += 2
+    
+    # EMAs alineadas
+    if emas_data.get('emas_aligned', False):
+        score_15m += 5
+    
+    # Tendencia ADX
+    if adx_data['adx_trend'] == 'creciendo':
+        score_15m += 3
+    
+    # ===== DETERMINAR STRENGTH =====
+    if adx_current &gt;= 25 and spread &gt;= 5:
+        strength = 'STRONG'
+    elif adx_current &gt;= 20 and spread &gt;= 3:
+        strength = 'MODERATE'
+    elif adx_current &gt;= 17:
+        strength = 'WEAK'
+    else:
+        strength = 'VERY_WEAK'
+    
+    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
+    
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_15m': score_15m,
+        'current_price': current_price,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'context': f"15M {direction} {strength} - Score {score_15m}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+# FUNCIÓN 4: analyze_5m() - EJECUCIÓN INMEDIATA
+# ============================================================================
+
+def analyze_5m(symbol):
+    """5M: Data para ejecución - NO rechaza"""
+    ohlcv = fetch_ohlcv(symbol, '5m', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+
+    if adx_data['dominance'] == 'DI+':
+        direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21], lookback=10)
+    structure = detect_price_structure(df, lookback=10)
+    zigzag = calculate_zigzag(df, threshold_pct=1.5)
+    sr_data = detect_support_resistance_with_memory(df, lookback=30)
+    velocity_data = calculate_velocity(df, lookback=5)
+    acceleration_data = calculate_acceleration(df, lookback=5)
+    volume_profile = calculate_volume_profile_with_memory(df, num_levels=20)
+    current_price = float(df['close'].iloc[-1])
+
+    if adx_data['adx_current'] &gt; 25:
+        strength = 'STRONG'
+    elif adx_data['adx_current'] &gt; 18:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
+
+    score_5m = 0
+    if adx_data['adx_current'] &gt; 25:
+        score_5m += 10
+    elif adx_data['adx_current'] &gt; 18:
+        score_5m += 5
+    if velocity_data.get('velocity_current', 0) &gt; 0:
+        score_5m += 5
+    if rsi_data['rsi_current'] and 30 &lt;= rsi_data['rsi_current'] &lt;= 70:
+        score_5m += 5
+
+    print(f"         ⚡ 5M | {symbol} | {direction} | Precio:${current_price:.6f} | Vel:{velocity_data['velocity_current']:.6f} | Score5M:{score_5m}")
+
+    # Contexto de Volume Profile
+    vp = calculate_volume_profile_with_memory(df, lookback=50)
+    profile_high = vp.get('profile_high', current_price * 1.1)
+    breaking_profile = current_price &gt; profile_high
+    
+    # Distancia a EMA 20 (Bollinger Middle)
+    bb = calculate_bollinger_bands(df, period=20)
+    ema_20 = bb['middle'][-1]
+    dist_ema_pct = ((current_price - ema_20) / ema_20) * 100
+
+    # ATR para volatilidad dinámica
+    atr_data = calculate_atr(df, period=14)
+    atr_val = atr_data.get('atr_current', current_price * 0.01)
+    atr_pct = (atr_val / current_price) * 100
+
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_5m': score_5m,
+        'current_price': current_price,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'structure': structure,
+        'zigzag': zigzag,
+        'sr': sr_data,
+        'velocity': velocity_data,
+        'acceleration': acceleration_data,
+        'volume_profile': vp,
+        'breaking_profile': breaking_profile,
+        'dist_ema_pct': dist_ema_pct,
+        'atr_pct': atr_pct, # Nuevo campo
+        'context': f"5M {direction} - Ejecución inmediata",
+        'timestamp': datetime.now().isoformat()
+    }
+
+def analyze_1d(symbol):
+    ohlcv = fetch_ohlcv(symbol, '1d', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+
+    adx_current = adx_data['adx_current']
+    dominance = adx_data['dominance']
+    momentum_color = momentum_data['color_current']
+    momentum_count = momentum_data['consecutive_count']
+
+    if adx_current &gt;= 25 and dominance == 'DI+' and momentum_color in ['green', 'lime'] and momentum_count &gt;= 5:
+        phase = 'BULLISH'
+        strength = 'STRONG'
+    elif adx_current &gt;= 25 and dominance == 'DI-' and momentum_color in ['red', 'maroon'] and momentum_count &gt;= 5:
+        phase = 'BEARISH'
+        strength = 'STRONG'
+    elif adx_current &lt; 25 and momentum_color in ['green', 'lime']:
+        phase = 'BULLISH'
+        strength = 'WEAK'
+    elif adx_current &lt; 25 and momentum_color in ['red', 'maroon']:
+        phase = 'BEARISH'
+        strength = 'WEAK'
+    else:
+        phase = 'LATERAL'
+        strength = 'WEAK'
+
+    print(f"📅 1D | {symbol} | {phase} {strength} | ADX:{adx_current:.1f}")
+
+    return {
+        'phase': phase,
+        'strength': strength,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'context': f"1D {phase} - ADX {adx_current:.1f}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+def analyze_temporal_context(symbol):
+    """
+    Analiza el contexto temporal reciente (últimos 60 min) usando la DB.
+    Busca estabilidad y consistencia.
+    """
+    try:
+        history = db_manager.get_recent_context(symbol, limit_minutes=60)
+        if not history or len(history) &lt; 10:
+            return {'stability': 'DESCONOCIDO', 'bonus': 0}
+        
+        # 1. Verificar cambios de dirección (inestabilidad)
+        directions = [row['direction'] for row in history]
+        flips = 0
+        for i in range(1, len(directions)):
+            if directions[i] != directions[i-1]:
+                flips += 1
+        
+        # 2. Verificar consistencia de ADX
+        adx_values = [row['adx_15m'] for row in history]
+        adx_rising = 0
+        for i in range(1, len(adx_values)):
+            if adx_values[i] &gt; adx_values[i-1]:
+                adx_rising += 1
+        
+        # Evaluación
+        bonus = 0
+        stability = 'ESTABLE'
+        
+        if flips &gt; 3:
+            stability = 'INESTABLE'
+            bonus -= 10  # Penalización por inestabilidad
+        elif flips == 0:
+            stability = 'MUY_ESTABLE'
+            bonus += 10  # Bonus por tendencia sostenida
+            
+        if adx_rising &gt; len(adx_values) * 0.7:
+            bonus += 5  # Bonus si ADX sube la mayoría del tiempo
+            
+        return {'stability': stability, 'bonus': bonus, 'flips': flips}
+        
+    except Exception as e:
+        print(f"⚠️ Error analizando contexto temporal: {e}")
+        return {'stability': 'ERROR', 'bonus': 0}
+
+def analyze_trend_evolution(symbol):
+    """
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 2<br>
-    Generado: 2025-11-21 16:58:33
+    Total caracteres: 20,537<br>
+    Generado: 2025-11-21 19:31:51
   </div>
 </body>
 </html>
