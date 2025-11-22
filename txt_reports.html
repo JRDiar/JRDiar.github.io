@@ -15,134 +15,457 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-22 01:13:48</div>
+  <div class="meta">Última actualización: 2025-11-22 02:03:57</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
 """
-EXCHANGE CONNECTION - Bot Phase 4.0
-Conexión CCXT al exchange MEXC
+SHEETS MANAGER - Bot Phase 4.0
+Gestión de escritura a Google Sheets
 """
 
-import ccxt
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 from brain_config import (
-    MEXC_API_KEY, MEXC_SECRET_KEY, EXCHANGE_NAME,
-    DEFAULT_TYPE, RATE_LIMIT, ENABLE_RATE_LIMIT
+    GOOGLE_CREDENTIALS_FILE, GOOGLE_SPREADSHEET_ID,
+    ENABLE_SHEETS, BATCH_WRITE, ARGENTINA_TZ,
+    SHEET_BRAIN_PRE_FILTRO, SHEET_BRAIN_WATCHLIST,
+    SHEET_BRAIN_TRIGGERS, SHEET_BRAIN_PROYECCIONES,
+    SHEET_BRAIN_TRADES, SHEET_BRAIN_MONITOREO,
+    SHEET_BRAIN_SALIDAS, SHEET_BRAIN_CONFIG_REMOTE,
+    SHEET_BRAIN_STATS
 )
+from database_manager import db_manager
 
 # ============================================================================
-# INICIALIZAR EXCHANGE
+# SHEETS MANAGER CLASS
 # ============================================================================
 
-exchange = ccxt.mexc({
-    'apiKey': MEXC_API_KEY,
-    'secret': MEXC_SECRET_KEY,
-    'options': {'defaultType': DEFAULT_TYPE},
-    'enableRateLimit': ENABLE_RATE_LIMIT,
-    'rateLimit': RATE_LIMIT
-})
-
-# ============================================================================
-# FUNCIONES FETCH
-# ============================================================================
-
-def fetch_ohlcv(symbol, timeframe='5m', limit=100):
-    """
-    Obtiene datos OHLCV para símbolo y timeframe
+class SheetsManager:
+    """Gestiona conexión y escritura a Google Sheets"""
     
-    Args:
-        symbol: Símbolo (ej: 'BTC/USDT:USDT')
-        timeframe: Timeframe (1d, 4h, 1h, 15m, 5m)
-        limit: Número de velas
-    
-    Returns:
-        list: OHLCV [[timestamp, open, high, low, close, volume], ...]
-        None: Si error
-    """
-    try:
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+    def __init__(self):
+        self.client = None
+        self.spreadsheet = None
+        self.connected = False
         
-        if not ohlcv or len(ohlcv) &lt; 10:
-            return None
+        if ENABLE_SHEETS and GOOGLE_CREDENTIALS_FILE and GOOGLE_SPREADSHEET_ID:
+            self._connect()
+    
+    def _connect(self):
+        """Establece conexión con Google Sheets"""
+        try:
+            scope = [
+                'https://spreadsheets.google.com/feeds',
+                'https://www.googleapis.com/auth/drive'
+            ]
             
-        return ohlcv
-        
-    except Exception as e:
-        print(f"❌ Error fetch_ohlcv {symbol} {timeframe}: {e}")
-        return None
-
-
-def fetch_markets():
-    """
-    Obtiene lista de mercados disponibles
+            creds = ServiceAccountCredentials.from_json_keyfile_name(
+                GOOGLE_CREDENTIALS_FILE, scope
+            )
+            
+            self.client = gspread.authorize(creds)
+            self.spreadsheet = self.client.open_by_key(GOOGLE_SPREADSHEET_ID)
+            self.connected = True
+            
+            print("✅ Google Sheets conectado")
+            
+        except Exception as e:
+            print(f"❌ Error conectando Google Sheets: {e}")
+            self.connected = False
     
-    Returns:
-        dict: Markets {symbol: market_info}
-        None: Si error
-    """
-    try:
-        markets = exchange.load_markets()
-        return markets
-    except Exception as e:
-        print(f"❌ Error fetch_markets: {e}")
-        return None
-
-
-def get_futures_symbols():
-    """
-    Obtiene lista de símbolos futuros USDT
-    
-    Returns:
-        list: ['BTC/USDT:USDT', 'ETH/USDT:USDT', ...]
-        None: Si error
-    """
-    try:
-        markets = fetch_markets()
-        if not markets:
+    def _get_sheet(self, sheet_name):
+        """Obtiene o crea una hoja"""
+        if not self.connected:
             return None
         
-        # Filtrar solo futuros USDT
-        symbols = [
-            symbol for symbol, market in markets.items()
-            if market.get('type') == 'swap' and symbol.endswith(':USDT')
+        try:
+            return self.spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            # Crear hoja si no existe
+            return self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
+    
+    def write_row(self, sheet_name, row_data):
+        """
+        Escribe una fila en una hoja
+        
+        Args:
+            sheet_name: Nombre de la hoja
+            row_data: Lista de valores para la fila
+        
+        Returns:
+            bool: True si éxito, False si error
+        """
+        if not self.connected:
+            return False
+        
+        try:
+            sheet = self._get_sheet(sheet_name)
+            if not sheet:
+                return False
+            
+            sheet.append_row(row_data)
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error escribiendo fila en {sheet_name}: {e}")
+            return False
+    
+    def write_batch(self, sheet_name, rows_data):
+        """
+        Escribe múltiples filas en una hoja (batch)
+        
+        Args:
+            sheet_name: Nombre de la hoja
+            rows_data: Lista de listas [[row1], [row2], ...]
+        
+        Returns:
+            bool: True si éxito, False si error
+        """
+        if not self.connected or not BATCH_WRITE:
+            return False
+        
+        try:
+            sheet = self._get_sheet(sheet_name)
+            if not sheet:
+                return False
+            
+            # Escribir TODAS las filas en un solo request API
+            sheet.append_rows(rows_data, value_input_option='USER_ENTERED')
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error escribiendo batch en {sheet_name}: {e}")
+            return False
+    
+    def clear_sheet(self, sheet_name):
+        """Limpia todo el contenido de una hoja"""
+        if not self.connected:
+            return False
+        
+        try:
+            sheet = self._get_sheet(sheet_name)
+            if not sheet:
+                return False
+            
+            sheet.clear()
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error limpiando {sheet_name}: {e}")
+            return False
+    
+    # ========================================================================
+    # FUNCIONES ESPECÍFICAS POR HOJA
+    # ========================================================================
+    
+    def write_pre_filtro(self, symbol, weekly_candles, status):
+        """
+        Escribe en BRAIN_PRE_FILTRO
+        
+        Args:
+            symbol: Símbolo (ej: BTC/USDT:USDT)
+            weekly_candles: Número de velas semanales
+            status: APROBADO o RECHAZADO
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            weekly_candles,
+            status
         ]
         
-        return sorted(symbols)
-        
-    except Exception as e:
-        print(f"❌ Error get_futures_symbols: {e}")
-        return None
-
-
-def get_top_symbols_by_volume(limit=100):
-    """
-    Obtiene símbolos ordenados por volumen 24h (top movers)
+        return self.write_row(SHEET_BRAIN_PRE_FILTRO, row)
     
-    Args:
-        limit: Cantidad de símbolos a retornar
+    def write_watchlist(self, symbol, score, direction, emas_distance, structure, edad, tiempo_proyectado_min, rr_ratio):
+        """
+        Escribe en BRAIN_WATCHLIST
+        
+        Args:
+            symbol: Símbolo
+            score: Score 0-100
+            direction: BULLISH o BEARISH
+            emas_distance: Distancia entre EMAs (%)
+            structure: SANA, REGULAR, MALA
+            edad: JOVEN, MADURA
+            tiempo_proyectado_min: Minutos proyectados a target
+            rr_ratio: Risk/Reward ratio
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            score,
+            direction,
+            emas_distance,
+            structure,
+            edad,
+            tiempo_proyectado_min,
+            rr_ratio
+        ]
+        
+        return self.write_row(SHEET_BRAIN_WATCHLIST, row)
     
-    Returns:
-        list: Símbolos ordenados por volumen descendente
-    """
-    try:
-        tickers = exchange.fetch_tickers()
+    def write_trigger(self, symbol, trigger_type, adx_value, momentum, volume_ratio):
+        """
+        Escribe en BRAIN_TRIGGERS
         
-        # Filtrar y ordenar por volumen
-        volume_list = []
-        for symbol, ticker in tickers.items():
-            if ':USDT' in symbol and ticker.get('quoteVolume'):
-                volume_list.append((symbol, ticker['quoteVolume']))
+        Args:
+            symbol: Símbolo
+            trigger_type: ADX, MOMENTUM, VOLUMEN
+            adx_value: Valor ADX actual
+            momentum: Velas consecutivas momentum
+            volume_ratio: Ratio volumen vs promedio
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
         
-        # Ordenar por volumen descendente
-        volume_list.sort(key=lambda x: x[1], reverse=True)
+        row = [
+            timestamp,
+            symbol,
+            trigger_type,
+            adx_value,
+            momentum,
+            volume_ratio
+        ]
         
-        # Retornar top N
-        return [symbol for symbol, _ in volume_list[:limit]]
+        return self.write_row(SHEET_BRAIN_TRIGGERS, row)
+    
+    def write_proyeccion(self, symbol, current_price, velocity, acceleration, 
+                        time_to_target, rr_ratio, target_price, stop_loss):
+        """
+        Escribe en BRAIN_PROYECCIONES
         
-    except Exception as e:
-        print(f"❌ Error obteniendo top symbols: {e}")
-        return []
+        Args:
+            symbol: Símbolo
+            current_price: Precio actual
+            velocity: Velocidad (precio/min)
+            acceleration: Aceleración
+            time_to_target: Minutos estimados
+            rr_ratio: Risk/Reward ratio
+            target_price: Precio objetivo
+            stop_loss: Stop loss
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            current_price,
+            velocity,
+            acceleration,
+            time_to_target,
+            rr_ratio,
+            target_price,
+            stop_loss
+        ]
+        
+        return self.write_row(SHEET_BRAIN_PROYECCIONES, row)
+    
+    def write_trade_entry(self, symbol, direction, entry_price, stop_loss, 
+                         take_profit, score, rr_ratio):
+        """
+        Escribe entrada de trade en BRAIN_TRADES
+        
+        Args:
+            symbol: Símbolo
+            direction: BULLISH o BEARISH
+            entry_price: Precio entrada
+            stop_loss: Stop loss
+            take_profit: Take profit
+            score: Score Brain
+            rr_ratio: Risk/Reward ratio
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            "ENTRADA",
+            direction,
+            entry_price,
+            stop_loss,
+            take_profit,
+            score,
+            rr_ratio,
+            "",  # PnL (se llena en salida)
+            "",  # Duración (se llena en salida)
+            ""   # Razón salida (se llena en salida)
+        ]
+        
+        return self.write_row(SHEET_BRAIN_TRADES, row)
+    
+    def write_trade_exit(self, symbol, exit_price, pnl_pct, pnl_usd, 
+                        duration_min, exit_reason):
+        """
+        Escribe salida de trade en BRAIN_TRADES
+        
+        Args:
+            symbol: Símbolo
+            exit_price: Precio salida
+            pnl_pct: PnL en %
+            pnl_usd: PnL en USD
+            duration_min: Duración en minutos
+            exit_reason: Razón de salida
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            "SALIDA",
+            "",  # Direction (vacío en salida)
+            exit_price,
+            "",  # Stop loss (vacío en salida)
+            "",  # Take profit (vacío en salida)
+            "",  # Score (vacío en salida)
+            "",  # RR (vacío en salida)
+            f"{pnl_pct:+.2f}% | ${pnl_usd:+.2f}",
+            f"{duration_min:.1f} min",
+            exit_reason
+        ]
+        
+        return self.write_row(SHEET_BRAIN_TRADES, row)
+    
+    def write_monitoreo(self, symbol, current_price, pnl_pct, time_in_trade, 
+                       stop_status, nearest_resistance, momentum_color="neutral"):
+        """
+        Escribe en BRAIN_MONITOREO (estado actual trades activos)
+        
+        Args:
+            symbol: Símbolo
+            current_price: Precio actual
+            pnl_pct: PnL actual en %
+            time_in_trade: Minutos en trade
+            stop_status: ORIGINAL, BREAKEVEN, TRAILING
+            nearest_resistance: Resistencia más cercana
+            momentum_color: Color del momentum actual
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            current_price,
+            pnl_pct,
+            time_in_trade,
+            stop_status,
+            nearest_resistance,
+            momentum_color
+        ]
+        
+        return self.write_row(SHEET_BRAIN_MONITOREO, row)
+    
+    def write_salida_inteligente(self, symbol, signal_type, description):
+        """
+        Escribe señales de salida inteligente en BRAIN_SALIDAS
+        
+        Args:
+            symbol: Símbolo
+            signal_type: DESACELERACION, VOLUMEN_BAJO, ZONA_CRITICA, etc.
+            description: Descripción de la señal
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            symbol,
+            signal_type,
+            description
+        ]
+        
+        return self.write_row(SHEET_BRAIN_SALIDAS, row)
+    
+    def write_stats(self, total_trades, wins, losses, win_rate, avg_pnl, 
+                   total_pnl, best_trade, worst_trade):
+        """
+        Escribe estadísticas en BRAIN_STATS
+        
+        Args:
+            total_trades: Total de trades
+            wins: Trades ganadores
+            losses: Trades perdedores
+            win_rate: Tasa de acierto (%)
+            avg_pnl: PnL promedio (%)
+            total_pnl: PnL total (USD)
+            best_trade: Mejor trade (%)
+            worst_trade: Peor trade (%)
+        """
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            total_trades,
+            wins,
+            losses,
+            f"{win_rate:.2f}%",
+            f"{avg_pnl:+.2f}%",
+            f"${total_pnl:+.2f}",
+            f"{best_trade:+.2f}%",
+            f"{worst_trade:+.2f}%"
+        ]
+        
+        return self.write_row(SHEET_BRAIN_STATS, row)
+    
+    def write_rejection(self, symbol, score, reason, adx_4h, adx_1h, adx_15m, 
+                    mom_4h, mom_1h, mom_15m, vp_position, sr_danger, 
+                    structure, divergence, precio_actual, warnings,
+                    probability, score_4h, score_1h, score_15m, evolution_bonus):
+        """Registra monedas rechazadas con contexto completo"""
+        timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Usar warnings directamente
+        warnings_text = warnings if isinstance(warnings, str) else ""
+        
+        row = [
+            timestamp, symbol, score, reason,
+            adx_4h, adx_1h, adx_15m,
+            mom_4h, mom_1h, mom_15m,
+            vp_position if isinstance(vp_position, str) else vp_position.get('position', 'N/A'),
+            'SI' if sr_danger else 'NO',
+            structure if isinstance(structure, str) else structure.get('pattern', 'N/A'),
+            divergence if isinstance(divergence, str) else divergence.get('type', 'NONE'),
+            precio_actual,
+            warnings_text,
+            probability,
+            score_4h,
+            score_1h,
+            score_15m,
+            evolution_bonus
+        ]
+        
+        # Crear hoja con headers si no existe
+        sheet_name = 'BRAIN_RECHAZOS'
+        sheet = self._get_sheet(sheet_name)
+        if sheet and sheet.row_count == 0:
+            headers = [
+                'Timestamp','Symbol','Score','Reason','ADX_4H','ADX_1H','ADX_15M',
+                'Mom_4H','Mom_1H','Mom_15M','VP_Position','SR_Danger','Structure',
+                'Divergence','Precio','Warnings',
+                'Probability','Score_4H','Score_1H','Score_15M','Evolution_Bonus'
+            ]
+            sheet.append_row(headers)
+        
+        self.write_row(sheet_name, row)
+
+        # SQLite (ilimitado)
+        db_manager.insert_rejection(
+            symbol, score, reason, adx_4h, adx_1h, adx_15m,
+            mom_4h, mom_1h, mom_15m, vp_position, sr_danger,
+            structure, divergence, precio_actual, warnings_text,
+            probability, score_4h, score_1h, score_15m, evolution_bonus
+        )
+
+# ============================================================================
+# INSTANCIA GLOBAL
+# ============================================================================
+
+# Crear instancia única para todo el bot
+sheets_manager = SheetsManager()
 
 
 # ============================================================================
@@ -151,106 +474,44 @@ def get_top_symbols_by_volume(limit=100):
 
 if __name__ == "__main__":
     print("=" * 80)
-    print("EXCHANGE CONNECTION - Validación")
+    print("SHEETS MANAGER - Validación")
     print("=" * 80)
-    print(f"Exchange: {EXCHANGE_NAME}")
-    print(f"API configurada: {'✅' if MEXC_API_KEY else '❌'}")
+    print(f"Sheets habilitado: {'✅' if ENABLE_SHEETS else '❌'}")
+    print(f"Credentials configurado: {'✅' if GOOGLE_CREDENTIALS_FILE else '❌'}")
+    print(f"Spreadsheet ID configurado: {'✅' if GOOGLE_SPREADSHEET_ID else '❌'}")
+    print(f"Batch write: {'✅' if BATCH_WRITE else '❌'}")
     print("-" * 80)
     
-    # Test conexión
-    print("Obteniendo símbolos futuros...")
-    symbols = get_futures_symbols()
-    
-    if symbols:
-        print(f"✅ {len(symbols)} símbolos encontrados")
-        print(f"Ejemplos: {symbols[:5]}")
+    if sheets_manager.connected:
+        print("✅ Conexión exitosa a Google Sheets")
+        print(f"Spreadsheet: {sheets_manager.spreadsheet.title}")
         
-        # Test fetch OHLCV
-        print("-" * 80)
-        print(f"Test fetch OHLCV: {symbols[0]}")
-        ohlcv = fetch_ohlcv(symbols[0], '5m', 10)
+        # Test escritura
+        print("\nTest escritura en BRAIN_PRE_FILTRO...")
+        success = sheets_manager.write_pre_filtro("BTC/USDT:USDT", 15, "APROBADO")
         
-        if ohlcv:
-            print(f"✅ {len(ohlcv)} velas obtenidas")
-            print(f"Última vela: {ohlcv[-1]}")
+        if success:
+            print("✅ Escritura exitosa")
         else:
-            print("❌ Error obteniendo OHLCV")
+            print("❌ Error en escritura")
     else:
-        print("❌ Error obteniendo símbolos")
+        print("⚠️ No conectado a Google Sheets (credenciales no configuradas)")
+        print("\nPara habilitar:")
+        print("1. Configura GOOGLE_CREDENTIALS_FILE en .env")
+        print("2. Configura GOOGLE_SPREADSHEET_ID en .env")
     
     print("=" * 80)
 
-
-Tabien quiero que analices otro módulo:sheets_manager.py
-
-Tengo estos errores y supuestamente ya estan corregidos pero no es asi, sigue todo igual, esto fue antes que analices todos los brains:
-En la hoja del sheet, tenemos errores: en la hoja: BRAIN_TRIGGERS. Columna: Momentum_Color, en vez de tener green o red, tiene el valor 0, Volume_Ratio, la columna esta vacia. Hoja: BRAIN_WATCHLIST, columas: Tiempo_Proyectado_Min: valor 0. Columna: RR_Ratio: Valor 0. Hola: BRAIN_PROYECCIONES: todas las columnas vacias: Timestamp 	Symbol	Current_Price	Velocity	Acceleration	Tiempo_A_Target	RR_Ratio	Target_Price	Stop_Loss. En la hoja:BRAIN_MONITOREO, la columna: Momentum_Color: Tiene todo false. Brain salidas: Timestamp	Symbol	Exit_Price	PnL_%	PnL_USD	Duration_Min	Senales_Activas	Razon_Principal. Todas las columnas vacias. Hoja: BRAIN_STATS. Todas las columnas vacias: Timestamp	Total_Trades	Wins	Losses	Win_Rate_%	Avg_PnL_%	Best_Trade_%	Worst_Trade_% .Antes esta hoja BRAIN_RECHAZOS era la más importante ya que ahi se veia porque rechazo una moneda y no operó, en el caso de que la moneda sea rechazada y tuvo una gran subida o bajada en el dia, estos datos sirven para ver porque la rechazo:  Columas vacias: Timestamp	Symbol	Score	Reason	ADX_4H	ADX_1H	ADX_15M	Mom_4H	Mom_1H	Mom_15M	VP_Position	SR_Danger	Structure	Divergence	Precio	Warnings	Probability	Score_4H	Score_1H	Score_15M	Evolution_Bonus
-
-
-Fixing Google Sheets Data Integrity
-The user mentioned BRAIN_RECHAZOS columns are empty. In 
-bot_main.py
-, I noticed vp_position, sr_danger, divergence are hardcoded to "N/A". I need to extract these from the 
-decision
- object if available, or at least provide better defaults. I will update the db_manager.insert_rejection calls in 
-bot_main.py
- to try to extract this data from ladder_data.
-
-Files Edited
-bot_main.py
-brain_executor.py
-sheets_manager.py
-brain_executor_entry.py
-Progress Updates
-1
-Investigating data extraction logic for Sheets and DB
-
-2
-Checking brain_executor_entry.py for data extraction logic
-
-3
-Analyzing bot_main.py for data passing to Sheets
-
-4
-Analyzing brain_executor.py for trade monitoring data
-
-5
-Updating brain_executor_entry.py to extract more metrics
-
-6
-Updating sheets_manager.py to include missing columns
-
-7
-Updating brain_executor.py to pass momentum_color to sheets_manager
-
-8
-Updating bot_main.py to populate BRAIN_RECHAZOS correctly
-
-✅ Corrección de Integridad de Datos (Google Sheets)
-
-He realizado las reparaciones necesarias para que los datos fluyan correctamente a las hojas de cálculo:
-
-BRAIN_MONITOREO:
-Ahora incluye la columna Momentum_Color real (green/red/neutral) en lugar de "False".
-Se actualizó brain_executor.py para calcular este dato en tiempo real.
-BRAIN_TRIGGERS / WATCHLIST:
-Corregí brain_executor_entry.py para extraer correctamente score, rr_ratio, momentum_color y volume_ratio desde el nuevo cerebro inteligente. Antes devolvían 0 o None.
-BRAIN_RECHAZOS:
-Mejoré la lógica en bot_main.py para intentar poblar columnas como Structure y Divergence en lugar de enviar siempre "N/A".
-Nota: Las hojas se irán llenando con datos correctos a medida que el bot realice nuevos análisis y operaciones. Los datos antiguos (filas vacías) permanecerán así hasta que se limpien o se sobrescriban. 📊
-
-
-Otros modulos:
-export_db.py
-generate_report.py
-system_check.py
-verify_intelligence.py
+def analyze_rejections():
+    from database_manager import db_manager
+    records = db_manager.get_all_rejections()
+    # ... resto igual
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 7,686<br>
-    Generado: 2025-11-22 01:13:48
+    Total caracteres: 16,043<br>
+    Generado: 2025-11-22 02:03:57
   </div>
 </body>
 </html>
