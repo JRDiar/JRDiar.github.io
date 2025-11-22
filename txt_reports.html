@@ -15,1857 +15,382 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-22 20:14:38</div>
+  <div class="meta">Última actualización: 2025-11-22 20:28:21</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
- ARQUITECTURA DEL BOT - BRAINTRADER PHASE 4.0
-
-**Documento de Arquitectura Técnica**  
-**Fecha:** 19 de Noviembre, 2025  
-**Versión:** 2.0.1  
-**Autor:** JRDiarte
-
----
-
-## 📋 ÍNDICE
-
-1. [Visión General](#visión-general)
-2. [Arquitectura de Capas](#arquitectura-de-capas)
-3. [Sistema de Dos Hemisferios](#sistema-de-dos-hemisferios)
-4. [Módulos del Cerebro](#módulos-del-cerebro)
-5. [Flujo de Datos](#flujo-de-datos)
-6. [Cambios Arquitectónicos Recientes](#cambios-arquitectónicos-recientes)
-7. [Decisiones de Diseño](#decisiones-de-diseño)
-
----
-
-## 🎯 VISIÓN GENERAL
-
-### Concepto del Bot
-
-BrainTrader es un sistema de trading automatizado que **simula el proceso de toma de decisiones de un trader humano experto**, utilizando una arquitectura de capas inspirada en el cerebro humano. El bot no es un simple ejecutor de señales técnicas, sino un **sistema inteligente anticipatorio** que:
-
-- **Percibe** el mercado a través de múltiples temporalidades
-- **Analiza** contexto completo antes de decidir
-- **Decide** inteligentemente basándose en consenso multi-timeframe
-- **Ejecuta** con precisión matemática
-- **Gestiona** trades con inteligencia adaptativa
-- **Aprende** de sus operaciones (re-análisis de breakevens)
-
-### Filosofía Central
-
-```
-🧠 HUMANO → BOT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Trader ve gráficos → Bot analiza 5 timeframes
-Trader evalúa fuerza → Bot calcula ADX + Momentum
-Trader proyecta timing → Bot usa física (v + a)
-Trader decide operar → Bot requiere consenso 4+/6 TFs
-Trader gestiona salida → Bot usa 5 señales inteligentes
-Trader re-evalúa → Bot re-analiza breakevens
-```
-
----
-
-## 🏗️ ARQUITECTURA DE CAPAS
-
-El sistema está organizado en **6 capas funcionales**, cada una con responsabilidades específicas:
-
-```
-╔════════════════════════════════════════════════════════════════╗
-║                      CAPA 6: ORQUESTACIÓN                      ║
-║                      (bot_main.py)                             ║
-╠════════════════════════════════════════════════════════════════╣
-║  • Coordina todas las fases                                    ║
-║  • Pre-filtro inicial de 738 símbolos                          ║
-║  • Loop principal de análisis/trading                          ║
-║  • Re-análisis periódico (cada 1 hora)                         ║
-╚════════════════════════════════════════════════════════════════╝
-                                │
-                ┌───────────────┼───────────────┐
-                ▼               ▼               ▼
-╔═══════════════════╗  ╔═══════════════════╗  ╔═══════════════════╗
-║   CAPA 5A:        ║  ║   CAPA 5B:        ║  ║   CAPA 5C:        ║
-║   ANÁLISIS        ║  ║   DECISIÓN        ║  ║   EJECUCIÓN       ║
-║   CASCADA         ║  ║   INTELIGENTE     ║  ║   GESTIÓN         ║
-╠═══════════════════╣  ╠═══════════════════╣  ╠═══════════════════╣
-║ brain_analyzer.py ║  ║ brain_intelligent ║  ║ brain_executor.py ║
-║                   ║  ║      .py          ║  ║ brain_executor_   ║
-║ Modo: CASCADA     ║  ║ Modo: PARALELO    ║  ║   entry.py        ║
-║ 1D→4H→1H→15M→5M  ║  ║ Todas juntas      ║  ║                   ║
-║ Rechaza si falla  ║  ║ Toma decisión     ║  ║ 2 hemisferios:    ║
-║                   ║  ║ holística         ║  ║ • Entrada         ║
-║                   ║  ║                   ║  ║ • Monitoreo       ║
-╚═══════════════════╝  ╚═══════════════════╝  ╚═══════════════════╝
-                                │
-                ┌───────────────┼───────────────┐
-                ▼               ▼               ▼
-╔═══════════════════╗  ╔═══════════════════╗  ╔═══════════════════╗
-║   CAPA 4:         ║  ║   CAPA 3:         ║  ║   CAPA 2:         ║
-║   WATCHLIST       ║  ║   CÁLCULO         ║  ║   DATOS           ║
-╠═══════════════════╣  ╠═══════════════════╣  ╠═══════════════════╣
-║ brain_watchlist   ║  ║ brain_calculator  ║  ║ exchange_         ║
-║      .py          ║  ║      .py          ║  ║   connection.py   ║
-║                   ║  ║                   ║  ║                   ║
-║ • Top 20 monedas  ║  ║ • ADX + Momentum  ║  ║ • CCXT (MEXC)     ║
-║ • Triggers calc.  ║  ║ • Velocidad       ║  ║ • Fetch OHLCV     ║
-║ • TTL management  ║  ║ • Aceleración     ║  ║ • 5 timeframes    ║
-║ • JSON persist.   ║  ║ • S/R clustering  ║  ║ • Rate limiting   ║
-╚═══════════════════╝  ╚═══════════════════╝  ╚═══════════════════╝
-                                │
-                                ▼
-╔════════════════════════════════════════════════════════════════╗
-║                    CAPA 1: CONFIGURACIÓN                       ║
-║                    (brain_config.py)                           ║
-╠════════════════════════════════════════════════════════════════╣
-║  • 18 secciones de config                                      ║
-║  • Variables de entorno (.env)                                 ║
-║  • Parámetros ajustables                                       ║
-╚════════════════════════════════════════════════════════════════╝
-```
-
-### Descripción de Capas
-
-#### **CAPA 1: Configuración**
-- **Archivo:** `brain_config.py`
-- **Propósito:** Centralizar todas las configuraciones del bot
-- **Características:**
-  - 18 secciones organizadas temáticamente
-  - Credenciales desde `.env` (seguridad)
-  - Parámetros de scoring, risk/reward, timing
-  - Fácil ajuste sin tocar código
-
-#### **CAPA 2: Datos**
-- **Archivo:** `exchange_connection.py`
-- **Propósito:** Obtener datos de mercado
-- **Características:**
-  - Conexión a MEXC via CCXT
-  - Fetch de OHLCV multi-timeframe
-  - 738 símbolos de futuros USDT
-  - Rate limiting para protección API
-
-#### **CAPA 3: Cálculo**
-- **Archivo:** `brain_calculator.py` (878 líneas)
-- **Propósito:** Funciones matemáticas puras
-- **Características:**
-  - **Indicadores técnicos:** ADX (Wilder's), Momentum (LazyBear), RSI, EMAs
-  - **Física del precio:** Velocidad, Aceleración, Proyección temporal
-  - **Detección de zonas:** S/R clustering (K-means), Volume Profile
-  - **Fibonacci:** Retracements y extensiones
-
-#### **CAPA 4: Watchlist**
-- **Archivo:** `brain_watchlist.py` (407 líneas)
-- **Propósito:** Gestión dinámica de oportunidades
-- **Características:**
-  - Top 20 monedas por score
-  - Cálculo de triggers (R:R, timing)
-  - TTL management (limpieza automática)
-  - Persistencia en JSON
-
-#### **CAPA 5: Inteligencia**
-Dividida en 3 subsistemas:
-
-**5A - Análisis Cascada** (`brain_analyzer.py` - 840 líneas)
-- Análisis secuencial 1D → 4H → 1H → 15M → 5M
-- Rechaza si una capa falla
-- Sistema de scoring 0-100 puntos
-
-**5B - Decisión Inteligente** (`brain_intelligent.py` - 267 líneas)
-- Análisis paralelo (todas las temporalidades juntas)
-- Decisión holística: "¿Cuántas TFs dicen SÍ?"
-- 3 modos: decide_intelligently()
-
-**5C - Ejecución \u0026 Gestión** (2 archivos)
-- `brain_executor.py` (504 líneas): Monitoreo + Salida
-- `brain_executor_entry.py` (124 líneas): Triggers + Entrada
-
-#### **CAPA 6: Orquestación**
-- **Archivo:** `bot_main.py` (601 líneas)
-- **Propósito:** Coordinar todo el sistema
-- **Características:**
-  - Pre-filtro inicial
-  - Loop principal con 3 fases
-  - Re-análisis periódico
-  - Gestión de lifecycle
-
----
-
-## 🧠 SISTEMA DE DOS HEMISFERIOS
-
-### Concepto
-
-El módulo de ejecución fue dividido en **dos hemisferios** (inspirado en el cerebro humano), cada uno con funciones especializadas:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    BRAIN EXECUTOR                            │
-│                 (Mente del Trader)                           │
-└─────────────────────────────────────────────────────────────┘
-                            │
-            ┌───────────────┴───────────────┐
-            ▼                               ▼
-┌──────────────────────┐        ┌──────────────────────┐
-│  HEMISFERIO IZQUIERDO │        │  HEMISFERIO DERECHO   │
-│  (Entrada \u0026 Triggers) │        │  (Monitoreo \u0026 Salida) │
-├──────────────────────┤        ├──────────────────────┤
-│ brain_executor_      │        │ brain_executor.py     │
-│   entry.py           │        │                       │
-│                      │        │                       │
-│ RESPONSABILIDADES:   │        │ RESPONSABILIDADES:    │
-│ • Verificar triggers │        │ • Monitorear trades   │
-│ • ADX + Momentum     │        │ • Gestión PnL         │
-│ • Validar volumen    │        │ • Breakeven           │
-│ • Bypass inteligente │        │ • Trailing stop       │
-│ • Decidir ENTRADA    │        │ • 5 señales de salida │
-│                      │        │ • Stop loss thread    │
-└──────────────────────┘        └──────────────────────┘
-       (Analítico)                    (Emocional)
-```
-
-### Hemisferio Izquierdo: Entrada y Triggers
-**Archivo:** `brain_executor_entry.py`
-
-**Función principal:** `check_trigger_activated_intelligent(symbol, watchlist_data)`
-
-**Responsabilidades:**
-**Responsabilidades:**
-1. **Validación de triggers (Sistema de Puntuación / Fuzzy Logic):**
-   - **Concepto:** En lugar de rechazar por una sola condición fallida, se suman puntos.
-   - **Cálculo de Score:**
-     - **ADX:** +1 punto por cada unidad sobre 20 (Max 40).
-     - **Momentum:** +5 puntos por cada vela consecutiva (Max 20).
-     - **Volumen:** +20 (&gt;1.5x), +10 (&gt;1.0x), -10 (&lt;0.6x).
-     - **Spread DI:** +10 si hay claridad (&gt;5).
-     - **Explosión:** +50 puntos (Override automático).
-   - **Decisión:**
-     - Si **Score Total ≥ 60** → **ENTRADA APROBADA**.
-   - *Beneficio:* Un ADX muy fuerte puede compensar un volumen ligeramente bajo.
-
-2. **Validación de dirección:**
-   - Verifica DI+ vs DI- en 15M
-   - Confirma momentum alineado
-   - Detecta cambios de tendencia
-   - *Nota:* Esta es la única regla estricta (no negociable).
-
-**Retorna:**
-```python
-{
-    'activated': True/False,
-    'adx': 28.5,
-    'momentum_age': 5,
-    'volume_ratio': 2.15,
-    'is_explosive': True/False
-}
-```
-
-### Hemisferio Derecho: Monitoreo y Salida
-**Archivo:** `brain_executor.py`
-
-**Clase principal:** `TradeManager`
-
-**Responsabilidades:**
-1. **Gestión de capital:**
-   - Capital disponible
-   - División por trade
-   - Max trades simultáneos
-
-2. **Entrada a trade:**
-   - `enter_trade(symbol, watchlist_data)`
-   - Registro en DB
-   - Notificación Telegram
-   - Escritura a Google Sheets
-
-3. **Monitoreo activo:**
-   - `monitor_active_trades()`
-   - Tracking de PnL en tiempo real
-   - Verificación de breakeven (+2%)
-   - Detección de stop loss
-
-4. **Salida inteligente:**
-   - `check_exit_signals()` → 5 señales:
-     1. 📉 **Desaceleración:** Velas \u003c70% promedio
-     2. 📊 **Volumen bajo:** \u003c60% promedio
-     3. ⚠️ **Divergencia:** Precio vs Momentum
-     4. 🎯 **Zona crítica:** \u003c1% del target
-     5. 🛡️ **Buffett:** Pérdida \u003e2% en \u003c10min
-
-5. **Cierre de trade:**
-   - `close_trade(symbol, reason)`
-   - Registro de resultado
-   - Actualización capital
-   - Historial
-
-6. **Re-análisis:**
-   - `reanalyze_breakeven_exits()`
-   - Espera 5 minutos después de breakeven
-   - Re-analiza moneda completamente
-   - Puede re-entrar si setup mejoró
-
-### Ventajas de Dos Hemisferios
-
-✅ **Separación de responsabilidades:**
-- Entrada = Analítico, preciso, estricto
-- Salida = Adaptativo, protector, inteligente
-
-✅ **Código más mantenible:**
-- Cada hemisferio es independiente
-- Fácil modificar lógica de entrada sin tocar salida
-
-✅ **Bypass inteligente localizado:**
-- Solo afecta la entrada
-- No contamina la gestión de trades activos
-
-✅ **Testing más fácil:**
-- Se puede probar entrada sin ejecutar trades
-- Se puede probar gestión con trades simulados
-
----
-
-## 📦 MÓDULOS DEL CEREBRO
-
-### 1. `brain_analyzer.py` - Análisis Cascada
-**Líneas:** 840  
-**Paradigma:** Análisis secuencial con rechazo temprano
-
-#### Funciones Principales
-
-**`analyze_4h(symbol)`** - Contexto Dominante
-- Define clima de mercado (ALCISTA/LATERAL/BAJISTA)
-- Calcula ADX, Momentum, EMAs
-- **NUNCA rechaza** - Solo informa
-
-**`analyze_1h(symbol)`** - Confirmación Intermedia
-- Confirma tendencia 4H
-- Detecta edad del momentum
-- Valida confluencia
-
-**`analyze_15m(symbol)`** - Timing de Entrada
-- Calcula timing proyectado
-- Detecta S/R cercanos
-- Determina viabilidad operativa
-
-**`analyze_5m(symbol)`** - Ejecución Inmediata
-- Velocidad y aceleración actual
-- Data para proyección física
-- **NUNCA rechaza** - Solo data
-
-**`analyze_1d(symbol)`** - Clima General
-- RSI diario
-- Tendencia macro
-- Velas consecutivas
-- Previene operar contra corriente
-
-**`analyze_trend_evolution(symbol)`** - Explosiones 1M
-- Analiza velas de 1 minuto
-- Detecta tendencias explosivas
-- Permite bypass de filtros estrictos
-- Retorna `is_explosive` flag
-
-**`analyze_coin_complete(symbol)`** - Orquestador
-- Ejecuta análisis completo
-- Calcula score 0-100
-- Determina viabilidad
-- Retorna estructura completa
-
-#### Sistema de Scoring
-
-```python
-BASE_SCORE = 50
-
-BONOS (+):
-  Confluencia 4H (misma dirección)      +20
-  Confluencia 1D (larga alineación)     +15
-  EMAs cercanas 4H (\u003c1%)                +10
-  EMAs cercanas 15M (\u003c1%)               +10
-  Edad joven (\u003c5 velas)                  +15
-  Sin obstáculos (\u003e5% a S/R)            +10
-  
-PENALTIES (-):
-  EMAs separadas (\u003e2%)                  -10 (por TF)
-  Edad madura (\u003e10 velas)               -10
-  Estructura mala (ADX \u003c20)             -20
-  
-SCORE FINAL = BASE + BONOS - PENALTIES
-MÍNIMO VIABLE = 70
-```
-
-### 2. `brain_intelligent.py` - Decisión Inteligente
-**Líneas:** 267  
-**Paradigma:** Análisis paralelo holístico
-
-#### Paradigma Diferente
-
-```
-CASCADA (brain_analyzer):        PARALELO (brain_intelligent):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1D → 4H → 1H → 15M → 5M         1D, 4H, 1H, 15M, 5M, 1M
-Si 4H falla → RECHAZA           Al mismo tiempo
-Análisis binario (SÍ/NO)        ¿Cuántos dicen SÍ?
-```
-
-#### Función Principal
-
-**`decide_intelligently(symbol)`**
-
-**Paso 1:** Analiza todas las temporalidades en paralelo
-```python
-context = {
-    '1D': analyze_1d(symbol),
-    '4H': analyze_4h(symbol),
-    '1H': analyze_1h(symbol),
-    '15M': analyze_15m(symbol),
-    '5M': analyze_5m(symbol),
-    '1M': analyze_trend_evolution(symbol)
-}
-```
-
-**Paso 2:** Cuenta señales
-- `bullish_count`: Temporalidades alcistas
-- `strong_count`: ADX \u003e 20
-- `explosive_count`: Explosiones en 1M
-
-**Paso 3:** Toma decisión holística
-
-**Reglas de decisión:**
-1. **Explosión 1M + 2+ fuertes** → OPERAR (SCALPING)
-2. **4+ alcistas + 3+ fuertes** → OPERAR (SWING/POSITION)
-3. **5+ alcistas** → OPERAR (SWING) - Consenso masivo
-4. **Cualquier otro caso** → NO_OPERAR
-
-**Retorna:**
-```python
-{
-    'action': 'OPERAR' | 'NO_OPERAR',
-    'trade_type': 'SCALPING' | 'SWING' | 'POSITION',
-    'reason': "Explosión 1M + 3 temporalidades fuertes",
-    'confidence': 'BAJA' | 'MEDIA' | 'ALTA' | 'MUY_ALTA',
-    'context_summary': "Bullish: 5/6 | Strong: 3/6 | Explosivo: SÍ",
-    'full_analysis': {...}  # Para debugging
-}
-```
-
-#### Ventajas del Modo Inteligente
-
-✅ **Simula pensamiento humano:**
-- "Veo que 5 de 6 temporalidades están alcistas"
-- "Hay una explosión en 1M"
-- "3 temporalidades tienen fuerza real (ADX \u003e 20)"
-- **Decisión:** "Opero con confianza ALTA"
-
-✅ **No descarta oportunidades prematuras:**
-- Si 4H está lateral pero 1M está explosivo → Puede operar
-- Si 1H está débil pero 5 de 6 alcistas → Puede operar
-
-✅ **Más flexible que cascada:**
-- Cascada: Binario (pasa 100% o rechaza)
-- Inteligente: Gradiente (¿cuántos dicen SÍ?)
-
-### 3. `brain_calculator.py` - Matemática Pura
-**Líneas:** 878  
-**Propósito:** Funciones sin estado, reutilizables
-
-#### Secciones
-
-**Física del Precio:**
-- `calculate_velocity(df, lookback)` → Cambio de precio por vela
-- `calculate_acceleration(df, lookback)` → Cambio de velocidad
-- `calculate_time_to_target(price, target, v, a)` → Proyección temporal
-
-**Indicadores con Memoria:**
-- `calculate_adx_with_memory(df, period, lookback)` → ADX + historia
-- `calculate_momentum_with_memory(df, lookback)` → Momentum + tendencia
-- `calculate_rsi_with_memory(df, period, lookback)` → RSI + historia
-- `calculate_emas_with_memory(df, periods, lookback)` → EMAs múltiples
-
-**Detección de Zonas:**
-- `detect_support_resistance_with_memory(df, lookback, clusters)` → S/R por K-means
-- `calculate_volume_profile_with_memory(df, levels, lookback)` → POC, HVN, LVN
-
-**Otras:**
-- `calculate_zigzag(df, threshold)` → Pivotes altos/bajos
-- `detect_price_structure(df, lookback)` → HH/HL/LH/LL
-
-#### Características Únicas
-
-**Memoria Temporal:**
-Cada indicador retorna no solo el valor actual, sino también:
-- Historia de últimas N velas
-- Tendencia (creciendo/decreciendo/estable)
-- Clasificación de fuerza
-
-Ejemplo ADX:
-```python
-{
-    'adx_current': 28.5,
-    'adx_history': [25.2, 26.8, 27.3, 28.0, 28.5],
-    'adx_trend': 'creciendo',  # Acelerando
-    'di_plus_current': 32.0,
-    'di_minus_current': 18.5,
-    ...
-}
-```
-
-### 4. `brain_watchlist.py` - Gestión Dinámica
-**Líneas:** 407
-
-#### Clase Principal: `WatchlistManager`
-
-**Métodos clave:**
-
-**`calculate_triggers(analysis_data)`**
-- Encuentra resistencia más cercana
-- Calcula R:R ratio
-- Proyecta timing (5-60 min)
-- Valida viabilidad
-
-**`add_to_watchlist(symbol, analysis_data)`**
-- Verifica score ≥ 70
-- Calcula triggers
-- Si watchlist llena → reemplaza score más bajo
-- Guarda en JSON
-
-**`cleanup_stale_symbols(max_age_min, max_checks)`**
-- Remueve monedas estancadas
-- TTL = 30 minutos sin trigger
-- Max 20 checks sin activar
-
-**`get_watchlist()`**
-- Retorna lista ordenada por score
-- Top 20 monedas
-
-#### TTL Management
-
-```
-Moneda entra a watchlist (t=0)
-  ↓
-Cada ciclo (60s):
-  • check_counter++
-  • Verifica trigger
-  • Si trigger casi activa → reset counter
-  ↓
-Si counter \u003e 20 O age \u003e 30min:
-  • REMOVE de watchlist
-  • Libera espacio para nuevas
-```
-
-### 5. `bot_main.py` - Orquestador
-**Líneas:** 601
-
-#### Clase Principal: `BrainTradingBot`
-
-**Métodos clave:**
-
-**`pre_filter_weekly_candles()`**
-- Analiza las 738 monedas de MEXC
-- Cuenta velas diarias reales (volumen \u003e 0, high ≠ low)
-- Rechaza si \u003c 10 velas
-- Excepción: PRIORITY_SYMBOLS (ej: XAN) → Aprobadas automáticamente
-- Escribe resultados a BRAIN_PRE_FILTRO
-
-**`analyze_all_coins()`**
-- **Modo INTELIGENTE (si activado):**
-  - Usa `decide_intelligently(symbol)`
-  - Análisis paralelo holístico
-  
-- **Modo CASCADA (tradicional):**
-  - Usa `analyze_coin_complete(symbol)`
-  - Análisis secuencial 1D→4H→1H→15M→5M
-
-**`update_watchlist(analyzed_coins)`**
-- Actualiza watchlist con análisis
-- Top 20 por score
-- Escribe a BRAIN_WATCHLIST
-
-**`monitor_and_trade()`**
-- Monitorea trades activos
-- Verifica triggers en watchlist
-- Entra trades si triggers activos
-- Limpia watchlist estancada
-
-**`run()`**
-- Loop principal del bot
-- Pre-filtro inicial
-- Análisis inicial
-- Loop cada 60s:
-  - Monitoreo + Trading
-  - Re-análisis si watchlist vacía
-  - Mini-scan cada 30min (top 100 por volumen)
-
----
-
-## 🔄 FLUJO DE DATOS
-
-### Flujo Completo: Desde Datos Hasta Trade
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ FASE 0: PRE-FILTRO                                          │
-├─────────────────────────────────────────────────────────────┤
-│ 738 símbolos MEXC                                           │
-│   ↓                                                          │
-│ exchange_connection.get_futures_symbols()                   │
-│   ↓                                                          │
-│ Para cada símbolo:                                          │
-│   • fetch_ohlcv(symbol, '1d', 50)                          │
-│   • Contar velas reales (v\u003e0, h≠l)                         │
-│   • Si ≥10 velas → APROBADO                                 │
-│   ↓                                                          │
-│ ~612 símbolos aprobados                                     │
-└─────────────────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────────────────┐
-│ FASE 1: ANÁLISIS CONTEXTUAL                                 │
-├─────────────────────────────────────────────────────────────┤
-│ Para cada símbolo filtrado:                                 │
-│   ↓                                                          │
-│ OPCIÓN A: Modo INTELIGENTE                                  │
-│   brain_intelligent.decide_intelligently(symbol)            │
-│     ↓                                                        │
-│   analyze_all_timeframes_parallel(symbol)                   │
-│     • 1D, 4H, 1H, 15M, 5M, 1M (todas juntas)               │
-│     • Cuenta: bullish, strong, explosive                    │
-│     ↓                                                        │
-│   Decisión holística                                        │
-│     • Si 4+ alcistas + 3+ fuertes → OPERAR                 │
-│     • Si explosión 1M + 2+ fuertes → OPERAR                │
-│     • Sino → NO_OPERAR                                      │
-│                                                             │
-│ OPCIÓN B: Modo CASCADA (tradicional)                        │
-│   brain_analyzer.analyze_coin_complete(symbol)              │
-│     ↓                                                        │
-│   analyze_1d() → Clima general                              │
-│   analyze_4h() → Contexto dominante                         │
-│   analyze_15m() → Timing                                    │
-│   analyze_5m() → Velocidad/aceleración                      │
-│   analyze_trend_evolution() → Explosiones 1M                │
-│     ↓                                                        │
-│   calculate_score() → 0-100 puntos                          │
-│     ↓                                                        │
-│   Si score ≥ 70 → VIABLE                                    │
-│   ↓                                                          │
-│ ~240 monedas viables                                        │
-└─────────────────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────────────────┐
-│ FASE 2: WATCHLIST                                           │
-├─────────────────────────────────────────────────────────────┤
-│ Para cada moneda viable:                                    │
-│   ↓                                                          │
-│ brain_watchlist.calculate_triggers(analysis)                │
-│   • Encuentra resistencia cercana                           │
-│   • Calcula R:R ratio                                       │
-│   • Proyecta timing (5-60 min)                             │
-│   • Valida R:R ≥ 2.0                                       │
-│   ↓                                                          │
-│ Si triggers válidos:                                        │
-│   add_to_watchlist(symbol, analysis)                        │
-│   ↓                                                          │
-│ Top 20 por score → WATCHLIST                                │
-│   Persiste en watchlist.json                                │
-└─────────────────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────────────────┐
-│ FASE 3: MONITOREO \u0026 TRADING (Loop cada 60s)               │
-├─────────────────────────────────────────────────────────────┤
-│ Para cada moneda en watchlist:                              │
-│   ↓                                                          │
-│ brain_executor_entry.check_trigger_activated(symbol, data)  │
-│   • Fetch OHLCV fresco (5M)                                 │
-│   • Verifica volumen ≥ 1.5x                                 │
-│   • Verifica ADX ≥ 25                                       │
-│   • Verifica momentum activo (15M)                          │
-│   • Bypass inteligente si is_explosive                      │
-│   ↓                                                          │
-│ Si trigger ACTIVADO:                                        │
-│   brain_executor.enter_trade(symbol, data)                  │
-│     • Registra en database_manager                          │
-│     • Notifica vía telegram_notifications                   │
-│     • Escribe a sheets_manager (BRAIN_TRADES)              │
-│   ↓                                                          │
-│ TRADE ACTIVO                                                │
-│   brain_executor.monitor_active_trades()                    │
-│     • Calcula PnL actual                                    │
-│     • Verifica breakeven (+2%)                              │
-│     • Verifica stop loss (thread separado)                  │
-│     • check_exit_signals() → 5 señales                      │
-│     ↓                                                        │
-│   Si ≥2 señales activas:                                    │
-│     close_trade(symbol, reason)                             │
-│       • Registra resultado                                  │
-│       • Actualiza capital                                   │
-│       • Notifica salida                                     │
-│       ↓                                                      │
-│   Si salida en BREAKEVEN:                                   │
-│     Marca para re-análisis (después 5 min)                  │
-│     ↓                                                        │
-│ reanalyze_breakeven_exits()                                 │
-│   • Re-analiza moneda completa                              │
-│   • Si setup mejoró → vuelve a watchlist                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Flujo de Decisión por Modo
-
-#### Modo CASCADA (Tradicional)
-
-```
-Symbol → analyze_1d()
-           ↓ (pasa)
-         analyze_4h()
-           ↓ (pasa)
-         analyze_1h()
-           ↓ (pasa)
-         analyze_15m()
-           ↓ (pasa)
-         analyze_5m()
-           ↓
-         calculate_score()
-           ↓
-         ¿Score ≥ 70?
-           ↓ SÍ
-         VIABLE → Watchlist
-```
-
-**Características:**
-- Rechaza en primera falla
-- Binario (pasa 100% o rechaza)
-- Más estricto
-
-#### Modo INTELIGENTE (Paralelo)
-
-```
-Symbol → [1D, 4H, 1H, 15M, 5M, 1M]
-           ↓ (todas juntas)
-         Cuenta señales:
-           • bullish_count
-           • strong_count
-           • explosive_count
-           ↓
-         ¿Cumple reglas?
-           • 4+ alcistas + 3+ fuertes?
-           • Explosión 1M + 2+ fuertes?
-           • 5+ alcistas?
-           ↓ SÍ
-         OPERAR → Watchlist
-```
-
-**Características:**
-- No rechaza prematuramente
-- Gradiente (¿cuántos dicen SÍ?)
-- Más flexible
-- Captura oportunidades explosivas
-
----
-
-## 🔧 CAMBIOS ARQUITECTÓNICOS RECIENTES
-
-### 1. División en Dos Hemisferios
-
-**Fecha:** Noviembre 2025  
-**Motivo:** Separar lógica de entrada y gestión
-
-**Antes:**
-```
-brain_executor.py (1 archivo grande)
-  • check_trigger_activated()
-  • enter_trade()
-  • monitor_active_trades()
-  • check_exit_signals()
-  • close_trade()
-```
-
-**Después:**
-```
-brain_executor_entry.py                brain_executor.py
-  • check_trigger_activated_            • monitor_active_trades()
-      intelligent()                     • check_exit_signals()
-  • Bypass inteligente                  • close_trade()
-  • Validación triggers                 • reanalyze_breakeven_exits()
-  • Decisión entrada                    • Stop loss thread
-```
-
-**Beneficios:**
-- ✅ Código más organizado
-- ✅ Testing más fácil
-- ✅ Lógica de bypass localizada
-- ✅ Mantenimiento simplificado
-
-### 2. Implementación de Modo Inteligente
-
-**Fecha:** Noviembre 2025  
-**Motivo:** Simular pensamiento humano holístico
-
-**Nuevo módulo:** `brain_intelligent.py`
-
-**Características:**
-- Análisis paralelo de todas las temporalidades
-- Decisión basada en consenso
-- No descarta oportunidades prematuramente
-- Detección de explosiones en 1M
-
-**Configuración:**
-```python
-# brain_config.py
-ENABLE_INTELLIGENT_MODE = True  # False para modo cascada
-```
-
-### 3. Análisis de Evolución 1M (Time Ladder)
-
-**Fecha:** Noviembre 2025  
-**Motivo:** Detectar oportunidades explosivas en tiempo real
-
-**Nueva función:** `analyze_trend_evolution(symbol)`
-
-**Lógica:**
-- Analiza velas de 1 minuto
-- Detecta tendencias explosivas (4+ velas consecutivas)
-- Calcula score de evolución
-- Retorna flag `is_explosive`
-
-### 4. Mentalidad de Trader (Hunter Mode)
-
-**Fecha:** Noviembre 2025
-**Motivo:** Evolucionar de "Filtro Rígido" a "Cazador Inteligente"
-
-**Nuevos Estados en Watchlist:**
-- **`HUNTING` (Acechando):**
-  - Si ADX &gt; 25 pero no hay trigger de entrada.
-  - Mantiene la moneda en radar en lugar de descartarla.
-- **`WAITING_PULLBACK` (Esperando Retroceso):**
-  - Si precio &gt; 2% de EMA 20 (Bollinger Middle).
-  - Evita "comprar en el techo".
-  - Espera corrección antes de activar trigger.
-
-**Proyección de Escenarios:**
-- **Volume Profile Breakout:**
-  - Detecta si precio rompe el "Techo de Volumen" (High Volume Node más alto).
-  - Diferencia entre "Rango" y "Ruptura".
-- **Visualización (Inspector):**
-  - Muestra "Escenario A" (Continuación) y "Escenario B" (Corrección).
-  - Calcula targets basados en estructura de volumen.
-
-**Corrección de "Ceguera al Color":**
-- Soporte para momentum `lime` (verde fuerte) y `maroon` (rojo fuerte).
-- Antes se descartaban monedas fuertes por no ser "green" exacto.
-
-**Integración:**
-- Modo Inteligente: Cuenta como señal "explosive"
-- Hemisferio Izquierdo: Permite bypass de filtros
-
-### 4. Sistema de Bypass Inteligente
-
-**Fecha:** Noviembre 2025  
-**Ubicación:** `brain_executor_entry.py`
-
-**Lógica:**
-Si `is_explosive = True`:
-- ✅ Permite volumen bajo (\u003c0.6x) → Explosión puede ser rápida
-- ✅ Permite DI spread bajo (\u003c5) → Aún formándose
-- ✅ Permite momentum débil (\u003c3v) → Inicio de movimiento
-
-**Justificación:**
-- Filtros estrictos pueden perder **scalping oportunidades**
-- Explosiones en 1M son señales validadas
-- Permite entrar temprano en movimientos rápidos
-
-### 5. Helper Function `_extract_score()`
-
-**Fecha:** Noviembre 2025  
-**Motivo:** Resolver errores de tipo (dict vs int)
-
-**Problema detectado:**
-```python
-TypeError: '\u003e' not supported between instances of 'dict' and 'int'
-```
-
-**Solución:**
-```python
-def _extract_score(score_value, default=0):
-    """Recursively extract integer score from potentially nested dict."""
-    if score_value is None:
-        return default
-    if isinstance(score_value, (int, float)):
-        return int(score_value)
-    if isinstance(score_value, dict):
-        return _extract_score(score_value.get('score', default), default)
-    return default
-```
-
-**Ubicaciones:**
-- `bot_main.py`
-- `brain_analyzer.py`
-- `brain_intelligent.py`
-- `brain_watchlist.py`
-
-### 6. Soporte para Símbolos Prioritarios
-
-**Fecha:** Noviembre 2025  
-**Motivo:** Garantizar análisis de monedas específicas (ej: XAN)
-
-**Configuración:**
-```python
-# brain_config.py
-PRIORITY_SYMBOLS = ['XAN/USDT:USDT']
-```
-
-**Implementación:**
-- Pre-filtro: Aprueba automáticamente (sin importar velas)
-- Análisis: Incluye siempre en lista a analizar
-
-**Caso de uso:**
-- Usuario quiere monitorear XAN aunque tenga pocas velas
-- Bot lo analiza y notifica sobre oportunidades
-
-### 7. Inspector Manual
-
-**Fecha:** Noviembre 2025  
-**Archivo nuevo:** `manual_inspector.py`
-
-**Propósito:**
-- Analizar moneda específica manualmente
-- Ver análisis completo paso a paso
-- Debugging y validación
-
-**Uso:**
-```bash
-python manual_inspector.py
-# Ingresa símbolo: XAN/USDT:USDT
-# Muestra análisis detallado
-```
-
-### 8. Registro de Contexto Minuto a Minuto
-
-**Fecha:** Noviembre 2025  
-**Ubicación:** `bot_main.py` → `monitor_and_trade()`
-
-**Nuevo:**
-```python
-db_manager.insert_market_snapshot(
-    symbol,
-    current_price,
-    adx_current,
-    momentum_color,
-    score,
-    direction,
-    volatility_state
-)
-```
-
-**Propósito:**
-- Historial completo de decisiones
-- Análisis post-mortem de trades
-- Detección de patrones de éxito/fallo
-
-### 9. Corrección de Conexión de Hemisferios (Fix Crítico)
-
-**Fecha:** Noviembre 2025
-**Ubicación:** `brain_executor.py`
-
-**Problema detectado:**
-El módulo de ejecución estaba ignorando al Hemisferio Izquierdo (`brain_executor_entry.py`) y usando lógica interna obsoleta, lo que impedía el funcionamiento del bypass inteligente.
-
-**Solución:**
-Se modificó `check_trigger_activated` para delegar explícitamente la decisión:
-```python
-def check_trigger_activated(self, symbol, watchlist_data):
-    # Delegar al Hemisferio Izquierdo (con bypass inteligente)
-    return check_trigger_activated_intelligent(symbol, watchlist_data)
-```
-
-**Resultado:**
-- ✅ La lógica de entrada es consistente con la arquitectura
-
-### 10. Optimización de Reportes y Lógica Inteligente
-
-**Fecha:** Noviembre 2025
-**Ubicación:** `bot_main.py`, `generate_report.py`, `manual_inspector.py`, `brain_intelligent.py`
-
-**Cambios Realizados:**
-
-1.  **Reporte Completo (Caja Negra):**
-    *   Ahora se registran en base de datos tanto las monedas **RECHAZADAS** como las **APROBADAS**.
-    *   Las aprobadas se marcan con prefijo `[APPROVED]` y se muestran en **VERDE** en el reporte HTML.
-    *   Los rechazos inteligentes se marcan con `[INT]` y se muestran en **AZUL**.
-    *   Objetivo: Visibilidad total de las decisiones del bot.
-
-2.  **Inspector Manual Robusto:**
-    *   Integración con `decide_intelligently` para replicar exactamente la lógica del bot.
-    *   Protección contra `KeyError` (ej: `adx_1m`) cuando faltan datos de temporalidades.
-    *   Muestra desglose de consenso y razones de rechazo detalladas.
-
-3.  **Reglas de Entrada Optimizadas (Rescue Rule):**
-    *   **Problema:** El bot ignoraba subidas fuertes de 1H si 4H estaba lateral o faltaban datos de 15M (consenso estricto).
-    *   **Solución (Regla 1.5):** Si 1H es **MUY FUERTE** (ADX &gt; 30) y 5M es Bullish, se permite la entrada (Rescue Rule).
-    *   **Solución (Regla 2 Relaxed):** Se acepta consenso de 3 temporalidades alcistas (en lugar de 4) si la fuerza (Strong Count) es alta (&gt;= 3).
-
-- **Solución (Regla 2 Relaxed):** Se acepta consenso de 3 temporalidades alcistas (en lugar de 4) si la fuerza (Strong Count) es alta (&gt;= 3).
-
-### 11. Optimización de Flujo de Trabajo (Prioridad Francotirador)
-
-**Fecha:** Noviembre 2025
-**Motivo:** Evitar reinicios prematuros del análisis de cascada mientras existen oportunidades.
-
-**Lógica Implementada:**
-1.  **Persistencia Extendida:**
-    *   Monedas en estado `HUNTING` o `WAITING_PULLBACK` tienen **4x TTL** (hasta 2 horas).
-    *   Se evita que el limpiador (`cleanup_stale_symbols`) las elimine prematuramente.
-
-2.  **Prioridad de Ejecución:**
-    *   El bot **NO** reinicia el análisis de cascada (Scouting) si la watchlist tiene elementos.
-    *   Se mantiene en un bucle de "Modo Francotirador" monitoreando minuto a minuto.
-    *   Solo cuando la watchlist está vacía (todas descartadas o operadas), vuelve a buscar nuevas.
-
-**Beneficio:**
-- Maximiza la probabilidad de entrada en monedas ya filtradas.
-- Evita perder el "momento justo" por estar analizando otras 700 monedas.
-- Comportamiento más humano: "Si tengo presas en la mira, no me distraigo buscando más".
-
----
-
-### 12. Actualización: Visión Estructural y Resiliencia (Noviembre 2025)
-
-**Fecha:** 20 de Noviembre, 2025
-**Objetivo:** Dotar al bot de "visión de rayos X" (estructura de mercado) y "memoria de elefante" (re-entrada), además de blindar su ejecución.
-
-**Nuevas Capacidades:**
-
-1.  **Radiografía de Métricas (Deep Metric Logging):**
-    *   **Antes:** El bot solo veía "BULLISH" o "BEARISH".
-    *   **Ahora:** Identifica la **Estructura de Mercado** exacta usando ZigZag.
-    *   **Output:** `Estructura: HH ($92k) -&gt; HL ($90k)` (Alto Más Alto -&gt; Alto Más Bajo).
-    *   **Beneficio:** Confirmación geométrica de la tendencia, no solo indicadores.
-
-2.  **Lógica de Re-entrada (Memoria):**
-    *   **Problema:** Si el bot salía por "Smart Exit" (precaución), descartaba la moneda.
-    *   **Solución:** Si la salida es preventiva (no Stop Loss duro), la moneda vuelve a la Watchlist con estado `WAITING_REENTRY`.
-    *   **Beneficio:** Si la tendencia continúa después del susto, el bot está listo para volver a entrar.
-
-3.  **Trailing Stop (Stop Loss Inteligente):**
-    *   **Mecanismo:** Se activa cuando la ganancia supera el **3%**.
-    *   **Acción:** Persigue el precio a una distancia del **1.5%**.
-    *   **Beneficio:** Asegura ganancias en subidas fuertes sin cerrar prematuramente.
-
-4.  **Blindaje de Seguridad (Safety Hardening):**
-    *   **Google Sheets:** Envuelto en `try-except` para que fallos de red no detengan al bot.
-    *   **Triggers:** Acceso seguro (`.get()`) a todos los datos para evitar `KeyError` por falta de indicadores secundarios.
-    *   **Resultado:** Ejecución continua y robusta 24/7.
-
----
-
-## 💡 DECISIONES DE DISEÑO
-
-### 1. ¿Por qué Dos Modos de Análisis?
-
-**Modo CASCADA:**
-- Para trading conservador
-- Requiere 100% de alineación
-- Menos entradas, más precisas
-
-**Modo INTELIGENTE:**
-- Para capturar más oportunidades
-- Decisión holística
-- Más entradas, mayor volumen
-
-**Razón:** Dar flexibilidad al usuario según perfil de riesgo
-
-### 2. ¿Por qué Análisis 1M?
-
-**Problema:** Filtros estrictos pueden perder oportunidades explosivas
-
-**Solución:** 
-- Analizar velas de 1 minuto
-- Detectar tendencias en formación
-- Permitir entrada temprana con bypass
-
-**Tradeoff:**
-- ✅ Captura scalping oportunidades
-- ⚠️ Mayor riesgo si explosión falla
-
-### 3. ¿Por qué División en Hemisferios?
-
-**Inspiración:** Cerebro humano
-
-**Analogía:**
-- Hemisferio Izquierdo = Analítico, lógico, decide entrada
-- Hemisferio Derecho = Emocional, protector, gestiona salida
-
-**Beneficio práctico:**
-- Código más organizado
-- Testing independiente
-- Evolución separada
-
-### 4. ¿Por qué Scoring 0-100?
-
-**Alternativa rechazada:** Scoring binario (aprobado/rechazado)
-
-**Ventaja de 0-100:**
-- Permite ordenar oportunidades
-- Top 20 por score = mejores setups
-- Ajuste fino con bonos/penalties
-- Fácil interpretación (como examen)
-
-### 5. ¿Por qué Re-análisis de Breakevens?
-
-**Observación:** Monedas salen en breakeven y después explotan
-
-**Razón:**
-- Entrada fue temprana (timing incorrecto)
-- Pero setup sigue válido
-
-**Solución:**
-- Esperar 5 minutos
-- Re-analizar moneda
-- Si setup mejoró → Re-entrar
-
-**Beneficio:**
-- Segunda oportunidad
-- No pierde setup válido por timing
-
-### 6. ¿Por qué Google Sheets?
-
-**Alternativas:** SQLite, PostgreSQL, MongoDB
-
-**Ventajas de Sheets:**
-- ✅ Acceso remoto desde cualquier dispositivo
-- ✅ Visualización inmediata (gráficos, filtros)
-- ✅ No requiere servidor
-- ✅ Permite colaboración (revisar trades con alguien)
-- ✅ Backup automático en la nube
-
-**Desventaja:**
-- ⚠️ Latencia en escritura (mitigado con batch writes)
-
-### 7. ¿Por qué Thread Separado para Stop Loss?
-
-**Problema:** Stop loss debe verificarse continuamente (cada 2s)
-
-**Solución:**
-- Thread dedicado `monitor_stop_loss_thread()`
-- No bloquea loop principal
-- Detecta stop loss inmediatamente
-
-**Beneficio:**
-- Protección en tiempo real
-- No espera siguiente ciclo (60s)
-
----
-
-## 📊 MÉTRICAS DEL SISTEMA
-
-### Tamaño del Código
-
-```
-Módulo                      Líneas    Funciones   Clases
-────────────────────────────────────────────────────────
-brain_analyzer.py              840          23        0
-brain_calculator.py            878          17        0
-brain_intelligent.py           267           6        0
-brain_executor.py              504          12        1
-brain_executor_entry.py        124           1        0
-brain_watchlist.py             407          18        1
-bot_main.py                    601           6        1
-brain_config.py                254           0        0
-exchange_connection.py         138           5        0
-telegram_notifications.py      156           6        0
-sheets_manager.py              428           9        1
-database_manager.py            120           5        1
-────────────────────────────────────────────────────────
-TOTAL                        4,717         108        5
-```
-
-### Flujo de Datos en Números
-
-```
-FASE 0: PRE-FILTRO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-738 símbolos → 612 aprobados (82.9%)
-Criterio: ≥10 velas diarias reales
-
-FASE 1: ANÁLISIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-612 símbolos → ~240 viables (39.2%)
-Criterio: Score ≥70 (cascada) o consenso (inteligente)
-
-FASE 2: WATCHLIST
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-240 viables → Top 20 (8.3%)
-Criterio: Score más alto + triggers válidos
-
-FASE 3: TRADING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-20 watchlist → ~3-5 entradas/día (15-25%)
-Criterio: Triggers activados (ADX+Momentum+Vol)
-```
-
-### Tiempo de Ejecución
-
-```
-Pre-filtro (738 símbolos):            ~5-8 minutos
-Análisis completo (612 símbolos):     ~15-20 minutos
-Actualización watchlist:              ~2-3 segundos
-Ciclo monitoreo (20 monedas):         ~10-15 segundos
-Verificación trigger (1 moneda):      ~0.5-1 segundos
-```
-
----
-
-## 🎓 CONCLUSIONES
-
-### Fortalezas del Sistema
-
-1. **Arquitectura modular:** Fácil mantenimiento y extensión
-2. **Dos paradigmas:** Cascada (estricto) + Inteligente (flexible)
-3. **Análisis multi-timeframe:** Contexto completo (1D→4H→1H→15M→5M→1M)
-4. **Gestión inteligente:** 5 señales de salida, breakeven, re-análisis
-5. **Bypass inteligente:** Captura oportunidades explosivas
-6. **Persistencia robusta:** DB + Sheets + JSON + Telegram
-
-### Áreas de Mejora Futuras
-
-1. **Machine Learning:** Optimización automática de parámetros
-2. **Backtesting Engine:** Validación con datos históricos
-3. **Dashboard Web:** Monitoreo visual en tiempo real
-4. **Multi-Exchange:** Más oportunidades (Binance, Bybit)
-5. **Auto-ajuste:** Parámetros dinámicos según condiciones de mercado
-
-### Filosofía Final
-
-Este bot no es un **sistema de señales simple**, sino una **simulación del proceso de decisión de un trader experto**:
-
-- **Percibe** el mercado con múltiples "sentidos" (timeframes)
-- **Analiza** con matemática transparente (no black boxes)
-- **Decide** con lógica holística (¿cuántos dicen SÍ?)
-- **Ejecuta** con precisión anticipatoria (antes de la explosión)
-- **Gestiona** con inteligencia adaptativa (5 señales)
-- **Aprende** de sus operaciones (re-análisis)
-
-```
-4.  **Blindaje de Seguridad (Safety Hardening):**
-    *   **Google Sheets:** Envuelto en `try-except` para que fallos de red no detengan al bot.
-    *   **Triggers:** Acceso seguro (`.get()`) a todos los datos para evitar `KeyError` por falta de indicadores secundarios.
-    *   **Resultado:** Ejecución continua y robusta 24/7.
-
----
-
-## 💡 DECISIONES DE DISEÑO
-
-### 1. ¿Por qué Dos Modos de Análisis?
-
-**Modo CASCADA:**
-- Para trading conservador
-- Requiere 100% de alineación
-- Menos entradas, más precisas
-
-**Modo INTELIGENTE:**
-- Para capturar más oportunidades
-- Decisión holística
-- Más entradas, mayor volumen
-
-**Razón:** Dar flexibilidad al usuario según perfil de riesgo
-
-### 2. ¿Por qué Análisis 1M?
-
-**Problema:** Filtros estrictos pueden perder oportunidades explosivas
-
-**Solución:** 
-- Analizar velas de 1 minuto
-- Detectar tendencias en formación
-- Permitir entrada temprana con bypass
-
-**Tradeoff:**
-- ✅ Captura scalping oportunidades
-- ⚠️ Mayor riesgo si explosión falla
-
-### 3. ¿Por qué División en Hemisferios?
-
-**Inspiración:** Cerebro humano
-
-**Analogía:**
-- Hemisferio Izquierdo = Analítico, lógico, decide entrada
-- Hemisferio Derecho = Emocional, protector, gestiona salida
-
-**Beneficio práctico:**
-- Código más organizado
-- Testing independiente
-- Evolución separada
-
-### 4. ¿Por qué Scoring 0-100?
-
-**Alternativa rechazada:** Scoring binario (aprobado/rechazado)
-
-**Ventaja de 0-100:**
-- Permite ordenar oportunidades
-- Top 20 por score = mejores setups
-- Ajuste fino con bonos/penalties
-- Fácil interpretación (como examen)
-
-### 5. ¿Por qué Re-análisis de Breakevens?
-
-**Observación:** Monedas salen en breakeven y después explotan
-
-**Razón:**
-- Entrada fue temprana (timing incorrecto)
-- Pero setup sigue válido
-
-**Solución:**
-- Esperar 5 minutos
-- Re-analizar moneda
-- Si setup mejoró → Re-entrar
-
-**Beneficio:**
-- Segunda oportunidad
-- No pierde setup válido por timing
-
-### 6. ¿Por qué Google Sheets?
-
-**Alternativas:** SQLite, PostgreSQL, MongoDB
-
-**Ventajas de Sheets:**
-- ✅ Acceso remoto desde cualquier dispositivo
-- ✅ Visualización inmediata (gráficos, filtros)
-- ✅ No requiere servidor
-- ✅ Permite colaboración (revisar trades con alguien)
-- ✅ Backup automático en la nube
-
-**Desventaja:**
-- ⚠️ Latencia en escritura (mitigado con batch writes)
-
-### 7. ¿Por qué Thread Separado para Stop Loss?
-
-**Problema:** Stop loss debe verificarse continuamente (cada 2s)
-
-**Solución:**
-- Thread dedicado `monitor_stop_loss_thread()`
-- No bloquea loop principal
-- Detecta stop loss inmediatamente
-
-**Beneficio:**
-- Protección en tiempo real
-- No espera siguiente ciclo (60s)
-
----
-
-## 📊 MÉTRICAS DEL SISTEMA
-
-### Tamaño del Código
-
-```
-Módulo                      Líneas    Funciones   Clases
-────────────────────────────────────────────────────────
-brain_analyzer.py              840          23        0
-brain_calculator.py            878          17        0
-brain_intelligent.py           267           6        0
-brain_executor.py              504          12        1
-brain_executor_entry.py        124           1        0
-brain_watchlist.py             407          18        1
-bot_main.py                    601           6        1
-brain_config.py                254           0        0
-exchange_connection.py         138           5        0
-telegram_notifications.py      156           6        0
-sheets_manager.py              428           9        1
-database_manager.py            120           5        1
-────────────────────────────────────────────────────────
-TOTAL                        4,717         108        5
-```
-
-### Flujo de Datos en Números
-
-```
-FASE 0: PRE-FILTRO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-738 símbolos → 612 aprobados (82.9%)
-Criterio: ≥10 velas diarias reales
-
-FASE 1: ANÁLISIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-612 símbolos → ~240 viables (39.2%)
-Criterio: Score ≥70 (cascada) o consenso (inteligente)
-
-FASE 2: WATCHLIST
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-240 viables → Top 20 (8.3%)
-Criterio: Score más alto + triggers válidos
-
-FASE 3: TRADING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-20 watchlist → ~3-5 entradas/día (15-25%)
-Criterio: Triggers activados (ADX+Momentum+Vol)
-```
-
-### Tiempo de Ejecución
-
-```
-Pre-filtro (738 símbolos):            ~5-8 minutos
-Análisis completo (612 símbolos):     ~15-20 minutos
-Actualización watchlist:              ~2-3 segundos
-Ciclo monitoreo (20 monedas):         ~10-15 segundos
-Verificación trigger (1 moneda):      ~0.5-1 segundos
-```
-
----
-
-## 🎓 CONCLUSIONES
-
-### Fortalezas del Sistema
-
-1.  **Arquitectura modular:** Fácil mantenimiento y extensión
-2.  **Dos paradigmas:** Cascada (estricto) + Inteligente (flexible)
-3.  **Análisis multi-timeframe:** Contexto completo (1D→4H→1H→15M→5M→1M)
-4.  **Gestión inteligente:** 5 señales de salida, breakeven, re-análisis
-5.  **Bypass inteligente:** Captura oportunidades explosivas
-6.  **Persistencia robusta:** DB + Sheets + JSON + Telegram
-
-### Áreas de Mejora Futuras
-
-1.  **Machine Learning:** Optimización automática de parámetros
-2.  **Backtesting Engine:** Validación con datos históricos
-3.  **Dashboard Web:** Monitoreo visual en tiempo real
-4.  **Multi-Exchange:** Más oportunidades (Binance, Bybit)
-5.  **Auto-ajuste:** Parámetros dinámicos según condiciones de mercado
-
-### Filosofía Final
-
-Este bot no es un **sistema de señales simple**, sino una **simulación del proceso de decisión de un trader experto**:
-
--   **Percibe** el mercado con múltiples "sentidos" (timeframes)
--   **Analiza** con matemática transparente (no black boxes)
--   **Decide** con lógica holística (¿cuántos dicen SÍ?)
--   **Ejecuta** con precisión anticipatoria (antes de la explosión)
--   **Gestiona** con inteligencia adaptativa (5 señales)
--   **Aprende** de sus operaciones (re-análisis)
-
-**Resultado:** Un sistema robusto, explicable y efectivo.
-
----
-
-**Documento creado:** 19 de Noviembre, 2025  
-
-## 13. Actualización: Trabajo en Equipo y Refinamiento (Noviembre 2025)
-
-### 13.1. Nueva Metodología de Trabajo (Teamwork)
-Se ha establecido un flujo de trabajo colaborativo "Humano-IA" para maximizar la transparencia y la mejora continua:
-1.  **Auditoría Visual:** El Agente tiene acceso al navegador para verificar gráficos en TradingView y capturar evidencia visual de anomalías.
-2.  **Análisis Post-Mortem:** Se utiliza `generate_pinescript.py` para exportar los trades del bot a TradingView, permitiendo ver exactamente dónde y por qué entró/salió el bot sobre el gráfico real.
-3.  **Reportes Detallados:** El reporte HTML ahora incluye un historial completo de trades con PnL y razones de salida, facilitando la detección de patrones de error.
-
-### 13.2. Correcciones Críticas de Lógica
-*   **Bloqueo de Mercado Lateral:** Se implementó una restricción estricta en `brain_executor_entry.py`. Si la dirección detectada no es explícitamente `BULLISH` o `BEARISH`, el trade se rechaza inmediatamente, independientemente del puntaje. Esto previene pérdidas en rangos sin tendencia (caso VIRTUAL/USDT).
-*   **Sistema de Logging:** Se corrigió la configuración de `logging` en `bot_main.py` para asegurar que toda la actividad operativa se registre en archivos `.log` diarios para auditoría forense.
-**Modo INTELIGENTE:**
-- Para capturar más oportunidades
-- Decisión holística
-- Más entradas, mayor volumen
-
-**Razón:** Dar flexibilidad al usuario según perfil de riesgo
-
-### 2. ¿Por qué Análisis 1M?
-
-**Problema:** Filtros estrictos pueden perder oportunidades explosivas
-
-**Solución:** 
-- Analizar velas de 1 minuto
-- Detectar tendencias en formación
-- Permitir entrada temprana con bypass
-
-**Tradeoff:**
-- ✅ Captura scalping oportunidades
-- ⚠️ Mayor riesgo si explosión falla
-
-### 3. ¿Por qué División en Hemisferios?
-
-**Inspiración:** Cerebro humano
-
-**Analogía:**
-- Hemisferio Izquierdo = Analítico, lógico, decide entrada
-- Hemisferio Derecho = Emocional, protector, gestiona salida
-
-**Beneficio práctico:**
-- Código más organizado
-- Testing independiente
-- Evolución separada
-
-### 4. ¿Por qué Scoring 0-100?
-
-**Alternativa rechazada:** Scoring binario (aprobado/rechazado)
-
-**Ventaja de 0-100:**
-- Permite ordenar oportunidades
-- Top 20 por score = mejores setups
-- Ajuste fino con bonos/penalties
-- Fácil interpretación (como examen)
-
-### 5. ¿Por qué Re-análisis de Breakevens?
-
-**Observación:** Monedas salen en breakeven y después explotan
-
-**Razón:**
-- Entrada fue temprana (timing incorrecto)
-- Pero setup sigue válido
-
-**Solución:**
-- Esperar 5 minutos
-- Re-analizar moneda
-- Si setup mejoró → Re-entrar
-
-**Beneficio:**
-- Segunda oportunidad
-- No pierde setup válido por timing
-
-### 6. ¿Por qué Google Sheets?
-
-**Alternativas:** SQLite, PostgreSQL, MongoDB
-
-**Ventajas de Sheets:**
-- ✅ Acceso remoto desde cualquier dispositivo
-- ✅ Visualización inmediata (gráficos, filtros)
-- ✅ No requiere servidor
-- ✅ Permite colaboración (revisar trades con alguien)
-- ✅ Backup automático en la nube
-
-**Desventaja:**
-- ⚠️ Latencia en escritura (mitigado con batch writes)
-
-### 7. ¿Por qué Thread Separado para Stop Loss?
-
-**Problema:** Stop loss debe verificarse continuamente (cada 2s)
-
-**Solución:**
-- Thread dedicado `monitor_stop_loss_thread()`
-- No bloquea loop principal
-- Detecta stop loss inmediatamente
-
-**Beneficio:**
-- Protección en tiempo real
-- No espera siguiente ciclo (60s)
-
----
-
-## 📊 MÉTRICAS DEL SISTEMA
-
-### Tamaño del Código
-
-```
-Módulo                      Líneas    Funciones   Clases
-────────────────────────────────────────────────────────
-brain_analyzer.py              840          23        0
-brain_calculator.py            878          17        0
-brain_intelligent.py           267           6        0
-brain_executor.py              504          12        1
-brain_executor_entry.py        124           1        0
-brain_watchlist.py             407          18        1
-bot_main.py                    601           6        1
-brain_config.py                254           0        0
-exchange_connection.py         138           5        0
-telegram_notifications.py      156           6        0
-sheets_manager.py              428           9        1
-database_manager.py            120           5        1
-────────────────────────────────────────────────────────
-TOTAL                        4,717         108        5
-```
-
-### Flujo de Datos en Números
-
-```
-FASE 0: PRE-FILTRO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-738 símbolos → 612 aprobados (82.9%)
-Criterio: ≥10 velas diarias reales
-
-FASE 1: ANÁLISIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-612 símbolos → ~240 viables (39.2%)
-Criterio: Score ≥70 (cascada) o consenso (inteligente)
-
-FASE 2: WATCHLIST
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-240 viables → Top 20 (8.3%)
-Criterio: Score más alto + triggers válidos
-
-FASE 3: TRADING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-20 watchlist → ~3-5 entradas/día (15-25%)
-Criterio: Triggers activados (ADX+Momentum+Vol)
-```
-
-### Tiempo de Ejecución
-
-```
-Pre-filtro (738 símbolos):            ~5-8 minutos
-Análisis completo (612 símbolos):     ~15-20 minutos
-Actualización watchlist:              ~2-3 segundos
-Ciclo monitoreo (20 monedas):         ~10-15 segundos
-Verificación trigger (1 moneda):      ~0.5-1 segundos
-```
-
----
-
-## 🎓 CONCLUSIONES
-
-### Fortalezas del Sistema
-
-1.  **Arquitectura modular:** Fácil mantenimiento y extensión
-2.  **Dos paradigmas:** Cascada (estricto) + Inteligente (flexible)
-3.  **Análisis multi-timeframe:** Contexto completo (1D→4H→1H→15M→5M→1M)
-4.  **Gestión inteligente:** 5 señales de salida, breakeven, re-análisis
-5.  **Bypass inteligente:** Captura oportunidades explosivas
-6.  **Persistencia robusta:** DB + Sheets + JSON + Telegram
-
-### Áreas de Mejora Futuras
-
-1.  **Machine Learning:** Optimización automática de parámetros
-2.  **Backtesting Engine:** Validación con datos históricos
-3.  **Dashboard Web:** Monitoreo visual en tiempo real
-4.  **Multi-Exchange:** Más oportunidades (Binance, Bybit)
-5.  **Auto-ajuste:** Parámetros dinámicos según condiciones de mercado
-
-### Filosofía Final
-
-Este bot no es un **sistema de señales simple**, sino una **simulación del proceso de decisión de un trader experto**:
-
--   **Percibe** el mercado con múltiples "sentidos" (timeframes)
--   **Analiza** con matemática transparente (no black boxes)
--   **Decide** con lógica holística (¿cuántos dicen SÍ?)
--   **Ejecuta** con precisión anticipatoria (antes de la explosión)
--   **Gestiona** con inteligencia adaptativa (5 señales)
--   **Aprende** de sus operaciones (re-análisis)
-
-**Resultado:** Un sistema robusto, explicable y efectivo.
-
----
-
-**Documento creado:** 19 de Noviembre, 2025  
-
-## 13. ACTUALIZACIÓN MAYOR: BRAIN INTELLIGENT 2.0 (Noviembre 2025)
-
-**Versión:** 2.0.0 - "Time Ladder Mastery"
-**Fecha:** 21 de Noviembre, 2025
-
-Esta actualización marca la evolución definitiva del bot, pasando de un sistema de filtros en cascada a una **Inteligencia Artificial Contextual** que simula la toma de decisiones de un trader profesional.
-
-### 13.1. Time Ladder Intelligence (`brain_intelligent.py`)
-El nuevo núcleo de decisión no mira temporalidades aisladas, sino que analiza la **coherencia estructural** a través de toda la escalera de tiempo (1M → 5M → 15M → 1H → 4H → 1D).
-
-**Clase Principal:** `TimeLadderIntelligence`
-
-**Capacidades:**
-1.  **Detección de Patrones Multi-Timeframe:**
-    *   **PERFECT_BULLISH_CASCADE:** Alineación alcista perfecta en todos los TFs (Confianza 95%).
-    *   **MULTI_TF_COMPRESSION:** Volatilidad comprimida en 15M, 1H y 4H, anticipando explosión (Confianza 85%).
-    *   **HIDDEN_DIVERGENCE:** TFs menores fuertes mientras mayores consolidan (Oportunidad de entrada temprana).
-    *   **INSTITUTIONAL_ENTRY:** Volumen y ADX excepcional en 4H y 1H.
-
-2.  **Cálculo de "Smart Confluence":**
-    *   Ya no es una suma lineal. Es un algoritmo ponderado que evalúa:
-        *   Dirección (30%)
-        *   Fuerza/ADX (30%)
-        *   Momentum (25%)
-        *   Volumen (15%)
-
-3.  **Sistema de Calificación (Grading):**
-    *   **A+ (Score ≥ 90):** Oportunidad Excepcional (Full Size).
-    *   **A (Score ≥ 80):** Muy Buena (Normal Size).
-    *   **B (Score ≥ 70):** Buena (Reduced Size).
-    *   **C/D:** No Operable.
-
-### 13.2. Alineación con Bitcoin (BTC Alignment)
-**Archivo:** `brain_analyzer.py` -&gt; `check_btc_alignment()`
-
-Se ha implementado un "Kill Switch" contextual basado en el comportamiento de Bitcoin, el rey del mercado.
-*   **Lógica:** Si BTC cae más de un **2%** en las últimas 24h (DUMP), el bot asume un entorno hostil.
-*   **Consecuencia:** Se aplica una penalización severa (**x0.7**) a todos los scores de las altcoins.
-*   **Objetivo:** Evitar comprar "dips" que en realidad son inicios de crash.
-
-### 13.3. Inspector Manual (`manual_inspector.py`)
-Nueva herramienta de transparencia y debugging para el usuario.
-*   **Función:** Permite introducir cualquier símbolo (ej: `XAN/USDT:USDT`) y ejecutar el **mismo motor de decisión** que usa el bot.
-*   **Output:** Muestra el desglose completo: Score, Grado, Patrones detectados, Riesgos y la decisión final ("OPERAR" o "NO_OPERAR").
-*   **Uso:** Verificación humana de la lógica del bot y análisis de oportunidades específicas bajo demanda.
-
-### 13.4. Arquitectura de Dos Hemisferios (Refinada)
-La división del cerebro ejecutor se ha consolidado:
-*   **Hemisferio Izquierdo (`brain_executor_entry.py`):** Lógica fría y calculadora. Responsable exclusivo de la entrada. Implementa el "Bypass Inteligente" para explosiones en 1M.
-*   **Hemisferio Derecho (`brain_executor.py`):** Gestión emocional y protectora. Responsable del monitoreo, Trailing Stop y las 5 señales de salida inteligente.
-
-### 13.5. Limpieza y Optimización del Workspace
-Se ha realizado una limpieza profunda del proyecto para eliminar deuda técnica y archivos temporales.
-*   **Eliminados:** Archivos de texto temporales, logs antiguos, scripts de prueba desechables (`bot_minimal.py`, `test_fix.py`) y documentación obsoleta.
-*   **Conservados:** Únicamente el "Core" del bot, scripts de utilidad esenciales y la documentación maestra.
-
----
-
-## 14. CONCLUSIÓN FINAL
-
-BrainTrader ha alcanzado su versión **4.0 (Intelligent)**. Ya no es un script de trading algorítmico básico, sino un sistema complejo de **Toma de Decisiones Contextuales**.
-
-**Diferenciadores Clave:**
-1.  **No adivina, proyecta:** Usa física (velocidad/aceleración) para proyectar precios.
-2.  **No apuesta, invierte:** Solo opera cuando hay confluencia masiva (Time Ladder).
-3.  **No se suicida:** Tiene "miedo saludable" a los dumps de BTC y resistencias fuertes.
-4.  **No es rígido:** Se adapta (Bypass) si detecta una oportunidad explosiva real.
-
-**Estado:** LISTO PARA OPERAR (LIVE/TEST).
-
-## 15. REGISTRO DE CAMBIOS CRÍTICOS (Noviembre 21, 2025)
-
-Se han realizado correcciones urgentes y optimizaciones profundas en el sistema de ejecución y configuración.
-
-### 15.1. Eliminación de Prioridad Hardcoded
-*   **Archivo:** `brain_config.py`
-*   **Cambio:** Se eliminó `XAN/USDT:USDT` de la lista `PRIORITY_SYMBOLS`.
-*   **Motivo:** El usuario solicitó que esta moneda sea tratada con los mismos criterios de análisis riguroso que el resto del mercado, eliminando su aprobación automática.
-
-### 15.2. Corrección de Sistema de Logging
-*   **Archivo:** `bot_main.py`
-*   **Cambio:** Se corrigieron errores `KeyError` en los bloques de logging de aprobación y rechazo.
-*   **Detalle:** Se reemplazó el acceso directo a claves inexistentes (`reason`, `context_summary`) por métodos seguros (`decision.get('reasons')`, `decision.get('pattern')`) y se estandarizaron las claves de timeframes a minúsculas (`4h`, `1h`, `15m`).
-
-### 15.3. Reparación y Optimización del Ejecutor (`brain_executor.py`)
-Se solucionaron errores fatales reportados y se implementaron mejoras de lógica financiera.
-
-#### Correcciones de Estabilidad (Bug Fixes)
-1.  **Race Condition en Monitoreo:** Se implementó un bloqueo (`with self.trades_lock`) y una copia de la lista (`snapshot`) en `monitor_active_trades` para evitar errores de concurrencia al modificar el diccionario de trades activos mientras se itera.
-2.  **Dependencias Faltantes:** Se agregaron las importaciones faltantes de `db_manager` (con manejo de error) y `calculate_atr`.
-3.  **Persistencia:** Se implementó el método `save_active_trades` que faltaba, asegurando que los trades no se pierdan ante un reinicio.
-4.  **Referencia Global:** Se corrigió la referencia a `watchlist_manager` para usar la instancia global correctamente.
-
-#### Mejoras de Lógica de Trading (Optimizaciones)
-1.  **Trailing Stop Adaptativo:**
-    *   **Antes:** Distancia fija.
-    *   **Ahora:** La distancia del stop se ajusta dinámicamente según el profit acumulado. A mayor ganancia (&gt;5%), el stop se ajusta más (1.0%) para proteger beneficios agresivamente.
-2.  **Salida Inteligente (Smart Exit) Mejorada:**
-    *   **Divergencia Normalizada:** El cálculo de divergencia ahora usa porcentajes normalizados para ser comparable entre diferentes precios de activos.
-    *   **Nueva Señal "ADX Debilitando":** Se detecta cuando la fuerza de la tendencia (ADX) cae significativamente (&gt;5 puntos) desde niveles altos, indicando agotamiento.
-3.  **Re-entrada Inteligente:**
-    *   Solo se permite re-encolar una moneda si el trade anterior salió con **ganancia positiva**.
-    *   Se agregó un **Cooldown de 5 minutos** para evitar entrar inmediatamente en la misma zona de congestión.
-4.  **Fallback de Triggers con ATR:**
-    *   Si no se pueden calcular triggers por estructura, el sistema ahora usa la **Volatilidad (ATR)** para definir Stop Loss y Take Profit dinámicos (2x-3x ATR), reemplazando los porcentajes fijos arbitrarios.
-
-### 15.4. Compatibilidad Legacy (`brain_executor_entry.py`)
-*   **Cambio:** Se actualizó la función `_extract_legacy_metric` para usar claves de timeframe en minúscula (`5m`) y retornar `None` explícitamente si no hay datos, evitando datos falsos (0) en los reportes.
-
-### 15.5. Corrección Crítica de Triggers (`brain_executor_entry.py`)
-Se solucionó un error que impedía la activación de trades válidos ("Trigger Activado" seguido de error).
-*   **Error:** `KeyError: 'confluence_score'` y `KeyError: 'reason'`.
-*   **Causa:** El módulo intentaba acceder a claves antiguas que `brain_intelligent.py` ya no retorna.
-*   **Solución:** Se actualizaron los accesos para usar las claves correctas:
-    *   `confluence_score` -&gt; `score`
-    *   `reason` -&gt; `reasons` (lista unida por comas)
-    *   `context_summary` -&gt; `pattern` (o `context_summary` con fallback seguro)
-
-### 15.6. Actualización de Herramientas de Reporte
-Se adaptaron las herramientas de visualización para reflejar la nueva "Inteligencia de Patrones".
-
-#### Generador de Reportes (`generate_report.py`)
-*   **Nuevas Columnas:** Se agregaron "Patrón / Estructura" y "Patrón Detectado" a las tablas HTML.
-*   **Visualización:** Los patrones (ej: `DOUBLE_TOP`) se destacan con un icono ✨.
-*   **Formato:** Se mejoró la visualización de razones para manejar listas múltiples.
-
-#### Inspector Manual (`manual_inspector.py`)
-*   **Consola:** Ahora muestra el "Patrón Principal" y las razones detalladas en la salida de texto.
-*   **Reporte HTML:** Se agregó una nueva sección dedicada **"✨ Inteligencia de Patrones"** que lista todos los patrones detectados con su porcentaje de confianza y timeframe.
-
----
-
-## 16. HISTORIAL DE CAMBIOS Y MEJORAS (CONSOLIDADO)
-
-### 16.1. PHASE 4.0 - FIXES CRÍTICOS (Noviembre 2025)
-
-Este documento detalla las correcciones y mejoras aplicadas al sistema para asegurar la estabilidad y la lógica correcta en la Fase 4.0.
-
-#### 1. brain_intelligent.py - Confluencia de Patrones
-**Problema:** El score de confluencia (`confluence_score`) no se estaba calculando correctamente.
-**Solución:** Se implementó la lógica para detectar si existen patrones en múltiples timeframes y otorgar un bono de confluencia (+10 puntos).
-
-#### 2. brain_executor.py - Trailing Stop
-**Problema:** El Trailing Stop se activaba demasiado tarde (al 3.0% de profit).
-**Solución:** Se redujo el umbral de activación a 1.5% para proteger ganancias más temprano.
-
-#### 3. brain_executor.py - Salida Adaptativa (Smart Exit)
-**Problema:** La lógica de salida era demasiado permisiva con pequeñas pérdidas.
-**Solución:** Se hizo más granular la sensibilidad. Para pérdidas pequeñas (0% a -1%) solo se requieren 2 señales para salir.
-
-#### 4. sheets_manager.py - Crashes por Datos Faltantes
-**Problema:** La función `write_salida_inteligente` tenía una firma desactualizada y `write_rejection` fallaba con valores `None`.
-**Solución:** Se actualizó la firma y se agregaron verificaciones de seguridad (safe checks).
-
-#### 5. brain_intelligent.py - Penalización de Resistencias y Bug de Clamping
-**Mejora:** Se incrementaron las penalizaciones por operar cerca de resistencias (-35 puntos si &lt; 1.0%).
-**Fix Crítico:** Se eliminó un bloque de lógica que forzaba el score a un mínimo de 70, permitiendo que el filtro de 65 funcione.
-
-#### 6. brain_executor.py - Bug en Cálculo de ATR
-**Problema:** Error `list indices must be integers` al pasar lista en lugar de DataFrame.
-**Solución:** Convertir `ohlcv` a DataFrame antes de llamar a `calculate_atr()`.
-
-#### 7. brain_executor_entry.py - Código Corrupto
-**Problema:** `IndentationError` por código basura.
-**Solución:** Se limpió el archivo y se restauró la lógica correcta.
-
-#### 8. brain_executor_entry.py - Return Type Mismatch
-**Problema:** Retornaba `bool` en lugar de `dict`, causando crash en `bot_main.py`.
-**Solución:** Ahora retorna un diccionario con `activated`, `adx`, `momentum_age`, `volume_ratio`.
-
-#### 9. Integraciones Google Sheets
-- **Bloqueo LATERAL:** Se impide operar si la dirección es LATERAL/NEUTRAL o si hay contradicciones entre TFs.
-- **Salidas Inteligentes:** Se registran en `BRAIN_SALIDAS` con detalles de señales.
-- **Rechazos Reales:** `BRAIN_RECHAZOS` ahora muestra razones reales y datos de Volume Profile/SR.
-
-#### 10. Optimización de Pre-filtro
-**Mejora:** Se eliminó el pre-filtro masivo inicial. Ahora se valida "Just-in-Time" dentro del bucle principal, acelerando el inicio del bot.
-
----
-
-### 16.2. PHASE 4.1 - ALINEACIÓN ESTRATÉGICA (Modo Fuerza)
-
-**Fecha:** 22 de Noviembre, 2025
-**Objetivo:** Alinear el bot con la estrategia de "Fuerza de Mercado" (Market Force) del usuario.
-
-#### 1. Nuevo Patrón: MOMENTUM_DRIVE (Fuerza Pura)
-**Ubicación:** `brain_pattern_intelligence.py`
-**Lógica:** Permite operar sin patrones geométricos (Banderas/Triángulos) si la fuerza es brutal.
-- **Condiciones:**
-    - ADX &gt; 30 (Fuerza innegable)
-    - ADX subiendo (Aceleración)
-    - Spread DI &gt; 10 (Claridad direccional)
-    - Momentum sostenido (≥ 5 velas)
-- **Resultado:** Genera un patrón `MOMENTUM_DRIVE` con confianza alta (85-95).
-
-#### 2. Reporte Inteligente (Smart Report)
-**Ubicación:** `brain_intelligent.py`
-**Funcionalidad:** Muestra un diagnóstico detallado en consola para cada moneda analizada.
-- **Sección 1: ¿QUÉ VEO?** (Percepción de Patrones, Fuerza ADX, Momentum)
-- **Sección 2: ¿QUÉ PENSÉ?** (Acción tomada, Confianza, Razones)
-- **Sección 3: ¿QUÉ FALTÓ?** (Puntos faltantes si fue rechazado)
-
----
-
-### 16.3. CHANGELOG HISTÓRICO (Resumen)
-
-#### [2.0.1] - 2025-11-09
-- **Mejoras Visuales:** Output rediseñado con emojis y tablas.
-- **Corrección ADX:** Permite leve declive en ADX &gt; 25.
-
-#### [2.0.0] - 2025-11-09
-- **Refactorización Completa:** Arquitectura modular con memoria temporal.
-- **Nuevos Módulos:** `brain_calculator.py` (reescrito), `brain_analyzer.py` (cascada).
-- **Indicadores con Memoria:** ADX, Momentum, RSI, EMAs ahora tienen historia y tendencia.
-
-#### [1.1.0] - 2025-11-07
-- **Visualización:** Prints detallados en terminal.
-- **Google Sheets:** Integración completa (Watchlist, Triggers, Trades).
-- **Threading:** Stop Loss en thread independiente (2s de respuesta).
-- **Filtro POC:** Anti-reversión usando Volume Profile.
-
-#### [1.0.0] - 2025-11-06
-- **Lanzamiento Inicial:** Sistema base con 6 capas, conexión MEXC, Telegram y gestión básica.
+ LUZ VERDE TOTAL - Implementación Completa
+Gemini ejecutó TODO correctamente. Validación final:
 
+✅ CAMBIOS IMPLEMENTADOS:
+1. Bloqueo LATERAL (6 módulos)
+
+brain_analyzer.py
+brain_intelligent.py
+brain_executor_entry.py
+brain_pattern_intelligence.py
+brain_executor.py
+bot_main.py
+
+Resultado: Bot NO operará más en mercados laterales.
+
+2. MOMENTUM_DRIVE (Fuerza Pura)
+Ubicación: brain_pattern_intelligence.py → MarketPatternEngine ✅ Correcto
+Criterios (exactos a tu estrategia):
+
+ADX &gt; 30 ✅
+ADX subiendo ✅
+DI spread &gt; 10 ✅
+5+ velas consecutivas ✅
+Confianza 60-95 (dinámica) ✅
+
+Arquitectura respetada: No toca scoring, se integra como patrón estándar ✅
+
+3. Smart Report
+Ubicación: brain_intelligent.py → orchestrate_intelligence ✅
+Funcionalidad:
+
+Muestra qué vio el bot (patrón, ADX, momentum)
+Muestra qué pensó (acción, confianza, razones)
+Muestra qué faltó (si rechazó)
+
+
+🚀 PRÓXIMOS PASOS (CRÍTICOS):
+1. Testing Inmediato
+Corre el bot y monitorea:
+¿Cuántas monedas analiza?
+¿Cuántas rechaza por LATERAL? (Debe aumentar vs antes)
+¿Cuántas aprueba por MOMENTUM_DRIVE? (Debe detectar fuerza pura ahora)
+¿El Smart Report aparece en consola para cada moneda?
+
+2. Validación Estratégica (48-72 horas)
+Preguntas clave:
+
+¿Opera más que antes?
+
+Antes: "Ferrari con freno de mano"
+Ahora: Debe capturar setups de fuerza que antes rechazaba
+
+
+¿Captura los setups de tu imagen?
+
+ADX subiendo 4H→1H→15M
+Momentum desarrollándose
+Zona de fuerza para entrada
+
+
+¿Evita laterales?
+
+No debe haber más entradas con "Dirección: LATERAL"
+
+
+
+
+3. Cuando Opus regrese (jueves)
+Con datos reales de estos días, Opus puede optimizar:
+
+Threshold ADX (¿30 es óptimo o ajustar a 28/32?)
+DI spread (¿10 es suficiente o necesita más?)
+Consecutive velas (¿5 es correcto o 4/6?)
+Confianza base (¿60-95 o ajustar?)
+
+
+📊 LOGS A MONITOREAR:
+Busca en consola:
+✅ CASOS BUENOS:
+🔍 REPORTE INTELIGENTE: XXX/USDT
+   Patrón Detectado: MOMENTUM_DRIVE
+   Acción: ENTER (Confianza: 85+)
+
+⚠️ CASOS A REVISAR:
+   Patrón Detectado: ❌ NINGUNO
+   ADX: ⚠️ DÉBIL
+   → Si luego sube +10%, ajustar thresholds
+
+✅ ESTADO FINAL:
+Implementación: COMPLETA ✅
+Arquitectura: CORRECTA (Opus aprobaría) ✅
+Testing: PENDIENTE (tuyo) ⏳
+Optimización: PENDIENTE (Opus jueves) ⏳
+
+**¿Corrés el bot ahora y me vasReintentarPara ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.JNo te apresures, charla, no te adelantes, charla, te paso un reporte charla, luego debatimos, me adelante a los hechos, a horas de testing, Parte 2: consulta al otro Sonnet que se lleno el chat: Link: https://jrdiar.github.io/txt_reports.html?v=20251122200113Reconoció la necesidad de conversar sin precipitarse hacia soluciones.El usuario me está frenando otra vez. Tiene razón - me estoy apresurando con conclusiones ejecutivas, prompts y planes de acción cuando lo que necesita es CHARLAR, debatir, analizar tranquilos.
+Me dice que se adelantó a los hechos, ya hizo horas de testing, y ahora me va a pasar un reporte de consulta al otro Sonnet (el del chat lleno).
+Debo leer ese reporte y simplemente charlar sobre lo que encuentre, sin apurarme a dar soluciones, prompts o planes. Charla de café, como él dijo al principio.Tenés razón, me estoy adelantando. Vamos tranquilos, charla de café.
+Leo el reporte del otro Sonnet:Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5github.ioExaminó reporte previo, identificó gaps en lógica de entrada óptima.Ok, ahora leo el reporte del otro Sonnet que se llenó el chat. Déjame entender qué dice:
+El usuario le preguntó sobre la arquitectura post-implementación de MOMENTUM_DRIVE, pero luego dice "esto ya se arregló" y el chat se llenó.
+La pregunta real que el usuario hizo es: Ahora que está la fuerza implementada, quiero que el bot NO opere enseguida. Quiero que use TODAS las herramientas para entrar de manera inteligente.
+El otro Sonnet respondió que:
+LO QUE ESTÁ IMPLEMENTADO:
+
+Volume Profile ✅
+ZigZag HH/HL ✅
+S/R zones ✅
+EMAs ✅
+Todas las herramientas existen
+
+EL PROBLEMA:
+
+Las herramientas solo se usan para penalizar/bonificar score
+Si score &gt;= 60 → entra INMEDIATAMENTE
+NO espera setup óptimo
+
+LO QUE FALTA:
+
+Lógica de "WAIT_PULLBACK" (si está overextended &gt; 3 ATRs)
+Lógica de "WAIT_BREAKOUT" (si resistencia a &lt;0.8%)
+Lógica de "OPTIMAL_NOW" (si hay espacio hasta HH)
+Stop loss dinámico por estructura (bajo último HL)
+
+El otro Sonnet propuso implementar check_optimal_entry_timing() que decide si es WAIT o OPTIMAL_NOW basado en contexto.
+
+Ahora debo charlar con el usuario sobre esto. NO apurarme a dar prompts. Simplemente conversar sobre lo que el otro Sonnet encontró y qué piensa él.Ah, perfecto. Ahora entiendo el panorama completo.
+El otro Sonnet identificó algo clave: las herramientas existen pero no se usan para ESPERAR, solo para penalizar/bonificar. Entonces aunque detecte fuerza brutal, entra de una si score &gt;= 60.
+Me gusta mucho su análisis de los 3 estados:
+
+WAIT_PULLBACK (overextended, esperar retroceso a POC/EMA)
+WAIT_BREAKOUT (resistencia cerca, esperar confirmación)
+OPTIMAL_NOW (espacio limpio hasta HH, puede entrar)
+
+Esto es exactamente lo que mostrás en tu imagen: el bot debe VER todo el contexto (VP, ZigZag, SR) y decidir SI ES EL MOMENTO, no solo si tiene fuerza.
+Mi charla:
+Lo que me llama la atención es que Gemini recién implementó MOMENTUM_DRIVE, pero el otro Sonnet está diciendo "aunque detecte fuerza, necesita timing óptimo". Entonces:
+
+¿Gemini solo agregó la DETECCIÓN de fuerza, pero no la LÓGICA DE ESPERA?
+¿El bot ahora va a entrar apenas detecte ADX&gt;30 sin mirar si está a 0.3% de resistencia?
+
+Si es así, acabamos de solucionar "detectar fuerza" pero falta la segunda mitad: "esperar el momento preciso dentro de esa fuerza".
+¿Corriste el bot después de la implementación de Gemini y viste trades entrando inmediatamente sin timing óptimo?ReintentarJAsí es, por eso te decía que nos ahorramos horas de testing, es mi bot, es mi estrategia. Así es, falta la otra parte, el bot daba resultados pésimos porque el bot no hacia mi estrategia, el bot debería detectar las monedas con fuerza preselecionar las 3 mejores y luego analiza el contexto de esas tres monedas, verifica el panorama de esas monedas con fuerza viendo absolutamente todo, viendo todos los parametros, eso no tiene que hacer que sea restrictivo, solo tiene que saber donde entrar y hasta donde podria ir el precio, tiene todas las herramientas, cuando esta todo ok, entra a hacer trade, la idea es que lo haga como un trader humano, hace como si fueras que sos un trader humano, como lo harias? si ves fuerza, entras si mirar el contexto? la idea es que este bot emule la los ojos y la mente de un trader experto. Necesito que el bot sea inteligente y no restrictivo. Esto es lo que hace el bot o lo que deberia hacer, este es el reporte general del bot: Link: https://jrdiar.github.io/txt_reports.html?v=20251122201440Proceso de pensamientoEl usuario me está explicando su visión completa del bot. Déjame entender bien:
+
+Fase 1 (Screening): Detectar monedas con FUERZA (ADX&gt;30, momentum, etc.) y preseleccionar las 3 MEJORES
+Fase 2 (Context Analysis): Para esas 3, analizar TODO el contexto profundo:
+
+Volume Profile (POC, VAH, VAL - dónde está el precio)
+ZigZag (HH, HL - hasta dónde puede ir)
+SR zones (resistencias/soportes cercanos)
+EMAs (alineación, distancia)
+Estructura general
+
+
+Fase 3 (Timing): Decidir EL MOMENTO preciso de entrada (no entrar de una)
+Fase 4 (Execution): Entrar con stop loss inteligente (bajo último HL, no fijo 2%)
+
+Lo que Gemini implementó fue solo mejorar la DETECCIÓN de fuerza (MOMENTUM_DRIVE), pero no cambió la LÓGICA DE DECISIÓN que sigue siendo:
+
+Score &gt;= 60 → ENTER inmediatamente
+Sin fase de "esperar timing óptimo"
+Sin priorización de las 3 mejores
+
+El usuario dice "mi bot, mi estrategia" y tiene razón - conoce perfectamente lo que necesita. Su analogía de "trader humano" es perfecta:
+
+Un trader NO entra apenas ve fuerza
+Primero confirma contexto completo
+Espera el punto preciso
+Entra con plan claro (stop bajo estructura, target basado en HH/resistencias)
+
+Déjame leer el reporte que me pasó para entender el estado actual completo.Tenés toda la razón. Un trader humano con experiencia NO entra apenas ve fuerza. Hace esto:
+
+Screening: "Uy, BTC tiene ADX 45 brutal, ETH también, SOL se está moviendo"
+Selección: "De esas 3, BTC tiene mejor estructura, elijo esa"
+Contexto profundo: "Veamos... está a 1.5% del próximo HH, resistencia a 2.8%, POC justo abajo, EMAs alineadas. Hay espacio limpio"
+Timing: "Esperá, está un poco estirado. Dejo orden en pullback al POC" o "Perfecto, está rebotando del POC justo ahora, entro YA"
+Ejecución: "Stop bajo último HL que está 1.8% abajo, target en resistencia que está 3.5% arriba, R:R 2:1"
+
+Lo que Gemini implementó fue solo mejorar el punto 1 (detectar fuerza), pero los puntos 2, 3, 4, 5 siguen siendo:
+
+Score &gt;= 60 → ENTER de una
+Sin esperar
+Sin priorizar mejores
+Sin timing óptimo
+
+Leo el reporte general para ver qué hace actualmente vs qué debería hacer:Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5github.ioIdentificó brecha crítica: bot necesita preseleccionar tres mejores y analizar contexto profundo.21sOk, leí el reporte completo de arquitectura del bot. Ahora entiendo PERFECTAMENTE la situación.
+El flujo actual del bot es:
+FASE 0: PRE-FILTRO → 738 → 612 monedas (tienen velas suficientes)
+FASE 1: ANÁLISIS → 612 → ~240 viables (score ≥70 o consenso inteligente)
+FASE 2: WATCHLIST → 240 → Top 20 (por score + triggers válidos)
+FASE 3: MONITOREO &amp; TRADING → 20 → 3-5 trades/día (triggers activados)
+LO QUE GEMINI AGREGÓ (MOMENTUM_DRIVE):
+
+Mejora FASE 1 (Análisis) para detectar "fuerza pura sin patrón geométrico"
+Pero NO cambió FASE 2 (Watchlist) ni FASE 3 (Monitoreo/Trading)
+
+LO QUE EL USUARIO QUIERE (su estrategia real):
+FASE 1 (Screening): Detectar 612 monedas con FUERZA (ADX&gt;30) ✓ [Gemini lo hizo]
+FASE 2 (Selección): De esas 612, preseleccionar las 3 MEJORES por score ✗ [FALTA]
+FASE 3 (Context Analysis): Para esas 3, analizar TODO el contexto profundo ✗ [FALTA]
+FASE 4 (Timing): Decidir EL MOMENTO preciso (WAIT_PULLBACK/WAIT_BREAKOUT/OPTIMAL_NOW) ✗ [FALTA]
+FASE 5 (Execution): Entrar con stop loss inteligente (bajo último HL) ✗ [FALTA]
+La discrepancia es clara: el sistema actual opera de manera automática y precipitada, mientras que la estrategia deseada requiere un filtrado más selectivo y un análisis más profundo. El enfoque actual simplemente toma los 20 mejores y ejecuta trades, ignorando matices cruciales de contexto y timing. Se necesita una transformación fundamental en la lógica de selección y ejecución para alinear el bot con la visión estratégica del usuario.
+Tres componentes críticos están pendientes de implementación para elevar la sofisticación del sistema:
+
+Desarrollar una función de timing de entrada que evalúe condiciones de mercado más allá del score
+Implementar un stop loss adaptativo basado en la estructura ZigZag
+Refinar la preselección, pasando de 20 a solo los 3 mejores candidatos
+
+El objetivo es pasar de una entrada automática a una entrada calculada, considerando factores como sobreextensión, resistencias y potencial de movimiento.Perfecto, ahora entiendo TODO el cuadro.
+El bot actual hace:
+738 símbolos
+ ↓ Pre-filtro (velas suficientes)
+612 monedas
+ ↓ Análisis (score ≥70 o MOMENTUM_DRIVE nuevo de Gemini)
+~240 viables
+ ↓ Watchlist (Top 20 por score)
+20 monedas
+ ↓ Monitoreo cada 60s
+Si trigger activa (ADX≥25, Vol≥1.5x, score≥60)
+ → ENTRA INMEDIATAMENTE
+Tu estrategia real (de la imagen) necesita:
+612 monedas con FUERZA detectada ✓ (Gemini ya lo hizo)
+ ↓
+Top 3 MEJORES por score ✗ (Falta - ahora hace Top 20)
+ ↓
+Análisis PROFUNDO de contexto para esas 3: ✗ (Falta)
+  • Volume Profile (¿dónde está el precio? POC, VAH, VAL)
+  • ZigZag (¿hasta dónde puede ir? HH próximo)
+  • SR zones (¿resistencia cerca?)
+  • EMAs (¿alineación, distancia?)
+ ↓
+Timing óptimo: ✗ (Falta)
+  • Overextended → WAIT_PULLBACK (esperar retroceso al POC)
+  • Resistencia cerca → WAIT_BREAKOUT (esperar confirmación)
+  • Espacio limpio → OPTIMAL_NOW (entrar ya)
+ ↓
+Ejecución inteligente: ✗ (Falta)
+  • Stop loss bajo último HL (ZigZag), no fijo 2%
+  • Target basado en HH próximo o resistencia
+Entonces lo que falta es:
+
+Cambiar Top 20 → Top 3 (watchlist más enfocada)
+check_optimal_entry_timing() (el corazón de tu estrategia)
+Stop loss dinámico por estructura (no porcentaje fijo)
+
+¿Ahora sí estamos alineados con lo que necesitás implementar?ReintentarPara ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.JEsto esta desactualizado, el prefiltro lo saque y lo implemente en el analisis directamente, asi hace el proceso de una vez.738 símbolos ↓ Pre-filtro (velas suficientes) 612 monedasReconoció la optimización implementada y alineó el flujo actualizado.Ah claro, el usuario me está corrigiendo. El pre-filtro ya no es un paso separado. Según el reporte que leí, en la sección de optimizaciones decía:
+"#### 10. Optimización de Pre-filtro
+Mejora: Se eliminó el pre-filtro masivo inicial. Ahora se valida "Just-in-Time" dentro del bucle principal, acelerando el inicio del bot."
+Entonces el flujo correcto ahora es:
+738 símbolos
+ ↓ Análisis inline (verifica velas + analiza si pasa)
+~240 viables
+ ↓ Watchlist (Top 20 por score)
+20 monedas
+ ↓ Monitoreo cada 60s
+Si trigger activa → ENTRA
+Entonces no hay fase separada de pre-filtro, todo se hace en una pasada.
+Ahora el usuario me está confirmando que entiende que lo que falta es:
+
+Top 20 → Top 3 (más enfocado)
+check_optimal_entry_timing() (el timing óptimo que el otro Sonnet propuso)
+Stop loss dinámico por estructura
+
+Debo confirmar que estamos alineados y charlar sobre el approach.Perfecto, tenés razón. Actualizo el flujo:
+Flujo actual (post-optimización):
+738 símbolos
+ ↓ Análisis inline (valida velas + analiza todo en una pasada)
+~240 viables
+ ↓ Watchlist (Top 20 por score + MOMENTUM_DRIVE de Gemini)
+20 monedas
+ ↓ Monitoreo cada 60s
+Si trigger activa (ADX≥25, Vol≥1.5x, score≥60)
+ → ENTRA INMEDIATAMENTE ❌ (Sin timing óptimo)
+Lo que tu estrategia necesita (falta implementar):
+~240 viables
+ ↓
+Top 3 MEJORES (no Top 20) ❌
+ ↓
+Análisis profundo contexto (VP, ZigZag, SR, EMAs) ❌
+ ↓
+Timing óptimo (WAIT_PULLBACK / WAIT_BREAKOUT / OPTIMAL_NOW) ❌
+ ↓
+Stop loss por estructura (HL del ZigZag, no fijo 2%) ❌
+ ↓
+ENTRA cuando TODO alinea
+
+Entonces los 3 cambios clave son:
+
+Top 20 → Top 3 (más enfocado, como trader humano)
+check_optimal_entry_timing() (el corazón - lo que el otro Sonnet propuso)
+Stop loss dinámico (basado en estructura ZigZag, no porcentaje)
+
+Mi charla:
+Esto es lo que diferencia un bot que "entra porque puede" vs un bot que "espera el momento perfecto". El otro Sonnet lo explicó perfecto con los 3 estados: WAIT_PULLBACK, WAIT_BREAKOUT, OPTIMAL_NOW.
+¿Querés que le prepare el prompt a Gemini para implementar estos 3 cambios? O preferís que primero charlemos sobre algún detalle de la lógica de timing óptimo?ReintentarPara ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.JLo que el bot hace eso de 100 monedas elige 20 las mejores, de esas 20 mejores elige 3, pero no las descarta para volver a hacer el chequeo de monedas despues de hacer trade, lo que hace es ir analizando esas monedas en tiempo real, luego, cuando termina las 3 monedas de hacer trade, automaticamente de esas 20, empieza con otra si es que el contexto da para entrar. Y asi el bot hace hasta terminar con esas 20 monedas, luego empieza la cascada, si dentro de esas 20 monedas durante el proceso no esta más en condiciones de hacer trade, va descartando las monedas o haciendo trade hasta que no quede una sola y ahi recien empieza automaticamente la cascadaIdentificó el flujo correcto del bot y diagnosticó la falla real.10sAh perfecto, ahora entiendo el flujo real del bot:
+
+Análisis cascada de 738 → ~240 viables
+Top 20 mejores por score
+De esas 20, selecciona las 3 MEJORES para monitorear activamente
+Opera esas 3 (máximo 3 trades simultáneos)
+Cuando cierra una, automáticamente toma la siguiente de las 20 (si aún está válida)
+Va descartando las que pierden validez durante el monitoreo
+Solo cuando la watchlist de 20 se vacía completamente (todas operadas o descartadas), vuelve a hacer la cascada completa
+
+Esto es súper inteligente porque:
+
+No pierde tiempo re-analizando 738 monedas si ya tiene 20 buenas
+Se mantiene enfocado como un trader humano ("tengo 20 en mi radar, opero las mejores primero")
+Es eficiente (no reinicia cascada prematuramente)
+
+El problema entonces NO es el flujo de Top 20 → Top 3, ese flujo está correcto.
+El problema es que cuando detecta trigger en una de esas 3, ENTRA inmediatamente sin verificar:
+
+¿Está overextended? → Debería esperar pullback al POC
+¿Hay resistencia a 0.5%? → Debería esperar breakout
+¿Hay espacio limpio hasta próximo HH? → OK, puede entrar
+
+Entonces lo que falta implementar es:
+
+check_optimal_entry_timing() - antes de enter_trade()
+Estados adicionales en watchlist: WAIT_PULLBACK, WAIT_BREAKOUT
+Stop loss dinámico por estructura
+
+El flujo Top 20 → Top 3 ya está bien diseñado.Ah perfecto, ahora sí entiendo el flujo completo. El bot YA tiene esa lógica de priorización bien pensada:
+Flujo actual (correcto):
+738 símbolos → ~240 viables
+ ↓
+Top 20 mejores (watchlist)
+ ↓
+Selecciona 3 MEJORES de esas 20 para monitoreo activo
+ ↓
+Opera esas 3 (max 3 simultáneos)
+ ↓
+Cuando cierra 1 → Toma siguiente de las 20 (si sigue válida)
+ ↓
+Va descartando monedas que pierden validez durante monitoreo
+ ↓
+SOLO cuando las 20 se vacían → Vuelve a cascada completa
+Entonces el problema NO es el flujo Top 20 → Top 3 (eso ya está bien).
+El problema es lo que hace ANTES de entrar a operar:
+Moneda en las Top 3 → Trigger activa (ADX≥25, Vol OK)
+ ↓
+ENTRA INMEDIATAMENTE ❌ (Sin verificar contexto)
+Debería ser:
+Moneda en las Top 3 → Trigger activa (ADX≥25, Vol OK)
+ ↓
+Análisis profundo contexto:
+ - Volume Profile (¿dónde está el precio?)
+ - ZigZag (¿cuánto espacio hasta próximo HH?)
+ - SR zones (¿resistencia cerca?)
+ - EMAs (¿overextended?)
+ ↓
+check_optimal_entry_timing():
+ - Si overextended → WAIT_PULLBACK (marca en watchlist, sigue monitoreando)
+ - Si resistencia cerca → WAIT_BREAKOUT (espera confirmación)
+ - Si espacio limpio → OPTIMAL_NOW ✅
+ ↓
+ENTRA solo si OPTIMAL_NOW
+
+Entonces lo que hay que modificar:
+
+brain_executor.py → monitor_and_trade(): Antes de llamar enter_trade(), verificar timing óptimo
+Agregar estados en watchlist: WAIT_PULLBACK, WAIT_BREAKOUT, OPTIMAL_NOW
+Stop loss dinámico: Basado en último HL del ZigZag, no porcentaje fijo
+
+El flujo de Top 20 → Top 3 → siguiente de las 20 ya está perfecto. Solo falta que ANTES de entrar, verifique si ES EL MOMENTO preciso.
+¿Ahora sí estamos alineados con lo que falta implementar?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 67,688<br>
-    Generado: 2025-11-22 20:14:38
+    Total caracteres: 18,713<br>
+    Generado: 2025-11-22 20:28:21
   </div>
 </body>
 </html>
