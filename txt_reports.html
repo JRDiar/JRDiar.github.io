@@ -15,508 +15,779 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-22 00:31:40</div>
+  <div class="meta">Última actualización: 2025-11-22 00:48:30</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
 """
-BRAIN DEEP ANALYZER - Análisis Contextual Profundo
-===================================================
-Módulo de análisis lento (2-5min) para candidatos pre-filtrados
-
-FILOSOFÍA:
-- Precisión &gt; Velocidad
-- Análisis multi-capa (VP, SR multi-touch, divergencias)
-- Probabilidad contextual basada en patrones reales
+BOT MAIN - Bot Phase 4.0
+Orquestador principal: Brain Anticipatorio
 """
 
-import pandas as pd
-import numpy as np
+import time
 from datetime import datetime
-from brain_calculator import (
-    detect_support_resistance_with_memory,
-    detect_price_structure,
-    calculate_adx_with_memory,
-    calculate_momentum_with_memory,
-    calculate_volume_profile_with_memory
+from brain_config import (
+    CAPITAL_INICIAL, SIMULATE_LEVERAGE, MAX_TRADES_SIMULTANEOUS,
+    MIN_DAILY_CANDLES, WATCHLIST_UPDATE_INTERVAL_SEC,
+    ARGENTINA_TZ, ENABLE_TELEGRAM, SHEET_BRAIN_PRE_FILTRO,
+    PRIORITY_SYMBOLS, ENABLE_INTELLIGENT_MODE
 )
-from exchange_connection import fetch_ohlcv
-from brain_config import *
+from exchange_connection import get_futures_symbols, fetch_ohlcv
+from brain_analyzer import analyze_coin_complete
+from brain_intelligent import decide_intelligently  # NUEVO: Modo inteligente
+from brain_calculator import calculate_velocity, calculate_acceleration
+from brain_watchlist import watchlist_manager
+from brain_executor import trade_manager
+from sheets_manager import sheets_manager
+from telegram_notifications import notify_bot_start
+from database_manager import db_manager
+import pandas as pd
+import sys
 
-# =============================================================================
-# FUNCIÓN 1: analyze_volume_profile_context()
-# =============================================================================
+# --- STARTUP MARKER ---
+print("**************************************************")
+print(f"*** VERSION CON DEBUGGING ACTIVADO - {datetime.now()} ***")
+print("**************************************************")
+# ----------------------
 
-def analyze_volume_profile_context(symbol, timeframe='15m'):
+import logging
+from brain_config import LOG_FILE
+
+# Configurar Logging
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Redirigir print a logging también (opcional, pero útil para debug)
+class LoggerWriter:
+    def __init__(self, level):
+        self.level = level
+
+    def write(self, message):
+        if message.strip() != "":
+            self.level(message.strip())
+
+    def flush(self):
+        pass
+
+# sys.stdout = LoggerWriter(logging.info) # Descomentar para capturar todos los prints
+# sys.stderr = LoggerWriter(logging.error)
+
+print(f"📝 Logging configurado en: {LOG_FILE}")
+
+# ============================================================================
+# BLACKLIST DE STABLECOINS
+# ============================================================================
+STABLECOINS_BLACKLIST = [
+    'USDC/USDT:USDT', 
+    'USDT/USDT:USDT',
+    'DAI/USDT:USDT',
+    'BUSD/USDT:USDT',
+    'TUSD/USDT:USDT',
+    'FDUSD/USDT:USDT'
+]
+
+# HELPER FUNCTIONS
+# ============================================================================
+
+def _extract_score(score_value, default=0):
     """
-    Analiza posición precio vs Volume Profile
-
-    DETECTA:
-    - ¿Precio cerca límite superior VP? (peligro techo)
-    - ¿Precio cerca límite inferior VP? (peligro suelo)
-    - ¿En zona alta liquidez (POC)? (zona segura)
-    - ¿En zona baja liquidez (gap)? (zona peligrosa)
-
-    Returns:
-        dict: {
-            'position': 'EXTREMO_SUPERIOR'/'EXTREMO_INFERIOR'/'ZONA_POC'/'ZONA_GAP',
-            'distance_to_limit_pct': float,
-            'safe_to_trade': bool,
-            'warning': str o None
-        }
-    """
-    ohlcv = fetch_ohlcv(symbol, timeframe, 200)
-    if not ohlcv or len(ohlcv) &lt; 100:
-        return None
-
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    current_price = float(df['close'].iloc[-1])
-
-    # Volume Profile completo (últimas 100 velas)
-    vp_data = calculate_volume_profile_with_memory(df, num_levels=30, lookback=100)
-
-    poc = vp_data['poc_current']
-    high_volume_nodes = vp_data['high_volume_nodes']
-    low_volume_nodes = vp_data['low_volume_nodes']
-
-    # Límites VP
-    max_price = df['high'].tail(100).max()
-    min_price = df['low'].tail(100).min()
-
-    # Distancia a límites
-    distance_to_top = ((max_price - current_price) / current_price) * 100
-    distance_to_bottom = ((current_price - min_price) / current_price) * 100
-
-    # Clasificar posición
-    if distance_to_top &lt; 1.5:  # &lt;1.5% del techo
-        position = 'EXTREMO_SUPERIOR'
-        safe = False
-        warning = f"Precio a {distance_to_top:.1f}% del límite VP superior"
-    elif distance_to_bottom &lt; 1.5:
-        position = 'EXTREMO_INFERIOR'
-        safe = False
-        warning = f"Precio a {distance_to_bottom:.1f}% del límite VP inferior"
-    elif abs(current_price - poc) / current_price * 100 &lt; 2.0:
-        position = 'ZONA_POC'
-        safe = True
-        warning = None
-    elif any(abs(current_price - node) / current_price * 100 &lt; 1.0 for node in low_volume_nodes):
-        position = 'ZONA_GAP'
-        safe = False
-        warning = "Precio en zona baja liquidez (gap VP)"
-    else:
-        position = 'ZONA_NORMAL'
-        safe = True
-        warning = None
-
-    return {
-        'position': position,
-        'distance_to_top_pct': round(distance_to_top, 2),
-        'distance_to_bottom_pct': round(distance_to_bottom, 2),
-        'safe_to_trade': safe,
-        'warning': warning,
-        'poc': round(poc, 6)
-    }
-
-# =============================================================================
-# FUNCIÓN 2: analyze_support_resistance_touches()
-# =============================================================================
-
-def analyze_support_resistance_touches(symbol, timeframe='4h'):
-    """
-    Cuenta cuántas veces precio tocó soportes/resistencias
-
-    CRÍTICO: Si soporte tocado 10+ veces = zona MUY fuerte (probable rebote)
-    Ejemplo: SUPRA tocó soporte múltiples veces → entrar SHORT ahí = suicidio
-
-    Returns:
-        dict: {
-            'nearest_support': {
-                'price': float,
-                'touches': int,
-                'strength': 'DÉBIL'/'MODERADO'/'FUERTE'/'MUY_FUERTE',
-                'distance_pct': float
-            },
-            'nearest_resistance': {...},
-            'danger_zone': bool
-        }
-    """
-    ohlcv = fetch_ohlcv(symbol, timeframe, 200)
-    if not ohlcv or len(ohlcv) &lt; 100:
-        return None
-
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    current_price = float(df['close'].iloc[-1])
-
-    # SR con lookback largo (100 velas = 400 horas = 16 días)
-    sr_data = detect_support_resistance_with_memory(df, num_clusters=8, lookback=100)
-
-    supports = sr_data['supports']
-    resistances = sr_data['resistances']
-
-    # Función auxiliar: contar toques
-    def count_touches(level, tolerance_pct=1.5):
-        """Cuenta cuántas velas tocaron este nivel"""
-        touches = 0
-        for i in range(len(df)):
-            low = df['low'].iloc[i]
-            high = df['high'].iloc[i]
-            # Toque = si vela cruzó nivel ±tolerance
-            if level == 0:
-                continue
-            if abs((low - level) / level * 100) &lt;= tolerance_pct or \
-               abs((high - level) / level * 100) &lt;= tolerance_pct:
-                touches += 1
-        return touches
-
-    # Analizar soporte más cercano
-    nearest_support_info = None
-    if supports:
-        nearest_support = supports[0]  # Ya viene ordenado por cercanía
-        touches = count_touches(nearest_support)
-        distance_pct = ((current_price - nearest_support) / current_price) * 100
-
-        if touches &gt;= 10:
-            strength = 'MUY_FUERTE'
-        elif touches &gt;= 6:
-            strength = 'FUERTE'
-        elif touches &gt;= 3:
-            strength = 'MODERADO'
-        else:
-            strength = 'DÉBIL'
-
-        nearest_support_info = {
-            'price': round(nearest_support, 6),
-            'touches': touches,
-            'strength': strength,
-            'distance_pct': round(distance_pct, 2)
-        }
-
-    # Analizar resistencia más cercana
-    nearest_resistance_info = None
-    if resistances:
-        nearest_resistance = resistances[-1]  # La más cercana arriba
-        touches = count_touches(nearest_resistance)
-        distance_pct = ((nearest_resistance - current_price) / current_price) * 100
-
-        if touches &gt;= 10:
-            strength = 'MUY_FUERTE'
-        elif touches &gt;= 6:
-            strength = 'FUERTE'
-        elif touches &gt;= 3:
-            strength = 'MODERADO'
-        else:
-            strength = 'DÉBIL'
-
-        nearest_resistance_info = {
-            'price': round(nearest_resistance, 6),
-            'touches': touches,
-            'strength': strength,
-            'distance_pct': round(distance_pct, 2)
-        }
-
-    # ¿Zona peligrosa?
-    danger_zone = False
-    if nearest_support_info and nearest_support_info['distance_pct'] &lt; 2.0 and nearest_support_info['touches'] &gt;= 8:
-        danger_zone = True  # Muy cerca de soporte fuerte = no SHORT
-    if nearest_resistance_info and nearest_resistance_info['distance_pct'] &lt; 2.0 and nearest_resistance_info['touches'] &gt;= 8:
-        danger_zone = True  # Muy cerca de resistencia fuerte = no LONG
-
-    return {
-        'nearest_support': nearest_support_info,
-        'nearest_resistance': nearest_resistance_info,
-        'danger_zone': danger_zone
-    }
-
-# =============================================================================
-# FUNCIÓN 3: detect_structure_deterioration()
-# =============================================================================
-
-def detect_structure_deterioration(symbol, timeframe='1h'):
-    """
-    Detecta si estructura precio se está deteriorando
-
-    PATRÓN: HH → HL → LL = debilidad progresiva
-    Ejemplo: Alto 100 → rebote 95 → nuevo alto 98 (más bajo) → siguiente rebote será &lt;95
-
-    Returns:
-        dict: {
-            'deteriorating': bool,
-            'pattern': 'HH_HL_LL' o 'STRONG' o 'UNCLEAR',
-            'confidence': float (0-100)
-        }
-    """
-    ohlcv = fetch_ohlcv(symbol, timeframe, 100)
-    if not ohlcv or len(ohlcv) &lt; 50:
-        return None
-
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-
-    # Detectar pivots significativos
-    structure = detect_price_structure(df, lookback=50, pivot_window=3)
-
-    pivot_highs = structure['pivot_highs']
-    pivot_lows = structure['pivot_lows']
-
-    if len(pivot_highs) &lt; 3 or len(pivot_lows) &lt; 3:
-        return {
-            'deteriorating': False,
-            'pattern': 'UNCLEAR',
-            'confidence': 0
-        }
-
-    # Últimos 3 máximos
-    last_3_highs = pivot_highs[-3:]
-    # Últimos 3 mínimos
-    last_3_lows = pivot_lows[-3:]
-
-    # Patrón deterioro alcista: HH → HL (máximo más bajo) + LL
-    if last_3_highs[2] &lt; last_3_highs[1] &lt; last_3_highs[0]:  # Máximos bajando
-        if last_3_lows[2] &lt; last_3_lows[1]:  # Mínimos también bajando
-            return {
-                'deteriorating': True,
-                'pattern': 'HH_HL_LL',
-                'confidence': 85
-            }
-
-    # Patrón fuerte alcista: HH + HL consecutivos
-    if last_3_highs[2] &gt; last_3_highs[1] &gt; last_3_highs[0]:
-        if last_3_lows[2] &gt; last_3_lows[1] &gt; last_3_lows[0]:
-            return {
-                'deteriorating': False,
-                'pattern': 'STRONG_BULLISH',
-                'confidence': 90
-            }
-
-    # Patrón fuerte bajista: LH + LL consecutivos
-    if last_3_highs[2] &lt; last_3_highs[1] &lt; last_3_highs[0]:
-        if last_3_lows[2] &lt; last_3_lows[1] &lt; last_3_lows[0]:
-            return {
-                'deteriorating': False,
-                'pattern': 'STRONG_BEARISH',
-                'confidence': 90
-            }
-
-    return {
-        'deteriorating': False,
-        'pattern': 'MIXED',
-        'confidence': 40
-    }
-
-# =============================================================================
-# FUNCIÓN 4: detect_divergence()
-# =============================================================================
-
-def detect_divergence(symbol, timeframe='15m'):
-    """
-    Detecta divergencia ADX vs precio
-
-    DIVERGENCIA BAJISTA: Precio sube + ADX baja = debilidad (peligro)
-    DIVERGENCIA ALCISTA: Precio baja + ADX sube = fuerza oculta
-
-    Returns:
-        dict: {
-            'divergence_detected': bool,
-            'type': 'BEARISH'/'BULLISH'/'NONE',
-            'strength': 'FUERTE'/'MODERADA'/'DÉBIL'
-        }
-    """
-    ohlcv = fetch_ohlcv(symbol, timeframe, 50)
-    if not ohlcv or len(ohlcv) &lt; 30:
-        return None
-
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-
-    adx_data = calculate_adx_with_memory(df, period=14, lookback=20)
-
-    # Últimas 10 velas: tendencia precio vs tendencia ADX
-    prices = df['close'].tail(10).tolist()
-    adx_values = adx_data['adx_history'][-10:]
-
-    # Precio subiendo?
-    price_rising = prices[-1] &gt; prices[0]
-    price_change_pct = ((prices[-1] - prices[0]) / prices[0]) * 100
-
-    # ADX subiendo?
-    adx_rising = adx_values[-1] &gt; adx_values[0]
-    adx_change = adx_values[-1] - adx_values[0]
-
-    # Divergencia bajista: precio sube + ADX baja
-    if price_rising and not adx_rising and price_change_pct &gt; 2.0 and adx_change &lt; -3:
-        return {
-            'divergence_detected': True,
-            'type': 'BEARISH',
-            'strength': 'FUERTE' if abs(adx_change) &gt; 5 else 'MODERADA'
-        }
-
-    # Divergencia alcista: precio baja + ADX sube
-    if not price_rising and adx_rising and price_change_pct &lt; -2.0 and adx_change &gt; 3:
-        return {
-            'divergence_detected': True,
-            'type': 'BULLISH',
-            'strength': 'FUERTE' if adx_change &gt; 5 else 'MODERADA'
-        }
-
-    return {
-        'divergence_detected': False,
-        'type': 'NONE',
-        'strength': 'N/A'
-    }
-
-# =============================================================================
-# FUNCIÓN 5: deep_analysis_complete() - ORQUESTADOR
-# =============================================================================
-
-def deep_analysis_complete(symbol, analysis_4h, analysis_1h, analysis_15m):
-    """
-    Análisis profundo completo (2-5 minutos)
-
+    Recursively extract integer score from potentially nested dict.
+    
     Args:
-        symbol: Par trading
-        analysis_4h, 1h, 15m: Análisis previos (ya calculados)
-
+        score_value: The value to extract (can be int, float, dict, or None)
+        default: Default value if extraction fails
+    
     Returns:
-        dict: {
-            'probability': int (0-100%),
-            'safe_to_trade': bool,
-            'warnings': [lista de advertencias],
-            'strengths': [lista de fortalezas],
-            'vp_context': dict,
-            'sr_context': dict,
-            'structure_analysis': dict,
-            'divergence': dict
-        }
+        int: Extracted integer score
     """
-    print(f"\n🔬 ANÁLISIS PROFUNDO: {symbol}")
+    if score_value is None:
+        return default
+    if isinstance(score_value, (int, float)):
+        return int(score_value)
+    if isinstance(score_value, dict):
+        # Recursively extract from nested dict
+        return _extract_score(score_value.get('score', default), default)
+    # Fallback for any other type
+    return default
 
-    warnings = []
-    strengths = []
-    probability = 50  # Base
+def _extract_adx_value(adx_data):
+    """Safely extract ADX value from dict or number."""
+    if isinstance(adx_data, (int, float)):
+        return float(adx_data)
+    if isinstance(adx_data, dict):
+        return float(adx_data.get('adx_current', 0))
+    return 0.0
 
-    # 1. Volume Profile
-    vp_ctx = analyze_volume_profile_context(symbol, '15m')
-    if vp_ctx:
-        if not vp_ctx['safe_to_trade']:
-            probability -= 20
-            warnings.append(vp_ctx['warning'])
+# ============================================================================
+# CLASE BOT PRINCIPAL
+# ============================================================================
+
+class BrainTradingBot:
+    def __init__(self):
+        self.running = False
+        self.cycle_count = 0
+        self.filtered_symbols = []
+        self.last_full_analysis = None
+    
+    def print_banner(self):
+        """Imprime banner de inicio"""
+        print("\n" + "=" * 80)
+        print("🧠 BRAIN TRADING BOT - PHASE 4.0")
+        print("    Bot Anticipatorio Matemático")
+        print("=" * 80)
+        print(f"💰 Capital: ${CAPITAL_INICIAL} | Apalancamiento: {SIMULATE_LEVERAGE}x")
+        print(f"🎯 Max trades simultáneos: {MAX_TRADES_SIMULTANEOUS}")
+        print(f"📊 Análisis contextual: 1D → 4H → 1H → 15M → 5M")
+        print(f"🎯 Entrada: Trigger matemático anticipatorio")
+        print(f"🛡️ Gestión: Breakeven + Trailing + Smart Exit (5 señales)")
+        print("=" * 80 + "\n")
+    
+    def pre_filter_weekly_candles(self):
+        """
+        PRE-FILTRO: Rechaza monedas con &lt;10 velas diarias
+        
+        Returns:
+            list: Símbolos que pasan filtro
+        """
+        print(f"\n{'='*80}")
+        print("🔍 FASE 0: PRE-FILTRO VELAS DIARIAS")
+        print(f"{'='*80}")
+        
+        all_symbols = get_futures_symbols()
+        if not all_symbols:
+            print("❌ Error obteniendo símbolos")
+            return []
+        
+        total_symbols = len(all_symbols)
+        print(f"📊 Total símbolos: {total_symbols}")
+        
+        filtered = []
+        rejected = []
+        pre_filtro_batch = []  # Acumular para batch writing
+        
+        print("Analizando velas diarias...")
+        
+        for i, symbol in enumerate(all_symbols):
+            if i % 100 == 0:
+                print(f"  Progreso: {i}/{total_symbols} ({i/total_symbols*100:.1f}%)")
+            
+            try:
+                # Chequeo de prioridad
+                if symbol in PRIORITY_SYMBOLS:
+                    print(f"  🌟 {symbol}: SÍMBOLO PRIORITARIO - APROBADO AUTOMÁTICAMENTE")
+                    filtered.append(symbol)
+                    timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                    pre_filtro_batch.append([timestamp, symbol, "N/A", "APROBADO (PRIORIDAD)"])
+                    continue
+
+                ohlcv = fetch_ohlcv(symbol, '1d', 50)
+                if not ohlcv:
+                    rejected.append((symbol, 0))
+                    print(f"  ❌ {symbol}: 0 velas diarias - RECHAZADO (sin datos)")
+                    timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                    pre_filtro_batch.append([timestamp, symbol, 0, "RECHAZADO"])
+                    continue
+                
+                # Contar velas reales
+                total_candles = len(ohlcv)
+                real_candles = 0
+                for candle in ohlcv:
+                    volume = candle[5]
+                    high = candle[2]
+                    low = candle[3]
+                    
+                    if volume &gt; 0 and high != low:
+                        real_candles += 1
+
+                if real_candles &gt;= MIN_DAILY_CANDLES:
+                    filtered.append(symbol)
+                    print(f"  ✅ {symbol}: {real_candles} velas diarias - APROBADO")
+                    timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                    pre_filtro_batch.append([timestamp, symbol, real_candles, "APROBADO"])
+                else:
+                    rejected.append((symbol, real_candles))
+                    if real_candles == 0 and total_candles &gt; 0:
+                        print(f"  ❌ {symbol}: 0/{total_candles} velas válidas - RECHAZADO (velas sin volumen)")
+                    else:
+                        print(f"  ❌ {symbol}: {real_candles}/{total_candles} velas válidas - RECHAZADO (mín {MIN_DAILY_CANDLES})")
+                    timestamp = datetime.now(ARGENTINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                    pre_filtro_batch.append([timestamp, symbol, real_candles, "RECHAZADO"])
+            
+            except Exception as e:
+                rejected.append((symbol, 0))
+        
+        print(f"\n✅ FILTRADAS: {len(filtered)}/{total_symbols} ({len(filtered)/total_symbols*100:.1f}%)")
+        print(f"❌ RECHAZADAS: {len(rejected)} (&lt;{MIN_DAILY_CANDLES} velas diarias)")
+        
+        # Escribir batch en Google Sheets
+        if pre_filtro_batch:
+            print(f"\n📊 Escribiendo {len(pre_filtro_batch)} registros a BRAIN_PRE_FILTRO...")
+            sheets_manager.write_batch(SHEET_BRAIN_PRE_FILTRO, pre_filtro_batch)
+            print("✅ Batch escritura completada")
+        
+        return filtered
+    
+    def analyze_all_coins(self):
+        """
+        FASE 1: Análisis contextual completo de todas las monedas filtradas
+        
+        Returns:
+            list: [(symbol, analysis_data), ...] solo monedas viables
+        """
+        print(f"\n{'='*80}")
+        print("🧠 FASE 1: ANÁLISIS CONTEXTUAL MULTI-TIMEFRAME")
+        print(f"{'='*80}")
+        
+        if not self.filtered_symbols:
+            print("⚠️ No hay símbolos filtrados")
+            return []
+        
+        total = len(self.filtered_symbols)
+        analyzed = []
+        viable_count = 0
+        
+        print(f"Analizando {total} monedas (1D→4H→1H→15M→5M)...\n")
+        
+        for i, symbol in enumerate(self.filtered_symbols):
+            # Mostrar progreso cada 20 monedas (más frecuente)
+            if i % 20 == 0:
+                print(f"\n📊 Progreso: {i}/{total} ({i/total*100:.1f}%) - Viables: {viable_count}")
+            
+            try:
+                # Filtrar stablecoins
+                if symbol in STABLECOINS_BLACKLIST:
+                    print(f"⏭️ {symbol}: STABLECOIN - OMITIDO")
+                    continue
+                    
+                print(f"\n🔍 Analizando: {symbol}")
+                
+                # MODO INTELIGENTE: Análisis paralelo holístico
+                if ENABLE_INTELLIGENT_MODE:
+                    decision = decide_intelligently(symbol)
+                    
+                    if decision['action'] == 'OPERAR':
+                        # Convertir decisión inteligente a formato analysis para watchlist
+                        # FIX: No usar 'context' sino 'ladder_data'
+                        ladder_data = decision['full_analysis'].get('ladder_data', {})
+                        
+                        # Crear estructura compatible con watchlist
+                        analysis_compatible = {
+                            'viable': True,
+                            'score_data': {
+                                'score': decision.get('confluence_score', 60),  # Usar confluence_score
+                                'clasificacion': decision.get('confidence', 'MODERADA')
+                            },
+                            'analysis_4h': ladder_data.get('4h'),
+                            'analysis_1h': ladder_data.get('1h'),
+                            'analysis_15m': ladder_data.get('15m'),
+                            'analysis_5m': ladder_data.get('5m'),
+                            'sr_zones': ladder_data.get('15M', {}).get('sr') if ladder_data.get('15M') else None,
+                            'evolution': ladder_data.get('1M', {}),
+                            'intelligent_decision': decision  # Guardar decisión completa
+                        }
+                        
+                        analyzed.append((symbol, analysis_compatible))
+                        viable_count += 1
+                        
+                        print(f"  ✅ {symbol}: {decision['confidence']} - {decision['trade_type']}")
+                        # FIX: 'reasons' es una lista, unirla para mostrar
+                        reasons_str = ", ".join(decision.get('reasons', []))
+                        print(f"     Razón: {reasons_str}")
+                        
+                        # Mostrar patrón si existe
+                        if decision.get('pattern'):
+                            print(f"     Patrón: {decision['pattern']}")
+                        
+                        # LOGGING DE APROBACIÓN (Para reporte completo)
+                        try:
+                            full = decision.get('full_analysis', {}).get('ladder_data', {})
+                            
+                            def safe_get(tf):
+                                data = full.get(tf)
+                                return data if isinstance(data, dict) else {}
+
+                            def get_adx(tf): return _extract_adx_value(safe_get(tf).get('adx', 0))
+                            def get_mom(tf): return safe_get(tf).get('momentum', {}).get('consecutive_count', 0)
+                            def get_score(tf): return _extract_score(safe_get(tf).get('score_data', {}).get('score', 0), 0)
+                            
+                            price = 0.0
+                            if safe_get('5M'): price = safe_get('5M').get('current_price', 0)
+                            elif safe_get('15M'): price = safe_get('15M').get('close_price', 0)
+                            
+                            db_manager.insert_rejection(
+                                symbol=symbol,
+                                score=get_score('15m'),
+                                reason=f"[APPROVED] {', '.join(decision.get('reasons', []))}", # Prefijo [APPROVED]
+                                adx_4h=get_adx('4h'),
+                                adx_1h=get_adx('1h'),
+                                adx_15m=get_adx('15m'),
+                                mom_4h=get_mom('4h'),
+                                mom_1h=get_mom('1h'),
+                                mom_15m=get_mom('15m'),
+                                vp_position="N/A",
+                                sr_danger="N/A",
+                                structure=decision.get('pattern', 'N/A'),
+                                divergence="N/A",
+                                precio=price,
+                                warnings="Intelligent Approval",
+                                probability=100,
+                                score_4h=get_score('4h'),
+                                score_1h=get_score('1h'),
+                                score_15m=get_score('15m'),
+                                evolution_bonus=0
+                            )
+                        except Exception as e:
+                            print(f"     Error logging approval: {e}")
+                    else:
+                        reasons_str = ", ".join(decision.get('reasons', []))
+                        print(f"  ⚠️ {symbol}: {decision.get('reason', reasons_str)}")
+                        
+                        # LOGGING DE RECHAZO INTELIGENTE (Para reporte)
+                        try:
+                            full = decision.get('full_analysis', {}).get('ladder_data', {})
+                            
+                            # Extraer datos para DB (con defaults seguros)
+                            def safe_get(tf):
+                                data = full.get(tf)
+                                return data if isinstance(data, dict) else {}
+
+                            def get_adx(tf): return _extract_adx_value(safe_get(tf).get('adx', 0))
+                            def get_mom(tf): return safe_get(tf).get('momentum', {}).get('consecutive_count', 0)
+                            def get_score(tf): return _extract_score(safe_get(tf).get('score_data', {}).get('score', 0), 0)
+                            
+                            # Precio actual (de 5M o 15M)
+                            price = 0.0
+                            if safe_get('5m'): price = safe_get('5m').get('current_price', 0)
+                            elif safe_get('15m'): price = safe_get('15m').get('close_price', 0)
+                            
+                            # Insertar en DB
+                            reasons_str = ", ".join(decision.get('reasons', []))
+                            
+                            # Intentar extraer datos extra
+                            structure_val = decision.get('pattern', 'N/A')
+                            div_val = "N/A"
+                            vp_val = "N/A"
+                            
+                            # Buscar divergencia en 15m o 5m
+                            if safe_get('15m').get('divergence'): div_val = "YES"
+                            elif safe_get('5m').get('divergence'): div_val = "YES"
+                            
+                            db_manager.insert_rejection(
+                                symbol=symbol,
+                                score=get_score('15m'), # Usamos score 15M como proxy o 0
+                                reason=f"[INT] {reasons_str}", # Prefijo [INT] para distinguir
+                                adx_4h=get_adx('4h'),
+                                adx_1h=get_adx('1h'),
+                                adx_15m=get_adx('15m'),
+                                mom_4h=get_mom('4h'),
+                                mom_1h=get_mom('1h'),
+                                mom_15m=get_mom('15m'),
+                                vp_position=vp_val,
+                                sr_danger="N/A",
+                                structure=structure_val,
+                                divergence=div_val,
+                                precio=price,
+                                warnings="Intelligent Rejection",
+                                probability=0,
+                                score_4h=get_score('4h'),
+                                score_1h=get_score('1h'),
+                                score_15m=get_score('15m'),
+                                evolution_bonus=0
+                            )
+                        except Exception as e:
+                            print(f"     Error logging rejection: {e}")
+                
+                # MODO CASCADA: Análisis binario tradicional
+                else:
+                    analysis = analyze_coin_complete(symbol)
+                    
+                    if analysis and analysis['viable']:
+                        analyzed.append((symbol, analysis))
+                        viable_count += 1
+                        
+                        score = _extract_score(analysis.get('score_data', {}).get('score', 0), 0)
+                        clasificacion = analysis.get('score_data', {}).get('clasificacion', 'N/A')
+                        direction = analysis.get('analysis_5m', {}).get('direction', 'UNKNOWN')
+                        
+                        print(f"  ✅ {symbol}: {score}/100 ({clasificacion}) - {direction}")
+                        
+                        # Prints detallados de análisis multi-timeframe
+                        if analysis['analysis_4h']:
+                            print(f"     4H: {analysis['analysis_4h']['direction']} ({analysis['analysis_4h']['strength']}) | ADX: {analysis['analysis_4h']['adx']['adx_current']:.1f}")
+                        if analysis['analysis_1h']:
+                            print(f"     1H: {analysis['analysis_1h']['direction']} ({analysis['analysis_1h']['strength']}) | ADX: {analysis['analysis_1h']['adx']['adx_current']:.1f} | Edad: {analysis['analysis_1h']['momentum']['consecutive_count']}v")
+                        if analysis['analysis_15m']:
+                            print(f"     15M: Edad {analysis['analysis_15m']['momentum']['consecutive_count']}v | EMAs: {analysis['analysis_15m']['emas']['classification']}")
+                        if analysis['analysis_5m']:
+                            print(f"     5M: Vel: {analysis['analysis_5m']['velocity']['velocity_current']:.6f} | Acel: {analysis['analysis_5m']['acceleration']['acceleration_current']:.6f}")
+                    else:
+                        # Moneda no viable - mostrar razón
+                        print(f"  ⚠️ {symbol}: No cumple criterios mínimos")
+                        if analysis and isinstance(analysis, dict):
+                            if analysis.get('analysis_4h'):
+                                print(f"     4H: {analysis['analysis_4h']['direction']} ({analysis['analysis_4h']['strength']})")
+                            if analysis.get('score_data'):
+                                score_display = _extract_score(analysis.get('score_data', {}).get('score', 0), 0)
+                                print(f"     Score: {score_display}/100 (&lt; 70 requerido)")
+            
+            except Exception as e:
+                import traceback
+                print(f"  ERROR: {symbol}: al analizar")
+                print(f"     Tipo de error: {type(e).__name__}")
+                print(f"     Mensaje: {str(e)}")
+                print(f"     Traceback:")
+                traceback.print_exc()
+                print("")
+                continue
+        
+        print(f"\n✅ ANÁLISIS COMPLETADO: {viable_count} monedas viables de {total}")
+        
+        return analyzed
+    
+    def update_watchlist(self, analyzed_coins):
+        """
+        FASE 2: Actualiza watchlist con monedas analizadas
+        
+        Args:
+            analyzed_coins: List de (symbol, analysis_data)
+        """
+        print(f"\n{'='*80}")
+        print("📋 FASE 2: ACTUALIZACIÓN WATCHLIST")
+        print(f"{'='*80}")
+        
+        watchlist_manager.update_watchlist_from_analysis(analyzed_coins)
+        
+        watchlist = watchlist_manager.get_watchlist()
+        
+        if watchlist:
+            print(f"\n📊 WATCHLIST ACTUAL ({len(watchlist)} monedas):")
+            for symbol, data in watchlist[:10]:  # Mostrar top 10
+                score_display = _extract_score(data.get('score', 0), 0)
+                print(f"  {symbol}: {score_display} ({data.get('clasificacion', 'N/A')}) - {data.get('direction', 'UNKNOWN')}")
+                if data.get('triggers'):
+                    print(f"    → Target: ${data['triggers']['target_price']:.8f} | R:R: {data['triggers']['rr_ratio']:.2f}")
+            
+            # Escribir toda la watchlist en BRAIN_WATCHLIST
+            print(f"\n💾 Escribiendo watchlist a Google Sheets...")
+            for symbol, data in watchlist:
+                # Obtener datos necesarios
+                score = _extract_score(data.get('score', 0), 0)
+                direction = data.get('direction', 'UNKNOWN')
+                
+                # EMAs distance desde analysis_snapshot
+                emas_distance = 0.0
+                if 'analysis_snapshot' in data and data['analysis_snapshot']:
+                    emas_distance = data['analysis_snapshot'].get('emas_separation_15m', 0.0)
+                
+                # Clasificar estructura según score
+                if score &gt;= 80:
+                    structure = "SANA"
+                elif score &gt;= 70:
+                    structure = "REGULAR"
+                else:
+                    structure = "MALA"
+                
+                # Clasificar edad según momentum_age_5m
+                edad = "MADURA"
+                if 'analysis_snapshot' in data and data['analysis_snapshot']:
+                    momentum_age_5m = data['analysis_snapshot'].get('momentum_age_5m', 10)
+                    if momentum_age_5m &lt;= 5:
+                        edad = "JOVEN"
+                
+                # Obtener datos de triggers (tiempo proyectado y R/R ratio)
+                tiempo_proyectado_min = 0
+                rr_ratio = 0.0
+                if 'triggers' in data and data['triggers']:
+                    tiempo_proyectado_min = data['triggers'].get('tiempo_proyectado_min', 0)
+                    rr_ratio = data['triggers'].get('rr_ratio', 0.0)
+                
+                # Escribir a Sheet
+                sheets_manager.write_watchlist(symbol, score, direction, emas_distance, structure, edad, tiempo_proyectado_min, rr_ratio)
         else:
-            probability += 5
-            if vp_ctx['position'] == 'ZONA_POC':
-                strengths.append("Precio en zona alta liquidez (POC)")
-
-    # 2. SR multi-touch
-    sr_ctx = analyze_support_resistance_touches(symbol, '4h')
-    if sr_ctx:
-        if sr_ctx['danger_zone']:
-            probability -= 25
-            if sr_ctx['nearest_support'] and sr_ctx['nearest_support']['touches'] &gt;= 8:
-                warnings.append(f"Soporte MUY fuerte {sr_ctx['nearest_support']['touches']} toques a {sr_ctx['nearest_support']['distance_pct']:.1f}%")
-            if sr_ctx['nearest_resistance'] and sr_ctx['nearest_resistance']['touches'] &gt;= 8:
-                warnings.append(f"Resistencia MUY fuerte {sr_ctx['nearest_resistance']['touches']} toques a {sr_ctx['nearest_resistance']['distance_pct']:.1f}%")
+            print("⚠️ Watchlist vacía")
+    
+    def monitor_and_trade(self):
+        """
+        FASE 3: Monitorea watchlist y trades activos
+        """
+        print(f"\n{'='*80}")
+        print("👁️ FASE 3: MONITOREO ACTIVO")
+        print(f"{'='*80}")
+        
+        # Limpiar watchlist de monedas estancadas (TTL)
+        removed = watchlist_manager.cleanup_stale_symbols(max_age_minutes=30, max_checks=20)
+        if removed &gt; 0:
+            watchlist_count = len(watchlist_manager.get_watchlist())
+            print(f"🔄 Watchlist renovada: {watchlist_count} monedas activas (removidas {removed})")
+        
+        # Verificar si watchlist quedó vacía
+        watchlist = watchlist_manager.get_watchlist()
+        if len(watchlist) == 0:
+            print(f"\n⚠️ Watchlist vacía - Saliendo a re-análisis...")
+            return  # Retorna para forzar re-análisis completo
         else:
-            probability += 10
-            strengths.append("SR libre sin obstáculos fuertes")
-
-    # 3. Deterioro estructura
-    structure_ctx = detect_structure_deterioration(symbol, '1h')
-    if structure_ctx:
-        if structure_ctx['deteriorating']:
-            probability -= 15
-            warnings.append(f"Estructura deteriorándose: {structure_ctx['pattern']}")
-        elif structure_ctx['pattern'] in ['STRONG_BULLISH', 'STRONG_BEARISH']:
-            probability += 10
-            strengths.append(f"Estructura fuerte: {structure_ctx['pattern']}")
-
-    # 4. Divergencias
-    div_ctx = detect_divergence(symbol, '15m')
-    if div_ctx and div_ctx['divergence_detected']:
-        if div_ctx['type'] == 'BEARISH':
-            probability -= 15
-            warnings.append(f"Divergencia bajista {div_ctx['strength']}")
-        elif div_ctx['type'] == 'BULLISH':
-            probability += 10
-            strengths.append(f"Divergencia alcista {div_ctx['strength']}")
-
-    # CONTEXTUAL OVERRIDE: Setup explosivo ignora warnings menores
-    if (analysis_4h['adx']['adx_current'] &gt;= 30 and  # Era 45
-        analysis_4h['momentum']['consecutive_count'] &gt;= 6 and  # Era 8
-        analysis_1h['adx']['adx_current'] &gt;= 25):  # Era 40
+            print(f"🦅 MODO FRANCOTIRADOR: {len(watchlist)} objetivos en la mira. Manteniendo posición...")
         
-        print(f"  🚀 SETUP EXPLOSIVO DETECTADO (ADX 4H={analysis_4h['adx']['adx_current']:.1f})")
+        # Monitorear trades activos
+        if trade_manager.active_trades:
+            print(f"\n📈 TRADES ACTIVOS: {len(trade_manager.active_trades)}")
+            trade_manager.monitor_active_trades()
         
-        if vp_ctx and 'gap' in str(vp_ctx.get('warning', '')).lower():
-            probability += 25
-            if vp_ctx['warning'] in warnings:
-                warnings.remove(vp_ctx['warning'])
-            strengths.append("Gap alcista en impulso explosivo")
-            print(f"  ✅ Gap reinterpretado (+25%)")
+        # Verificar triggers en watchlist
+        if trade_manager.can_open_trade():
+            
+            print(f"\n🔍 VERIFICANDO TRIGGERS ({len(watchlist)} monedas en watchlist)...")
+            
+            for symbol, data in watchlist:
+                if not trade_manager.can_open_trade():
+                    break
+                
+                print(f"  🔍 Verificando: {symbol} (Score: {_extract_score(data.get('score', 0), 0)})")
+                
+                # --- NUEVO: REGISTRO DE CONTEXTO MINUTO A MINUTO ---
+                try:
+                    # Obtener datos frescos para el snapshot
+                    ohlcv_snap = fetch_ohlcv(symbol, '15m', 20)
+                    if ohlcv_snap:
+                        df_snap = pd.DataFrame(ohlcv_snap, columns=['timestamp','open','high','low','close','volume'])
+                        current_price_snap = df_snap['close'].iloc[-1]
+                        
+                        # Calcular ADX y Momentum para el snapshot
+                        from brain_calculator import calculate_adx_with_memory, calculate_momentum_with_memory
+                        adx_snap = calculate_adx_with_memory(df_snap, period=14, lookback=1)
+                        mom_snap = calculate_momentum_with_memory(df_snap, lookback=1)
+                        
+                        # Determinar estado de volatilidad simple
+                        bb_width = (df_snap['high'] - df_snap['low']).rolling(20).mean().iloc[-1]
+                        volatility_state = "NORMAL" # Simplificado por ahora
+                        
+                        db_manager.insert_market_snapshot(
+                            symbol,
+                            current_price_snap,
+                            adx_snap['adx_current'],
+                            mom_snap['color_current'],
+                            data.get('score', 0),
+                            data['direction'],
+                            volatility_state
+                        )
+                except Exception as e:
+                    print(f"    ⚠️ Error guardando snapshot DB: {e}")
+                # ---------------------------------------------------
+
+                # Verificar trigger (ahora retorna dict)
+                trigger_result = trade_manager.check_trigger_activated(symbol, data)
+                
+                if trigger_result and trigger_result['activated']:
+                    # Resetear contador (casi se activó)
+                    watchlist_manager.reset_check_counter(symbol)
+                    
+                    # Intentar escribir en Sheets (sin detener el bot si falla)
+                    try:
+                        # Escribir BRAIN_TRIGGERS
+                        sheets_manager.write_trigger(
+                            symbol,
+                            "ADX+MOMENTUM+VOLUMEN",
+                            trigger_result['adx'],
+                            trigger_result['momentum_age'],
+                            trigger_result['volume_ratio']
+                        )
+                        
+                        # CALCULAR Y ESCRIBIR BRAIN_PROYECCIONES
+                        ohlcv_fresh = fetch_ohlcv(symbol, '5m', 50)
+                        if ohlcv_fresh and len(ohlcv_fresh) &gt;= 20:
+                            df_fresh = pd.DataFrame(ohlcv_fresh, columns=['timestamp','open','high','low','close','volume'])
+                            
+                            velocity_data = calculate_velocity(df_fresh, lookback=10)
+                            acceleration_data = calculate_acceleration(df_fresh, lookback=5)
+                            current_price = df_fresh['close'].iloc[-1]
+
+                            velocity = velocity_data['velocity_current']
+                            acceleration = acceleration_data['acceleration_current']
+                            
+                            if 'triggers' in data and data['triggers']:
+                                triggers = data['triggers']
+                                sheets_manager.write_proyeccion(
+                                    symbol,
+                                    current_price,
+                                    velocity,
+                                    acceleration,
+                                    triggers.get('tiempo_proyectado_min', 0),
+                                    triggers.get('rr_ratio', 0),
+                                    triggers.get('target_price', 0),
+                                    triggers.get('stop_loss', 0)
+                                )
+                    except Exception as e:
+                        print(f"⚠️ Error escribiendo en Sheets (no crítico): {e}")
+                    
+                    # Entrar al trade
+                    trade_manager.enter_trade(symbol, data)
+                else:
+                    # Incrementar contador de checks sin trigger
+                    watchlist_manager.increment_check_counter(symbol)
+                    print(f"     ⏳ Trigger no activado aún")
         
-        # VP extremos contextuales
-        direction = analysis_4h['direction']
-        if vp_ctx:
-            vp_pos = vp_ctx.get('position', '')
-            if vp_pos == 'EXTREMO_SUPERIOR' and direction == 'BULLISH':
-                probability += 15
-                strengths.append("VP extremo superior favorable para LONG")
-            elif vp_pos == 'EXTREMO_INFERIOR' and direction == 'BEARISH':
-                probability += 15
-                strengths.append("VP extremo inferior favorable para SHORT")
+        # Re-analizar breakeven exits
+        trade_manager.reanalyze_breakeven_exits()
+    
+    def run(self):
+        """Loop principal del bot"""
+        self.running = True
+        self.print_banner()
         
-        if structure_ctx and structure_ctx.get('pattern') in ['MIXED', 'HH_HL_LL']:
-            probability += 10
-            warnings = [w for w in warnings if 'estructura' not in w.lower()]
-            strengths.append("Breakout rompiendo estructura")
-            print(f"  ✅ Estructura reinterpretada (+10%)")
+        # Notificar inicio
+        if ENABLE_TELEGRAM:
+            notify_bot_start(CAPITAL_INICIAL, SIMULATE_LEVERAGE)
         
-        probability = min(100, probability)
-        safe_to_trade = probability &gt;= 40
+        # Pre-filtro inicial
+        print("🚀 Iniciando pre-filtro...")
+        self.filtered_symbols = self.pre_filter_weekly_candles()
+        
+        if not self.filtered_symbols:
+            print("❌ No hay símbolos para analizar. Abortando.")
+            return
+        
+        # Iniciar thread de stop loss
+        trade_manager.start_stop_loss_monitor()
+        
+        # Análisis inicial completo
+        print("\n🧠 Iniciando análisis contextual completo...")
+        analyzed_coins = self.analyze_all_coins()
+        
+        # Watchlist inicial
+        self.update_watchlist(analyzed_coins)
+        self.last_full_analysis = datetime.now(ARGENTINA_TZ)
+        self.last_mini_scan = None  # Tracking para mini-scans
+        
+        print(f"\n{'='*80}")
+        print("✅ INICIALIZACIÓN COMPLETA - Entrando en loop de monitoreo")
+        print(f"{'='*80}\n")
+        
+        # Loop principal
+        try:
+            while self.running:
+                self.cycle_count += 1
+                now = datetime.now(ARGENTINA_TZ)
+                
+                print(f"\n{'─'*80}")
+                print(f"🔄 CICLO #{self.cycle_count} - {now.strftime('%H:%M:%S')}")
+                print(f"{'─'*80}")
+                
+                # Monitoreo y trading
+                self.monitor_and_trade()
+                
+                # Si watchlist vacía → re-analizar TODO inmediatamente
+                watchlist_current = watchlist_manager.get_watchlist()
+                if len(watchlist_current) == 0:
+                    print("\n⚡ Watchlist vacía → Re-analizando mercado completo...")
+                    analyzed_coins = self.analyze_all_coins()
+                    self.update_watchlist(analyzed_coins)
+                
+                # Mini-scan cada 30 minutos
+                if not self.last_mini_scan or (now - self.last_mini_scan).total_seconds() &gt;= 1800:  # 30min
+                    print(f"\n{'='*80}")
+                    print("🔍 MINI-SCAN: Buscando nuevas oportunidades...")
+                    print(f"{'='*80}")
+                    
+                    # Obtener top 100 símbolos por volumen
+                    from exchange_connection import get_top_symbols_by_volume
+                    top_symbols = get_top_symbols_by_volume(limit=100)
+                    
+                    if top_symbols:
+                        print(f"📊 Analizando top {len(top_symbols)} símbolos por volumen 24h...")
+                        
+                        analyzed_mini = []
+                        for i, symbol in enumerate(top_symbols[:100], 1):
+                            # Progress cada 25
+                            if i % 25 == 0:
+                                print(f"  Progreso: {i}/100...")
+                            
+                            analysis = analyze_coin_complete(symbol)
+                            if analysis and analysis['viable']:
+                                analyzed_mini.append((symbol, analysis))
+                        
+                        # Actualizar watchlist con nuevas
+                        if analyzed_mini:
+                            print(f"✅ {len(analyzed_mini)} nuevas monedas → watchlist")
+                            self.update_watchlist(analyzed_mini)
+                        else:
+                            print("⚠️ Sin nuevas oportunidades")
+                    else:
+                        print("❌ Error obteniendo top symbols por volumen")
+                    
+                    self.last_mini_scan = now
+                
+                # ANÁLISIS CONTINUO - Sin delay artificial
+                import time
+                time.sleep(5)  # Solo 5s para no saturar API
+        
+        except KeyboardInterrupt:
+            print("\n\n🛑 Bot detenido por usuario")
+            self.stop()
+    
+    def stop(self):
+        """Detiene el bot"""
+        self.running = False
+        
+        print("\n" + "=" * 80)
+        print("📊 RESUMEN SESIÓN")
+        print("=" * 80)
+        
+        # Stats trades
+        total_trades = len(trade_manager.trade_history)
+        if total_trades &gt; 0:
+            wins = sum(1 for t in trade_manager.trade_history if t['pnl_pct'] &gt; 0)
+            losses = total_trades - wins
+            win_rate = (wins / total_trades) * 100
+            
+            avg_pnl = sum(t['pnl_pct'] for t in trade_manager.trade_history) / total_trades
+            total_pnl_usd = sum(t['pnl_usd'] for t in trade_manager.trade_history)
+            
+            print(f"Total trades: {total_trades}")
+            print(f"Wins: {wins} | Losses: {losses}")
+            print(f"Win rate: {win_rate:.1f}%")
+            print(f"Avg PnL: {avg_pnl:+.2f}%")
+            print(f"Total PnL: ${total_pnl_usd:+.2f}")
+            
+            # Guardar stats en Sheet
+            best_trade = max(t['pnl_pct'] for t in trade_manager.trade_history)
+            worst_trade = min(t['pnl_pct'] for t in trade_manager.trade_history)
+            
+            sheets_manager.write_stats(
+                total_trades, wins, losses, win_rate,
+                avg_pnl, total_pnl_usd, best_trade, worst_trade
+            )
+        
+        else:
+            print("No se ejecutaron trades")
+        
+        print("=" * 80)
+        print("👋 Hasta pronto!")
+        print("=" * 80 + "\n")
 
-    # Limitar probabilidad 0-100
-    probability = max(0, min(100, probability))
 
-    # Decisión final
-    safe_to_trade = probability &gt;= 40 and len(warnings) == 0
-
-    print(f"   Probabilidad: {probability}%")
-    if warnings:
-        for w in warnings:
-            print(f"   ⚠️ {w}")
-    if strengths:
-        for s in strengths:
-            print(f"   ✅ {s}")
-
-    return {
-        'probability': probability,
-        'safe_to_trade': safe_to_trade,
-        'warnings': warnings,
-        'strengths': strengths,
-        'vp_context': vp_ctx if vp_ctx else {},
-        'sr_context': sr_ctx if sr_ctx else {},
-        'structure_analysis': structure_ctx if structure_ctx else {},
-        'divergence': div_ctx if div_ctx else {}
-    }
-
-# =============================================================================
-# VALIDACIÓN
-# =============================================================================
+# ============================================================================
+# PUNTO DE ENTRADA
+# ============================================================================
 
 if __name__ == "__main__":
-    print("🔬 BRAIN DEEP ANALYZER - Módulo cargado")
-    print("Funciones disponibles:")
-    print(" - deep_analysis_complete()")
-    print(" - analyze_volume_profile_context()")
-    print(" - analyze_support_resistance_touches()")
-    print(" - detect_structure_deterioration()")
-    print(" - detect_divergence()")
-
-
+    bot = BrainTradingBot()
+    
+    try:
+        bot.run()
+    except Exception as e:
+        print(f"\n❌ ERROR CRÍTICO: {e}")
+        bot.stop()
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 17,574<br>
-    Generado: 2025-11-22 00:31:40
+    Total caracteres: 35,307<br>
+    Generado: 2025-11-22 00:48:30
   </div>
 </body>
 </html>
