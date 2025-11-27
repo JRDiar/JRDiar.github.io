@@ -15,49 +15,14 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-27 20:01:37</div>
+  <div class="meta">Última actualización: 2025-11-27 20:08:10</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - Sniper Entry System Part 1
-Goal Description
-Implement a "Sniper" entry system in 
-brain_watchlist.py
- that allows the bot to wait for a price bounce in a value zone (POC, EMA21, Support) when strong market force is detected, instead of entering immediately.
+Aquí tienes la propuesta corregida con los fixes solicitados (EMA21 y validación de zona).
 
-User Review Required
-New Status: WAITING_REBOTE added to watchlist logic.
-New Function: check_rebote_conditions to validate bounce conditions (Zone reached + 15M confirmation).
-Logic Change: 
-add_to_watchlist
- now calculates and saves zona_objetivo when force is high but price is extended.
-Proposed Changes
-Brain Watchlist
-[MODIFY] 
-brain_watchlist.py
-Add check_rebote_conditions function:
-Checks if price is within 1.5% of zona_objetivo.
-Checks ADX 15M trend ('creciendo').
-Checks Momentum 15M (Green, &gt;= 2 candles).
-Modify 
-add_to_watchlist
-:
-In the "HUNTER MODE" block (lines ~269-295):
-If dist_ema &gt; 2.0 (extended):
-Set status to WAITING_REBOTE.
-Calculate zona_objetivo (POC &gt; EMA21 &gt; Support).
-Save zona_objetivo and precio_entrada_ideal in watchlist data.
-Verification Plan
-Manual Verification
-Code review (User Confirmation).
-Verify logic:
-Extended price -&gt; WAITING_REBOTE + Target Zone saved.
-check_rebote_conditions returns True only when price hits zone AND indicators confirm.
-
-Aquí tienes la propuesta para implementar el sistema "Sniper" (WAITING_REBOTE) en brain_watchlist.py.
-
-1. CÓDIGO ACTUAL (add_to_watchlist, líneas ~280-290)
+1. CÓDIGO ACTUAL (add_to_watchlist, líneas ~280)
 python
             if adx_current &gt; 25:
                 # Si está muy extendido (&gt;2%), esperar pullback
@@ -65,10 +30,9 @@ python
                     status = 'WAITING_PULLBACK'
                     print(f"🦅 HUNTER: {symbol} extendido ({dist_ema:.1f}%), esperando pullback. Estructura: {last_structure}")
                 else:
-                    status = 'HUNTING'
                     # ...
 2. CÓDIGO PROPUESTO (add_to_watchlist)
-Reemplaza el bloque anterior para incluir lógica de zona objetivo.
+Con corrección de acceso a EMA21.
 
 python
             if adx_current &gt; 25:
@@ -78,7 +42,11 @@ python
                     
                     # Calcular zona objetivo (Prioridad: POC -&gt; EMA21 -&gt; Soporte)
                     poc = analysis_5m.get('volume_profile', {}).get('poc_current', 0)
-                    ema21 = analysis_5m.get('emas', {}).get('ema_21', 0)
+                    
+                    # FIX: Acceso correcto a EMA 21 (dict keys son int)
+                    emas_data = analysis_5m.get('emas', {})
+                    ema21 = emas_data.get('emas', {}).get(21, 0)
+                    
                     supports = analysis_5m.get('sr', {}).get('supports', [])
                     nearest_support = supports[0] if supports else 0
                     
@@ -90,31 +58,19 @@ python
                         
                     print(f"🦅 SNIPER: {symbol} extendido. Esperando rebote en ${zona_objetivo:.4f}")
                 else:
-                    status = 'HUNTING'
-                    # ... (resto igual)
-3. NUEVA FUNCIÓN (check_rebote_conditions)
-Agregar antes de WatchlistManager o dentro de ella (como método estático o de instancia). Sugiero fuera como helper o método de instancia.
-
-python
-    def check_rebote_conditions(self, symbol, watch_data):
-        """
-        Verifica si se cumplen condiciones de rebote (Sniper Mode)
-        """
-        snapshot = watch_data.get('analysis_snapshot', {})
-        zona_objetivo = watch_data.get('zona_objetivo', 0)
-        
-        # Necesitamos datos frescos, esto se llamará desde el loop principal con datos nuevos
-        # PERO aquí solo tenemos watch_data. 
-        # NOTA: Esta función debería recibir el 'current_analysis' fresco.
-        # Asumiré que se llamará desde fuera pasando los datos frescos.
-        pass 
-CORRECCIÓN: La instrucción pedía modificar brain_watchlist.py. Pero check_rebote_conditions necesita datos en tiempo real. ¿Te parece bien si la agrego como método de WatchlistManager que reciba current_analysis?
+                    # ...
+3. CÓDIGO PROPUESTO (check_rebote_conditions)
+Con validación de zona_objetivo &lt;= 0.
 
 python
     def check_rebote_conditions(self, current_analysis, watch_data):
         """Valida condiciones de rebote con datos frescos"""
         current_price = current_analysis['analysis_5m']['current_price']
         zona_objetivo = watch_data.get('zona_objetivo', 0)
+        
+        # FIX: Evitar división por cero o zonas inválidas
+        if zona_objetivo &lt;= 0:
+            return {'ready': False, 'reason': "No zone target defined"}
         
         # 1. Precio en zona (±1.5%)
         dist_to_zone = abs(current_price - zona_objetivo) / zona_objetivo * 100
@@ -133,12 +89,12 @@ python
              return {'ready': False, 'reason': "Momentum 15M not confirmed"}
              
         return {'ready': True, 'reason': "✅ SNIPER ENTRY: Zone hit + Indicators confirmed"}
-¿Confirmo estos cambios?
+¿Confirmo para aplicar estos cambios?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,300<br>
-    Generado: 2025-11-27 20:01:37
+    Total caracteres: 3,341<br>
+    Generado: 2025-11-27 20:08:10
   </div>
 </body>
 </html>
