@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-27 02:51:27</div>
+  <div class="meta">Última actualización: 2025-11-27 02:58:44</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -29,8 +29,8 @@ brain_intelligent.py
  to prevent Market Force activation if the price is too close (&lt;2%) to the Volume Profile High (profile_high), avoiding "buying the top" of the profile.
 
 User Review Required
-Logic Change: Market Force will now be BLOCKED if distance to VP High is &lt; 2%.
-New Return: Will return a specific rejection reason if blocked by VP High.
+Logic Change: Market Force will now be BLOCKED if distance to VP High is between 0% and 2% (inside the profile, near top).
+Breakout Handling: If price &gt; profile_high (distance &lt; 0), it is considered a breakout and NOT blocked.
 Proposed Changes
 Brain Intelligence
 [MODIFY] 
@@ -39,36 +39,21 @@ Update
 check_market_force
  function.
 Calculate dist_to_high using vp_1h['profile_high'].
-Add condition: if dist_to_high &lt; 2.0: cond_vp_safe = False.
+Add condition: if 0 &lt; dist_to_high &lt; 2.0: cond_vp_safe = False.
 Return specific reason if blocked.
 Verification Plan
 Manual Verification
 Review the code changes (User Confirmation Step).
-Since this is a logic change in a calculation function, verification relies on code review and subsequent bot behavior observation (logs).
+Verify logic:
+Price 99, High 100 -&gt; Dist 1% -&gt; BLOCKED (Correct)
+Price 101, High 100 -&gt; Dist -1% -&gt; ALLOWED (Correct, Breakout)
 
 
-Aquí tienes la comparación solicitada:
+Entendido perfectamente. Tienes toda la razón, si el precio supera el profile_high, la distancia sería negativa y bloquearía un breakout legítimo.
 
-1. CÓDIGO ACTUAL (brain_intelligent.py)
-    # 3. VOLUME PROFILE: "Al tope" (Precio &gt; POC)
-    # Usamos 1H para confirmar que estamos en zona de valor alta
-    vp_1h = a1h.get('volume_profile', {})
-    poc_1h = vp_1h.get('poc_current', 0)
-    current_price = a1h.get('current_price', 0)
-    
-    cond_vp = current_price &gt; poc_1h if poc_1h &gt; 0 else False
-    
-    if cond_adx and cond_mom_4h and cond_mom_1h and cond_vp:
-        # FUERZA DETECTADA
-        return {
-            'detected': True,
-            'score': 95, # Score muy alto para bypass
-            'reason': f"🔥 MARKET FORCE: ADX 1H({adx_val_1h:.1f} ↗️) + DI Spread ({di_spread:.1f}) + Mom 4H/1H ✅"
-        }
-        
-    return {'detected': False, 'score': 0, 'reason': ""}
+Aquí está el código corregido con tu sugerencia (0 &lt; dist_to_high &lt; 2.0):
 
-2. CÓDIGO PROPUESTO (Fix VP High)
+CÓDIGO PROPUESTO CORREGIDO (Fix VP High + Breakout Safe)
 
     # 3. VOLUME PROFILE: "Al tope" (Precio &gt; POC) pero con ESPACIO
     # Usamos 1H para confirmar que estamos en zona de valor alta
@@ -86,10 +71,13 @@ Aquí tienes la comparación solicitada:
     
     if profile_high &gt; 0:
         # Calcular distancia en %
+        # Si precio &lt; high, dist es positiva (ej: 3%)
+        # Si precio &gt; high, dist es negativa (ej: -1% -&gt; Breakout)
         dist_to_high = ((profile_high - current_price) / current_price) * 100
         
-        # Si está a menos de 2% del techo, es zona de peligro (reversión probable)
-        if dist_to_high &lt; 2.0:
+        # Solo bloqueamos si estamos DENTRO del perfil (dist &gt; 0) y MUY CERCA del techo (&lt; 2%)
+        # Si dist &lt; 0 significa que ya rompió (Breakout), eso es BUENO para Market Force
+        if 0 &lt; dist_to_high &lt; 2.0:
             cond_vp_safe = False
             vp_block_reason = f"Price too close to VP High ({dist_to_high:.1f}% &lt; 2%)"
     
@@ -112,16 +100,11 @@ Aquí tienes la comparación solicitada:
             }
 
     return {'detected': False, 'score': 0, 'reason': ""}
-
-¿Confirmo para aplicar este cambio?
-
-
-
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3,412<br>
-    Generado: 2025-11-27 02:51:27
+    Total caracteres: 3,133<br>
+    Generado: 2025-11-27 02:58:44
   </div>
 </body>
 </html>
