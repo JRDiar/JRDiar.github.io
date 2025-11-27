@@ -15,113 +15,83 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-27 15:02:38</div>
+  <div class="meta">Última actualización: 2025-11-27 15:31:08</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - Optimize Direction Checks
-Goal Description
-Move and reinforce the LATERAL/BEARISH direction checks to the very beginning of 
-make_pattern_based_decision
- to optimize performance and ensure strict adherence to the LONG-only strategy.
 
-User Review Required
-New Logic:
-4H Check: If 4H is 'LATERAL' or 'BEARISH' -&gt; Return WAIT immediately.
-Lateral Count: If 3 or more TFs are 'LATERAL' -&gt; Return WAIT immediately.
-Cleanup: Replaces the existing checks (lines 146-182) with this consolidated block.
-Proposed Changes
-Brain Intelligence
-[MODIFY] 
-brain_intelligent.py
-Replace lines 145-182 with the new consolidated check block.
-Verification Plan
-Manual Verification
-Code review (User Confirmation).
-Verify logic:
-4H LATERAL -&gt; WAIT.
-4H BEARISH -&gt; WAIT.
-4H BULLISH, 1H LATERAL, 15M LATERAL, 5M LATERAL (3 Laterals) -&gt; WAIT.
-4H BULLISH, 1H BULLISH, 15M LATERAL, 5M BULLISH -&gt; Allowed.
-
-Optimizing Direction Checks in make_pattern_based_decision
-Located the start of 
+Relaxing Pullback in detect_entry_context
+Located 
+detect_entry_context
+ definition and its call site in 
 make_pattern_based_decision
-. Drafted the optimized code to check direction immediately after mode definition, replacing the existing scattered checks.
+. Drafted the changes to accept market_force_active and relax pullback requirements accordingly.
 
 Files Edited
 Implementation Plan
 Task
 Progress Updates
 1
-Reading brain_intelligent.py to locate make_pattern_based_decision
+Reading brain_intelligent.py to locate detect_entry_context and its usage
 
 2
-Presenting proposed optimization to user
+Presenting proposed changes to user
 
-Aquí tienes la propuesta para optimizar los chequeos de dirección al inicio de make_pattern_based_decision.
+Aquí tienes la propuesta para flexibilizar detect_entry_context cuando hay Market Force.
 
-1. CÓDIGO ACTUAL (Líneas 145-182)
-Realiza chequeos dispersos y permite que el código avance más de lo necesario.
+1. ACTUALIZAR LLAMADA (Línea ~225)
+    if market_force['detected']:
+        # Pasamos el flag market_force_active=True
+        entry_context = detect_entry_context(ladder, pattern_dir, current_price, market_force_active=True)
 
-    # CRÍTICO: Bloquear LATERAL inmediatamente
-    pattern_dir = patterns['confidence'].get('direction', 'NEUTRAL')
-    if pattern_dir in ['LATERAL', 'NEUTRAL']:
-        # ... return WAIT ...
+2. ACTUALIZAR FUNCIÓN (Línea ~544)
+def detect_entry_context(ladder, pattern_dir, current_price, market_force_active=False):
+    # ... (inicio igual) ...
     
-    # Validar que al menos 3 TFs tengan dirección clara
-    # ...
-    # Bloqueo explícito si hay presencia significativa de LATERAL
-    lateral_count = valid_dirs.count('LATERAL')
-    if lateral_count &gt;= 2:
-        # ... return WAIT ...
-
-2. CÓDIGO PROPUESTO (Optimizado)
-Bloqueo inmediato y estricto al principio.
-
-    # ==============================================================================
-    # 0.5. BLOQUEO TEMPRANO DE DIRECCIÓN (Optimización)
-    # ==============================================================================
-    dir_4h = ladder.get('4h', {}).get('direction', 'NEUTRAL')
+    # 1. PULLBACK MÍNIMO
+    # ... cálculo de pullback_pct ...
     
-    # A. 4H MANDA: Si es LATERAL o BEARISH -&gt; FUERA
-    if dir_4h in ['LATERAL', 'BEARISH', 'NEUTRAL']:
-        return {
-            'action': 'WAIT',
-            'confidence': 0,
-            'missing': 100,
-            'reasons': [f'❌ 4H Direction is {dir_4h} (Need BULLISH)'],
-            'scenarios': None
-        }
-
-    # B. DEMASIADO RUIDO: Si hay 3 o más TFs en LATERAL -&gt; FUERA
-    valid_dirs = [
-        ladder.get('4h', {}).get('direction'),
-        ladder.get('1h', {}).get('direction'),
-        ladder.get('15m', {}).get('direction'),
-        ladder.get('5m', {}).get('direction')
-    ]
-    lateral_count = valid_dirs.count('LATERAL')
-    
-    if lateral_count &gt;= 3:
-        return {
-            'action': 'WAIT',
-            'confidence': 0,
-            'missing': 100,
-            'reasons': [f'❌ Too much noise (LATERAL in {lateral_count} TFs)'],
-            'scenarios': None
-        }
+    if recent_highs and pattern_dir == 'BULLISH':
+        # ...
         
-    # C. DIRECCIÓN DEL PATRÓN (Legacy check, por seguridad)
-    pattern_dir = patterns['confidence'].get('direction', 'NEUTRAL')
+        # DEFINIR UMBRAL DE "BUYING TOP"
+        # Si hay fuerza, toleramos estar mucho más cerca del high (breakout inminente)
+        buying_top_threshold = 0.5 if market_force_active else 2.0
+        
+        if 5 &lt;= pullback_pct &lt;= 15:
+            # IDEAL
+            context_score += 10
+            context_reasons.append(f"✅ Healthy pullback ({pullback_pct:.1f}%)")
+            
+        elif pullback_pct &lt; buying_top_threshold:
+            # BLOQUEO (Solo si es extremo o sin fuerza)
+            context_reasons.append(f"❌ Buying Top (Only {pullback_pct:.1f}% from High)")
+            return {'valid': False, 'score_bonus': 0, 'reasons': context_reasons}
+            
+        elif pullback_pct &lt; 5:
+            # PULLBACK PEQUEÑO
+            if market_force_active:
+                # Con fuerza, esto es señal de fortaleza (flag apretada)
+                context_score += 5
+                context_reasons.append(f"🚀 Strong trend/Tight flag ({pullback_pct:.1f}%)")
+            else:
+                # Sin fuerza, es sospechoso
+                context_reasons.append(f"⚠️ Minimal pullback ({pullback_pct:.1f}%)")
 
-¿Confirmo para aplicar este cambio y reemplazar el bloque anterior?
+    # 2. MOMENTUM
+    # ...
+    required_candles = 2 if market_force_active else 3
+    
+    if pattern_dir == 'BULLISH':
+        if color in ['green', 'lime'] and consecutive &gt;= required_candles:
+             # ...
+¿Confirmo para aplicar estos cambios?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3,438<br>
-    Generado: 2025-11-27 15:02:38
+    Total caracteres: 2,392<br>
+    Generado: 2025-11-27 15:31:08
   </div>
 </body>
 </html>
