@@ -15,86 +15,110 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-27 20:08:10</div>
+  <div class="meta">Última actualización: 2025-11-27 20:15:49</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Aquí tienes la propuesta corregida con los fixes solicitados (EMA21 y validación de zona).
+Implementation Plan - Sniper Entry System Part 2
+Goal Description
+Integrate the "Sniper" entry logic into 
+brain_executor_entry.py
+. Before calling the heavy 
+decide_intelligently
+ function, check if the coin is in WAITING_REBOTE status and verify if the bounce conditions are met using fresh data.
 
-1. CÓDIGO ACTUAL (add_to_watchlist, líneas ~280)
+User Review Required
+Logic Flow:
+Check if status is WAITING_REBOTE.
+If yes, run fresh 5M and 15M analysis.
+Call watchlist_manager.check_rebote_conditions.
+If not ready -&gt; Return activated=False.
+If ready -&gt; Proceed to 
+decide_intelligently
+ (which will likely confirm the entry).
+Proposed Changes
+Brain Executor Entry
+[MODIFY] 
+brain_executor_entry.py
+Imports: Add watchlist_manager from brain_watchlist and analysis functions from brain_analyzer.
+Update 
+check_trigger_activated_intelligent
+:
+Insert the WAITING_REBOTE check block at the beginning of the function.
+Implement the fresh analysis and condition check.
+Verification Plan
+Manual Verification
+Code review (User Confirmation).
+Verify logic:
+Status WAITING_REBOTE + Conditions NOT met -&gt; Returns False (skips 
+decide_intelligently
+).
+Status WAITING_REBOTE + Conditions MET -&gt; Calls 
+decide_intelligently
+.
+Status MONITORING -&gt; Calls 
+decide_intelligently
+ directly.
+
+Aquí tienes la propuesta para integrar la lógica en brain_executor_entry.py.
+
+1. IMPORTACIONES (Nuevas)
 python
-            if adx_current &gt; 25:
-                # Si está muy extendido (&gt;2%), esperar pullback
-                if dist_ema &gt; 2.0:
-                    status = 'WAITING_PULLBACK'
-                    print(f"🦅 HUNTER: {symbol} extendido ({dist_ema:.1f}%), esperando pullback. Estructura: {last_structure}")
-                else:
-                    # ...
-2. CÓDIGO PROPUESTO (add_to_watchlist)
-Con corrección de acceso a EMA21.
+from brain_intelligent import decide_intelligently
+from brain_config import ARGENTINA_TZ
+from datetime import datetime
+# NUEVOS IMPORTS
+from brain_watchlist import watchlist_manager
+from brain_analyzer import analyze_5m, analyze_15m
+2. CÓDIGO PROPUESTO (check_trigger_activated_intelligent)
+Se inserta la validación antes de llamar a decide_intelligently.
 
 python
-            if adx_current &gt; 25:
-                # Si está muy extendido (&gt;2%), esperar rebote en zona de valor
-                if dist_ema &gt; 2.0:
-                    status = 'WAITING_REBOTE'
-                    
-                    # Calcular zona objetivo (Prioridad: POC -&gt; EMA21 -&gt; Soporte)
-                    poc = analysis_5m.get('volume_profile', {}).get('poc_current', 0)
-                    
-                    # FIX: Acceso correcto a EMA 21 (dict keys son int)
-                    emas_data = analysis_5m.get('emas', {})
-                    ema21 = emas_data.get('emas', {}).get(21, 0)
-                    
-                    supports = analysis_5m.get('sr', {}).get('supports', [])
-                    nearest_support = supports[0] if supports else 0
-                    
-                    # Elegir el más alto (más cercano al precio actual en caída)
-                    zona_objetivo = max(poc, ema21, nearest_support)
-                    
-                    if zona_objetivo == 0:
-                        zona_objetivo = analysis_5m['current_price'] * 0.98 # Fallback 2% abajo
-                        
-                    print(f"🦅 SNIPER: {symbol} extendido. Esperando rebote en ${zona_objetivo:.4f}")
-                else:
-                    # ...
-3. CÓDIGO PROPUESTO (check_rebote_conditions)
-Con validación de zona_objetivo &lt;= 0.
-
-python
-    def check_rebote_conditions(self, current_analysis, watch_data):
-        """Valida condiciones de rebote con datos frescos"""
-        current_price = current_analysis['analysis_5m']['current_price']
-        zona_objetivo = watch_data.get('zona_objetivo', 0)
+def check_trigger_activated_intelligent(symbol, watchlist_data):
+    # ... (docstring) ...
+    print(f"   🧠 TIME LADDER: Verificando trigger para {symbol}...")
+    
+    try:
+        # ==============================================================================
+        # 0. SNIPER MODE CHECK (WAITING_REBOTE)
+        # ==============================================================================
+        status = watchlist_data.get('status', 'MONITORING')
         
-        # FIX: Evitar división por cero o zonas inválidas
-        if zona_objetivo &lt;= 0:
-            return {'ready': False, 'reason': "No zone target defined"}
-        
-        # 1. Precio en zona (±1.5%)
-        dist_to_zone = abs(current_price - zona_objetivo) / zona_objetivo * 100
-        if dist_to_zone &gt; 1.5:
-            return {'ready': False, 'reason': f"Price far from zone ({dist_to_zone:.1f}%)"}
+        if status == 'WAITING_REBOTE':
+            print(f"   🦅 SNIPER MODE: Verificando condiciones de rebote para {symbol}...")
             
-        # 2. ADX 15M Creciendo
-        a15m = current_analysis.get('analysis_15m', {})
-        adx_trend = a15m.get('adx', {}).get('adx_trend', 'estable')
-        if adx_trend != 'creciendo':
-             return {'ready': False, 'reason': f"ADX 15M not growing ({adx_trend})"}
-             
-        # 3. Momentum 15M Confirmado
-        mom_15m = a15m.get('momentum', {})
-        if mom_15m.get('color_current') not in ['green', 'lime'] or mom_15m.get('consecutive_count', 0) &lt; 2:
-             return {'ready': False, 'reason': "Momentum 15M not confirmed"}
-             
-        return {'ready': True, 'reason': "✅ SNIPER ENTRY: Zone hit + Indicators confirmed"}
+            # 1. Análisis fresco rápido (solo lo necesario)
+            current_analysis = {
+                'analysis_5m': analyze_5m(symbol),
+                'analysis_15m': analyze_15m(symbol, strict=False)
+            }
+            
+            # 2. Verificar condiciones
+            rebote_check = watchlist_manager.check_rebote_conditions(current_analysis, watchlist_data)
+            
+            if not rebote_check['ready']:
+                print(f"   ⏳ SNIPER WAIT: {rebote_check['reason']}")
+                return {
+                    'activated': False,
+                    'adx': 0,
+                    'momentum_age': 0,
+                    'volume_ratio': 0
+                }
+            
+            print(f"   🎯 SNIPER READY: {rebote_check['reason']} -&gt; Procediendo a análisis completo")
+
+        # ==============================================================================
+        
+        # Usar la inteligencia centralizada
+        decision = decide_intelligently(symbol)
+        # ... (resto igual)
 ¿Confirmo para aplicar estos cambios?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3,341<br>
-    Generado: 2025-11-27 20:08:10
+    Total caracteres: 3,376<br>
+    Generado: 2025-11-27 20:15:49
   </div>
 </body>
 </html>
