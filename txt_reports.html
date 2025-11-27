@@ -15,71 +15,113 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-27 14:33:23</div>
+  <div class="meta">Última actualización: 2025-11-27 15:02:38</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - Market Force Direction Check
+Implementation Plan - Optimize Direction Checks
 Goal Description
-Add a preliminary check in 
-check_market_force
- to ensure the market direction is favorable for LONG trades (BULLISH) before performing expensive calculations or returning a false positive.
+Move and reinforce the LATERAL/BEARISH direction checks to the very beginning of 
+make_pattern_based_decision
+ to optimize performance and ensure strict adherence to the LONG-only strategy.
 
 User Review Required
 New Logic:
-If 4H Direction is NOT 'BULLISH' -&gt; Return False.
-If 1H Direction is 'BEARISH' -&gt; Return False.
-Allows 1H 'LATERAL' if 4H is 'BULLISH'.
+4H Check: If 4H is 'LATERAL' or 'BEARISH' -&gt; Return WAIT immediately.
+Lateral Count: If 3 or more TFs are 'LATERAL' -&gt; Return WAIT immediately.
+Cleanup: Replaces the existing checks (lines 146-182) with this consolidated block.
 Proposed Changes
 Brain Intelligence
 [MODIFY] 
 brain_intelligent.py
-Insert direction validation at the beginning of 
-check_market_force
-, after ENABLE_MARKET_FORCE_MODE check.
+Replace lines 145-182 with the new consolidated check block.
 Verification Plan
 Manual Verification
 Code review (User Confirmation).
 Verify logic:
-4H BEARISH -&gt; Blocked.
-4H LATERAL -&gt; Blocked.
-4H BULLISH, 1H BEARISH -&gt; Blocked.
-4H BULLISH, 1H LATERAL -&gt; Allowed.
-4H BULLISH, 1H BULLISH -&gt; Allowed.
+4H LATERAL -&gt; WAIT.
+4H BEARISH -&gt; WAIT.
+4H BULLISH, 1H LATERAL, 15M LATERAL, 5M LATERAL (3 Laterals) -&gt; WAIT.
+4H BULLISH, 1H BULLISH, 15M LATERAL, 5M BULLISH -&gt; Allowed.
 
-Aquí tienes la propuesta para agregar la validación de dirección al inicio de check_market_force.
+Optimizing Direction Checks in make_pattern_based_decision
+Located the start of 
+make_pattern_based_decision
+. Drafted the optimized code to check direction immediately after mode definition, replacing the existing scattered checks.
 
-CÓDIGO PROPUESTO
-Insertar después de if not ENABLE_MARKET_FORCE_MODE:
-    # Analizar 4H (El Jefe)
-    a4h = ladder.get('4h', {})
-    if not a4h: return {'detected': False, 'score': 0, 'reason': "Sin datos 4H"}
+Files Edited
+Implementation Plan
+Task
+Progress Updates
+1
+Reading brain_intelligent.py to locate make_pattern_based_decision
+
+2
+Presenting proposed optimization to user
+
+Aquí tienes la propuesta para optimizar los chequeos de dirección al inicio de make_pattern_based_decision.
+
+1. CÓDIGO ACTUAL (Líneas 145-182)
+Realiza chequeos dispersos y permite que el código avance más de lo necesario.
+
+    # CRÍTICO: Bloquear LATERAL inmediatamente
+    pattern_dir = patterns['confidence'].get('direction', 'NEUTRAL')
+    if pattern_dir in ['LATERAL', 'NEUTRAL']:
+        # ... return WAIT ...
     
-    # NUEVO: Validación de Dirección (Solo operamos LONG)
-    dir_4h = a4h.get('direction', 'NEUTRAL')
+    # Validar que al menos 3 TFs tengan dirección clara
+    # ...
+    # Bloqueo explícito si hay presencia significativa de LATERAL
+    lateral_count = valid_dirs.count('LATERAL')
+    if lateral_count &gt;= 2:
+        # ... return WAIT ...
+
+2. CÓDIGO PROPUESTO (Optimizado)
+Bloqueo inmediato y estricto al principio.
+
+    # ==============================================================================
+    # 0.5. BLOQUEO TEMPRANO DE DIRECCIÓN (Optimización)
+    # ==============================================================================
+    dir_4h = ladder.get('4h', {}).get('direction', 'NEUTRAL')
     
-    # 1. 4H debe ser BULLISH obligatoriamente
-    if dir_4h != 'BULLISH':
-         return {'detected': False, 'score': 0, 'reason': f"4H Direction is {dir_4h} (Need BULLISH)"}
+    # A. 4H MANDA: Si es LATERAL o BEARISH -&gt; FUERA
+    if dir_4h in ['LATERAL', 'BEARISH', 'NEUTRAL']:
+        return {
+            'action': 'WAIT',
+            'confidence': 0,
+            'missing': 100,
+            'reasons': [f'❌ 4H Direction is {dir_4h} (Need BULLISH)'],
+            'scenarios': None
+        }
+
+    # B. DEMASIADO RUIDO: Si hay 3 o más TFs en LATERAL -&gt; FUERA
+    valid_dirs = [
+        ladder.get('4h', {}).get('direction'),
+        ladder.get('1h', {}).get('direction'),
+        ladder.get('15m', {}).get('direction'),
+        ladder.get('5m', {}).get('direction')
+    ]
+    lateral_count = valid_dirs.count('LATERAL')
     
-    # Analizar 1H (Confirmación)
-    a1h = ladder.get('1h', {})
-    if not a1h: return {'detected': False, 'score': 0, 'reason': "Sin datos 1H"}
-    
-    dir_1h = a1h.get('direction', 'NEUTRAL')
-    
-    # 2. 1H no puede ser BEARISH (LATERAL es aceptable si 4H es BULLISH)
-    if dir_1h == 'BEARISH':
-        return {'detected': False, 'score': 0, 'reason': "1H Direction is BEARISH"}
+    if lateral_count &gt;= 3:
+        return {
+            'action': 'WAIT',
+            'confidence': 0,
+            'missing': 100,
+            'reasons': [f'❌ Too much noise (LATERAL in {lateral_count} TFs)'],
+            'scenarios': None
+        }
         
-    # ... (resto del código: adx_4h, etc.)
+    # C. DIRECCIÓN DEL PATRÓN (Legacy check, por seguridad)
+    pattern_dir = patterns['confidence'].get('direction', 'NEUTRAL')
 
+¿Confirmo para aplicar este cambio y reemplazar el bloque anterior?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 1,879<br>
-    Generado: 2025-11-27 14:33:23
+    Total caracteres: 3,438<br>
+    Generado: 2025-11-27 15:02:38
   </div>
 </body>
 </html>
