@@ -15,70 +15,71 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-27 14:13:36</div>
+  <div class="meta">Última actualización: 2025-11-27 14:33:23</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - VP High Scoring Penalty
+Implementation Plan - Market Force Direction Check
 Goal Description
-Add a specific penalty in 
-make_pattern_based_decision
- to reduce the score when the price is dangerously close to the Volume Profile High, preventing "buying the top" even if Market Force is not active.
+Add a preliminary check in 
+check_market_force
+ to ensure the market direction is favorable for LONG trades (BULLISH) before performing expensive calculations or returning a false positive.
 
 User Review Required
-New Penalty Logic:
-Distance &lt; 1.5% -&gt; -35 points (Danger)
-Distance 1.5% - 3.0% -&gt; -15 points (Caution)
-Insertion Point: Inside # 5. SMART CONTEXT LOGIC, before other penalties.
+New Logic:
+If 4H Direction is NOT 'BULLISH' -&gt; Return False.
+If 1H Direction is 'BEARISH' -&gt; Return False.
+Allows 1H 'LATERAL' if 4H is 'BULLISH'.
 Proposed Changes
 Brain Intelligence
 [MODIFY] 
 brain_intelligent.py
-Insert VP High check at the beginning of the if a5m: block in 
-make_pattern_based_decision
-.
+Insert direction validation at the beginning of 
+check_market_force
+, after ENABLE_MARKET_FORCE_MODE check.
 Verification Plan
 Manual Verification
 Code review (User Confirmation).
-Verify logic covers the requested ranges and penalties.
+Verify logic:
+4H BEARISH -&gt; Blocked.
+4H LATERAL -&gt; Blocked.
+4H BULLISH, 1H BEARISH -&gt; Blocked.
+4H BULLISH, 1H LATERAL -&gt; Allowed.
+4H BULLISH, 1H BULLISH -&gt; Allowed.
 
-Aquí tienes la propuesta para agregar la penalización por VP High en el scoring general.
-
-UBICACIÓN
-Insertar al inicio del bloque if a5m: en la sección # 5. SMART CONTEXT LOGIC.
+Aquí tienes la propuesta para agregar la validación de dirección al inicio de check_market_force.
 
 CÓDIGO PROPUESTO
-
-    # 5. SMART CONTEXT LOGIC (Penalizaciones)
-    # ==============================================================================
-    a5m = ladder.get('5m', {})
-    if a5m:
-        # 0. VP HIGH DANGER ZONE (Evitar comprar techo)
-        vp_data = a5m.get('volume_profile', {})
-        profile_high = vp_data.get('profile_high', 0)
+Insertar después de if not ENABLE_MARKET_FORCE_MODE:
+    # Analizar 4H (El Jefe)
+    a4h = ladder.get('4h', {})
+    if not a4h: return {'detected': False, 'score': 0, 'reason': "Sin datos 4H"}
+    
+    # NUEVO: Validación de Dirección (Solo operamos LONG)
+    dir_4h = a4h.get('direction', 'NEUTRAL')
+    
+    # 1. 4H debe ser BULLISH obligatoriamente
+    if dir_4h != 'BULLISH':
+         return {'detected': False, 'score': 0, 'reason': f"4H Direction is {dir_4h} (Need BULLISH)"}
+    
+    # Analizar 1H (Confirmación)
+    a1h = ladder.get('1h', {})
+    if not a1h: return {'detected': False, 'score': 0, 'reason': "Sin datos 1H"}
+    
+    dir_1h = a1h.get('direction', 'NEUTRAL')
+    
+    # 2. 1H no puede ser BEARISH (LATERAL es aceptable si 4H es BULLISH)
+    if dir_1h == 'BEARISH':
+        return {'detected': False, 'score': 0, 'reason': "1H Direction is BEARISH"}
         
-        if profile_high &gt; 0 and current_price &gt; 0:
-            dist_to_vp_high = ((profile_high - current_price) / current_price) * 100
-            
-            # Solo penalizar si estamos DENTRO del perfil (dist &gt; 0)
-            # Si dist &lt; 0 es breakout (ya manejado en otro lado o positivo)
-            if 0 &lt; dist_to_vp_high &lt; 1.5:
-                score -= 35
-                reasons.append(f"⛔ DANGER: Too close to VP High ({dist_to_vp_high:.1f}%)")
-            elif 1.5 &lt;= dist_to_vp_high &lt; 3.0:
-                score -= 15
-                reasons.append(f"⚠️ Caution: Near VP High ({dist_to_vp_high:.1f}%)")
+    # ... (resto del código: adx_4h, etc.)
 
-        # A. DYNAMIC OVEREXTENSION
-        # ... (resto del código existente)
-
-¿Confirmo para aplicar?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 2,010<br>
-    Generado: 2025-11-27 14:13:36
+    Total caracteres: 1,879<br>
+    Generado: 2025-11-27 14:33:23
   </div>
 </body>
 </html>
