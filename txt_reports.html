@@ -15,17 +15,145 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-27 20:52:27</div>
+  <div class="meta">Última actualización: 2025-11-28 01:28:03</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-cvzc
+Aquí tienes el código propuesto para validate_5m_entry_conditions en brain_analyzer.py.
+
+He verificado que calculate_adx_with_memory ya retorna di_plus_trend y di_minus_trend, por lo que podemos usar eso directamente para la validación de "acompañamiento".
+
+python
+def validate_5m_entry_conditions(symbol, direction='BULLISH'):
+    """
+    Checklist quirúrgico de 5M para entrada precisa.
+    NO rechaza - solo informa qué falta.
+    
+    Returns:
+        dict: {
+            'ready': bool (True si TODAS las condiciones OK),
+            'conditions': {
+                'momentum_green': {'ok': bool, 'value': str, 'reason': str},
+                'adx_accompanied': {'ok': bool, 'value': str, 'reason': str},
+                'not_in_correction': {'ok': bool, 'value': str, 'reason': str},
+                'above_ema_support': {'ok': bool, 'value': str, 'reason': str}
+            },
+            'score': int (0-100, cuántas condiciones OK),
+            'missing': [lista de condiciones faltantes]
+        }
+    """
+    # 1. Fetch Data Fresca (5M)
+    ohlcv = fetch_ohlcv(symbol, '5m', 50)
+    if not ohlcv or len(ohlcv) &lt; 20:
+        return {'ready': False, 'conditions': {}, 'score': 0, 'missing': ['No Data']}
+        
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    current_price = float(df['close'].iloc[-1])
+    
+    # 2. Calcular Indicadores
+    mom_data = calculate_momentum_with_memory(df, lookback=5)
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
+    emas_data = calculate_emas_with_memory(df, periods=[21], lookback=5)
+    
+    # 3. Validar Condiciones
+    conditions = {}
+    missing = []
+    score_count = 0
+    
+    # A. Momentum Green
+    # Aceptamos 'lime' (fuerte) o 'green' (creciendo) para BULLISH
+    # Aceptamos 'maroon' (fuerte) o 'red' (creciendo) para BEARISH
+    mom_color = mom_data['color_current']
+    if direction == 'BULLISH':
+        mom_ok = mom_color in ['green', 'lime']
+    else:
+        mom_ok = mom_color in ['red', 'maroon']
+        
+    conditions['momentum_green'] = {
+        'ok': mom_ok,
+        'value': mom_color,
+        'reason': f"Momentum is {mom_color}"
+    }
+    if mom_ok: score_count += 1
+    else: missing.append(f"Momentum {mom_color} (Need {direction} colors)")
+
+    # B. ADX Accompanied (Fuerza + Dirección)
+    # BULLISH: ADX subiendo Y DI+ subiendo
+    # BEARISH: ADX subiendo Y DI- subiendo
+    adx_trend = adx_data['adx_trend']
+    di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
+    
+    adx_ok = (adx_trend == 'creciendo' and di_trend == 'creciendo')
+    
+    conditions['adx_accompanied'] = {
+        'ok': adx_ok,
+        'value': f"ADX:{adx_trend} DI:{di_trend}",
+        'reason': "ADX and DI must both be growing"
+    }
+    if adx_ok: score_count += 1
+    else: missing.append(f"ADX/DI not synced (ADX:{adx_trend}, DI:{di_trend})")
+
+    # C. Not in Correction (Velas)
+    # Chequear últimas 3 velas. Si todas son contrarias a la dirección, es corrección.
+    closes = df['close'].values[-3:]
+    opens = df['open'].values[-3:]
+    
+    is_correction = True
+    for c, o in zip(closes, opens):
+        if direction == 'BULLISH':
+            if c &gt; o: # Vela verde
+                is_correction = False
+                break
+        else:
+            if c &lt; o: # Vela roja
+                is_correction = False
+                break
+                
+    conditions['not_in_correction'] = {
+        'ok': not is_correction,
+        'value': 'Correction' if is_correction else 'Clean',
+        'reason': "Last 3 candles cannot be all against trend"
+    }
+    if not is_correction: score_count += 1
+    else: missing.append("Price in active correction (3 candles against trend)")
+
+    # D. Above EMA Support (Soporte)
+    # BULLISH: Precio &gt; EMA21 o max 0.5% abajo
+    # BEARISH: Precio &lt; EMA21 o max 0.5% arriba
+    ema21 = emas_data['emas'].get(21, 0)
+    dist_pct = (current_price - ema21) / ema21 * 100
+    
+    if direction == 'BULLISH':
+        ema_ok = dist_pct &gt; -0.5 # Puede estar apenas abajo (retest)
+    else:
+        ema_ok = dist_pct &lt; 0.5
+        
+    conditions['above_ema_support'] = {
+        'ok': ema_ok,
+        'value': f"{dist_pct:.2f}% vs EMA21",
+        'reason': "Price must hold EMA21 support"
+    }
+    if ema_ok: score_count += 1
+    else: missing.append(f"Lost EMA21 support (Dist: {dist_pct:.2f}%)")
+
+    # Resultado Final
+    # Score sobre 100 (4 condiciones = 25 pts c/u)
+    final_score = score_count * 25
+    ready = (score_count == 4)
+    
+    return {
+        'ready': ready,
+        'conditions': conditions,
+        'score': final_score,
+        'missing': missing
+    }
+¿Te parece correcta esta implementación? Si me das el OK, la agrego a brain_analyzer.py y actualizo brain_executor_entry.py para usarla.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4<br>
-    Generado: 2025-11-27 20:52:27
+    Total caracteres: 4,827<br>
+    Generado: 2025-11-28 01:28:03
   </div>
 </body>
 </html>
