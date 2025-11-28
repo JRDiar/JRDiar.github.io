@@ -15,17 +15,270 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-28 16:11:34</div>
+  <div class="meta">Última actualización: 2025-11-28 16:19:57</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Aquí tienes la comparación solicitada para ajustar la detección de patrones en vivo y evitar salidas prematuras.
+Modulo completo: BRAIN EXECUTOR
+"""
+BRAIN EXECUTOR - Bot Phase 4.0
+Ejecución inteligente: monitoreo, entrada, gestión, salida
+"""
 
-1. CÓDIGO ACTUAL (Muy sensible, sin gracia)
-Ubicación: 
-brain_executor.py
- (Líneas 260-285)
+import time
+import threading
+from datetime import datetime, timedelta
+from exchange_connection import fetch_ohlcv, fetch_current_price, fetch_multiple_tickers
+from brain_config import (
+    CAPITAL_INICIAL, SIMULATE_LEVERAGE, MAX_TRADES_SIMULTANEOUS,
+    ADX_THRESHOLD, ADX_MIN_ACCELERATION, MOMENTUM_CONSECUTIVE_CANDLES,
+    VOLUME_RATIO_MIN, ENABLE_BREAKEVEN_PROTECTION, ENABLE_TRAILING_STOP,
+    ENABLE_SMART_EXIT, BREAKEVEN_PROFIT_TRIGGER_PCT,
+    DECELERATION_THRESHOLD, VOLUME_DECLINE_THRESHOLD,
+    CRITICAL_ZONE_DISTANCE_PCT, BUFFETT_EARLY_EXIT_TIME_MIN,
+    BUFFETT_EARLY_EXIT_LOSS_PCT, ARGENTINA_TZ, SMART_EXIT_GRACE_PERIOD_MIN,
+    MAX_SL_PERCENT
+)
+from brain_analyzer import calculate_adx, calculate_momentum_color
+from brain_calculator import calculate_adx_with_memory, calculate_momentum_with_memory
+from brain_calculator import calculate_velocity, calculate_acceleration, calculate_volume_profile_with_memory, detect_price_structure, calculate_atr
+from brain_watchlist import watchlist_manager
+from sheets_manager import sheets_manager
+from telegram_notifications import notify_entry, notify_exit, notify_breakeven
+try:
+    from database_manager import db_manager
+except ImportError:
+    db_manager = None
+
+# 🧠 HEMISFERIO IZQUIERDO: Entrada inteligente con bypass de explosiones 1M
+from brain_executor_entry import check_trigger_activated_intelligent
+
+import pandas as pd
+import json
+
+# ============================================================================
+# CLASE TRADE MANAGER
+# ============================================================================
+
+class TradeManager:
+    def __init__(self):
+        self.active_trades = {}
+        self.capital_available = CAPITAL_INICIAL
+        self.capital_per_trade = CAPITAL_INICIAL / MAX_TRADES_SIMULTANEOUS
+        self.trade_history = []
+        self.breakeven_exited_symbols = {}  # Monedas que salieron en breakeven para re-analizar
+        self.trades_lock = threading.Lock()  # Lock para thread-safety
+        self.stop_loss_thread = None  # Thread de monitoreo stop loss
+    
+    def can_open_trade(self):
+        """Verifica si puede abrir nuevo trade"""
+        return len(self.active_trades) &lt; MAX_TRADES_SIMULTANEOUS
+    
+    def check_trigger_activated(self, symbol, watchlist_data):
+        """
+        Verifica condiciones de ejecución delegando al Hemisferio Izquierdo
+        (brain_executor_entry.py) para incluir lógica de bypass inteligente.
+        """
+        return check_trigger_activated_intelligent(symbol, watchlist_data)
+    
+    def enter_trade(self, symbol, watchlist_data):
+        """
+        Entra a trade
+        
+        Args:
+            symbol: Símbolo
+            watchlist_data: Dict con datos de watchlist
+        """
+        if not self.can_open_trade():
+            print(f"⚠️ Máximo trades alcanzado ({MAX_TRADES_SIMULTANEOUS})")
+            return
+        
+        # Fetch precio actual
+        ohlcv = fetch_ohlcv(symbol, '5m', 10)
+        if not ohlcv:
+            return
+        
+        entry_price = ohlcv[-1][4]  # Close
+        direction = watchlist_data['direction']
+        
+        # GUARDIA: Bloquear LATERAL y BEARISH explícitamente (Solicitud Usuario)
+        if direction == 'LATERAL' or direction == 'BEARISH':
+            print(f"❌ BLOQUEADO: {symbol} - Dirección {direction} (Solo Longs permitidos)")
+            return
+
+        triggers = watchlist_data.get('triggers', {})
+        
+        # FIX: Si triggers está vacío (HUNTING mode) o falta stop_loss, calcular on-the-fly
+        if not triggers or 'stop_loss' not in triggers:
+            print(f"⚠️ Triggers no encontrados para {symbol} (HUNTING mode). Calculando on-the-fly...")
+            
+            # 1. INTENTAR USAR ESCENARIOS (Prioridad Máxima - Estructura Real)
+            scenarios = watchlist_data.get('scenarios')
+            if scenarios and 'primary' in scenarios:
+                primary = scenarios['primary']
+                s_entry = primary.get('entry_price')
+                s_stop = primary.get('stop_price')
+                s_target = primary.get('target_price')
+                
+                if s_entry and s_stop and s_target:
+                    print(f"✅ Usando Triggers de Escenario (Plan A): Target ${s_target:.4f} | SL ${s_stop:.4f}")
+                    triggers = {
+                        'stop_loss': s_stop,
+                        'target_price': s_target,
+                        'rr_ratio': primary.get('rr_ratio', 2.0)
+                    }
+            
+            # 2. Si no hay escenarios, usar lógica estándar
+            if not triggers:
+                # Reconstruir analysis_data mínimo para calcular triggers
+                analysis_data = {
+                    'analysis_5m': watchlist_data.get('analysis_5m'),
+                    'analysis_4h': watchlist_data.get('analysis_4h'),
+                    'sr_zones': watchlist_data.get('sr_zones')
+                }
+                
+                # Intentar calcular triggers oficiales
+                calculated = watchlist_manager.calculate_triggers(analysis_data)
+                
+                if calculated:
+                    triggers = calculated
+                    print(f"✅ Triggers calculados: Target ${triggers['target_price']:.4f} | SL ${triggers['stop_loss']:.4f}")
+                else:
+                    # Fallback Inteligente con ATR
+                    print(f"⚠️ No se pudieron calcular triggers. Usando Fallback ATR.")
+                    try:
+                        # FIX: Convertir ohlcv a DataFrame antes de pasarlo a calculate_atr
+                        df_atr = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        atr_data = calculate_atr(df_atr, period=14)
+                        atr_val = atr_data.get('atr_current', entry_price * 0.01)
+                        atr_pct = (atr_val / entry_price) * 100
+                        
+                        # SL dinámico: 2x a 3x ATR
+                        sl_mult = max(2.0, min(3.0, atr_pct * 1.5))
+                        tp_mult = sl_mult * 2.0 # R:R 2:1
+                        
+                        if direction == 'BULLISH':
+                            sl_pct = 1 - (sl_mult / 100)
+                            tp_pct = 1 + (tp_mult / 100)
+                        else:
+                            sl_pct = 1 + (sl_mult / 100)
+                            tp_pct = 1 - (tp_mult / 100)
+                    except:
+                        # Fallback final si falla ATR
+                        sl_pct = 0.98 if direction == 'BULLISH' else 1.02
+                        tp_pct = 1.04 if direction == 'BULLISH' else 0.96
+
+                    triggers = {
+                        'stop_loss': entry_price * sl_pct,
+                        'target_price': entry_price * tp_pct,
+                        'rr_ratio': 2.0
+                    }
+        
+        # ENFORCE MAX RISK (Hard Clamp)
+        # Asegurar que NINGÚN stop loss exceda el límite configurado (ej. 1.5%)
+        max_sl_dist = entry_price * (MAX_SL_PERCENT / 100)
+        
+        if direction == 'BULLISH':
+            min_stop = entry_price - max_sl_dist
+            if triggers['stop_loss'] &lt; min_stop:
+                print(f"⚠️ Stop Loss ajustado por riesgo máximo ({MAX_SL_PERCENT}%): {triggers['stop_loss']:.4f} -&gt; {min_stop:.4f}")
+                triggers['stop_loss'] = min_stop
+        else:
+            max_stop = entry_price + max_sl_dist
+            if triggers['stop_loss'] &gt; max_stop:
+                print(f"⚠️ Stop Loss ajustado por riesgo máximo ({MAX_SL_PERCENT}%): {triggers['stop_loss']:.4f} -&gt; {max_stop:.4f}")
+                triggers['stop_loss'] = max_stop
+
+        stop_loss = triggers['stop_loss']
+        
+        # Crear trade
+        now = datetime.now(ARGENTINA_TZ)
+        
+        trade_data = {
+            'symbol': symbol,
+            'direction': direction,
+            'entry_price': entry_price,
+            'entry_time': now,
+            'stop_loss': stop_loss,
+            'target_price': triggers['target_price'],
+            'score': watchlist_data['score'],
+            'clasificacion': watchlist_data['clasificacion'],
+            'capital': self.capital_per_trade,
+            'leverage': SIMULATE_LEVERAGE,
+            'breakeven_activated': False,
+            'trailing_activated': False,
+            'max_pnl_reached': 0.0,
+            'min_pnl_reached': 0.0,
+            'scenarios': watchlist_data.get('scenarios'),  # NUEVO: guardar escenarios proyectados
+            'take_profit_pct': ((triggers['target_price'] - entry_price) / entry_price) * 100 if direction == 'BULLISH' else ((entry_price - triggers['target_price']) / entry_price) * 100
+        }
+        
+        # Thread-safe: Agregar trade a diccionario activo
+        with self.trades_lock:
+            self.active_trades[symbol] = trade_data
+        
+        # Remover de watchlist
+        watchlist_manager.remove_from_watchlist(symbol, "trade abierto")
+        
+        # Notificar
+        print(f"\n{'='*80}")
+        print(f"✅ ENTRADA: {symbol} {direction}")
+        print(f"   Precio: ${entry_price:.8f}")
+        print(f"   Stop: ${stop_loss:.8f}")
+        print(f"   Target: ${triggers['target_price']:.8f}")
+        print(f"   Score: {watchlist_data['score']} ({watchlist_data['clasificacion']})")
+        print(f"{'='*80}\n")
+        
+        # Sheets
+        try:
+            sheets_manager.write_trade_entry(
+                symbol, direction, entry_price,
+                stop_loss, triggers['target_price'], watchlist_data['score'],
+                triggers['rr_ratio']
+            )
+        except Exception as e:
+            print(f"⚠️ Error escribiendo entrada en Sheets: {e}")
+        
+        # Telegram
+        try:
+            notify_entry(symbol, direction, entry_price, stop_loss, watchlist_data['score'])
+        except Exception as e:
+            print(f"⚠️ Error enviando notificación Telegram: {e}")
+        
+        # Guardar trades en archivo para monitor externo
+        try:
+            with open('active_trades.json', 'w') as f:
+                # Convertir datetime a string
+                trades_serializable = {}
+                for sym, data in self.active_trades.items():
+                    trades_serializable[sym] = {
+                        'entry_price': data['entry_price'],
+                        'stop_loss': data['stop_loss'],
+                        'direction': data['direction'],
+                        'entry_time': data['entry_time'].isoformat(),
+                        'breakeven_activated': data['breakeven_activated']
+                    }
+                json.dump(trades_serializable, f)
+        except Exception as e:
+            print(f"⚠️ Error guardando active_trades.json: {e}")
+    
+    def save_active_trades(self):
+        """Guarda trades activos en JSON"""
+        try:
+            with open('active_trades.json', 'w') as f:
+                trades_serializable = {}
+                for sym, data in self.active_trades.items():
+                    trades_serializable[sym] = {
+                        'entry_price': data['entry_price'],
+                        'stop_loss': data['stop_loss'],
+                        'direction': data['direction'],
+                        'entry_time': data['entry_time'].isoformat(),
+                        'breakeven_activated': data['breakeven_activated']
+                    }
+                json.dump(trades_serializable, f)
+        except Exception as e:
+            print(f"⚠️ Error guardando active_trades.json: {e}")
 
     def detect_live_pattern(self, df, trade_data):
         """Detecta patrones en vivo durante el trade (NUEVO)"""
@@ -53,140 +306,691 @@ brain_executor.py
             # print(f"Error detecting live pattern: {e}")
             return None
 
-2. CÓDIGO PROPUESTO (Gracia 5 min + Confirmación Momentum)
-Esta lógica es mucho más robusta:
+    def orchestrate_trade_management(self, symbol, trade_data, current_price, df):
+        """Orquesta todas las capas inteligentemente (NUEVO)"""
+        
+        # 1. Detectar patrón actual
+        pattern = self.detect_live_pattern(df, trade_data)
+        
+        # 2. Evaluar escenarios (Plan B)
+        action = 'HOLD'
+        scenarios = trade_data.get('scenarios')
+        
+        if pattern and pattern['confidence'] &gt; 80:
+            if pattern['action'] == 'EXIT_NOW':
+                print(f"🚨 PATRÓN LIVE: {pattern['pattern']} detectado -&gt; SALIDA INMEDIATA")
+                return 'EXIT_NOW'
+            elif pattern['action'] == 'EXTEND_TARGET':
+                print(f"✨ PATRÓN LIVE: {pattern['pattern']} -&gt; Extendiendo Target")
+                # Lógica de extensión ya manejada en monitor, solo log
+        
+        # 3. Lógica de Escenarios (Plan B)
+        if scenarios:
+            secondary = scenarios.get('secondary', {})
+            # Lógica simplificada de invalidación
+            # Si estamos en zona de Plan B (ej. rechazo resistencia), apretar stop
+            pass # Ya implementado en monitor_active_trades
+            
+        return action
 
-Periodo de Gracia: Ignora patrones en los primeros 5 minutos.
-Confirmación Momentum: Solo valida Double Top si el momentum cambió de color (ej. de Verde a Rojo/Gris).
+    def monitor_active_trades(self):
+        """Monitorea trades activos"""
+        if not self.active_trades:
+            return
 
-    def detect_live_pattern(self, df, trade_data):
-        """Detecta patrones en vivo durante el trade (NUEVO)"""
         try:
-            # 0. PERIODO DE GRACIA (5 min)
-            # Evitar pánico en los primeros minutos de volatilidad
             now = datetime.now(ARGENTINA_TZ)
-            entry_time = trade_data['entry_time']
-            duration_min = (now - entry_time).total_seconds() / 60
+            symbols_to_close = []
             
-            if duration_min &lt; 5:
-                return None # Demasiado temprano para patrones de reversión
+            # FIX: Race condition - Usar snapshot con lock
+            with self.trades_lock:
+                trades_snapshot = list(self.active_trades.items())
+            
+            for symbol, trade_data in trades_snapshot:
+                # Fetch precio actual
+                ohlcv = fetch_ohlcv(symbol, '5m', 50)
+                if not ohlcv:
+                    continue
                 
-            # 1. Flag Pattern (Continuación)
-            # Lógica simplificada: Consolidación después de impulso
-            closes = df['close'].values
-            if len(closes) &gt; 10:
-                recent_volatility = df['close'].tail(5).std()
-                prev_volatility = df['close'].iloc[-10:-5].std()
+                current_price = ohlcv[-1][4]
+                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 
-                if recent_volatility &lt; prev_volatility * 0.5:
-                    return {'pattern': 'FLAG', 'action': 'EXTEND_TARGET', 'confidence': 85}
-            
-            # 2. Double Top (Reversión)
-            highs = df['high'].rolling(3).max()
-            peaks = highs[highs == highs.rolling(20).max()]
-            
-            if len(peaks) &gt;= 2:
-                last_two = peaks[-2:]
-                # Tolerancia 0.5% está bien SI hay confirmación extra
-                if abs(last_two.iloc[0] - last_two.iloc[1]) / last_two.iloc[0] &lt; 0.005:
-                    
-                    # CONFIRMACIÓN: Momentum debe haber girado
-                    # Si seguimos con momentum verde fuerte, es solo una pausa, no un top
-                    mom_data = calculate_momentum_with_memory(df)
-                    mom_color = mom_data['color_current']
-                    direction = trade_data['direction']
-                    
-                    confirmed = False
-                    if direction == 'BULLISH' and mom_color not in ['green', 'lime']:
-                        confirmed = True # Momentum perdió fuerza alcista
-                    elif direction == 'BEARISH' and mom_color not in ['red', 'maroon']:
-                        confirmed = True # Momentum perdió fuerza bajista
-                        
-                    if confirmed:
-                        return {'pattern': 'DOUBLE_TOP', 'action': 'EXIT_NOW', 'confidence': 90}
+                # ORQUESTADOR INTELIGENTE
+                orch_action = self.orchestrate_trade_management(symbol, trade_data, current_price, df)
+                if orch_action == 'EXIT_NOW':
+                    symbols_to_close.append((symbol, "Patrón de Reversión Detectado"))
+                    continue
+
+                # Calcular PnL
+                entry_price = trade_data['entry_price']
+                direction = trade_data['direction']
+                
+                if direction == 'BULLISH':
+                    pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                else:
+                    pnl_pct = ((entry_price - current_price) / entry_price) * 100
+                
+                # Actualizar max/min PnL
+                if pnl_pct &gt; trade_data['max_pnl_reached']:
+                    trade_data['max_pnl_reached'] = pnl_pct
+                if pnl_pct &lt; trade_data['min_pnl_reached']:
+                    trade_data['min_pnl_reached'] = pnl_pct
+                
+                duration_min = (now - trade_data['entry_time']).total_seconds() / 60
+                
+                # GESTIÓN 1: Breakeven
+                if ENABLE_BREAKEVEN_PROTECTION and not trade_data['breakeven_activated']:
+                    if pnl_pct &gt;= BREAKEVEN_PROFIT_TRIGGER_PCT:
+                        trade_data['stop_loss'] = entry_price
+                        trade_data['breakeven_activated'] = True
+                        print(f"🛡️ BREAKEVEN: {symbol} (PnL: +{pnl_pct:.2f}%)")
+                        notify_breakeven(symbol, pnl_pct)
+                
+                # GESTIÓN 1.5: Trailing Stop Inteligente (Adaptativo)
+                if ENABLE_TRAILING_STOP:
+                    # Distancia variable según profit acumulado
+                    if pnl_pct &gt; 5.0:
+                        trailing_dist_pct = 1.0  # Ajustado (más profit = más cerca)
+                    elif pnl_pct &gt; 3.0:
+                        trailing_dist_pct = 1.5
                     else:
-                        print(f"⚠️ Posible Double Top ignorado por Momentum Fuerte ({mom_color})")
+                        trailing_dist_pct = 2.0  # Inicial
+
+                    if pnl_pct &gt; 1.5: # Activar después de 1.5%
+                        if direction == 'BULLISH':
+                            new_stop = current_price * (1 - trailing_dist_pct/100)
+                            # Validar que mejora posición y respeta retroceso mínimo
+                            if new_stop &gt; trade_data['stop_loss']:
+                                last_max = trade_data.get('max_pnl_reached', 0)
+                                # Protección: No subir si retroceso &gt; 0.5% desde max
+                                if pnl_pct &gt;= last_max - 0.5:
+                                    trade_data['stop_loss'] = new_stop
+                                    trade_data['trailing_activated'] = True
+                                    print(f"🪜 TRAILING STOP: {symbol} subió a ${new_stop:.4f} (PnL: +{pnl_pct:.2f}%)")
+                        else:
+                            new_stop = current_price * (1 + trailing_dist_pct/100)
+                            if new_stop &lt; trade_data['stop_loss']:
+                                last_max = trade_data.get('max_pnl_reached', 0)
+                                if pnl_pct &gt;= last_max - 0.5:
+                                    trade_data['stop_loss'] = new_stop
+                                    trade_data['trailing_activated'] = True
+                                    print(f"🪜 TRAILING STOP: {symbol} bajó a ${new_stop:.4f} (PnL: +{pnl_pct:.2f}%)")
+                
+                # GESTIÓN 2: Salida inteligente (Adaptive Sensitivity)
+                if ENABLE_SMART_EXIT:
+                    # --- PERIODO DE GRACIA (Inmunidad inicial) ---
+                    # Si el trade es joven (&lt;10 min) y no es catastrófico (&gt;-1%), NO SALIR por miedo.
+                    if duration_min &lt; SMART_EXIT_GRACE_PERIOD_MIN and pnl_pct &gt; -1.0:
+                        # print(f"🛡️ GRACE PERIOD: {symbol} protegido ({duration_min:.1f}m)")
+                        pass
+                    else:
+                        exit_signals = self.check_exit_signals(df, trade_data, duration_min)
+                        
+                        # Phase 4.1: Adaptive Logic (RELAJADA)
+                        required_signals = 2 # Default
+                        
+                        if pnl_pct &gt; 1.0:
+                            required_signals = 2 # Antes 1, ahora 2. Dejar correr ganancia.
+                        elif pnl_pct &lt; -0.5:
+                            required_signals = 3 # Give room: Exit slower if losing (unless SL hit)
+                        
+                        # Si hay FUERZA DE MERCADO (ADX 4H fuerte), ser aún más paciente
+                        if trade_data.get('score', 0) &gt;= 90: # Asumimos score alto = fuerza
+                            required_signals += 1
+                            # print(f"💪 MARKET FORCE HOLD: {symbol} requiere {required_signals} señales para salir.")
+
+                        if exit_signals['count'] &gt;= required_signals:
+                            reason = f"Salida inteligente (Req:{required_signals}): {', '.join(exit_signals['active'])}"
+                            symbols_to_close.append((symbol, reason))
+                            continue
+                
+                # ===== PLAN B DINÁMICO =====
+                scenarios = trade_data.get('scenarios')
+                if scenarios:
+                    primary = scenarios.get('primary', {})
+                    secondary = scenarios.get('secondary', {})
+                    
+                    # Extraer trigger prices (formato: "Breakout $0.31")
+                    import re
+                    
+                    # Plan A trigger
+                    plan_a_trigger = primary.get('trigger', '')
+                    plan_a_price_match = re.search(r'\$(\d+\.?\d*)', plan_a_trigger)
+                    plan_a_price = float(plan_a_price_match.group(1)) if plan_a_price_match else None
+                    
+                    # Plan B trigger
+                    plan_b_trigger = secondary.get('trigger', '')
+                    plan_b_price_match = re.search(r'\$(\d+\.?\d*)', plan_b_trigger)
+                    plan_b_price = float(plan_b_price_match.group(1)) if plan_b_price_match else None
+                    
+                    # BULLISH: Si rompe resistencia (plan A) → Extender target
+                    if direction == 'BULLISH' and plan_a_price:
+                        if current_price &gt; plan_a_price and primary.get('action') == 'WAIT_BREAKOUT':
+                            # Breakout confirmado → Extender target
+                            plan_a_target_str = primary.get('target', '')
+                            target_match = re.search(r'\$(\d+\.?\d*)', plan_a_target_str)
+                            if target_match:
+                                new_target = float(target_match.group(1))
+                                new_target_pct = ((new_target - entry_price) / entry_price) * 100
+                                trade_data['take_profit_pct'] = new_target_pct
+                                trade_data['target_price'] = new_target
+                                print(f"  🚀 PLAN A ACTIVADO: Target extendido a ${new_target:.4f} (+{new_target_pct:.1f}%)")
+                    
+                    # BULLISH: Si rechaza resistencia (plan B) → Ajustar stop
+                    if direction == 'BULLISH' and plan_b_price:
+                        if current_price &lt; plan_b_price and pnl_pct &lt; 0:
+                            # Rechazo detectado → Apretar stop o salir
+                            if secondary.get('action') == 'WAIT_PULLBACK':
+                                print(f"  ⚠️ PLAN B DETECTADO: Rechazo en resistencia, monitoreando...")
+                                # Apretar stop loss
+                                trade_data['stop_loss'] = current_price * 0.995  # Stop 0.5% debajo
+                    
+                    # BEARISH: Si rompe soporte (plan A) → Extender target
+                    if direction == 'BEARISH' and plan_a_price:
+                        if current_price &lt; plan_a_price and primary.get('action') == 'WAIT_BREAKDOWN':
+                            # Breakdown confirmado → Extender target
+                            plan_a_target_str = primary.get('target', '')
+                            target_match = re.search(r'\$(\d+\.?\d*)', plan_a_target_str)
+                            if target_match:
+                                new_target = float(target_match.group(1))
+                                new_target_pct = ((entry_price - new_target) / entry_price) * 100
+                                trade_data['take_profit_pct'] = new_target_pct
+                                trade_data['target_price'] = new_target
+                                print(f"  🚀 PLAN A ACTIVADO: Target extendido a ${new_target:.4f} (-{new_target_pct:.1f}%)")
+                    
+                    # BEARISH: Si rebota en soporte (plan B) → Ajustar stop
+                    if direction == 'BEARISH' and plan_b_price:
+                        if current_price &gt; plan_b_price and pnl_pct &lt; 0:
+                            # Rebote detectado → Apretar stop
+                            if secondary.get('action') == 'WAIT_BOUNCE':
+                                print(f"  ⚠️ PLAN B DETECTADO: Rebote en soporte, monitoreando...")
+                                # Apretar stop loss
+                                trade_data['stop_loss'] = current_price * 1.005  # Stop 0.5% arriba
+                # ===== FIN PLAN B =====
+                
+                # Monitoreo log
+                print(f"📊 {symbol}: ${current_price:.8f} | PnL: {pnl_pct:+.2f}% | {duration_min:.1f}min")
+                
+                # Sheets
+                adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
+                adx = adx_data['adx_current']
+                
+                sheets_manager.write_monitoreo(
+                    symbol, current_price, pnl_pct, duration_min,
+                    trade_data['breakeven_activated'], current_price
+                )
             
-            return None
+            # Cerrar trades marcados
+            for symbol, reason in symbols_to_close:
+                self.close_trade(symbol, reason)
         except Exception as e:
-            # print(f"Error detecting live pattern: {e}")
-            return None
+            print(f"❌ ERROR MONITOR: {e}")
+            # NO crashear, continuar
+            return
+    
+    def check_exit_signals(self, df, trade_data, duration_min):
+        """
+        Verifica 5 señales de salida inteligente
+        
+        Returns:
+            dict: {'count': int, 'active': [list]}
+        """
+        signals_active = []
+        
+        # SEÑAL 1: Desaceleración (velas más chicas)
+        try:
+            ranges = (df['high'] - df['low']).values
+            avg_range_10 = ranges[-10:].mean()
+            avg_range_3 = ranges[-3:].mean()
+            
+            if avg_range_3 &lt; avg_range_10 * DECELERATION_THRESHOLD:
+                signals_active.append("Desaceleración")
+        except:
+            pass
+        
+        # SEÑAL 2: Volumen bajando
+        try:
+            volumes = df['volume'].values
+            avg_vol_10 = volumes[-10:].mean()
+            avg_vol_3 = volumes[-3:].mean()
+            
+            if avg_vol_3 &lt; avg_vol_10 * VOLUME_DECLINE_THRESHOLD:
+                signals_active.append("Volumen bajo")
+        except:
+            pass
+        
+        # SEÑAL 3: Divergencia oculta REAL (Normalizada)
+        try:
+            prices = df['close'].values
+            # Slope normalizado (%)
+            price_slope = ((prices[-1] - prices[-5]) / prices[-5]) * 100
+            
+            # Calcular momentum simplificado
+            ema = df['close'].ewm(span=10, adjust=False).mean().values
+            momentum_slope = ((ema[-1] - ema[-5]) / ema[-5]) * 100
+            
+            direction = trade_data['direction']
+            if direction == 'BULLISH':
+                # Precio sube pero momentum baja/plano
+                if price_slope &gt; 0.5 and momentum_slope &lt; 0.2:
+                    signals_active.append("Divergencia")
+            elif direction == 'BEARISH':
+                # Precio baja pero momentum sube/plano
+                if price_slope &lt; -0.5 and momentum_slope &gt; -0.2:
+                    signals_active.append("Divergencia")
+        except:
+            pass
 
-¿Confirmo para aplicar esta protección doble (Gracia + Momentum)? Esto evitará salidas en 0.2 minutos como pasó con 1INCH.
+        # SEÑAL 6: ADX debilitando (Tendencia muriendo)
+        try:
+            adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
+            adx_current = adx_data['adx_current']
+            adx_prev = adx_data['adx_memory'][-2] if len(adx_data['adx_memory']) &gt;= 2 else adx_current
+            
+            # Si ADX baja &gt;5 puntos y está bajo
+            if adx_current &lt; adx_prev - 5 and adx_current &lt; 30:
+                signals_active.append("ADX debilitando")
+        except:
+            pass
+        
+        # SEÑAL 4: Llegada zona crítica (cerca de target)
+        try:
+            current_price = df['close'].iloc[-1]
+            target = trade_data['target_price']
+            distance_pct = abs((target - current_price) / current_price * 100)
+            
+            if distance_pct &lt; CRITICAL_ZONE_DISTANCE_PCT:
+                signals_active.append("Zona crítica")
+        except:
+            pass
+        
+        # SEÑAL 5: Protección Buffett (pérdida temprana)
+        if duration_min &lt; BUFFETT_EARLY_EXIT_TIME_MIN:
+            current_price = df['close'].iloc[-1]
+            entry_price = trade_data['entry_price']
+            direction = trade_data['direction']
+            
+            if direction == 'BULLISH':
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+            else:
+                pnl_pct = ((entry_price - current_price) / entry_price) * 100
+            
+            if pnl_pct &lt; -BUFFETT_EARLY_EXIT_LOSS_PCT:
+                signals_active.append("Buffett (setup falló)")
+        
+        return {
+            'count': len(signals_active),
+            'active': signals_active
+        }
+    
+    def close_trade(self, symbol, reason):
+        """Cierra trade y registra resultado"""
+        # Thread-safe: Verificar y extraer trade
+        with self.trades_lock:
+            if symbol not in self.active_trades:
+                return
+            
+            trade_data = self.active_trades[symbol]
+        
+        # Fetch precio actual (MARKET ORDER: usar precio inmediato)
+        exit_price = fetch_current_price(symbol)
+        if not exit_price:
+            # Fallback si falla ticker
+            ohlcv = fetch_ohlcv(symbol, '5m', 10)
+            exit_price = ohlcv[-1][4] if ohlcv else trade_data['entry_price']
+        
+        # Calcular PnL final
+        entry_price = trade_data['entry_price']
+        direction = trade_data['direction']
+        
+        if direction == 'BULLISH':
+            pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+        else:
+            pnl_pct = ((entry_price - exit_price) / entry_price) * 100
+        
+        pnl_usd = (self.capital_per_trade * pnl_pct / 100) * SIMULATE_LEVERAGE
+        
+        # Duración
+        now = datetime.now(ARGENTINA_TZ)
+        duration_min = (now - trade_data['entry_time']).total_seconds() / 60
+        
+        # Log
+        emoji = "✅" if pnl_pct &gt; 0 else "❌"
+        print(f"\n{'='*80}")
+        print(f"{emoji} SALIDA: {symbol}")
+        print(f"   PnL: {pnl_pct:+.2f}% | ${pnl_usd:+.2f}")
+        print(f"   Duración: {duration_min:.1f} min")
+        print(f"   Razón: {reason}")
+        print(f"{'='*80}\n")
+        
+        # Sheets
+        sheets_manager.write_trade_exit(
+            symbol, exit_price, pnl_pct, pnl_usd,
+            duration_min, reason
+        )
+        
+        # BRAIN_SALIDAS
+        if "Salida inteligente" in reason:
+            senales = reason.split(": ")[1] if ": " in reason else reason
+            try:
+                sheets_manager.write_salida_inteligente(
+                    symbol, exit_price, pnl_pct, pnl_usd,
+                    duration_min, senales, reason
+                )
+            except Exception as e:
+                print(f"⚠️ Error escribiendo salida inteligente en Sheets: {e}")
+        
+        # Telegram
+        notify_exit(symbol, pnl_pct, pnl_usd, duration_min, reason)
+        
+        # Thread-safe: Remover de activos y guardar en historial
+        with self.trades_lock:
+            # Remover de activos
+            del self.active_trades[symbol]
+            
+            # Guardar en historial
+            trade_data['exit_price'] = exit_price
+            trade_data['exit_time'] = now
+            trade_data['pnl_pct'] = pnl_pct
+            trade_data['pnl_usd'] = pnl_usd
+            trade_data['duration_min'] = duration_min
+            trade_data['exit_reason'] = reason
+            self.trade_history.append(trade_data)
 
-Este fue el último chat con Opus antes que se llene la memoria.
+            # Guardar en DB (SQLite) para reportes
+            try:
+                db_manager.insert_trade(
+                    entry_time=trade_data['entry_time'].strftime("%Y-%m-%d %H:%M:%S"),
+                    exit_time=now.strftime("%Y-%m-%d %H:%M:%S"),
+                    symbol=symbol,
+                    direction=trade_data['direction'],
+                    entry_price=trade_data['entry_price'],
+                    exit_price=exit_price,
+                    pnl_pct=pnl_pct,
+                    pnl_usd=pnl_usd,
+                    duration_min=duration_min,
+                    exit_reason=reason,
+                    score=trade_data.get('score', 0)
+                )
+                print(f"💾 Trade guardado en DB: {symbol}")
+            except Exception as e:
+                print(f"❌ Error guardando trade en DB: {e}")
 
-Se lleno el chat, una pena porque te conoces todos los modulos y las actualizaciones del bot, lamento mucho esto, los limites del chat. Pasame un resumen para el nuevo Opus que me va ayudar, necesito que seas breve por el poco espacio y le digas resumiendo como continuar, no escribas el código de arriba por ejemplo, eso lo puedo copiar y pegar. Gracias por todo.
+            # Guardar en JSON
+            self.save_active_trades()
+
+            # --- LÓGICA DE RE-ENTRADA (MEMORIA) ---
+            if "Salida inteligente" in reason and pnl_pct &gt; 0:
+                print(f"🔄 RE-QUEUE: {symbol} (salió con +{pnl_pct:.2f}%) vuelve a watchlist.")
+                # FIX: Usar variable global watchlist_manager
+                watchlist_manager.watchlist[symbol] = {
+                    'added_timestamp': now.isoformat(),
+                    'last_check_timestamp': now.isoformat(),
+                    'checks_without_trigger': 0,
+                    'score': trade_data.get('score', 70),
+                    'clasificacion': 'REENTRY_CANDIDATE',
+                    'direction': trade_data['direction'],
+                    'triggers': {},
+                    'analysis_snapshot': {},
+                    'evolution': {},
+                    'structure': {'last_structure': 'Re-entry'},
+                    'status': 'WAITING_REENTRY',
+                    'reentry_count': 1,
+                    'cooldown_until': (now + timedelta(minutes=5)).isoformat(),
+                    'last_exit_price': exit_price
+                }
+    
+    def monitor_stop_loss_thread(self):
+        """Thread que verifica stop loss cada 2 segundos (OPTIMIZADO BATCH)"""
+        while True:
+            if not self.active_trades:
+                time.sleep(2)
+                continue
+            
+            # Thread-safe: Copiar lista de trades activos
+            with self.trades_lock:
+                trades_snapshot = list(self.active_trades.items())
+                active_symbols = list(self.active_trades.keys())
+            
+            if not active_symbols:
+                time.sleep(2)
+                continue
+                
+            # OPTIMIZACIÓN: Fetch BATCH de precios (1 request en lugar de N)
+            current_prices = fetch_multiple_tickers(active_symbols)
+            
+            for symbol, trade_data in trades_snapshot:
+                current_price = current_prices.get(symbol)
+                
+                # Fallback si falla el batch (raro)
+                if not current_price:
+                    current_price = fetch_current_price(symbol)
+                
+                if not current_price:
+                    continue
+                
+                direction = trade_data['direction']
+                
+                # Verificar stop loss
+                if (direction == 'BULLISH' and current_price &lt;= trade_data['stop_loss']) or \
+                   (direction == 'BEARISH' and current_price &gt;= trade_data['stop_loss']):
+                    print(f"🚨 STOP LOSS ACTIVADO: {symbol} (${current_price:.8f})")
+                    self.close_trade(symbol, "Stop loss")
+            
+            time.sleep(2)  # 2 segundos para evitar Rate Limit (Code 510)
+    
+    def start_stop_loss_monitor(self):
+        """Inicia thread de monitoreo stop loss"""
+        if not self.stop_loss_thread or not self.stop_loss_thread.is_alive():
+            self.stop_loss_thread = threading.Thread(target=self.monitor_stop_loss_thread, daemon=True)
+            self.stop_loss_thread.start()
+            print("✅ Thread stop loss iniciado (verificación cada 1s - OPTIMIZADO)")
+    
+    def reanalyze_breakeven_exits(self):
+        """Re-analiza monedas que salieron en breakeven"""
+        if not self.breakeven_exited_symbols:
+            return
+        
+        now = datetime.now(ARGENTINA_TZ)
+        symbols_to_remove = []
+        
+        for symbol, exit_time in self.breakeven_exited_symbols.items():
+            # Solo re-analizar después de 5 minutos
+            if (now - exit_time).total_seconds() &lt; 300:
+                continue
+            
+            print(f"🔄 Re-analizando {symbol} (salió en breakeven)...")
+            
+            from brain_analyzer import analyze_coin_complete
+            analysis = analyze_coin_complete(symbol)
+            
+            if analysis and analysis['viable']:
+                print(f"✅ {symbol} sigue viable - agregando a watchlist")
+                watchlist_manager.add_to_watchlist(symbol, analysis)
+            else:
+                print(f"❌ {symbol} ya no viable")
+            
+            symbols_to_remove.append(symbol)
+        
+        # Limpiar procesados
+        for symbol in symbols_to_remove:
+            del self.breakeven_exited_symbols[symbol]
 
 
-Sintetizó información esencial para continuar en nuevo chat.
+# ============================================================================
+# INSTANCIA GLOBAL
+# ============================================================================
 
-RESUMEN PARA NUEVO OPUS
-Bot: BrainTrader Phase 4.0 - Trading cripto MEXC - Solo LONGS
-
-Filosofía: Time Ladder (Fuerza 4H→1H→15M→5M) - Francotirador que espera momento exacto
-
-FIXES APLICADOS HOY (11-13):
-
-VP High bloquea Market Force
-VP High penaliza scoring
-4H Gradiente (permite LATERAL si 1H ADX&gt;35)
-validate_5m 3/4 condiciones suficiente
-Bypass WAITING_REBOTE si explosivo (1H ADX&gt;45 + 15M ADX&gt;50)
-PROBLEMA ACTUAL CRÍTICO:
-
-Bot sale en 0.2-1.2 minutos por "Patrón de Reversión Detectado". La función detect_live_pattern() en brain_executor.py detecta Double Top con 0.5% diferencia = muy laxo.
-
-PROMPT #14 pendiente: Agregar período de gracia 5 min + exigir momentum rojo para confirmar reversión.
-
-MÓDULOS CLAVE:
-
-brain_intelligent.py (decisión)
-brain_executor.py (gestión trade + detect_live_pattern)
-brain_executor_entry.py (triggers)
-brain_watchlist.py (WAITING_REBOTE, SNIPER)
-brain_analyzer.py (validate_5m_entry_conditions)
-WORKFLOW:
-
-Usuario pasa código por GitHub Pages link
-Opus revisa y da prompt quirúrgico
-Sonnet (VS Code) ejecuta y muestra código actual vs propuesto
-Usuario pasa link con propuesta
-Opus aprueba/corrige
-Sonnet aplica
-Nunca aplicar sin ver código actual vs propuesto.
-
-Porque dice solo longs? no entiendo. RESUMEN PARA NUEVO OPUS
-Bot: BrainTrader Phase 4.0 - Trading cripto MEXC - Solo LONGS
+trade_manager = TradeManager()
 
 
-Rastreó restricciones de código y consideró permitir operaciones cortas.
+# ============================================================================
+# VALIDACIÓN
+# ============================================================================
 
+if __name__ == "__main__":
+    print("=" * 80)
+    print("BRAIN EXECUTOR - Validación")
+    print("=" * 80)
+    print(f"Capital: ${CAPITAL_INICIAL}")
+    print(f"Max trades: {MAX_TRADES_SIMULTANEOUS}")
+    print(f"Capital por trade: ${trade_manager.capital_per_trade:.2f}")
+    print("-" * 80)
+    print(f"Breakeven: {'✅' if ENABLE_BREAKEVEN_PROTECTION else '❌'}")
+    print(f"Trailing: {'✅' if ENABLE_TRAILING_STOP else '❌'}")
+    print(f"Smart Exit: {'✅' if ENABLE_SMART_EXIT else '❌'}")
+    print("=" * 80)
 
+Modulo completo: brain_executor_entry.py
 
+"""
+🧠 HEMISFERIO IZQUIERDO - Entrada y Triggers
+TIME LADDER INTELLIGENCE SYSTEM
+Filosofía: Ver la película completa, no solo la foto
+"""
 
+from brain_intelligent import decide_intelligently
+from brain_config import ARGENTINA_TZ
+from datetime import datetime
+from brain_watchlist import watchlist_manager
+from brain_analyzer import analyze_5m, analyze_15m
 
-Porque durante los fixes bloqueamos BEARISH explícitamente:
+def check_trigger_activated_intelligent(symbol, watchlist_data):
+    """
+    Sistema de decisión con Time Ladder completo
+    Delegado al módulo brain_intelligent.py (Single Source of Truth)
+    
+    Returns:
+        dict: {
+            'activated': bool,
+            'adx': float,
+            'momentum_age': int,
+            'volume_ratio': float
+        }
+    """
+    print(f"   🧠 TIME LADDER: Verificando trigger para {symbol}...")
+    
+    try:
+        # ==============================================================================
+        # 0. SNIPER MODE CHECK (WAITING_REBOTE)
+        # ==============================================================================
+        status = watchlist_data.get('status', 'MONITORING')
+        
+        if status == 'WAITING_REBOTE':
+            print(f"   🦅 SNIPER MODE: Verificando condiciones de rebote para {symbol}...")
+            
+            # 1. Análisis fresco rápido (solo lo necesario)
+            current_analysis = {
+                'analysis_5m': analyze_5m(symbol),
+                'analysis_15m': analyze_15m(symbol, strict=False)
+            }
+            
+            # FIX: Validar datos frescos
+            if not current_analysis['analysis_5m'] or not current_analysis['analysis_15m']:
+                print(f"   ⚠️ SNIPER: Failed to get fresh data for {symbol}")
+                return {
+                    'activated': False,
+                    'adx': 0,
+                    'momentum_age': 0,
+                    'volume_ratio': 0
+                }
+            
+            # 2. Verificar condiciones
+            rebote_check = watchlist_manager.check_rebote_conditions(symbol, current_analysis, watchlist_data)
+            
+            if not rebote_check['ready']:
+                print(f"   ⏳ SNIPER WAIT: {rebote_check['reason']}")
+                return {
+                    'activated': False,
+                    'adx': 0,
+                    'momentum_age': 0,
+                    'volume_ratio': 0
+                }
+            
+            print(f"   🎯 SNIPER READY: {rebote_check['reason']} -&gt; Procediendo a análisis completo")
 
-check_market_force(): Solo detecta fuerza si 4H es BULLISH
-make_pattern_based_decision(): BEARISH → WAIT inmediato
-enter_trade(): Ya tenía bloqueo de shorts
-¿El bot debería poder hacer SHORTS también?
+        # ==============================================================================
 
-Si sí, el nuevo Opus debe revertir esos bloqueos y hacer la lógica simétrica (detectar fuerza bajista, permitir BEARISH, etc.)
+        # Usar la inteligencia centralizada
+        decision = decide_intelligently(symbol)
+        
+        if decision['action'] == 'OPERAR':
+            print(f"🎯 TRIGGER ACTIVADO: {symbol}")
+            # FIX: Usar claves correctas de la nueva estructura
+            score = decision.get('score', 0)
+            reasons_str = ", ".join(decision.get('reasons', []))
+            
+            print(f"   Score: {score:.1f}/100 | Confianza: {decision['confidence']}")
+            print(f"   Razón: {reasons_str}")
+            
+            # Extraer datos del ladder para retornar
+            ladder = decision.get('full_analysis', {}).get('ladder_data', {})
+            
+            # Extraer ADX (prioritario de 15m)
+            adx_15m = ladder.get('15m', {}).get('adx', {})
+            adx_value = adx_15m.get('adx_current', 0) if isinstance(adx_15m, dict) else 0
+            
+            # Extraer momentum age
+            mom_15m = ladder.get('15m', {}).get('momentum', {})
+            momentum_age = mom_15m.get('consecutive_count', 0) if isinstance(mom_15m, dict) else 0
+            
+            # Extraer volume ratio (de 5m)
+            volume_5m = ladder.get('5m', {}).get('volume', {})
+            volume_ratio = volume_5m.get('ratio', 1.0) if isinstance(volume_5m, dict) else 1.0
+            
+            # ==============================================================================
+            # 3. VALIDACIÓN QUIRÚRGICA FINAL (5M)
+            # ==============================================================================
+            # Antes de confirmar, hacemos el chequeo fino de 5M
+            from brain_analyzer import validate_5m_entry_conditions
+            
+            # Determinar dirección basada en la decisión
+            direction = 'BULLISH' if 'LONG' in decision.get('trade_type', 'LONG') else 'BEARISH'
+            
+            validation = validate_5m_entry_conditions(symbol, direction)
+            
+            if not validation['ready']:
+                print(f"   ⚠️ 5M NOT READY: {validation['missing']}")
+                print(f"   ⏳ Esperando alineación fina (Score: {validation['score']}/100)")
+                return {
+                    'activated': False,
+                    'adx': 0,
+                    'momentum_age': 0,
+                    'volume_ratio': 0
+                }
+            
+            print(f"   ✅ 5M SURGICAL CHECK PASSED (Score: {validation['score']})")
+            # ==============================================================================
 
-Corregí el resumen:
+            return {
+                'activated': True,
+                'adx': adx_value,
+                'momentum_age': momentum_age,
+                'volume_ratio': volume_ratio
+            }
+        
+        else:
+            return {
+                'activated': False,
+                'adx': 0,
+                'momentum_age': 0,
+                'volume_ratio': 0
+            }
+            
+    except Exception as e:
+        print(f"⚠️ Error en check_trigger_activated_intelligent: {e}")
+        return {
+            'activated': False,
+            'adx': 0,
+            'momentum_age': 0,
+            'volume_ratio': 0
+        }
 
-Bot: BrainTrader Phase 4.0 - Trading cripto MEXC - Actualmente solo LONGS (por fixes aplicados). Si querés SHORTS, indicar al nuevo Opus.
-
-¿Querés que agregue algo más al resumen antes de cerrar?
-
-Si necesitas algo o tenes alguna duda, le consulto a el, el conoce todos los modulos. Gracias.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 6,975<br>
-    Generado: 2025-11-28 16:11:34
+    Total caracteres: 43,449<br>
+    Generado: 2025-11-28 16:19:57
   </div>
 </body>
 </html>
