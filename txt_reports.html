@@ -15,16 +15,12 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-28 01:28:03</div>
+  <div class="meta">Última actualización: 2025-11-28 01:33:07</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Aquí tienes el código propuesto para validate_5m_entry_conditions en brain_analyzer.py.
-
-He verificado que calculate_adx_with_memory ya retorna di_plus_trend y di_minus_trend, por lo que podemos usar eso directamente para la validación de "acompañamiento".
-
-python
+¡Excelente observación! Aquí tienes el código corregido con la validación de seguridad para la EMA21.
 def validate_5m_entry_conditions(symbol, direction='BULLISH'):
     """
     Checklist quirúrgico de 5M para entrada precisa.
@@ -62,8 +58,6 @@ def validate_5m_entry_conditions(symbol, direction='BULLISH'):
     score_count = 0
     
     # A. Momentum Green
-    # Aceptamos 'lime' (fuerte) o 'green' (creciendo) para BULLISH
-    # Aceptamos 'maroon' (fuerte) o 'red' (creciendo) para BEARISH
     mom_color = mom_data['color_current']
     if direction == 'BULLISH':
         mom_ok = mom_color in ['green', 'lime']
@@ -79,8 +73,6 @@ def validate_5m_entry_conditions(symbol, direction='BULLISH'):
     else: missing.append(f"Momentum {mom_color} (Need {direction} colors)")
 
     # B. ADX Accompanied (Fuerza + Dirección)
-    # BULLISH: ADX subiendo Y DI+ subiendo
-    # BEARISH: ADX subiendo Y DI- subiendo
     adx_trend = adx_data['adx_trend']
     di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
     
@@ -95,7 +87,6 @@ def validate_5m_entry_conditions(symbol, direction='BULLISH'):
     else: missing.append(f"ADX/DI not synced (ADX:{adx_trend}, DI:{di_trend})")
 
     # C. Not in Correction (Velas)
-    # Chequear últimas 3 velas. Si todas son contrarias a la dirección, es corrección.
     closes = df['close'].values[-3:]
     opens = df['open'].values[-3:]
     
@@ -119,15 +110,17 @@ def validate_5m_entry_conditions(symbol, direction='BULLISH'):
     else: missing.append("Price in active correction (3 candles against trend)")
 
     # D. Above EMA Support (Soporte)
-    # BULLISH: Precio &gt; EMA21 o max 0.5% abajo
-    # BEARISH: Precio &lt; EMA21 o max 0.5% arriba
     ema21 = emas_data['emas'].get(21, 0)
-    dist_pct = (current_price - ema21) / ema21 * 100
     
-    if direction == 'BULLISH':
-        ema_ok = dist_pct &gt; -0.5 # Puede estar apenas abajo (retest)
+    if ema21 &gt; 0:
+        dist_pct = (current_price - ema21) / ema21 * 100
+        if direction == 'BULLISH':
+            ema_ok = dist_pct &gt; -0.5 # Puede estar apenas abajo (retest)
+        else:
+            ema_ok = dist_pct &lt; 0.5
     else:
-        ema_ok = dist_pct &lt; 0.5
+        dist_pct = 0
+        ema_ok = True # Sin EMA, no penalizar
         
     conditions['above_ema_support'] = {
         'ok': ema_ok,
@@ -138,7 +131,6 @@ def validate_5m_entry_conditions(symbol, direction='BULLISH'):
     else: missing.append(f"Lost EMA21 support (Dist: {dist_pct:.2f}%)")
 
     # Resultado Final
-    # Score sobre 100 (4 condiciones = 25 pts c/u)
     final_score = score_count * 25
     ready = (score_count == 4)
     
@@ -148,12 +140,12 @@ def validate_5m_entry_conditions(symbol, direction='BULLISH'):
         'score': final_score,
         'missing': missing
     }
-¿Te parece correcta esta implementación? Si me das el OK, la agrego a brain_analyzer.py y actualizo brain_executor_entry.py para usarla.
+¿Procedo a implementarlo en brain_analyzer.py?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,827<br>
-    Generado: 2025-11-28 01:28:03
+    Total caracteres: 4,236<br>
+    Generado: 2025-11-28 01:33:07
   </div>
 </body>
 </html>
