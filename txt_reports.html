@@ -15,17 +15,97 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-28 08:20:41</div>
+  <div class="meta">Última actualización: 2025-11-28 13:16:38</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-sdfs
+Aquí tienes la comparación solicitada para ajustar la detección de patrones en vivo y evitar salidas prematuras.
+
+1. CÓDIGO ACTUAL (Muy sensible, sin gracia)
+Ubicación: 
+brain_executor.py
+ (Líneas 260-285)
+
+    def detect_live_pattern(self, df, trade_data):
+        """Detecta patrones en vivo durante el trade (NUEVO)"""
+        try:
+            # 1. Flag Pattern (Continuación)
+            # ... (código omitido) ...
+            
+            # 2. Double Top (Reversión)
+            highs = df['high'].rolling(3).max()
+            peaks = highs[highs == highs.rolling(20).max()]
+            if len(peaks) &gt;= 2:
+                last_two = peaks[-2:]
+                if abs(last_two.iloc[0] - last_two.iloc[1]) / last_two.iloc[0] &lt; 0.005: # 0.5% diff
+                    return {'pattern': 'DOUBLE_TOP', 'action': 'EXIT_NOW', 'confidence': 90}
+            
+            return None
+        except Exception as e:
+            # print(f"Error detecting live pattern: {e}")
+            return None
+
+2. CÓDIGO PROPUESTO (Gracia 5 min + Confirmación Momentum)
+Esta lógica es mucho más robusta:
+
+1 Periodo de Gracia: Ignora patrones en los primeros 5 minutos.
+2 Confirmación Momentum: Solo valida Double Top si el momentum cambió de color (ej. de Verde a Rojo/Gris).
+
+    def detect_live_pattern(self, df, trade_data):
+        """Detecta patrones en vivo durante el trade (NUEVO)"""
+        try:
+            # 0. PERIODO DE GRACIA (5 min)
+            # Evitar pánico en los primeros minutos de volatilidad
+            now = datetime.now(ARGENTINA_TZ)
+            entry_time = trade_data['entry_time']
+            duration_min = (now - entry_time).total_seconds() / 60
+            
+            if duration_min &lt; 5:
+                return None # Demasiado temprano para patrones de reversión
+                
+            # 1. Flag Pattern (Continuación)
+            # ... (código omitido, igual que antes) ...
+            
+            # 2. Double Top (Reversión)
+            highs = df['high'].rolling(3).max()
+            peaks = highs[highs == highs.rolling(20).max()]
+            
+            if len(peaks) &gt;= 2:
+                last_two = peaks[-2:]
+                # Tolerancia 0.5% está bien SI hay confirmación extra
+                if abs(last_two.iloc[0] - last_two.iloc[1]) / last_two.iloc[0] &lt; 0.005:
+                    
+                    # CONFIRMACIÓN: Momentum debe haber girado
+                    # Si seguimos con momentum verde fuerte, es solo una pausa, no un top
+                    mom_data = calculate_momentum_with_memory(df)
+                    mom_color = mom_data['color_current']
+                    direction = trade_data['direction']
+                    
+                    confirmed = False
+                    if direction == 'BULLISH' and mom_color not in ['green', 'lime']:
+                        confirmed = True # Momentum perdió fuerza alcista
+                    elif direction == 'BEARISH' and mom_color not in ['red', 'maroon']:
+                        confirmed = True # Momentum perdió fuerza bajista
+                        
+                    if confirmed:
+                        return {'pattern': 'DOUBLE_TOP', 'action': 'EXIT_NOW', 'confidence': 90}
+                    else:
+                        print(f"⚠️ Posible Double Top ignorado por Momentum Fuerte ({mom_color})")
+            
+            return None
+        except Exception as e:
+            # print(f"Error detecting live pattern: {e}")
+            return None
+
+¿Confirmo para aplicar esta protección doble (Gracia + Momentum)? Esto evitará salidas en 0.2 minutos como pasó con 1INCH.
+
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4<br>
-    Generado: 2025-11-28 08:20:41
+    Total caracteres: 3,593<br>
+    Generado: 2025-11-28 13:16:38
   </div>
 </body>
 </html>
