@@ -15,137 +15,141 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-28 01:33:07</div>
+  <div class="meta">Última actualización: 2025-11-28 01:44:19</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-¡Excelente observación! Aquí tienes el código corregido con la validación de seguridad para la EMA21.
-def validate_5m_entry_conditions(symbol, direction='BULLISH'):
-    """
-    Checklist quirúrgico de 5M para entrada precisa.
-    NO rechaza - solo informa qué falta.
-    
-    Returns:
-        dict: {
-            'ready': bool (True si TODAS las condiciones OK),
-            'conditions': {
-                'momentum_green': {'ok': bool, 'value': str, 'reason': str},
-                'adx_accompanied': {'ok': bool, 'value': str, 'reason': str},
-                'not_in_correction': {'ok': bool, 'value': str, 'reason': str},
-                'above_ema_support': {'ok': bool, 'value': str, 'reason': str}
-            },
-            'score': int (0-100, cuántas condiciones OK),
-            'missing': [lista de condiciones faltantes]
-        }
-    """
-    # 1. Fetch Data Fresca (5M)
-    ohlcv = fetch_ohlcv(symbol, '5m', 50)
-    if not ohlcv or len(ohlcv) &lt; 20:
-        return {'ready': False, 'conditions': {}, 'score': 0, 'missing': ['No Data']}
+Aquí tienes la comparación detallada del código ACTUAL vs PROPUESTO.
+
+1. brain_watchlist.py - check_rebote_conditions
+CÓDIGO ACTUAL:
+    def check_rebote_conditions(self, current_analysis, watch_data):
+        """
+        Valida condiciones de rebote con datos frescos (Sniper Mode)
+        """
+        current_price = current_analysis['analysis_5m']['current_price']
+        zona_objetivo = watch_data.get('zona_objetivo', 0)
         
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    current_price = float(df['close'].iloc[-1])
-    
-    # 2. Calcular Indicadores
-    mom_data = calculate_momentum_with_memory(df, lookback=5)
-    adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
-    emas_data = calculate_emas_with_memory(df, periods=[21], lookback=5)
-    
-    # 3. Validar Condiciones
-    conditions = {}
-    missing = []
-    score_count = 0
-    
-    # A. Momentum Green
-    mom_color = mom_data['color_current']
-    if direction == 'BULLISH':
-        mom_ok = mom_color in ['green', 'lime']
-    else:
-        mom_ok = mom_color in ['red', 'maroon']
+        # FIX: Evitar división por cero o zonas inválidas
+        if zona_objetivo &lt;= 0:
+            return {'ready': False, 'reason': "No zone target defined"}
         
-    conditions['momentum_green'] = {
-        'ok': mom_ok,
-        'value': mom_color,
-        'reason': f"Momentum is {mom_color}"
-    }
-    if mom_ok: score_count += 1
-    else: missing.append(f"Momentum {mom_color} (Need {direction} colors)")
+        # 1. Precio en zona (±1.5%)
+        dist_to_zone = abs(current_price - zona_objetivo) / zona_objetivo * 100
+        if dist_to_zone &gt; 1.5:
+            return {'ready': False, 'reason': f"Price far from zone ({dist_to_zone:.1f}%)"}
+            
+        # 2. ADX 15M Creciendo
+        a15m = current_analysis.get('analysis_15m', {})
+        adx_trend = a15m.get('adx', {}).get('adx_trend', 'estable')
+        if adx_trend != 'creciendo':
+             return {'ready': False, 'reason': f"ADX 15M not growing ({adx_trend})"}
+             
+        # 3. Momentum 15M Confirmado
+        mom_15m = a15m.get('momentum', {})
+        if mom_15m.get('color_current') not in ['green', 'lime'] or mom_15m.get('consecutive_count', 0) &lt; 2:
+             return {'ready': False, 'reason': "Momentum 15M not confirmed"}
+             
+        return {'ready': True, 'reason': "✅ SNIPER ENTRY: Zone hit + Indicators confirmed"}
 
-    # B. ADX Accompanied (Fuerza + Dirección)
-    adx_trend = adx_data['adx_trend']
-    di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
-    
-    adx_ok = (adx_trend == 'creciendo' and di_trend == 'creciendo')
-    
-    conditions['adx_accompanied'] = {
-        'ok': adx_ok,
-        'value': f"ADX:{adx_trend} DI:{di_trend}",
-        'reason': "ADX and DI must both be growing"
-    }
-    if adx_ok: score_count += 1
-    else: missing.append(f"ADX/DI not synced (ADX:{adx_trend}, DI:{di_trend})")
-
-    # C. Not in Correction (Velas)
-    closes = df['close'].values[-3:]
-    opens = df['open'].values[-3:]
-    
-    is_correction = True
-    for c, o in zip(closes, opens):
-        if direction == 'BULLISH':
-            if c &gt; o: # Vela verde
-                is_correction = False
-                break
-        else:
-            if c &lt; o: # Vela roja
-                is_correction = False
-                break
-                
-    conditions['not_in_correction'] = {
-        'ok': not is_correction,
-        'value': 'Correction' if is_correction else 'Clean',
-        'reason': "Last 3 candles cannot be all against trend"
-    }
-    if not is_correction: score_count += 1
-    else: missing.append("Price in active correction (3 candles against trend)")
-
-    # D. Above EMA Support (Soporte)
-    ema21 = emas_data['emas'].get(21, 0)
-    
-    if ema21 &gt; 0:
-        dist_pct = (current_price - ema21) / ema21 * 100
-        if direction == 'BULLISH':
-            ema_ok = dist_pct &gt; -0.5 # Puede estar apenas abajo (retest)
-        else:
-            ema_ok = dist_pct &lt; 0.5
-    else:
-        dist_pct = 0
-        ema_ok = True # Sin EMA, no penalizar
+CÓDIGO PROPUESTO (con symbol y validate_5m):
+    def check_rebote_conditions(self, symbol, current_analysis, watch_data):
+        """
+        Valida condiciones de rebote con datos frescos (Sniper Mode)
+        """
+        current_price = current_analysis['analysis_5m']['current_price']
+        zona_objetivo = watch_data.get('zona_objetivo', 0)
         
-    conditions['above_ema_support'] = {
-        'ok': ema_ok,
-        'value': f"{dist_pct:.2f}% vs EMA21",
-        'reason': "Price must hold EMA21 support"
-    }
-    if ema_ok: score_count += 1
-    else: missing.append(f"Lost EMA21 support (Dist: {dist_pct:.2f}%)")
+        # FIX: Evitar división por cero o zonas inválidas
+        if zona_objetivo &lt;= 0:
+            return {'ready': False, 'reason': "No zone target defined"}
+        
+        # 1. Precio en zona (±1.5%)
+        dist_to_zone = abs(current_price - zona_objetivo) / zona_objetivo * 100
+        if dist_to_zone &gt; 1.5:
+            return {'ready': False, 'reason': f"Price far from zone ({dist_to_zone:.1f}%)"}
+            
+        # 2. ADX 15M Creciendo
+        a15m = current_analysis.get('analysis_15m', {})
+        adx_trend = a15m.get('adx', {}).get('adx_trend', 'estable')
+        if adx_trend != 'creciendo':
+             return {'ready': False, 'reason': f"ADX 15M not growing ({adx_trend})"}
+             
+        # 3. Momentum 15M Confirmado
+        mom_15m = a15m.get('momentum', {})
+        if mom_15m.get('color_current') not in ['green', 'lime'] or mom_15m.get('consecutive_count', 0) &lt; 2:
+             return {'ready': False, 'reason': "Momentum 15M not confirmed"}
+        
+        # 4. VALIDACIÓN QUIRÚRGICA 5M (NUEVO)
+        from brain_analyzer import validate_5m_entry_conditions
+        direction = watch_data.get('direction', 'BULLISH')
+        
+        validation = validate_5m_entry_conditions(symbol, direction)
+        
+        if not validation['ready']:
+             return {'ready': False, 'reason': f"Waiting 5M confirmation (Score: {validation['score']})"}
+             
+        return {'ready': True, 'reason': "✅ SNIPER ENTRY: Zone hit + Indicators confirmed + 5M Ready"}
+CÓDIGO PROPUESTO (con symbol y validate_5m):
+    def check_rebote_conditions(self, symbol, current_analysis, watch_data):
+        """
+        Valida condiciones de rebote con datos frescos (Sniper Mode)
+        """
+        current_price = current_analysis['analysis_5m']['current_price']
+        zona_objetivo = watch_data.get('zona_objetivo', 0)
+        
+        # FIX: Evitar división por cero o zonas inválidas
+        if zona_objetivo &lt;= 0:
+            return {'ready': False, 'reason': "No zone target defined"}
+        
+        # 1. Precio en zona (±1.5%)
+        dist_to_zone = abs(current_price - zona_objetivo) / zona_objetivo * 100
+        if dist_to_zone &gt; 1.5:
+            return {'ready': False, 'reason': f"Price far from zone ({dist_to_zone:.1f}%)"}
+            
+        # 2. ADX 15M Creciendo
+        a15m = current_analysis.get('analysis_15m', {})
+        adx_trend = a15m.get('adx', {}).get('adx_trend', 'estable')
+        if adx_trend != 'creciendo':
+             return {'ready': False, 'reason': f"ADX 15M not growing ({adx_trend})"}
+             
+        # 3. Momentum 15M Confirmado
+        mom_15m = a15m.get('momentum', {})
+        if mom_15m.get('color_current') not in ['green', 'lime'] or mom_15m.get('consecutive_count', 0) &lt; 2:
+             return {'ready': False, 'reason': "Momentum 15M not confirmed"}
+        
+        # 4. VALIDACIÓN QUIRÚRGICA 5M (NUEVO)
+        from brain_analyzer import validate_5m_entry_conditions
+        direction = watch_data.get('direction', 'BULLISH')
+        
+        validation = validate_5m_entry_conditions(symbol, direction)
+        
+        if not validation['ready']:
+             return {'ready': False, 'reason': f"Waiting 5M confirmation (Score: {validation['score']})"}
+             
+        return {'ready': True, 'reason': "✅ SNIPER ENTRY: Zone hit + Indicators confirmed + 5M Ready"}
+2. brain_executor_entry.py - Llamada
+CÓDIGO ACTUAL:
 
-    # Resultado Final
-    final_score = score_count * 25
-    ready = (score_count == 4)
-    
-    return {
-        'ready': ready,
-        'conditions': conditions,
-        'score': final_score,
-        'missing': missing
-    }
-¿Procedo a implementarlo en brain_analyzer.py?
+            # 2. Verificar condiciones
+            rebote_check = watchlist_manager.check_rebote_conditions(current_analysis, watchlist_data)
+
+CÓDIGO PROPUESTO:
+
+            # 2. Verificar condiciones
+            rebote_check = watchlist_manager.check_rebote_conditions(symbol, current_analysis, watchlist_data)
+
+¿Procedo con estos cambios?
+
+brain_watchlist.py
+brain_executor_entry.py
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,236<br>
-    Generado: 2025-11-28 01:33:07
+    Total caracteres: 5,678<br>
+    Generado: 2025-11-28 01:44:19
   </div>
 </body>
 </html>
