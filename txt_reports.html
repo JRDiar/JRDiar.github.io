@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-28 18:57:49</div>
+  <div class="meta">Última actualización: 2025-11-28 18:59:08</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -2274,11 +2274,505 @@ def calculate_atr(df, period=14):
             'atr_history': []
         }
 
+Modulo completo: brain deep analyzer
+
+"""
+BRAIN DEEP ANALYZER - Análisis Contextual Profundo
+===================================================
+Módulo de análisis lento (2-5min) para candidatos pre-filtrados
+
+FILOSOFÍA:
+- Precisión &gt; Velocidad
+- Análisis multi-capa (VP, SR multi-touch, divergencias)
+- Probabilidad contextual basada en patrones reales
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from brain_calculator import (
+    detect_support_resistance_with_memory,
+    detect_price_structure,
+    calculate_adx_with_memory,
+    calculate_momentum_with_memory,
+    calculate_volume_profile_with_memory
+)
+from exchange_connection import fetch_ohlcv
+from brain_config import *
+
+# =============================================================================
+# FUNCIÓN 1: analyze_volume_profile_context()
+# =============================================================================
+
+def analyze_volume_profile_context(symbol, timeframe='15m'):
+    """
+    Analiza posición precio vs Volume Profile
+
+    DETECTA:
+    - ¿Precio cerca límite superior VP? (peligro techo)
+    - ¿Precio cerca límite inferior VP? (peligro suelo)
+    - ¿En zona alta liquidez (POC)? (zona segura)
+    - ¿En zona baja liquidez (gap)? (zona peligrosa)
+
+    Returns:
+        dict: {
+            'position': 'EXTREMO_SUPERIOR'/'EXTREMO_INFERIOR'/'ZONA_POC'/'ZONA_GAP',
+            'distance_to_limit_pct': float,
+            'safe_to_trade': bool,
+            'warning': str o None
+        }
+    """
+    ohlcv = fetch_ohlcv(symbol, timeframe, 200)
+    if not ohlcv or len(ohlcv) &lt; 100:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    current_price = float(df['close'].iloc[-1])
+
+    # Volume Profile completo (últimas 100 velas)
+    vp_data = calculate_volume_profile_with_memory(df, num_levels=30, lookback=100)
+
+    poc = vp_data['poc_current']
+    high_volume_nodes = vp_data['high_volume_nodes']
+    low_volume_nodes = vp_data['low_volume_nodes']
+
+    # Límites VP
+    max_price = df['high'].tail(100).max()
+    min_price = df['low'].tail(100).min()
+
+    # Distancia a límites
+    distance_to_top = ((max_price - current_price) / current_price) * 100
+    distance_to_bottom = ((current_price - min_price) / current_price) * 100
+
+    # Clasificar posición
+    if distance_to_top &lt; 1.5:  # &lt;1.5% del techo
+        position = 'EXTREMO_SUPERIOR'
+        safe = False
+        warning = f"Precio a {distance_to_top:.1f}% del límite VP superior"
+    elif distance_to_bottom &lt; 1.5:
+        position = 'EXTREMO_INFERIOR'
+        safe = False
+        warning = f"Precio a {distance_to_bottom:.1f}% del límite VP inferior"
+    elif abs(current_price - poc) / current_price * 100 &lt; 2.0:
+        position = 'ZONA_POC'
+        safe = True
+        warning = None
+    elif any(abs(current_price - node) / current_price * 100 &lt; 1.0 for node in low_volume_nodes):
+        position = 'ZONA_GAP'
+        safe = False
+        warning = "Precio en zona baja liquidez (gap VP)"
+    else:
+        position = 'ZONA_NORMAL'
+        safe = True
+        warning = None
+
+    return {
+        'position': position,
+        'distance_to_top_pct': round(distance_to_top, 2),
+        'distance_to_bottom_pct': round(distance_to_bottom, 2),
+        'safe_to_trade': safe,
+        'warning': warning,
+        'poc': round(poc, 6)
+    }
+
+# =============================================================================
+# FUNCIÓN 2: analyze_support_resistance_touches()
+# =============================================================================
+
+def analyze_support_resistance_touches(symbol, timeframe='4h'):
+    """
+    Cuenta cuántas veces precio tocó soportes/resistencias
+
+    CRÍTICO: Si soporte tocado 10+ veces = zona MUY fuerte (probable rebote)
+    Ejemplo: SUPRA tocó soporte múltiples veces → entrar SHORT ahí = suicidio
+
+    Returns:
+        dict: {
+            'nearest_support': {
+                'price': float,
+                'touches': int,
+                'strength': 'DÉBIL'/'MODERADO'/'FUERTE'/'MUY_FUERTE',
+                'distance_pct': float
+            },
+            'nearest_resistance': {...},
+            'danger_zone': bool
+        }
+    """
+    ohlcv = fetch_ohlcv(symbol, timeframe, 200)
+    if not ohlcv or len(ohlcv) &lt; 100:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    current_price = float(df['close'].iloc[-1])
+
+    # SR con lookback largo (100 velas = 400 horas = 16 días)
+    sr_data = detect_support_resistance_with_memory(df, num_clusters=8, lookback=100)
+
+    supports = sr_data['supports']
+    resistances = sr_data['resistances']
+
+    # Función auxiliar: contar toques
+    def count_touches(level, tolerance_pct=1.5):
+        """Cuenta cuántas velas tocaron este nivel"""
+        touches = 0
+        for i in range(len(df)):
+            low = df['low'].iloc[i]
+            high = df['high'].iloc[i]
+            # Toque = si vela cruzó nivel ±tolerance
+            if level == 0:
+                continue
+            if abs((low - level) / level * 100) &lt;= tolerance_pct or \
+               abs((high - level) / level * 100) &lt;= tolerance_pct:
+                touches += 1
+        return touches
+
+    # Analizar soporte más cercano
+    nearest_support_info = None
+    if supports:
+        nearest_support = supports[0]  # Ya viene ordenado por cercanía
+        touches = count_touches(nearest_support)
+        distance_pct = ((current_price - nearest_support) / current_price) * 100
+
+        if touches &gt;= 10:
+            strength = 'MUY_FUERTE'
+        elif touches &gt;= 6:
+            strength = 'FUERTE'
+        elif touches &gt;= 3:
+            strength = 'MODERADO'
+        else:
+            strength = 'DÉBIL'
+
+        nearest_support_info = {
+            'price': round(nearest_support, 6),
+            'touches': touches,
+            'strength': strength,
+            'distance_pct': round(distance_pct, 2)
+        }
+
+    # Analizar resistencia más cercana
+    nearest_resistance_info = None
+    if resistances:
+        nearest_resistance = resistances[0]  # Ya viene ordenado por cercanía
+        touches = count_touches(nearest_resistance)
+        distance_pct = ((nearest_resistance - current_price) / current_price) * 100
+
+        if touches &gt;= 10:
+            strength = 'MUY_FUERTE'
+        elif touches &gt;= 6:
+            strength = 'FUERTE'
+        elif touches &gt;= 3:
+            strength = 'MODERADO'
+        else:
+            strength = 'DÉBIL'
+
+        nearest_resistance_info = {
+            'price': round(nearest_resistance, 6),
+            'touches': touches,
+            'strength': strength,
+            'distance_pct': round(distance_pct, 2)
+        }
+
+    # ¿Zona peligrosa?
+    danger_zone = False
+    if nearest_support_info and nearest_support_info['distance_pct'] &lt; 2.0 and nearest_support_info['touches'] &gt;= 8:
+        danger_zone = True  # Muy cerca de soporte fuerte = no SHORT
+    if nearest_resistance_info and nearest_resistance_info['distance_pct'] &lt; 2.0 and nearest_resistance_info['touches'] &gt;= 8:
+        danger_zone = True  # Muy cerca de resistencia fuerte = no LONG
+
+    return {
+        'nearest_support': nearest_support_info,
+        'nearest_resistance': nearest_resistance_info,
+        'danger_zone': danger_zone
+    }
+
+# =============================================================================
+# FUNCIÓN 3: detect_structure_deterioration()
+# =============================================================================
+
+def detect_structure_deterioration(symbol, timeframe='1h'):
+    """
+    Detecta si estructura precio se está deteriorando
+
+    PATRÓN: HH → HL → LL = debilidad progresiva
+    Ejemplo: Alto 100 → rebote 95 → nuevo alto 98 (más bajo) → siguiente rebote será &lt;95
+
+    Returns:
+        dict: {
+            'deteriorating': bool,
+            'pattern': 'HH_HL_LL' o 'STRONG' o 'UNCLEAR',
+            'confidence': float (0-100)
+        }
+    """
+    ohlcv = fetch_ohlcv(symbol, timeframe, 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
+    # Detectar pivots significativos
+    structure = detect_price_structure(df, lookback=50, pivot_window=3)
+
+    pivot_highs = structure['pivot_highs']
+    pivot_lows = structure['pivot_lows']
+
+    if len(pivot_highs) &lt; 3 or len(pivot_lows) &lt; 3:
+        return {
+            'deteriorating': False,
+            'pattern': 'UNCLEAR',
+            'confidence': 0
+        }
+
+    # Últimos 3 máximos
+    last_3_highs = pivot_highs[-3:]
+    # Últimos 3 mínimos
+    last_3_lows = pivot_lows[-3:]
+
+    # Patrón deterioro alcista: HH → HL (máximo más bajo) + LL
+    if last_3_highs[2] &lt; last_3_highs[1] &lt; last_3_highs[0]:  # Máximos bajando
+        if last_3_lows[2] &lt; last_3_lows[1]:  # Mínimos también bajando
+            return {
+                'deteriorating': True,
+                'pattern': 'HH_HL_LL',
+                'confidence': 85
+            }
+
+    # Patrón fuerte alcista: HH + HL consecutivos
+    if last_3_highs[2] &gt; last_3_highs[1] &gt; last_3_highs[0]:
+        if last_3_lows[2] &gt; last_3_lows[1] &gt; last_3_lows[0]:
+            return {
+                'deteriorating': False,
+                'pattern': 'STRONG_BULLISH',
+                'confidence': 90
+            }
+
+    # Patrón fuerte bajista: LH + LL consecutivos
+    if last_3_highs[2] &lt; last_3_highs[1] &lt; last_3_highs[0]:
+        if last_3_lows[2] &lt; last_3_lows[1] &lt; last_3_lows[0]:
+            return {
+                'deteriorating': False,
+                'pattern': 'STRONG_BEARISH',
+                'confidence': 90
+            }
+
+    return {
+        'deteriorating': False,
+        'pattern': 'MIXED',
+        'confidence': 40
+    }
+
+# =============================================================================
+# FUNCIÓN 4: detect_divergence()
+# =============================================================================
+
+def detect_divergence(symbol, timeframe='15m'):
+    """
+    Detecta divergencia ADX vs precio
+
+    DIVERGENCIA BAJISTA: Precio sube + ADX baja = debilidad (peligro)
+    DIVERGENCIA ALCISTA: Precio baja + ADX sube = fuerza oculta
+
+    Returns:
+        dict: {
+            'divergence_detected': bool,
+            'type': 'BEARISH'/'BULLISH'/'NONE',
+            'strength': 'FUERTE'/'MODERADA'/'DÉBIL'
+        }
+    """
+    ohlcv = fetch_ohlcv(symbol, timeframe, 50)
+    if not ohlcv or len(ohlcv) &lt; 30:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=20)
+
+    # Últimas 10 velas: tendencia precio vs tendencia ADX
+    prices = df['close'].tail(10).tolist()
+    adx_values = adx_data['adx_history'][-10:]
+
+    # Precio subiendo?
+    price_rising = prices[-1] &gt; prices[0]
+    price_change_pct = ((prices[-1] - prices[0]) / prices[0]) * 100
+
+    # ADX subiendo?
+    adx_rising = adx_values[-1] &gt; adx_values[0]
+    adx_change = adx_values[-1] - adx_values[0]
+
+    # Divergencia bajista: precio sube + ADX baja
+    if price_rising and not adx_rising and price_change_pct &gt; 2.0 and adx_change &lt; -3:
+        return {
+            'divergence_detected': True,
+            'type': 'BEARISH',
+            'strength': 'FUERTE' if abs(adx_change) &gt; 5 else 'MODERADA'
+        }
+
+    # Divergencia alcista: precio baja + ADX sube
+    if not price_rising and adx_rising and price_change_pct &lt; -2.0 and adx_change &gt; 3:
+        return {
+            'divergence_detected': True,
+            'type': 'BULLISH',
+            'strength': 'FUERTE' if adx_change &gt; 5 else 'MODERADA'
+        }
+
+    return {
+        'divergence_detected': False,
+        'type': 'NONE',
+        'strength': 'N/A'
+    }
+
+# =============================================================================
+# FUNCIÓN 5: deep_analysis_complete() - ORQUESTADOR
+# =============================================================================
+
+def deep_analysis_complete(symbol, analysis_4h, analysis_1h, analysis_15m):
+    """
+    Análisis profundo completo (2-5 minutos)
+
+    Args:
+        symbol: Par trading
+        analysis_4h, 1h, 15m: Análisis previos (ya calculados)
+
+    Returns:
+        dict: {
+            'probability': int (0-100%),
+            'safe_to_trade': bool,
+            'warnings': [lista de advertencias],
+            'strengths': [lista de fortalezas],
+            'vp_context': dict,
+            'sr_context': dict,
+            'structure_analysis': dict,
+            'divergence': dict
+        }
+    """
+    print(f"\n🔬 ANÁLISIS PROFUNDO: {symbol}")
+
+    warnings = []
+    strengths = []
+    probability = 50  # Base
+
+    # 1. Volume Profile
+    vp_ctx = analyze_volume_profile_context(symbol, '15m')
+    if vp_ctx:
+        if not vp_ctx['safe_to_trade']:
+            probability -= 20
+            warnings.append(vp_ctx['warning'])
+        else:
+            probability += 5
+            if vp_ctx['position'] == 'ZONA_POC':
+                strengths.append("Precio en zona alta liquidez (POC)")
+
+    # 2. SR multi-touch
+    sr_ctx = analyze_support_resistance_touches(symbol, '4h')
+    if sr_ctx:
+        if sr_ctx['danger_zone']:
+            probability -= 25
+            if sr_ctx['nearest_support'] and sr_ctx['nearest_support']['touches'] &gt;= 8:
+                warnings.append(f"Soporte MUY fuerte {sr_ctx['nearest_support']['touches']} toques a {sr_ctx['nearest_support']['distance_pct']:.1f}%")
+            if sr_ctx['nearest_resistance'] and sr_ctx['nearest_resistance']['touches'] &gt;= 8:
+                warnings.append(f"Resistencia MUY fuerte {sr_ctx['nearest_resistance']['touches']} toques a {sr_ctx['nearest_resistance']['distance_pct']:.1f}%")
+        else:
+            probability += 10
+            strengths.append("SR libre sin obstáculos fuertes")
+
+    # 3. Deterioro estructura
+    structure_ctx = detect_structure_deterioration(symbol, '1h')
+    if structure_ctx:
+        if structure_ctx['deteriorating']:
+            probability -= 15
+            warnings.append(f"Estructura deteriorándose: {structure_ctx['pattern']}")
+        elif structure_ctx['pattern'] in ['STRONG_BULLISH', 'STRONG_BEARISH']:
+            probability += 10
+            strengths.append(f"Estructura fuerte: {structure_ctx['pattern']}")
+
+    # 4. Divergencias
+    div_ctx = detect_divergence(symbol, '15m')
+    if div_ctx and div_ctx['divergence_detected']:
+        if div_ctx['type'] == 'BEARISH':
+            probability -= 15
+            warnings.append(f"Divergencia bajista {div_ctx['strength']}")
+        elif div_ctx['type'] == 'BULLISH':
+            probability += 10
+            strengths.append(f"Divergencia alcista {div_ctx['strength']}")
+
+    # CONTEXTUAL OVERRIDE: Setup explosivo ignora warnings menores
+    if (analysis_4h['adx']['adx_current'] &gt;= 30 and  # Era 45
+        analysis_4h['momentum']['consecutive_count'] &gt;= 6 and  # Era 8
+        analysis_1h['adx']['adx_current'] &gt;= 25):  # Era 40
+        
+        print(f"  🚀 SETUP EXPLOSIVO DETECTADO (ADX 4H={analysis_4h['adx']['adx_current']:.1f})")
+        
+        if vp_ctx and 'gap' in str(vp_ctx.get('warning', '')).lower():
+            probability += 25
+            if vp_ctx['warning'] in warnings:
+                warnings.remove(vp_ctx['warning'])
+            strengths.append("Gap alcista en impulso explosivo")
+            print(f"  ✅ Gap reinterpretado (+25%)")
+        
+        # VP extremos contextuales
+        direction = analysis_4h['direction']
+        if vp_ctx:
+            vp_pos = vp_ctx.get('position', '')
+            if vp_pos == 'EXTREMO_SUPERIOR' and direction == 'BULLISH':
+                probability += 15
+                strengths.append("VP extremo superior favorable para LONG")
+            elif vp_pos == 'EXTREMO_INFERIOR' and direction == 'BEARISH':
+                probability += 15
+                strengths.append("VP extremo inferior favorable para SHORT")
+        
+        if structure_ctx and structure_ctx.get('pattern') in ['MIXED', 'HH_HL_LL']:
+            probability += 10
+            warnings = [w for w in warnings if 'estructura' not in w.lower()]
+            strengths.append("Breakout rompiendo estructura")
+            print(f"  ✅ Estructura reinterpretada (+10%)")
+        
+        probability = min(100, probability)
+        safe_to_trade = probability &gt;= 40
+
+    # Limitar probabilidad 0-100
+    probability = max(0, min(100, probability))
+
+    # Decisión final: permitir warnings menores si probabilidad es alta
+    safe_to_trade = probability &gt;= 55 or (probability &gt;= 40 and len(warnings) &lt;= 1)
+
+    print(f"   Probabilidad: {probability}%")
+    if warnings:
+        for w in warnings:
+            print(f"   ⚠️ {w}")
+    if strengths:
+        for s in strengths:
+            print(f"   ✅ {s}")
+
+    return {
+        'probability': probability,
+        'safe_to_trade': safe_to_trade,
+        'warnings': warnings,
+        'strengths': strengths,
+        'vp_context': vp_ctx if vp_ctx else {},
+        'sr_context': sr_ctx if sr_ctx else {},
+        'structure_analysis': structure_ctx if structure_ctx else {},
+        'divergence': div_ctx if div_ctx else {}
+    }
+
+# =============================================================================
+# VALIDACIÓN
+# =============================================================================
+
+if __name__ == "__main__":
+    print("🔬 BRAIN DEEP ANALYZER - Módulo cargado")
+    print("Funciones disponibles:")
+    print(" - deep_analysis_complete()")
+    print(" - analyze_volume_profile_context()")
+    print(" - analyze_support_resistance_touches()")
+    print(" - detect_structure_deterioration()")
+    print(" - detect_divergence()")
+
+
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 78,601<br>
-    Generado: 2025-11-28 18:57:49
+    Total caracteres: 96,296<br>
+    Generado: 2025-11-28 18:59:08
   </div>
 </body>
 </html>
