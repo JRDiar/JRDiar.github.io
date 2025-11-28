@@ -15,35 +15,12 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-28 19:02:24</div>
+  <div class="meta">Última actualización: 2025-11-28 19:07:45</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Aquí tienes la comparación solicitada para fortalecer la detección de Market Force.
-
-1. CÓDIGO ACTUAL (Solo valida 1H)
-Ubicación: 
-brain_intelligent.py
- (Líneas 800-830 aprox, función 
-check_market_force
-)
-
-python
-    # ... (cálculo de fuerza 1H) ...
-
-    # Si 1H es fuerte, asumimos Market Force
-    if force_score_1h &gt;= 80:
-        return {
-            'active': True,
-            'score': force_score_1h,
-            'reason': f"Market Force 1H Active (ADX {adx_1h:.1f})"
-        }
-    
-    return {'active': False, 'score': 0, 'reason': ""}
-
-2. CÓDIGO PROPUESTO (Valida 1H + 15M Obligatorio)
-Esta lógica asegura que la fuerza no sea solo "histórica" (1H) sino "actual" (15M), evitando entrar cuando el movimiento ya murió en timeframes cortos.
+Aquí tienes el código corregido con los keys exactos (di_plus_current y detected):
 
 python
     # ... (cálculo de fuerza 1H) ...
@@ -54,7 +31,7 @@ python
         # --- VALIDACIÓN 15M OBLIGATORIA ---
         a15m = ladder.get('15m', {})
         if not a15m:
-             return {'active': False, 'score': 0, 'reason': "Missing 15M data for Market Force"}
+             return {'detected': False, 'score': 0, 'reason': "Missing 15M data for Market Force"}
              
         # 1. Momentum 15M (Debe ser verde)
         mom_15m = a15m.get('momentum', {})
@@ -62,38 +39,40 @@ python
         
         if mom_color not in ['green', 'lime']:
             return {
-                'active': False, 
+                'detected': False, 
                 'score': 0, 
                 'reason': f"Market Force REJECTED: 15M Momentum is {mom_color} (Need Green/Lime)"
             }
             
         # 2. Separación ADX 15M (Líneas no pegadas)
         adx_data_15m = a15m.get('adx', {})
-        di_plus = adx_data_15m.get('di_plus', 0)
-        di_minus = adx_data_15m.get('di_minus', 0)
+        # FIX: Keys correctos según brain_calculator.py
+        di_plus = adx_data_15m.get('di_plus_current', 0)
+        di_minus = adx_data_15m.get('di_minus_current', 0)
         di_spread = abs(di_plus - di_minus)
         
         if di_spread &lt; 3.0:
             return {
-                'active': False, 
+                'detected': False, 
                 'score': 0, 
                 'reason': f"Market Force REJECTED: 15M DI Spread too tight ({di_spread:.1f} &lt; 3.0)"
             }
 
         # Si pasa todo, activamos
+        # FIX: Key correcto 'detected' en lugar de 'active'
         return {
-            'active': True,
+            'detected': True,
             'score': force_score_1h,
             'reason': f"Market Force ACTIVE: 1H Strong + 15M Confirmed (Spread {di_spread:.1f})"
         }
     
-    return {'active': False, 'score': 0, 'reason': ""}
-¿Confirmo para aplicar esta validación extra? Esto evitará entradas como DOGS donde 1H parecía bien pero 15M ya estaba muerto.
+    return {'detected': False, 'score': 0, 'reason': ""}
+¿Confirmo para aplicar esta versión corregida?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 2,398<br>
-    Generado: 2025-11-28 19:02:24
+    Total caracteres: 1,795<br>
+    Generado: 2025-11-28 19:07:45
   </div>
 </body>
 </html>
