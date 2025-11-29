@@ -15,13 +15,11 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-29 03:38:46</div>
+  <div class="meta">Última actualización: 2025-11-29 03:47:44</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Perfecto, encontré el código. Ahora te muestro el ACTUAL vs PROPUESTO:
-
 🔧 CAMBIO 1: Agregar fetch 3M en monitor_active_trades()
 📍 Ubicación: 
 brain_executor.py
@@ -56,12 +54,12 @@ for symbol, trade_data in trades_snapshot:
     
     # ORQUESTADOR INTELIGENTE (usa 3M para detección más granular)
     orch_action = self.orchestrate_trade_management(symbol, trade_data, current_price, df_3m)
-Cambio: Ahora descarga tanto 5M (para análisis general) como 3M (para patrones). Si 3M falla, usa 5M como fallback.
+Sin cambios respecto a la versión anterior.
 
-🔧 CAMBIO 2: Confirmación Anti-Ruido en detect_live_pattern()
+🔧 CAMBIO 2: Confirmación Anti-Ruido CON BLOQUEO ✅
 📍 Ubicación: 
 brain_executor.py
- líneas 260-271
+ líneas 260-308
 ❌ CÓDIGO ACTUAL:
 python
 def detect_live_pattern(self, df, trade_data):
@@ -79,7 +77,44 @@ def detect_live_pattern(self, df, trade_data):
         # 1. Flag Pattern (Continuación)
         # Lógica simplificada: Consolidación después de impulso
         closes = df['close'].values
-✅ CÓDIGO PROPUESTO:
+        if len(closes) &gt; 10:
+            recent_volatility = df['close'].tail(5).std()
+            prev_volatility = df['close'].iloc[-10:-5].std()
+            
+            if recent_volatility &lt; prev_volatility * 0.5:
+                return {'pattern': 'FLAG', 'action': 'EXTEND_TARGET', 'confidence': 85}
+        
+        # 2. Double Top (Reversión)
+        highs = df['high'].rolling(3).max()
+        peaks = highs[highs == highs.rolling(20).max()]
+        
+        if len(peaks) &gt;= 2:
+            last_two = peaks[-2:]
+            # Tolerancia 0.5% está bien SI hay confirmación extra
+            if abs(last_two.iloc[0] - last_two.iloc[1]) / last_two.iloc[0] &lt; 0.005:
+                
+                # CONFIRMACIÓN: Momentum debe haber girado
+                # Si seguimos con momentum verde fuerte, es solo una pausa, no un top
+                mom_data = calculate_momentum_with_memory(df)
+                mom_color = mom_data['color_current']
+                direction = trade_data['direction']
+                
+                confirmed = False
+                if direction == 'BULLISH' and mom_color not in ['green', 'lime']:
+                    confirmed = True # Momentum perdió fuerza alcista
+                elif direction == 'BEARISH' and mom_color not in ['red', 'maroon']:
+                    confirmed = True # Momentum perdió fuerza bajista
+                    
+                if confirmed:
+                    return {'pattern': 'DOUBLE_TOP', 'action': 'EXIT_NOW', 'confidence': 90}
+                else:
+                    print(f"⚠️ Posible Double Top ignorado por Momentum Fuerte ({mom_color})")
+        
+        return None
+    except Exception as e:
+        # print(f"Error detecting live pattern: {e}")
+        return None
+✅ CÓDIGO PROPUESTO (CON FIX):
 python
 def detect_live_pattern(self, df, trade_data):
     """Detecta patrones en vivo durante el trade (3M granular con confirmación)"""
@@ -93,9 +128,10 @@ def detect_live_pattern(self, df, trade_data):
         if duration_min &lt; 5:
             return None # Demasiado temprano para patrones de reversión
         
-        # 0.5 CONFIRMACIÓN ANTI-RUIDO (3M)
-        # Exigir 2+ velas rojas consecutivas antes de considerar reversión
+        # 0.5 CONFIRMACIÓN ANTI-RUIDO (3M) - CON BLOQUEO
+        # Exigir 2+ velas contra-tendencia antes de buscar patrones de reversión
         direction = trade_data.get('direction', 'BULLISH')
+        allow_reversal_patterns = False  # Por defecto, NO buscar reversión
         
         if len(df) &gt;= 3:
             last_3_closes = df['close'].values[-3:]
@@ -105,44 +141,80 @@ def detect_live_pattern(self, df, trade_data):
                 # Contar velas rojas (bearish)
                 red_count = sum(1 for c, o in zip(last_3_closes, last_3_opens) if c &lt; o)
                 
-                # Si detectamos 2+ velas rojas consecutivas, es señal de reversión confirmada
                 if red_count &gt;= 2:
-                    print(f"  ⚠️ 3M REVERSIÓN: {red_count}/3 velas rojas detectadas")
-                    # Permitir continuar a Double Top detection para confirmar
+                    print(f"  ⚠️ 3M REVERSIÓN CONFIRMADA: {red_count}/3 velas rojas - habilitando Double Top detection")
+                    allow_reversal_patterns = True  # Sí buscar reversión
+                else:
+                    print(f"  ✅ 3M RUIDO: Solo {red_count}/3 velas rojas - ignorando reversión, buscando continuación")
+                    
             else:  # BEARISH
                 # Contar velas verdes (bullish)
                 green_count = sum(1 for c, o in zip(last_3_closes, last_3_opens) if c &gt; o)
                 
                 if green_count &gt;= 2:
-                    print(f"  ⚠️ 3M REVERSIÓN: {green_count}/3 velas verdes detectadas")
+                    print(f"  ⚠️ 3M REVERSIÓN CONFIRMADA: {green_count}/3 velas verdes - habilitando Double Bottom detection")
+                    allow_reversal_patterns = True
+                else:
+                    print(f"  ✅ 3M RUIDO: Solo {green_count}/3 velas verdes - ignorando reversión, buscando continuación")
             
-        # 1. Flag Pattern (Continuación)
+        # 1. Flag Pattern (Continuación) - SIEMPRE se busca
         # Lógica simplificada: Consolidación después de impulso
         closes = df['close'].values
-Cambio: Antes de buscar patrones, primero cuenta cuántas velas van en contra de la dirección del trade. Si hay 2+ de 3, marca que hay posible reversión confirmada (no solo ruido).
+        if len(closes) &gt; 10:
+            recent_volatility = df['close'].tail(5).std()
+            prev_volatility = df['close'].iloc[-10:-5].std()
+            
+            if recent_volatility &lt; prev_volatility * 0.5:
+                return {'pattern': 'FLAG', 'action': 'EXTEND_TARGET', 'confidence': 85}
+        
+        # 2. Double Top (Reversión) - SOLO si hay confirmación de 2+ velas
+        if allow_reversal_patterns:
+            highs = df['high'].rolling(3).max()
+            peaks = highs[highs == highs.rolling(20).max()]
+            
+            if len(peaks) &gt;= 2:
+                last_two = peaks[-2:]
+                # Tolerancia 0.5% está bien SI hay confirmación extra
+                if abs(last_two.iloc[0] - last_two.iloc[1]) / last_two.iloc[0] &lt; 0.005:
+                    
+                    # CONFIRMACIÓN: Momentum debe haber girado
+                    # Si seguimos con momentum verde fuerte, es solo una pausa, no un top
+                    mom_data = calculate_momentum_with_memory(df)
+                    mom_color = mom_data['color_current']
+                    
+                    confirmed = False
+                    if direction == 'BULLISH' and mom_color not in ['green', 'lime']:
+                        confirmed = True # Momentum perdió fuerza alcista
+                    elif direction == 'BEARISH' and mom_color not in ['red', 'maroon']:
+                        confirmed = True # Momentum perdió fuerza bajista
+                        
+                    if confirmed:
+                        return {'pattern': 'DOUBLE_TOP', 'action': 'EXIT_NOW', 'confidence': 90}
+                    else:
+                        print(f"⚠️ Posible Double Top ignorado por Momentum Fuerte ({mom_color})")
+        else:
+            # Saltamos Double Top porque no hay suficientes velas de reversión
+            pass
+        
+        return None
+    except Exception as e:
+        # print(f"Error detecting live pattern: {e}")
+        return None
+📝 Cambios Clave (FIX APLICADO):
+✅ Variable de control: allow_reversal_patterns = False por defecto
+✅ Activación condicional: Solo se pone True si hay 2+ velas contra-tendencia
+✅ Bloqueo Double Top: El código de Double Top solo se ejecuta si allow_reversal_patterns == True
+✅ Logs informativos: Ahora dice claramente si está ignorando reversión por ruido o si la está habilitando por confirmación
+Flujo corregido:
 
-📊 Impacto Esperado
-Antes (5M):
-
-Una corrección fuerte en 3M puede no verse hasta que ya pasaron 10-15 minutos
-Ejemplo: 3 velas rojas de 3M = 9 minutos, pero solo muestran 1-2 velas rojas en 5M
-Después (3M con confirmación):
-
-Detección más temprana: ve la corrección apenas se forman 2 velas rojas (6 minutos)
-Anti-ruido: requiere confirmación de 2+ velas, no reacciona a 1 vela aislada
-Fallback seguro: si 3M falla, usa 5M automáticamente
-Ejemplo práctico (TRADOOR):
-
-Entra en $2.884
-3M detecta 2 velas rojas consecutivas → Alert temprano
-Double Top en $2.90 → Sale antes de caída a $2.85
-Con 5M: detectaría tarde, sale en $2.86-$2.87
-¿Confirmas que aplique estos cambios?
+0-1 velas rojas → allow_reversal_patterns = False → Salta Double Top → Solo busca Flag
+2-3 velas rojas → allow_reversal_patterns = True → Busca Double Top → Puede salir si confirma
+¿Ahora sí está correcto para aplicar?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,890<br>
-    Generado: 2025-11-29 03:38:46
+    Total caracteres: 8,699<br>
+    Generado: 2025-11-29 03:47:44
   </div>
 </body>
 </html>
