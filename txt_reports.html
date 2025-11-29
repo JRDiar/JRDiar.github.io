@@ -15,615 +15,1015 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-29 11:41:33</div>
+  <div class="meta">Última actualización: 2025-11-29 11:46:53</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Te paso todos los chats hasta el final para que tengas toda la pelicula de lo que paso hasta que el chat se lleno.
-
-Ya puse el fix, lo que veo es que bot no esta respetando el ADX y Momentum, después del fix veo que sigue el bot teniendo problemas de detección de fuerza del mercado, necesito que eso funcione, algo esta mal ahí en la configuración, te paso la imagen de mi estrategia y un analisis de las monedas que opero el bot actualmente. Resultados de los primeros trades: Rendimiento de Sesión
-Trades: 8
-PnL Neto
-$-5.36
-Balance Final
-Win Rate
-25.0%
-Acierto
-Profit Factor
-0.33
-Gross Profit / Loss
-Max Drawdown
-$-6.61
-Peor caída
-Distribución Win/Loss
-Composición PnL
-Curva de PnL (Tendencia)
-📜 Historial de Operaciones
-Orden: Más reciente primero
-EntradaSalidaSímboloDirPrecios (In -&gt; Out)PnL %PnL $DuraciónRazón SalidaScoreLinks18:13:1518:23:26DOGS/USDT:USDTBULLISH$0.0001 ➝ $0.0001-0.38%$-1.2810.2 minSalida inteligente (Req:2): Desaceleración, Volumen bajo85📈 TV | 💰 MEXC17:41:5017:59:03ETHFI/USDT:USDTBULLISH$0.8084 ➝ $0.8070-0.17%$-0.5817.2 minPatrón de Reversión Detectado76📈 TV | 💰 MEXC11:38:3311:38:54SOL/USDT:USDTBULLISH$142.6200 ➝ $142.5800-0.03%$-0.090.3 minPatrón de Reversión Detectado99📈 TV | 💰 MEXC11:02:5911:03:131INCH/USDT:USDTBULLISH$0.2039 ➝ $0.2040+0.05%+$0.160.2 minPatrón de Reversión Detectado100📈 TV | 💰 MEXC10:54:5510:56:06TRADOOR/USDT:USDTBULLISH$2.3480 ➝ $2.3330-0.64%$-2.131.2 minPatrón de Reversión Detectado100📈 TV | 💰 MEXC10:25:1010:39:40BANANA/USDT:USDTBULLISH$9.3860 ➝ $9.2740-1.19%$-3.9814.5 minPatrón de Reversión Detectado92📈 TV | 💰 MEXC10:03:0010:03:01BANANA/USDT:USDTBULLISH$9.1910 ➝ $9.19100.00%$0.000.0 minStop loss92📈 TV | 💰 MEXC09:42:4309:43:58TURBO/USDT:USDTBULLISH$0.0024 ➝ $0.0024+0.76%+$2.531.2 minPatrón de Reversión Detectado100 Gracias.
-
-Mostrar más
-
-Identificó fallas en detección de fuerza del mercado y propuso mejoras.
-20s
-
-
-
-
-
-
-
-
-
-
-Analizo las imágenes. El problema es claro:
-
-DOGS (Imagen 2) - Por qué NO debió entrar:
-
-TF	Problema Real
-5M	ADX líneas PEGADAS (sin separación = sin fuerza)
-15M	Momentum ROJO (debe ser VERDE), ADX rojo abajo
-Tu estrategia (Imagen 1):
-
-ADX+ y ADX negro deben estar SEPARADOS y SUBIENDO JUNTOS
-Momentum 15M debe ser VERDE para confirmar tendencia
-El bug: check_market_force() solo valida 1H, pero NO valida:
-
-Separación ADX en 15M (líneas pegadas = ruido)
-Momentum 15M VERDE obligatorio
-Spread CRECIENDO (no solo que sea &gt; 5)
-PROMPT #15 - Fortalecer validación de fuerza en 15M
-
-CONTEXTO: El bot entra en trades sin fuerza real. Ejemplo DOGS: ADX líneas pegadas en 5M, momentum ROJO en 15M. El bot debería haber esperado.
-
-PROBLEMA: check_market_force() solo valida 1H. No valida 15M obligatoriamente.
-
-TAREA: Modificar check_market_force() en brain_intelligent.py para agregar validación de 15M OBLIGATORIA:
-
-LÓGICA A AGREGAR (después de validar 1H, antes de return):
-
-1. Obtener a15m del ladder
-2. Verificar momentum 15M:
-   - mom_15m.get('color_current') debe ser 'green' o 'lime'
-   - Si es 'red', 'maroon' o 'gray' → NO activar Market Force
-3. Verificar separación ADX 15M:
-   - di_spread_15m = di_plus_15m - di_minus_15m
-   - Si di_spread_15m &lt; 3.0 → NO activar Market Force (líneas pegadas)
-4. Agregar razón descriptiva cuando falla
-
-INSTRUCCIONES:
-1. Mostrame el código ACTUAL del return final de check_market_force() (últimas 20 líneas)
-2. Mostrame el código PROPUESTO con validación 15M antes del return
-3. NO apliques hasta que confirme
-Además, los trades de 0.2-1.2 min (SOL, 1INCH, TRADOOR) todavía muestran "Patrón de Reversión". ¿Confirmás que el fix #14 ya está aplicado y funcionando? Los trades de ETHFI y DOGS son posteriores y muestran duraciones normales (10-17 min).
-
-
-Te paso el resto de los módulos, asi comprendes completamente el bot. Mientras lees la info que te paso voy subiendo el código propuesto para el prompt. Gracias. Link: https://jrdiar.github.io/txt_reports.html?v=20251128185913
-
-
-1 paso
-favicon
-
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-Identificó problemas del bot y aguarda código propuesto para revisar.
-10s
-
-
-
-
-Leído todo. Ahora tengo el mapa completo del bot (~4700 líneas).
-
-Confirmación del problema (análisis de DOGS):
-
-Indicador	Estado Real	Lo que bot debió ver
-ADX 5M	Líneas PEGADAS	❌ Sin separación = sin fuerza
-Momentum 15M	ROJO	❌ Debe ser VERDE para confirmar
-ZigZag 15M	No confirma tendencia	❌ Sin estructura alcista clara
-El bug está en check_market_force(): Solo valida 1H, pero tu estrategia exige:
-
-15M Momentum VERDE (obligatorio)
-15M Spread ADX &gt; 3 (líneas separadas)
-ADX y DI+ ambos CRECIENDO (acompañados)
-Pasame el código propuesto del Prompt #15 para revisarlo.
-
-Código propuesto, avisame si hay que hacerle un ajuste o confirmo: https://jrdiar.github.io/txt_reports.html?v=20251128190229 Gracias.
-
-
-1 paso
-favicon
-
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-Identificó bugs críticos en keys y estructura de retorno.
-11s
-
-
-
-
-
-
-
-
-
-
-2 BUGS detectados:
-
-Bug 1: Keys incorrectas de DI
-
-python
-# ACTUAL (incorrecto)
-di_plus = adx_data_15m.get('di_plus', 0)
-di_minus = adx_data_15m.get('di_minus', 0)
-
-# CORRECTO (según brain_calculator.py)
-di_plus = adx_data_15m.get('di_plus_current', 0)
-di_minus = adx_data_15m.get('di_minus_current', 0)
-Bug 2: Key de return inconsistente
-
-El código propuesto usa 'active' pero la función real usa 'detected':
-
-python
-# PROPUESTO (incorrecto)
-return {'active': True, 'score': ...}
-
-# CORRECTO (según check_market_force actual)
-return {'detected': True, 'score': ...}
-Pedile a Sonnet que corrija estos 2 puntos y te muestre el código final. Después apruebo.
-
-
-Código final: https://jrdiar.github.io/txt_reports.html?v=20251128190753
-
-
-1 paso
-favicon
-
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-Verified bug fixes and validated code insertion placement.
-
-
-
-
-
-
-
-APROBADO ✅
-
-Ambas correcciones aplicadas:
-
-di_plus_current / di_minus_current ✓
-detected en lugar de active ✓
-Que aplique.
-
-Esto debería bloquear entradas tipo DOGS donde 1H parecía OK pero 15M tenía:
-
-Momentum rojo
-ADX líneas pegadas (spread &lt; 3)
-Probá y reportame si el bot ahora muestra mensajes como "Market Force REJECTED: 15M Momentum is red".
-
-El bot funciona super mal, el adx y momentum estan peor que antes, necesito que leas lo que sugieren Sonnet y Gemini de antigravity. Link: https://jrdiar.github.io/txt_reports.html?v=20251129012419 Gracias.
-
-
-1 paso
-favicon
-
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-Analizó conflictos de filtros y priorizó desactivar bloqueos excesivos.
-13s
-
-
-
-
-
-
-
-
-
-Leí todo. Gemini y Sonnet tienen razón. El problema es una cadena de bloqueos excesivos:
-
-DIAGNÓSTICO TRADOOR (Score 95, NO ENTRA):
-
-TF	Estado	Problema
-4H	ADX 32.8 ↗️, Mom LIME 8v	✅ Perfecto
-1H	ADX 69.9, Mom LIME	✅ Perfecto
-15M	ADX 20.8 ↘️, Mom NEUTRAL	❌ Bloquea validate_5m
-5M	ADX 19.8 ↘️	❌ Bloquea validate_5m
-3 BUGS identificados por Gemini + Sonnet:
-
-BUG 1 (Gemini): Squeeze bloquea momentum
-
-python
-# brain_calculator.py - calculate_momentum_with_memory()
-if sqzOn.iloc[-1]:
-    return {'color_current': 'neutral', ...}  # BORRA el valor real
-Fix: No retornar temprano, solo marcar squeeze_active: True
-
-BUG 2 (Sonnet): validate_5m exige ADX creciendo siempre
-
-python
-# brain_analyzer.py
-adx_ok = (adx_trend == 'creciendo' and di_trend == 'creciendo')
-Fix: Permitir adx_current &gt; 40 aunque decrezca (fuerza brutal)
-
-BUG 3 (Mi Prompt #15): Exige 15M verde + spread &gt; 3 para Market Force Esto bloquea cuando 1H/4H tienen fuerza brutal pero 15M está consolidando (normal después de impulso).
-
-PRIORIDAD DE FIXES:
-
-BUG 1 - Squeeze momentum (más crítico)
-BUG 2 - validate_5m flexible
-BUG 3 - Bypass mi Prompt #15 si 1H ADX &gt; 50
-¿Querés que te pase los 3 prompts quirúrgicos en orden, o preferís que Sonnet aplique directamente las soluciones que ya propuso?
-
-
-Quiero el prompt quirúrgico, que el promt tenga time ladder, que pase el código propuesto por las dudas o si vos decis que esta bien, le digo que aplique el correctivo. Que decis?
-
-
-Diseñó prompt quirúrgico integrado con Time Ladder y código correctivo.
-
-
-Las soluciones de Gemini y Sonnet son correctas. Te paso el prompt integrado:
-
-PROMPT #16 - FIX CRÍTICO: Time Ladder Bloqueado
-
-CONTEXTO: El bot tiene score 95 en TRADOOR pero NO ENTRA porque:
-1. Squeeze borra momentum real (devuelve NEUTRAL aunque histograma es verde)
-2. validate_5m exige ADX creciendo (imposible después de impulso 1H ADX 69)
-3. Market Force exige 15M verde + spread &gt; 3 (bloquea consolidaciones normales)
-
-FILOSOFÍA TIME LADDER: La fuerza viene de 4H→1H. Si 1H tiene ADX &gt; 50, el 15M puede estar consolidando (es NORMAL). El bot debe respetar la jerarquía: 4H/1H mandan, 15M/5M solo confirman timing.
-
-TAREA: Aplicar 3 fixes quirúrgicos.
-
-=== FIX 1: brain_calculator.py - calculate_momentum_with_memory() ===
-
-BUSCAR (aprox línea 280):
-```python
-# 3. Squeeze Detection
-sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
-if sqzOn.iloc[-1]:
-    return {
-        'color_current': 'neutral',
-        'color_history': [],
-        'consecutive_count': 0,
-        'strength': 'débil',
-        'value': 0.0,
-        'squeeze_active': True
-    }
-```
-
-REEMPLAZAR POR:
-```python
-# 3. Squeeze Detection (NO bloquear, solo marcar)
-sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
-squeeze_active = bool(sqzOn.iloc[-1])
-# NOTA: Continuar calculando momentum aunque haya squeeze
-# El squeeze indica consolidación pero el momentum sigue siendo válido
-```
-
-=== FIX 2: brain_analyzer.py - validate_5m_entry_conditions() ===
-
-BUSCAR (aprox línea 1160):
-```python
-# B. ADX Accompanied (Fuerza + Dirección)
-adx_trend = adx_data['adx_trend']
-di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
-adx_ok = (adx_trend == 'creciendo' and di_trend == 'creciendo')
-```
-
-REEMPLAZAR POR:
-```python
-# B. ADX Accompanied (Fuerza + Dirección) - FLEXIBLE
-adx_trend = adx_data['adx_trend']
-adx_current = adx_data['adx_current']
-di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
-# TIME LADDER: Permitir si ADX alto aunque decrezca (post-impulso normal)
-adx_ok = (
-    (adx_trend == 'creciendo' and di_trend == 'creciendo') or  # Ideal
-    (adx_current &gt; 25 and di_trend == 'creciendo') or  # ADX alto + DI subiendo
-    (adx_current &gt; 35)  # ADX muy alto = fuerza brutal (bypass)
-)
-```
-
-=== FIX 3: brain_intelligent.py - check_market_force() ===
-
-BUSCAR el bloque que agregamos (Prompt #15):
-```python
-# 1. Momentum 15M (Debe ser verde)
-mom_15m = a15m.get('momentum', {})
-mom_color = mom_15m.get('color_current', 'gray')
-if mom_color not in ['green', 'lime']:
-    return {
-        'detected': False,
-        'score': 0,
-        'reason': f"Market Force REJECTED: 15M Momentum is {mom_color} (Need Green/Lime)"
-    }
-```
-
-REEMPLAZAR POR:
-```python
-# 1. Momentum 15M (Flexible si 1H es brutal)
-mom_15m = a15m.get('momentum', {})
-mom_color = mom_15m.get('color_current', 'gray')
-
-# TIME LADDER: Si 1H ADX &gt; 50, bypass 15M momentum (consolidación post-impulso)
-if mom_color not in ['green', 'lime']:
-    if adx_val_1h &gt; 50:
-        print(f"  🔓 15M Momentum BYPASS: 1H ADX {adx_val_1h:.1f} &gt; 50 (brutal force)")
-    else:
-        return {
-            'detected': False,
-            'score': 0,
-            'reason': f"Market Force REJECTED: 15M Momentum is {mom_color} (Need Green/Lime)"
-        }
-```
-
-INSTRUCCIONES:
-1. Mostrame cada bloque ACTUAL vs PROPUESTO
-2. NO apliques hasta que confirme
-¿Le paso este prompt a Sonnet?
-
-
-Esto es crítico, no voy a dejar de corregir esto hasta que funcione bien, el ADX y Momentum es el corazón de la estrategia, si no funcionan estos indicadores nada sirve. Link codigo propuesto por Sonnet segun el ultimo prompt que enviaste: https://jrdiar.github.io/txt_reports.html?v=20251129015836
-
-
-1 paso
-favicon
-
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-Validó tres correcciones de código, aprobó conceptualmente aunque identificó limitaciones potenciales.
-13s
-
-
-
-
-
-
-
-
-
-
-
-
-APROBADO ✅
-
-Los 3 fixes están correctos:
-
-Fix	Módulo	Cambio
-#1	brain_calculator.py	Squeeze no bloquea, solo marca flag
-#2	brain_analyzer.py	ADX &gt; 35 = bypass aunque decrezca
-#3	brain_intelligent.py	1H ADX &gt; 50 = bypass 15M momentum
-Que aplique los 3.
-
-Después de aplicar, TRADOOR debería pasar porque:
-
-1H ADX 69.9 &gt; 50 → bypass momentum 15M neutral
-Squeeze no borra momentum 4H (8 velas LIME)
-Probá y reportame resultados.
-
-Encontre otro problema, en 5 minutos parece que no pasaba nada con la moneda TIA pero a nivel más micro en cuanto a temporalidad, en este caso 3 minutos estaba en plena corrección, al ver en esa corrección una vela roja larga el trade salio, conclusión en vez de 5 minutos se podrá usar 3 o es mucho ruido? hay que ser inteligentes, el tema es que a menor temporalidad mejor detalle tenes de lo que pasa en el mercado, en 5 minutos no vi eso.
-
-
-Evaluó ventajas y desventajas de cambiar temporalidad.
-
-
-
-
-
-
-
-
-Análisis 3M vs 5M:
-
-Aspecto	3M	5M
-Detalle	✅ Más granular	❌ Pierde micro-movimientos
-Ruido	❌ Más falsas señales	✅ Más estable
-ADX/Momentum	❌ Menos precisos (menos data)	✅ Más confiables
-Whipsaws	❌ Más frecuentes	✅ Menos
-Mi recomendación: No cambiar a 3M para TODO. El problema real es que detect_live_pattern() en brain_executor.py reacciona a UNA vela roja sin contexto.
-
-Solución inteligente: Usar 3M SOLO para monitoreo de trades activos (salidas), no para entrada.
-
-PROMPT #17 - Monitoreo híbrido 5M entrada / 3M salida
-
-CONTEXTO: El bot usa 5M para todo. Problema: una corrección visible en 3M no se ve en 5M, causando salidas tardías o sorpresivas.
-
-TAREA: En monitor_active_trades() de brain_executor.py, agregar fetch de 3M SOLO para detect_live_pattern().
-
-LÓGICA:
-1. Mantener 5M para todo el análisis principal
-2. Para detect_live_pattern(), usar 3M (más granular)
-3. Pero exigir 2+ velas rojas en 3M, no solo 1 (evitar ruido)
-
-¿Querés que desarrolle este prompt completo?
-¿O preferís probar primero los 3 fixes anteriores y ver cómo se comporta antes de agregar más cambios?
-
-
-Apliquemos tu prompt y vemos como se comporta. Pasame todo el prompt y siempre pedi el código propuesto y el código que se va a reemplazar en caso que exista un código a reemplazar. Gracias.
-
-
-Preparó prompt completo con instrucciones claras para implementación.
-
-PROMPT #17 - Monitoreo híbrido 5M/3M para salidas
-
-CONTEXTO: El bot usa 5M para monitorear trades activos. Problema: correcciones visibles en 3M no se detectan en 5M, causando sorpresas. Una vela roja grande en 3M puede indicar reversión que 5M aún no muestra.
-
-FILOSOFÍA: Entrada con 5M (estable), monitoreo de salida con 3M (granular). Pero exigir confirmación para evitar ruido.
-
-TAREA: Modificar monitor_active_trades() en brain_executor.py para usar 3M en detect_live_pattern().
-
-=== CAMBIO 1: Agregar fetch 3M en monitor_active_trades() ===
-
-BUSCAR en monitor_active_trades() (aprox línea 320):
-```python
-for symbol, trade_data in trades_snapshot:
-    # Fetch precio actual
-    ohlcv = fetch_ohlcv(symbol, '5m', 50)
-    if not ohlcv:
-        continue
-    current_price = ohlcv[-1][4]
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-```
-
-REEMPLAZAR POR:
-```python
-for symbol, trade_data in trades_snapshot:
-    # Fetch precio actual (5M para análisis general)
-    ohlcv_5m = fetch_ohlcv(symbol, '5m', 50)
-    if not ohlcv_5m:
-        continue
-    current_price = ohlcv_5m[-1][4]
-    df = pd.DataFrame(ohlcv_5m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+def calculate_zigzag(df, percent=None, threshold_pct=None):
+    """
+    Calcula los puntos ZigZag y la ESTRUCTURA DE MERCADO (HH, HL, LH, LL).
     
-    # Fetch 3M para detección de patrones (más granular)
-    ohlcv_3m = fetch_ohlcv(symbol, '3m', 30)
-    df_3m = pd.DataFrame(ohlcv_3m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']) if ohlcv_3m else df
-```
+    Args:
+        percent/threshold_pct: Porcentaje mínimo de reversión.
+        
+    Returns:
+        dict: {
+            'pivots': list of indices,
+            'values': list of prices,
+            'pivot_types': list of strings (HH, HL, LH, LL, N/A),
+            'last_structure': str (Resumen, e.g., "HH -&gt; HL")
+        }
+    """
+    # Aceptar ambos nombres de parámetro
+    pct = threshold_pct if threshold_pct is not None else (percent if percent is not None else 5)
+    
+    if len(df) &lt; 2:
+        return {'pivots': [], 'values': [], 'pivot_types': [], 'last_structure': "N/A"}
+        
+    close = df['close'].values
+    pivots = [0]
+    values = [close[0]]
+    last_pivot = close[0]
+    direction = 0  # 0: indefinido, 1: arriba, -1: abajo
+    
+    # 1. Identificar Pivotes
+    for i in range(1, len(close)):
+        change = (close[i] - last_pivot) / last_pivot * 100
+        if direction == 0:
+            if abs(change) &gt;= pct:
+                direction = 1 if change &gt; 0 else -1
+                pivots.append(i)
+                values.append(close[i])
+                last_pivot = close[i]
+        else:
+            if (direction == 1 and close[i] &lt; last_pivot * (1 - pct/100)) or \
+               (direction == -1 and close[i] &gt; last_pivot * (1 + pct/100)):
+                direction *= -1
+                pivots.append(i)
+                values.append(close[i])
+                last_pivot = close[i]
 
-=== CAMBIO 2: Usar df_3m en detect_live_pattern() ===
-
-BUSCAR (aprox línea 330):
-```python
-# ORQUESTADOR INTELIGENTE
-orch_action = self.orchestrate_trade_management(symbol, trade_data, current_price, df)
-```
-
-REEMPLAZAR POR:
-```python
-# ORQUESTADOR INTELIGENTE (usa 3M para detección más granular)
-orch_action = self.orchestrate_trade_management(symbol, trade_data, current_price, df_3m)
-```
-
-=== CAMBIO 3: Exigir 2+ velas rojas en detect_live_pattern() ===
-
-BUSCAR en detect_live_pattern() (aprox línea 260):
-```python
-def detect_live_pattern(self, df, trade_data):
-    """Detecta patrones en vivo durante el trade (NUEVO)"""
-    try:
-        # 0. PERIODO DE GRACIA (5 min)
-```
-
-AGREGAR DESPUÉS del período de gracia:
-```python
-        # 0.5 CONFIRMACIÓN ANTI-RUIDO (3M)
-        # Exigir 2+ velas rojas consecutivas antes de considerar reversión
-        if len(df) &gt;= 3:
-            last_3_closes = df['close'].values[-3:]
-            last_3_opens = df['open'].values[-3:]
-            red_count = sum(1 for c, o in zip(last_3_closes, last_3_opens) if c &lt; o)
+    # 2. Clasificar Estructura (HH, HL, LH, LL)
+    pivot_types = ["Start"] * len(values)
+    if len(values) &gt;= 2:
+        last_high = None
+        last_low = None
+        
+        # Determinar si el primer movimiento fue High o Low
+        # Si values[1] &gt; values[0], el 1 es un High
+        
+        for i in range(1, len(values)):
+            curr_val = values[i]
+            prev_val = values[i-1]
             
-            # Si solo 1 vela roja, ignorar (ruido normal)
-            if red_count &lt; 2:
-                # No es reversión confirmada, continuar sin detectar patrón
-                pass  # Permite continuar a Flag detection
+            is_high = False
+            is_low = False
+            
+            # En ZigZag, los puntos alternan.
+            # Si values[i] &gt; values[i-1], entonces 'i' es un pico (High)
+            # Si values[i] &lt; values[i-1], entonces 'i' es un valle (Low)
+            
+            if curr_val &gt; prev_val:
+                is_high = True
             else:
-                print(f"  ⚠️ 3M: {red_count} velas rojas consecutivas detectadas")
-```
+                is_low = True
+                
+            type_str = ""
+            if is_high:
+                if last_high is None: type_str = "H"
+                elif curr_val &gt; last_high: type_str = "HH" # Higher High
+                elif curr_val &lt; last_high: type_str = "LH" # Lower High
+                else: type_str = "DH" # Double High
+                last_high = curr_val
+            elif is_low:
+                if last_low is None: type_str = "L"
+                elif curr_val &gt; last_low: type_str = "HL" # Higher Low
+                elif curr_val &lt; last_low: type_str = "LL" # Lower Low
+                else: type_str = "DL" # Double Low
+                last_low = curr_val
+            
+            pivot_types[i] = type_str
 
-INSTRUCCIONES:
-1. Mostrame el código ACTUAL de cada sección
-2. Mostrame el código PROPUESTO
-3. NO apliques hasta que confirme
-Pasale esto a Sonnet.
+    # 3. Resumen de última estructura
+    last_structure = "Indefinido"
+    if len(pivot_types) &gt;= 2:
+        # Tomar los últimos 2 tipos significativos
+        last_structure = f"{pivot_types[-2]} -&gt; {pivot_types[-1]}"
 
+    return {
+        'pivots': pivots, 
+        'values': values, 
+        'pivot_types': pivot_types, 
+        'last_structure': last_structure
+    }
+"""
+brain_calculator.py - Módulo de Análisis Técnico con Memoria Temporal
+======================================================================
 
-https://jrdiar.github.io/txt_reports.html?v=20251129033852
+FILOSOFÍA:
+Cada indicador retorna HISTORIA + TENDENCIA, no solo valor puntual.
+Bot inteligente que analiza EVOLUCIÓN temporal, no snapshots binarios.
 
+ESTRUCTURA:
+1. Indicadores con Memoria (ADX, DI+/DI-, Momentum, RSI, EMAs)
+2. Análisis de Patrones (HH/LL, Zig Zag)
+3. Zonas y Niveles (SR, Volume Profile, Fibonacci)
+"""
 
-1 paso
-favicon
-
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-Identified logic gap in code implementation and flagged potential bug.
-35s
-
-
-
-
-
-
-
-
-
-
-
-
-Hay 1 bug lógico:
-
-El código imprime el warning pero no bloquea la detección de Double Top cuando hay pocas velas rojas. Debería:
-
-python
-# ACTUAL PROPUESTO (solo imprime):
-if red_count &gt;= 2:
-    print(f"  ⚠️ 3M REVERSIÓN...")
-# Continúa a Double Top siempre...
-
-# CORRECTO (bloquea Double Top si no hay confirmación):
-if red_count &lt; 2:
-    # Solo 0-1 vela roja = ruido, NO buscar patrones de reversión
-    # Saltar directamente a Flag Pattern (continuación)
-    pass
-else:
-    print(f"  ⚠️ 3M REVERSIÓN: {red_count}/3 velas rojas - buscando Double Top")
-Pedile que agregue lógica para saltar Double Top si red_count &lt; 2. De lo contrario el código solo agrega logs pero sigue saliendo por Double Top con 1 sola vela roja.
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from brain_config import BB_LENGTH, BB_MULT, KC_LENGTH, KC_MULT, USE_TRUE_RANGE
 
 
-Siempre le voy a pedir código antes de confirmar: https://jrdiar.github.io/txt_reports.html?v=20251129034750
+# ================================================================================
+# FUNCIONES AUXILIARES
+# ================================================================================
+
+def calculate_linear_regression_slope(values):
+    """
+    Calcula pendiente de regresión lineal simple
+    
+    Args:
+        values: Lista de valores (últimas N velas)
+        
+    Returns:
+        float: Pendiente (slope)
+    """
+    n = len(values)
+    if n &lt; 2:
+        return 0.0
+    
+    x = np.arange(n)
+    y = np.array(values)
+    
+    # y = mx + b → m = (n*Σxy - Σx*Σy) / (n*Σx² - (Σx)²)
+    x_mean = np.mean(x)
+    y_mean = np.mean(y)
+    
+    numerator = np.sum((x - x_mean) * (y - y_mean))
+    denominator = np.sum((x - x_mean) ** 2)
+    
+    if denominator == 0:
+        return 0.0
+    
+    slope = numerator / denominator
+    return slope
 
 
-1 paso
-favicon
-
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-El código está correcto ahora. La lógica:
-
-
-
-APROBADO ✅
-
-La lógica está correcta:
-
-Velas Rojas	allow_reversal_patterns	Double Top
-0-1	False	❌ Salta
-2-3	True	✅ Busca
-Que aplique ambos cambios.
-
-Hola! Una vez más el ADX y Momentum no funcionan, estoy desalentado porque no podemos avanzar, siempre estamos estancados en el mismo lugar, mi idea es hacer un cambio estructural en el módulo de indicadores y toma de decisiones de entrada, hacerlo todo mas granular, que cada indicador tenga una capa, que exista un nuevo modulo que se llame brain_think que va a ser el encargado de supervisar la entrada y ver que cada capa de cada indicador cumpla los requisitos de entrada. Resumiendo hay que desmenuzar el problema, dividirlo por capas y tomar decisiones de entrada por cada capa, que analice uno por uno todo y una vez tomada la decisión entrar, darle una mente de un verdadero francotirador hacerlo super inteligente. Link de resultados y datos detallados de horas de proceso con la última actualización que se hizo en el bot, te paso todos estos datos para ver si es que encontras alguna falla en la configuración, algo que haga que no podamos avanzar. Muchas gracias: https://jrdiar.github.io/txt_reports.html?v=20251129112849
+def classify_trend(slope, threshold=0.3):
+    """
+    Clasifica tendencia según pendiente
+    
+    Args:
+        slope: Pendiente calculada
+        threshold: Umbral para considerar creciendo/decreciendo
+        
+    Returns:
+        str: 'creciendo', 'decreciendo', 'estable'
+    """
+    if slope &gt; threshold:
+        return 'creciendo'
+    elif slope &lt; -threshold:
+        return 'decreciendo'
+    else:
+        return 'estable'
 
 
-Pensando en rediseñar la arquitectura modular del bot de trading, analizando datos de rendimiento para identificar fallos de configuración.
+def calculate_velocity(df, lookback=10):
+    """
+    Calcula velocidad de precio con memoria temporal
+    
+    Args:
+        df: DataFrame con columna 'close'
+        lookback: Velas a analizar
+        
+    Returns:
+        dict: {
+            'velocity_current': float (cambio precio por vela),
+            'velocity_history': [list últimos lookback],
+            'trend': 'acelerando'/'desacelerando'/'constante'
+        }
+    """
+    if len(df) &lt; lookback + 1:
+        return {
+            'velocity_current': 0.0,
+            'velocity_history': [],
+            'trend': 'constante'
+        }
+    
+    prices = df['close'].values
+    velocities = []
+    
+    # Calcular velocidad para cada par de velas
+    for i in range(len(prices) - lookback, len(prices)):
+        if i &gt; 0:
+            vel = prices[i] - prices[i-1]
+            velocities.append(vel)
+    
+    velocity_current = velocities[-1] if velocities else 0.0
+    
+    # Calcular tendencia (velocidad creciendo/decreciendo)
+    if len(velocities) &gt;= 3:
+        # Pendiente de las velocidades
+        x = list(range(len(velocities)))
+        y = velocities
+        n = len(x)
+        
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(x[i] * y[i] for i in range(n))
+        sum_x2 = sum(x[i] ** 2 for i in range(n))
+        
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
+        
+        if slope &gt; 0.0001:
+            trend = 'acelerando'
+        elif slope &lt; -0.0001:
+            trend = 'desacelerando'
+        else:
+            trend = 'constante'
+    else:
+        trend = 'constante'
+    
+    return {
+        'velocity_current': velocity_current,
+        'velocity_history': velocities,
+        'trend': trend
+    }
 
-favicon
 
-Se obtuvo 📋 Comunicación Claude - Bot Phase 3.5
-github.io
+def calculate_acceleration(df, lookback=5):
+    """
+    Calcula aceleración (cambio de velocidad) con memoria temporal
+    
+    Args:
+        df: DataFrame con columna 'close'
+        lookback: Velas a analizar
+        
+    Returns:
+        dict: {
+            'acceleration_current': float (cambio de velocidad),
+            'acceleration_history': [list],
+            'trend': 'aumentando'/'disminuyendo'/'constante'
+        }
+    """
+    if len(df) &lt; lookback + 2:
+        return {
+            'acceleration_current': 0.0,
+            'acceleration_history': [],
+            'trend': 'constante'
+        }
+    
+    # Primero calcular velocidades
+    velocity_data = calculate_velocity(df, lookback=lookback + 1)
+    velocities = velocity_data['velocity_history']
+    
+    if len(velocities) &lt; 2:
+        return {
+            'acceleration_current': 0.0,
+            'acceleration_history': [],
+            'trend': 'constante'
+        }
+    
+    # Calcular aceleración (cambio de velocidad)
+    accelerations = []
+    for i in range(1, len(velocities)):
+        accel = velocities[i] - velocities[i-1]
+        accelerations.append(accel)
+    
+    acceleration_current = accelerations[-1] if accelerations else 0.0
+    
+    # Calcular tendencia
+    if len(accelerations) &gt;= 3:
+        x = list(range(len(accelerations)))
+        y = accelerations
+        n = len(x)
+        
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(x[i] * y[i] for i in range(n))
+        sum_x2 = sum(x[i] ** 2 for i in range(n))
+        
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
+        
+        if slope &gt; 0.0001:
+            trend = 'aumentando'
+        elif slope &lt; -0.0001:
+            trend = 'disminuyendo'
+        else:
+            trend = 'constante'
+    else:
+        trend = 'constante'
+    
+    return {
+        'acceleration_current': acceleration_current,
+        'acceleration_history': accelerations,
+        'trend': trend
+    }
 
-Hasta ahi llegamos, aca ya no te pude escribir más.
+
+# ================================================================================
+# SECCIÓN 1: INDICADORES BASE CON MEMORIA
+# ================================================================================
+
+def calculate_adx_with_memory(df, period=14, lookback=10):
+    """
+    ADX con Wilder's Smoothing EXACTO del Bot 3.5.
+    Retorna dict con valores actuales + memoria temporal.
+    """
+    df = df.copy()
+    n = len(df)
+    
+    if n &lt; period + 1:
+        return {
+            'adx_current': 0.0,
+            'adx_history': [],
+            'adx_trend': 'insuficiente',
+            'di_plus_current': 0.0,
+            'di_plus_history': [],
+            'di_plus_trend': 'insuficiente',
+            'di_minus_current': 0.0,
+            'di_minus_history': [],
+            'di_minus_trend': 'insuficiente',
+            'dominance': 'neutral',
+            'spread': 0.0
+        }
+    
+    high = df['high'].values
+    low = df['low'].values
+    close = df['close'].values
+    
+    # 1. Calcular True Range y Directional Movements
+    tr = np.zeros(n)
+    dm_plus = np.zeros(n)
+    dm_minus = np.zeros(n)
+    
+    for i in range(1, n):
+        prev_close = close[i-1]
+        prev_high = high[i-1]
+        prev_low = low[i-1]
+        
+        # True Range (máximo de 3 valores)
+        tr1 = high[i] - low[i]
+        tr2 = abs(high[i] - prev_close)
+        tr3 = abs(low[i] - prev_close)
+        tr[i] = max(tr1, tr2, tr3)
+        
+        # Directional Movement
+        move_up = high[i] - prev_high
+        move_down = prev_low - low[i]
+        
+        if move_up &gt; move_down and move_up &gt; 0:
+            dm_plus[i] = move_up
+        else:
+            dm_plus[i] = 0
+            
+        if move_down &gt; move_up and move_down &gt; 0:
+            dm_minus[i] = move_down
+        else:
+            dm_minus[i] = 0
+    
+    # 2. Wilder's Smoothing MANUAL
+    smoothed_tr = np.zeros(n)
+    smoothed_dm_plus = np.zeros(n)
+    smoothed_dm_minus = np.zeros(n)
+    
+    for i in range(n):
+        if i &lt; period:
+            if i == period - 1:
+                # Primera suavización: suma de los primeros 'period' valores
+                smoothed_tr[i] = tr[:i+1].sum()
+                smoothed_dm_plus[i] = dm_plus[:i+1].sum()
+                smoothed_dm_minus[i] = dm_minus[:i+1].sum()
+            else:
+                smoothed_tr[i] = np.nan
+                smoothed_dm_plus[i] = np.nan
+                smoothed_dm_minus[i] = np.nan
+        else:
+            # Wilder's smoothing: prev - (prev/period) + current
+            smoothed_tr[i] = smoothed_tr[i-1] - (smoothed_tr[i-1] / period) + tr[i]
+            smoothed_dm_plus[i] = smoothed_dm_plus[i-1] - (smoothed_dm_plus[i-1] / period) + dm_plus[i]
+            smoothed_dm_minus[i] = smoothed_dm_minus[i-1] - (smoothed_dm_minus[i-1] / period) + dm_minus[i]
+    
+    # 3. Calcular DI+ y DI- (con protección contra división por cero)
+    di_plus = np.zeros(n)
+    di_minus = np.zeros(n)
+    for i in range(n):
+        if smoothed_tr[i] != 0 and not np.isnan(smoothed_tr[i]):
+            di_plus[i] = (smoothed_dm_plus[i] / smoothed_tr[i]) * 100
+            di_minus[i] = (smoothed_dm_minus[i] / smoothed_tr[i]) * 100
+        else:
+            di_plus[i] = np.nan
+            di_minus[i] = np.nan
+    
+    # 4. Calcular DX y ADX
+    dx = np.zeros(n)
+    for i in range(n):
+        denominator = di_plus[i] + di_minus[i]
+        if denominator != 0 and not np.isnan(denominator):
+            dx[i] = np.abs(di_plus[i] - di_minus[i]) / denominator * 100
+        else:
+            dx[i] = np.nan
+    
+    # ADX es la media móvil simple de DX
+    adx = np.zeros(n)
+    for i in range(n):
+        if i &lt; period * 2 - 1:
+            adx[i] = np.nan
+        elif i == period * 2 - 1:
+            # Calcular media ignorando NaN
+            valid_dx = dx[period:i+1]
+            valid_dx = valid_dx[~np.isnan(valid_dx)]
+            if len(valid_dx) &gt; 0:
+                adx[i] = np.nanmean(valid_dx)
+            else:
+                adx[i] = np.nan
+        else:
+            # Continuar con Wilder's smoothing para ADX también
+            if not np.isnan(adx[i-1]) and not np.isnan(dx[i]):
+                adx[i] = (adx[i-1] * (period - 1) + dx[i]) / period
+            else:
+                adx[i] = np.nan
+    
+    # 5. Extraer historia y calcular tendencias
+    start_idx = max(0, n - lookback)
+    
+    adx_history = [float(x) for x in adx[start_idx:n] if not np.isnan(x)]
+    di_plus_history = [float(x) for x in di_plus[start_idx:n] if not np.isnan(x)]
+    di_minus_history = [float(x) for x in di_minus[start_idx:n] if not np.isnan(x)]
+    
+    adx_current = float(adx[-1]) if not np.isnan(adx[-1]) else 0.0
+    di_plus_current = float(di_plus[-1]) if not np.isnan(di_plus[-1]) else 0.0
+    di_minus_current = float(di_minus[-1]) if not np.isnan(di_minus[-1]) else 0.0
+    
+    # 6. Determinar tendencias
+    def get_trend(history):
+        if len(history) &lt; 3:
+            return 'insuficiente'
+        if history[-1] &gt; history[-2] &gt; history[-3]:
+            return 'creciendo'
+        elif history[-1] &lt; history[-2] &lt; history[-3]:
+            return 'decreciendo'
+        else:
+            return 'estable'
+    
+    adx_trend = get_trend(adx_history)
+    di_plus_trend = get_trend(di_plus_history)
+    di_minus_trend = get_trend(di_minus_history)
+    
+    # 7. Dominancia y spread
+    spread = abs(di_plus_current - di_minus_current)
+    
+    if di_plus_current &gt; di_minus_current + 5:
+        dominance = 'DI+'
+    elif di_minus_current &gt; di_plus_current + 5:
+        dominance = 'DI-'
+    else:
+        dominance = 'neutral'
+    
+    return {
+        'adx_current': adx_current,
+        'adx_history': adx_history,
+        'adx_trend': adx_trend,
+        'di_plus_current': di_plus_current,
+        'di_plus_history': di_plus_history,
+        'di_plus_trend': di_plus_trend,
+        'di_minus_current': di_minus_current,
+        'di_minus_history': di_minus_history,
+        'di_minus_trend': di_minus_trend,
+        'dominance': dominance,
+        'spread': spread
+    }
+
+def calculate_volume_oscillator(df, short=5, long=10):
+    """
+    Volume Oscillator del Bot 3.5.
+    Detecta aceleración/desaceleración de volumen.
+    """
+    try:
+        volume = df['volume']
+        
+        # EMAs corta y larga del volumen
+        short_ema = volume.ewm(span=short, adjust=False).mean()
+        long_ema = volume.ewm(span=long, adjust=False).mean()
+        
+        # Oscilador: diferencia porcentual
+        vol_osc = ((short_ema - long_ema) / long_ema) * 100
+        
+        # Clasificar tendencia del volumen
+        vol_trend = []
+        for val in vol_osc:
+            if np.isnan(val):
+                vol_trend.append('NEUTRAL')
+            elif val &lt; -10:
+                vol_trend.append('DECLINING')
+            elif val &gt; 10:
+                vol_trend.append('RISING')
+            else:
+                vol_trend.append('NEUTRAL')
+        
+        return {
+            'oscillator_current': float(vol_osc.iloc[-1]) if not pd.isna(vol_osc.iloc[-1]) else 0.0,
+            'oscillator_history': vol_osc.tail(10).tolist(),
+            'trend_current': vol_trend[-1],
+            'trend_history': vol_trend[-10:]
+        }
+    except Exception as e:
+        return {
+            'oscillator_current': 0.0,
+            'oscillator_history': [],
+            'trend_current': 'NEUTRAL',
+            'trend_history': []
+        }
+
+def calculate_momentum_with_memory(df, lookback=10):
+    """
+    LazyBear Momentum EXACTO del 3.5 con regresión lineal manual.
+    Devuelve color, historia, fuerza y valores de bandas.
+    Requiere columnas: 'high', 'low', 'close'
+    """
+    df = df.copy()
+    n = len(df)
+    
+    if n &lt; max(BB_LENGTH, KC_LENGTH) + 2:
+        return {
+            'color_current': 'neutral',
+            'color_history': [],
+            'consecutive_count': 0,
+            'strength': 'débil',
+            'value': 0.0,
+            'squeeze_active': False
+        }
+    
+    source = df['close']
+    high = df['high']
+    low = df['low']
+    
+    # 1. Bollinger Bands
+    basis = source.rolling(BB_LENGTH).mean()
+    dev = BB_MULT * source.rolling(BB_LENGTH).std()
+    upperBB = basis + dev
+    lowerBB = basis - dev
+    
+    # 2. Keltner Channels
+    ma = source.rolling(KC_LENGTH).mean()
+    
+    if USE_TRUE_RANGE:
+        prev_close = source.shift(1)
+        tr1 = high - low
+        tr2 = abs(high - prev_close)
+        tr3 = abs(low - prev_close)
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        range_ma = true_range.rolling(KC_LENGTH).mean()
+    else:
+        range_ma = (high - low).rolling(KC_LENGTH).mean()
+    
+    upperKC = ma + range_ma * KC_MULT
+    lowerKC = ma - range_ma * KC_MULT
+    
+    # 3. Squeeze Detection (NO bloquear, solo marcar)
+    sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
+    squeeze_active = bool(sqzOn.iloc[-1])
+    # NOTA: Continuar calculando momentum aunque haya squeeze
+    # El squeeze indica consolidación pero el momentum sigue siendo válido
+    
+    # 4. Regresión Lineal MANUAL (LazyBear exacto)
+    highest_high = high.rolling(KC_LENGTH).max()
+    lowest_low = low.rolling(KC_LENGTH).min()
+    avg_hl = (highest_high + lowest_low) / 2
+    sma_close = source.rolling(KC_LENGTH).mean()
+    avg_combined = (avg_hl + sma_close) / 2
+    
+    momentum_values = []
+    for i in range(len(df)):
+        if i &lt; KC_LENGTH - 1:
+            momentum_values.append(np.nan)
+        else:
+            start_idx = i - KC_LENGTH + 1
+            end_idx = i + 1
+            y_values = (source.iloc[start_idx:end_idx] - avg_combined.iloc[start_idx:end_idx]).values
+            x_values = np.arange(KC_LENGTH)
+            x_mean = np.mean(x_values)
+            y_mean = np.mean(y_values)
+            
+            numerator = np.sum((x_values - x_mean) * (y_values - y_mean))
+            denominator = np.sum((x_values - x_mean) ** 2)
+            
+            if denominator != 0:
+                slope = numerator / denominator
+                val = slope * (KC_LENGTH - 1 - x_mean) + y_mean
+                momentum_values.append(val)
+            else:
+                momentum_values.append(0)
+    
+    momentum = pd.Series(momentum_values)
+    prev_momentum = momentum.shift(1)
+    
+    # 5. Colores LazyBear (lime/green/red/maroon)
+    color_conditions = []
+    for i in range(len(momentum)):
+        if pd.isna(momentum.iloc[i]) or pd.isna(prev_momentum.iloc[i]):
+            color_conditions.append('neutral')
+        elif momentum.iloc[i] &gt; 0:
+            if momentum.iloc[i] &gt; prev_momentum.iloc[i]:
+                color_conditions.append('lime')
+            else:
+                color_conditions.append('green')
+        else:
+            if momentum.iloc[i] &lt; prev_momentum.iloc[i]:
+                color_conditions.append('red')
+            else:
+                color_conditions.append('maroon')
+    
+    # 6. Historia y fuerza
+    start_idx = max(0, n - lookback)
+    color_history = color_conditions[start_idx:n]
+    color_current = color_conditions[-1]
+    
+    consecutive_count = 1
+    for i in range(len(color_history) - 2, -1, -1):
+        if color_history[i] == color_current:
+            consecutive_count += 1
+        else:
+            break
+    
+    if consecutive_count &gt;= 5:
+        strength = 'fuerte'
+    elif consecutive_count &gt;= 3:
+        strength = 'moderada'
+    else:
+        strength = 'débil'
+    
+    return {
+        'color_current': color_current,
+        'color_history': color_history,
+        'consecutive_count': consecutive_count,
+        'strength': strength,
+        'value': float(momentum.iloc[-1]),
+        'squeeze_active': squeeze_active
+    }
+
+def calculate_rsi_with_memory(df, period=14, lookback=10):
+    """
+    Calcula RSI con memoria temporal (Wilder's Smoothing exacto).
+    Devuelve dict con valor actual, historia y tendencia.
+    """
+    close = df['close'].values
+    n = len(close)
+    if n &lt; period + 1:
+        return {
+            'rsi_current': 0.0,
+            'rsi_history': [],
+            'rsi_trend': 'insuficiente'
+        }
+    deltas = np.diff(close)
+    seed = deltas[:period]
+    up = seed[seed &gt;= 0].sum() / period
+    down = -seed[seed &lt; 0].sum() / period
+    rs = up / down if down != 0 else 0
+    rsi = np.zeros(n)
+    rsi[:period] = np.nan
+    rsi[period] = 100. - 100. / (1. + rs)
+    up_avg = up
+    down_avg = down
+    for i in range(period + 1, n):
+        delta = deltas[i - 1]
+        upval = max(delta, 0)
+        downval = -min(delta, 0)
+        up_avg = (up_avg * (period - 1) + upval) / period
+        down_avg = (down_avg * (period - 1) + downval) / period
+        rs = up_avg / down_avg if down_avg != 0 else 0
+        rsi[i] = 100. - 100. / (1. + rs)
+    start_idx = max(0, n - lookback)
+    rsi_history = [float(x) for x in rsi[start_idx:n] if not np.isnan(x)]
+    rsi_current = float(rsi[-1]) if not np.isnan(rsi[-1]) else 0.0
+    # Tendencia simple
+    if len(rsi_history) &gt;= 3:
+        if rsi_history[-1] &gt; rsi_history[-2] &gt; rsi_history[-3]:
+            trend = 'creciendo'
+        elif rsi_history[-1] &lt; rsi_history[-2] &lt; rsi_history[-3]:
+            trend = 'decreciendo'
+        else:
+            trend = 'estable'
+    else:
+        trend = 'insuficiente'
+    return {
+        'rsi_current': rsi_current,
+        'rsi_history': rsi_history,
+        'rsi_trend': trend
+    }
+
+def calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10):
+    """
+    Calcula EMAs múltiples y su alineación.
+    Devuelve dict con valores actuales, historia y alineación.
+    """
+    result = {}
+    n = len(df)
+    if n &lt; max(periods) + 1:
+        return {
+            'emas': {},
+            'emas_history': {},
+            'emas_aligned': False,
+            'classification': 'N/A'
+        }
+    close = df['close']
+    emas = {}
+    emas_history = {}
+    for period in periods:
+        ema = close.ewm(span=period, adjust=False).mean()
+        emas[period] = float(ema.iloc[-1])
+        emas_history[period] = ema.tail(lookback).tolist()
+    # Alineación: bullish si EMA corta &gt; EMA larga para todos
+    aligned = all(emas[periods[i]] &gt; emas[periods[i+1]] for i in range(len(periods)-1))
+    # Clasificación simple
+    if aligned:
+        classification = 'CERCANAS'
+    else:
+        classification = 'SEPARADAS'
+    return {
+        'emas': emas,
+        'emas_history': emas_history,
+        'emas_aligned': aligned,
+        'classification': classification
+    }
+
+def detect_price_structure(df, lookback=20, pivot_window=5):
+    """
+    Detecta estructura de precio: pivotes altos/bajos (HH/HL/LH/LL).
+    Retorna dict con listas de pivotes y estructura dominante.
+    """
+    highs = df['high'].values[-lookback:]
+    lows = df['low'].values[-lookback:]
+    closes = df['close'].values[-lookback:]
+    pivot_highs = []
+    pivot_lows = []
+
+    for i in range(pivot_window, len(highs) - pivot_window):
+        window = highs[i - pivot_window:i + pivot_window + 1]
+        if highs[i] == max(window):
+            pivot_highs.append(highs[i])
+        window = lows[i - pivot_window:i + pivot_window + 1]
+        if lows[i] == min(window):
+            pivot_lows.append(lows[i])
+
+    # Clasificación simple de estructura
+    structure = 'INDETERMINADO'
+    if len(pivot_highs) &gt;= 2 and len(pivot_lows) &gt;= 2:
+        if pivot_highs[-1] &gt; pivot_highs[-2] and pivot_lows[-1] &gt; pivot_lows[-2]:
+            structure = 'BULLISH'
+        elif pivot_highs[-1] &lt; pivot_highs[-2] and pivot_lows[-1] &lt; pivot_lows[-2]:
+            structure = 'BEARISH'
+        else:
+            structure = 'LATERAL'
+
+    return {
+        'pivot_highs': pivot_highs,
+        'pivot_lows': pivot_lows,
+        'structure': structure
+    }
+
+def detect_support_resistance_with_memory(df, lookback=50, num_clusters=5):
+    """
+    Detección de soportes y resistencias por clustering de precios.
+    Retorna dict con listas de resistencias y soportes ordenadas por cercanía.
+    """
+    closes = df['close'].values[-lookback:]
+    if len(closes) &lt; 10:
+        return {'resistances': [], 'supports': []}
+
+    # Clustering simple por bins de precio
+    min_price = min(closes)
+    max_price = max(closes)
+    bin_size = (max_price - min_price) / num_clusters if num_clusters &gt; 0 else 1
+    bins = [min_price + i * bin_size for i in range(num_clusters + 1)]
+    counts = [0] * num_clusters
+    levels = [[] for _ in range(num_clusters)]
+
+    for price in closes:
+        for i in range(num_clusters):
+            if bins[i] &lt;= price &lt; bins[i+1]:
+                counts[i] += 1
+                levels[i].append(price)
+                break
+
+    # Soportes: bins con más toques en la parte baja
+    # Resistencias: bins con más toques en la parte alta
+    supports = []
+    resistances = []
+    for i in range(num_clusters):
+        if counts[i] &gt;= 2:  # Al menos 2 toques para considerar nivel
+            avg_level = sum(levels[i]) / len(levels[i])
+            if avg_level &lt; (min_price + max_price) / 2:
+                supports.append(avg_level)
+            else:
+                resistances.append(avg_level)
+
+    # Ordenar por cercanía al precio actual
+    current_price = closes[-1]
+    supports = sorted(supports, key=lambda x: abs(current_price - x))
+    resistances = sorted(resistances, key=lambda x: abs(current_price - x))
+
+    return {
+        'resistances': resistances,
+        'supports': supports
+    }
+
+
+def calculate_time_to_target(current_price, target_price, velocity, 
+                             acceleration=0.0, candle_duration_min=5):
+    """
+    Proyecta tiempo estimado para alcanzar target
+    
+    Args:
+        current_price: Precio actual
+        target_price: Precio objetivo
+        velocity: Velocidad actual (precio/vela)
+        acceleration: Aceleración (cambio velocidad)
+        candle_duration_min: Duración vela (default 5min para 5M)
+    
+    Returns:
+        int: Minutos estimados para alcanzar target (0-120 max)
+    """
+    try:
+        if velocity == 0 or velocity is None:
+            return None
+        
+        distance = abs(target_price - current_price)
+        
+        # Si aceleración positiva, tiempo menor
+        if acceleration &gt; 0:
+            effective_velocity = velocity * (1 + acceleration / 100)
+        else:
+            effective_velocity = velocity
+        
+        if effective_velocity &lt;= 0:
+            return None
+        
+        # Velas estimadas
+        estimated_candles = distance / abs(effective_velocity) if effective_velocity != 0 else float('inf')
+        
+        # Convertir a minutos
+        time_minutes = estimated_candles * candle_duration_min
+        
+        # Limitar a máximo 120 minutos (2 horas)
+        return min(int(time_minutes), 120) if time_minutes &lt; float('inf') else None
+    
+    except Exception as e:
+        print(f"❌ Error calculate_time_to_target: {e}")
+        return None
+
+
+def calculate_volume_profile_with_memory(df, num_levels=10, lookback=50):
+    """
+    Calcula Volume Profile (Perfil de Volumen)
+    
+    Args:
+        df: DataFrame con columnas ['close', 'volume']
+        num_levels: Cantidad de niveles de precio
+        lookback: Velas a analizar
+    
+    Returns:
+        dict: {
+            'poc_current': float (price of control - máximo volumen),
+            'poc_history': [últimos values],
+            'high_volume_nodes': [precios con alto volumen],
+            'low_volume_nodes': [precios con bajo volumen]
+        }
+    """
+    try:
+        if len(df) &lt; lookback:
+            lookback = len(df)
+        
+        # Últimas N velas
+        subset = df.tail(lookback).copy()
+        
+        # Crear bins de precio
+        min_price = subset['close'].min()
+        max_price = subset['close'].max()
+        
+        if min_price == max_price:
+            return {
+                'poc_current': float(min_price),
+                'poc_history': [float(min_price)],
+                'high_volume_nodes': [float(min_price)],
+                'low_volume_nodes': []
+            }
+        
+        # Crear niveles
+        bins = np.linspace(min_price, max_price, num_levels)
+        
+        # Contar volumen en cada nivel
+        volume_per_level = {}
+        for i, price_level in enumerate(bins):
+            tolerance = (max_price - min_price) / num_levels / 2
+            # Velas que cerraron cerca de este nivel
+            mask = (subset['close'] &gt;= price_level - tolerance) &amp; \
+                   (subset['close'] &lt;= price_level + tolerance)
+            vol = subset.loc[mask, 'volume'].sum()
+            volume_per_level[price_level] = vol
+        
+        # Point of Control (mayor volumen)
+        poc = max(volume_per_level, key=volume_per_level.get)
+        max_volume = volume_per_level[poc]
+        min_volume = min(volume_per_level.values())
+        
+        # Nodos de alto/bajo volumen
+        high_volume_threshold = min_volume + (max_volume - min_volume) * 0.7
+        low_volume_threshold = min_volume + (max_volume - min_volume) * 0.3
+        
+        high_volume_nodes = [price for price, vol in volume_per_level.items() if vol &gt; high_volume_threshold]
+        low_volume_nodes = [price for price, vol in volume_per_level.items() if vol &lt; low_volume_threshold]
+        
+        return {
+            'poc_current': float(poc),
+            'poc_history': [float(poc)],
+            'high_volume_nodes': [float(p) for p in high_volume_nodes],
+            'low_volume_nodes': [float(p) for p in low_volume_nodes],
+            'profile_high': float(max(high_volume_nodes)) if high_volume_nodes else float(max_price),
+            'profile_low': float(min(high_volume_nodes)) if high_volume_nodes else float(min_price)
+        }
+    
+    except Exception as e:
+        print(f"❌ Error calculate_volume_profile_with_memory: {e}")
+        return {
+            'poc_current': 0.0,
+            'poc_history': [],
+            'high_volume_nodes': [],
+            'low_volume_nodes': [],
+            'profile_high': 0.0,
+            'profile_low': 0.0
+        }
+
+def calculate_bollinger_bands(df, period=20, std_dev=2):
+    """
+    Calcula Bandas de Bollinger.
+    Returns dict with upper, middle, lower bands.
+    """
+    try:
+        close = df['close']
+        middle = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+        upper = middle + (std * std_dev)
+        lower = middle - (std * std_dev)
+        
+        return {
+            'upper': upper.fillna(0).tolist(),
+            'middle': middle.fillna(0).tolist(),
+            'lower': lower.fillna(0).tolist()
+        }
+    except Exception as e:
+        print(f"❌ Error calculate_bollinger_bands: {e}")
+        return {'upper': [], 'middle': [], 'lower': []}
+
+
+def calculate_atr(df, period=14):
+    """
+    Calcula el Average True Range (ATR).
+    
+    Args:
+        df: DataFrame con columnas 'high', 'low', 'close'
+        period: Período para el ATR (default 14)
+        
+    Returns:
+        float: Valor actual del ATR
+    """
+    try:
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        # Calculate True Range
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        # Calculate ATR using rolling mean (Simple Moving Average of TR)
+        # Note: Wilder's smoothing is more standard for ATR, but SMA is often used too.
+        # Using Wilder's Smoothing to match standard TradingView ATR
+        atr = tr.ewm(alpha=1/period, adjust=False).mean()
+        
+        return {
+            'atr_current': float(atr.iloc[-1]) if not pd.isna(atr.iloc[-1]) else 0.0,
+            'atr_history': atr.tail(10).tolist()
+        }
+        
+    except Exception as e:
+        print(f"❌ Error calculate_atr: {e}")
+        return {
+            'atr_current': 0.0,
+            'atr_history': []
+        }
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 19,844<br>
-    Generado: 2025-11-29 11:41:33
+    Total caracteres: 32,932<br>
+    Generado: 2025-11-29 11:46:53
   </div>
 </body>
 </html>
