@@ -15,333 +15,126 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-29 12:00:36</div>
+  <div class="meta">Última actualización: 2025-11-29 12:06:33</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-"""
-brain_think.py - El Francotirador Pensante
-===========================================
-Validación granular por capas antes de entrada.
-Cada capa debe pasar para activar trigger.
+Aquí tienes el código actual y la propuesta de integración del 
+sniper_checklist
+.
 
-CAPAS:
-1. ADX Layer - Fuerza del mercado
-2. Momentum Layer - Dirección y continuidad
-3. Structure Layer - Confirmación ZigZag
-4. Zone Layer - Posición en VP/ATR
-"""
-
-from brain_calculator import (
-    calculate_adx_with_memory,
-    calculate_momentum_with_memory,
-    calculate_zigzag,
-    calculate_volume_profile_with_memory,
-    calculate_atr
+📄 Código Actual (
+brain_executor_entry.py
 )
-from exchange_connection import fetch_ohlcv
-import pandas as pd
 
+"""
+🧠 HEMISFERIO IZQUIERDO - Entrada y Triggers
+TIME LADDER INTELLIGENCE SYSTEM
+Filosofía: Ver la película completa, no solo la foto
+"""
 
-def validate_adx_layer(symbol, tf='15m'):
-    """
-    CAPA 1: Validación ADX
-    Requisitos:
-    - ADX &gt;= 20 (fuerza mínima)
-    - Spread DI &gt; 5 (separación clara)
-    - ADX o DI+ creciendo (no muriendo)
+from brain_intelligent import decide_intelligently
+from brain_config import ARGENTINA_TZ
+from datetime import datetime
+from brain_watchlist import watchlist_manager
+from brain_analyzer import analyze_5m, analyze_15m
+
+def check_trigger_activated_intelligent(symbol, watchlist_data):
+    # ... (código existente) ...
     
-    Returns:
-        dict: {valid: bool, score: 0-25, reason: str, data: dict}
+        # ==============================================================================
+        # 0. SNIPER MODE CHECK (WAITING_REBOTE)
+        # ==============================================================================
+        # ... (lógica de rebote) ...
+        
+        # ==============================================================================
+
+        # Usar la inteligencia centralizada
+        decision = decide_intelligently(symbol)
+        
+        if decision['action'] == 'OPERAR':
+            # ...
+
+ódigo Propuesto (Con Integración Sniper)
+
+"""
+🧠 HEMISFERIO IZQUIERDO - Entrada y Triggers
+TIME LADDER INTELLIGENCE SYSTEM
+Filosofía: Ver la película completa, no solo la foto
+"""
+
+from brain_intelligent import decide_intelligently
+from brain_think import sniper_checklist  # &lt;--- NUEVO IMPORT
+from brain_config import ARGENTINA_TZ
+from datetime import datetime
+from brain_watchlist import watchlist_manager
+from brain_analyzer import analyze_5m, analyze_15m
+
+def check_trigger_activated_intelligent(symbol, watchlist_data):
     """
+    Sistema de decisión con Time Ladder completo
+    Delegado al módulo brain_intelligent.py (Single Source of Truth)
+    """
+    print(f"   🧠 TIME LADDER: Verificando trigger para {symbol}...")
+    
     try:
-        ohlcv = fetch_ohlcv(symbol, tf, 50)
-        if not ohlcv:
-            return {'valid': False, 'score': 0, 'reason': 'No data', 'data': {}}
+        # ==============================================================================
+        # 0. SNIPER MODE CHECK (WAITING_REBOTE)
+        # ==============================================================================
+        status = watchlist_data.get('status', 'MONITORING')
         
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+        if status == 'WAITING_REBOTE':
+            # ... (lógica existente de rebote) ...
+            pass
+
+        # ==============================================================================
+        # 0.5 SNIPER CHECKLIST (Validación por capas) - NUEVO
+        # ==============================================================================
+        # Antes de gastar recursos en análisis completo, pasamos el checklist rápido pero estricto
+        direction = watchlist_data.get('direction', 'BULLISH')
+        sniper_result = sniper_checklist(symbol, direction)
         
-        adx_val = adx_data['adx_current']
-        spread = adx_data['spread']
-        adx_trend = adx_data['adx_trend']
-        di_plus_trend = adx_data['di_plus_trend']
-        dominance = adx_data['dominance']
+        if not sniper_result['ready']:
+            print(f"  🚫 SNIPER BLOCKED: {sniper_result['summary']}")
+            # Retornamos estructura válida pero desactivada
+            return {
+                'activated': False,
+                'adx': sniper_result['layers']['adx']['data'].get('adx_current', 0),
+                'momentum_age': sniper_result['layers']['momentum']['data'].get('consecutive_count', 0),
+                'volume_ratio': 0,
+                'sniper_score': sniper_result['total_score'],
+                'block_reason': sniper_result['summary']
+            }
         
-        # Validaciones
-        checks = {
-            'adx_min': adx_val &gt;= 20,
-            'spread_min': spread &gt;= 5,
-            'trend_ok': adx_trend == 'creciendo' or di_plus_trend == 'creciendo',
-            'dominance_ok': dominance == 'DI+'
-        }
+        print(f"  ✅ SNIPER APPROVED: Score {sniper_result['total_score']}/100")
         
-        passed = sum(checks.values())
-        score = passed * 6  # Max 24 puntos
+        # ==============================================================================
+
+        # Usar la inteligencia centralizada
+        decision = decide_intelligently(symbol)
         
-        # Requiere al menos 3/4 checks
-        valid = passed &gt;= 3 and checks['adx_min']  # ADX mínimo es obligatorio
-        
-        reason = f"ADX {adx_val:.1f} | Spread {spread:.1f} | {adx_trend}"
-        if not valid:
-            failed = [k for k, v in checks.items() if not v]
-            reason = f"❌ ADX Layer FAILED: {', '.join(failed)}"
-        
-        return {
-            'valid': valid,
-            'score': score,
-            'reason': reason,
-            'data': adx_data
-        }
-        
-    except Exception as e:
-        return {'valid': False, 'score': 0, 'reason': f'Error: {e}', 'data': {}}
+        if decision['action'] == 'OPERAR':
+            # ... (resto del código igual) ...
+
+Cambios clave:
+
+Importamos 
+sniper_checklist
+ de brain_think.
+Insertamos la validación ANTES de 
+decide_intelligently
+.
+Si el sniper bloquea, retornamos activated: False inmediatamente con la razón del bloqueo.
+Si pasa, imprime "✅ SNIPER APPROVED" y continúa con el análisis profundo.
+¿Confirmas que aplique estos cambios?
 
 
-def validate_momentum_layer(symbol, tf='15m', direction='BULLISH'):
-    """
-    CAPA 2: Validación Momentum
-    Requisitos:
-    - Color verde/lime para BULLISH (rojo/maroon para BEARISH)
-    - Consecutivas &gt;= 2
-    - NO neutral/gray
-    
-    Returns:
-        dict: {valid: bool, score: 0-25, reason: str, data: dict}
-    """
-    try:
-        ohlcv = fetch_ohlcv(symbol, tf, 50)
-        if not ohlcv:
-            return {'valid': False, 'score': 0, 'reason': 'No data', 'data': {}}
-        
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        mom_data = calculate_momentum_with_memory(df, lookback=10)
-        
-        color = mom_data['color_current']
-        consecutive = mom_data['consecutive_count']
-        strength = mom_data['strength']
-        squeeze = mom_data.get('squeeze_active', False)
-        
-        # Colores válidos según dirección
-        if direction == 'BULLISH':
-            valid_colors = ['green', 'lime']
-        else:
-            valid_colors = ['red', 'maroon']
-        
-        # Validaciones
-        checks = {
-            'color_ok': color in valid_colors,
-            'consecutive_ok': consecutive &gt;= 2,
-            'not_neutral': color not in ['neutral', 'gray'],
-            'strength_ok': strength in ['moderada', 'fuerte']
-        }
-        
-        passed = sum(checks.values())
-        score = passed * 6  # Max 24 puntos
-        
-        # Requiere color correcto y no neutral
-        valid = checks['color_ok'] and checks['not_neutral']
-        
-        reason = f"Mom {color} | {consecutive}v | {strength}"
-        if squeeze:
-            reason += " | ⚡SQUEEZE"
-        if not valid:
-            failed = [k for k, v in checks.items() if not v]
-            reason = f"❌ Momentum Layer FAILED: {color} (need {valid_colors})"
-        
-        return {
-            'valid': valid,
-            'score': score,
-            'reason': reason,
-            'data': mom_data
-        }
-        
-    except Exception as e:
-        return {'valid': False, 'score': 0, 'reason': f'Error: {e}', 'data': {}}
-
-
-def validate_structure_layer(symbol, tf='15m', direction='BULLISH'):
-    """
-    CAPA 3: Validación Estructura ZigZag
-    Requisitos:
-    - BULLISH: Último movimiento HH o HL
-    - No en corrección activa (último pivot no es LH/LL)
-    
-    Returns:
-        dict: {valid: bool, score: 0-25, reason: str, data: dict}
-    """
-    try:
-        ohlcv = fetch_ohlcv(symbol, tf, 100)
-        if not ohlcv:
-            return {'valid': False, 'score': 0, 'reason': 'No data', 'data': {}}
-        
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        zz_data = calculate_zigzag(df, threshold_pct=1.5)
-        
-        pivot_types = zz_data.get('pivot_types', [])
-        last_structure = zz_data.get('last_structure', 'N/A')
-        
-        # Último tipo de pivot
-        last_pivot = pivot_types[-1] if pivot_types else 'N/A'
-        
-        # Validaciones para BULLISH
-        if direction == 'BULLISH':
-            bullish_pivots = ['HH', 'HL', 'H']
-            bearish_pivots = ['LH', 'LL', 'L']
-            valid = last_pivot in bullish_pivots
-            in_correction = last_pivot in bearish_pivots
-        else:
-            bullish_pivots = ['LH', 'LL', 'L']
-            bearish_pivots = ['HH', 'HL', 'H']
-            valid = last_pivot in bullish_pivots
-            in_correction = last_pivot in bearish_pivots
-        
-        score = 25 if valid else 0
-        
-        reason = f"ZigZag: {last_structure} | Last: {last_pivot}"
-        if not valid:
-            reason = f"❌ Structure Layer FAILED: {last_pivot} (need {bullish_pivots})"
-        if in_correction:
-            reason = f"⚠️ IN CORRECTION: {last_pivot}"
-            valid = False
-            score = 0
-        
-        return {
-            'valid': valid,
-            'score': score,
-            'reason': reason,
-            'data': zz_data
-        }
-        
-    except Exception as e:
-        return {'valid': False, 'score': 0, 'reason': f'Error: {e}', 'data': {}}
-
-
-def validate_zone_layer(symbol, tf='5m'):
-    """
-    CAPA 4: Validación Zona
-    Requisitos:
-    - No en extremo VP (&gt; 2% del profile_high)
-    - No overextended (&lt; 3 ATR de EMA)
-    
-    Returns:
-        dict: {valid: bool, score: 0-25, reason: str, data: dict}
-    """
-    try:
-        ohlcv = fetch_ohlcv(symbol, tf, 50)
-        if not ohlcv:
-            return {'valid': False, 'score': 0, 'reason': 'No data', 'data': {}}
-        
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        current_price = df['close'].iloc[-1]
-        
-        # Volume Profile
-        vp_data = calculate_volume_profile_with_memory(df, num_levels=10, lookback=50)
-        profile_high = vp_data.get('profile_high', 0)
-        poc = vp_data.get('poc_current', 0)
-        
-        # ATR
-        atr_data = calculate_atr(df, period=14)
-        atr_val = atr_data.get('atr_current', 0)
-        
-        # EMA 21
-        ema21 = df['close'].ewm(span=21, adjust=False).mean().iloc[-1]
-        
-        # Calcular distancias
-        dist_to_high = ((profile_high - current_price) / current_price) * 100 if current_price &gt; 0 else 0
-        dist_to_ema = abs(current_price - ema21)
-        atr_distance = dist_to_ema / atr_val if atr_val &gt; 0 else 0
-        
-        # Validaciones
-        checks = {
-            'not_at_high': dist_to_high &gt; 2.0 or dist_to_high &lt; 0,  # &gt; 2% del high o breakout
-            'not_overextended': atr_distance &lt; 3.0,
-            'above_poc': current_price &gt; poc
-        }
-        
-        passed = sum(checks.values())
-        score = passed * 8  # Max 24 puntos
-        
-        valid = checks['not_at_high'] and checks['not_overextended']
-        
-        reason = f"Dist VP High: {dist_to_high:.1f}% | ATR ext: {atr_distance:.1f}x"
-        if not valid:
-            failed = [k for k, v in checks.items() if not v]
-            reason = f"❌ Zone Layer FAILED: {', '.join(failed)}"
-        
-        return {
-            'valid': valid,
-            'score': score,
-            'reason': reason,
-            'data': {'vp': vp_data, 'atr': atr_data, 'dist_high': dist_to_high, 'atr_ext': atr_distance}
-        }
-        
-    except Exception as e:
-        return {'valid': False, 'score': 0, 'reason': f'Error: {e}', 'data': {}}
-
-
-def sniper_checklist(symbol, direction='BULLISH'):
-    """
-    FUNCIÓN PRINCIPAL: Ejecuta todas las capas y decide.
-    
-    Returns:
-        dict: {
-            'ready': bool (todas las capas pasan),
-            'total_score': 0-100,
-            'layers': {layer_name: layer_result},
-            'summary': str
-        }
-    """
-    print(f"\n🎯 SNIPER CHECKLIST: {symbol}")
-    print("=" * 50)
-    
-    # Ejecutar cada capa
-    layers = {
-        'adx': validate_adx_layer(symbol, '15m'),
-        'momentum': validate_momentum_layer(symbol, '15m', direction),
-        'structure': validate_structure_layer(symbol, '15m', direction),
-        'zone': validate_zone_layer(symbol, '5m')
-    }
-    
-    # Resultados
-    total_score = sum(layer['score'] for layer in layers.values())
-    all_valid = all(layer['valid'] for layer in layers.values())
-    
-    # Imprimir resultados
-    for name, result in layers.items():
-        status = "✅" if result['valid'] else "❌"
-        print(f"  {status} {name.upper()}: {result['reason']} (+{result['score']})")
-    
-    print("-" * 50)
-    print(f"  TOTAL SCORE: {total_score}/100")
-    print(f"  READY: {'🟢 YES' if all_valid else '🔴 NO'}")
-    print("=" * 50)
-    
-    # Construir summary
-    failed_layers = [name for name, result in layers.items() if not result['valid']]
-    if all_valid:
-        summary = f"✅ ALL LAYERS PASSED (Score: {total_score})"
-    else:
-        summary = f"❌ BLOCKED by: {', '.join(failed_layers)}"
-    
-    return {
-        'ready': all_valid,
-        'total_score': total_score,
-        'layers': layers,
-        'summary': summary
-    }
-
-
-# Test standalone
-if __name__ == "__main__":
-    result = sniper_checklist("BTC/USDT:USDT", direction='BULLISH')
-    print(f"\nFinal: {result['summary']}")
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 10,570<br>
-    Generado: 2025-11-29 12:00:36
+    Total caracteres: 4,014<br>
+    Generado: 2025-11-29 12:06:33
   </div>
 </body>
 </html>
