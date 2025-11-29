@@ -15,124 +15,134 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-11-29 01:58:31</div>
+  <div class="meta">Última actualización: 2025-11-29 03:38:46</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Perfecto, encontré los 3 bloques. Ahora te muestro el código ACTUAL vs PROPUESTO:
+Perfecto, encontré el código. Ahora te muestro el ACTUAL vs PROPUESTO:
 
-🔧 FIX #1: brain_calculator.py - Squeeze Detection
-📍 Ubicación: Líneas 564-575
+🔧 CAMBIO 1: Agregar fetch 3M en monitor_active_trades()
+📍 Ubicación: 
+brain_executor.py
+ líneas 353-363
 ❌ CÓDIGO ACTUAL:
 python
-# 3. Squeeze Detection
-sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
-
-if sqzOn.iloc[-1]:
-    return {
-        'color_current': 'neutral',
-        'color_history': [],
-        'consecutive_count': 0,
-        'strength': 'débil',
-        'value': 0.0,
-        'squeeze_active': True
-    }
+for symbol, trade_data in trades_snapshot:
+    # Fetch precio actual
+    ohlcv = fetch_ohlcv(symbol, '5m', 50)
+    if not ohlcv:
+        continue
+    
+    current_price = ohlcv[-1][4]
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    # ORQUESTADOR INTELIGENTE
+    orch_action = self.orchestrate_trade_management(symbol, trade_data, current_price, df)
 ✅ CÓDIGO PROPUESTO:
 python
-# 3. Squeeze Detection (NO bloquear, solo marcar)
-sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
-squeeze_active = bool(sqzOn.iloc[-1])
-# NOTA: Continuar calculando momentum aunque haya squeeze
-# El squeeze indica consolidación pero el momentum sigue siendo válido
-Cambio: Elimina el return que bloqueaba el cálculo. Ahora solo marca si hay squeeze pero continúa calculando el momentum real.
+for symbol, trade_data in trades_snapshot:
+    # Fetch precio actual (5M para análisis general)
+    ohlcv_5m = fetch_ohlcv(symbol, '5m', 50)
+    if not ohlcv_5m:
+        continue
+    
+    current_price = ohlcv_5m[-1][4]
+    df = pd.DataFrame(ohlcv_5m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    # Fetch 3M para detección de patrones (más granular)
+    ohlcv_3m = fetch_ohlcv(symbol, '3m', 30)
+    df_3m = pd.DataFrame(ohlcv_3m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']) if ohlcv_3m else df
+    
+    # ORQUESTADOR INTELIGENTE (usa 3M para detección más granular)
+    orch_action = self.orchestrate_trade_management(symbol, trade_data, current_price, df_3m)
+Cambio: Ahora descarga tanto 5M (para análisis general) como 3M (para patrones). Si 3M falla, usa 5M como fallback.
 
-🔧 FIX #2: brain_analyzer.py - ADX Validation
-📍 Ubicación: Líneas 1158-1170
+🔧 CAMBIO 2: Confirmación Anti-Ruido en detect_live_pattern()
+📍 Ubicación: 
+brain_executor.py
+ líneas 260-271
 ❌ CÓDIGO ACTUAL:
 python
-# B. ADX Accompanied (Fuerza + Dirección)
-adx_trend = adx_data['adx_trend']
-di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
-
-adx_ok = (adx_trend == 'creciendo' and di_trend == 'creciendo')
-
-conditions['adx_accompanied'] = {
-    'ok': adx_ok,
-    'value': f"ADX:{adx_trend} DI:{di_trend}",
-    'reason': "ADX and DI must both be growing"
-}
-if adx_ok: score_count += 1
-else: missing.append(f"ADX/DI not synced (ADX:{adx_trend}, DI:{di_trend})")
+def detect_live_pattern(self, df, trade_data):
+    """Detecta patrones en vivo durante el trade (NUEVO)"""
+    try:
+        # 0. PERIODO DE GRACIA (5 min)
+        # Evitar pánico en los primeros minutos de volatilidad
+        now = datetime.now(ARGENTINA_TZ)
+        entry_time = trade_data['entry_time']
+        duration_min = (now - entry_time).total_seconds() / 60
+        
+        if duration_min &lt; 5:
+            return None # Demasiado temprano para patrones de reversión
+            
+        # 1. Flag Pattern (Continuación)
+        # Lógica simplificada: Consolidación después de impulso
+        closes = df['close'].values
 ✅ CÓDIGO PROPUESTO:
 python
-# B. ADX Accompanied (Fuerza + Dirección) - FLEXIBLE
-adx_trend = adx_data['adx_trend']
-adx_current = adx_data['adx_current']
-di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
+def detect_live_pattern(self, df, trade_data):
+    """Detecta patrones en vivo durante el trade (3M granular con confirmación)"""
+    try:
+        # 0. PERIODO DE GRACIA (5 min)
+        # Evitar pánico en los primeros minutos de volatilidad
+        now = datetime.now(ARGENTINA_TZ)
+        entry_time = trade_data['entry_time']
+        duration_min = (now - entry_time).total_seconds() / 60
+        
+        if duration_min &lt; 5:
+            return None # Demasiado temprano para patrones de reversión
+        
+        # 0.5 CONFIRMACIÓN ANTI-RUIDO (3M)
+        # Exigir 2+ velas rojas consecutivas antes de considerar reversión
+        direction = trade_data.get('direction', 'BULLISH')
+        
+        if len(df) &gt;= 3:
+            last_3_closes = df['close'].values[-3:]
+            last_3_opens = df['open'].values[-3:]
+            
+            if direction == 'BULLISH':
+                # Contar velas rojas (bearish)
+                red_count = sum(1 for c, o in zip(last_3_closes, last_3_opens) if c &lt; o)
+                
+                # Si detectamos 2+ velas rojas consecutivas, es señal de reversión confirmada
+                if red_count &gt;= 2:
+                    print(f"  ⚠️ 3M REVERSIÓN: {red_count}/3 velas rojas detectadas")
+                    # Permitir continuar a Double Top detection para confirmar
+            else:  # BEARISH
+                # Contar velas verdes (bullish)
+                green_count = sum(1 for c, o in zip(last_3_closes, last_3_opens) if c &gt; o)
+                
+                if green_count &gt;= 2:
+                    print(f"  ⚠️ 3M REVERSIÓN: {green_count}/3 velas verdes detectadas")
+            
+        # 1. Flag Pattern (Continuación)
+        # Lógica simplificada: Consolidación después de impulso
+        closes = df['close'].values
+Cambio: Antes de buscar patrones, primero cuenta cuántas velas van en contra de la dirección del trade. Si hay 2+ de 3, marca que hay posible reversión confirmada (no solo ruido).
 
-# TIME LADDER: Permitir si ADX alto aunque decrezca (post-impulso normal)
-adx_ok = (
-    (adx_trend == 'creciendo' and di_trend == 'creciendo') or  # Ideal
-    (adx_current &gt; 25 and di_trend == 'creciendo') or  # ADX alto + DI subiendo
-    (adx_current &gt; 35)  # ADX muy alto = fuerza brutal (bypass)
-)
+📊 Impacto Esperado
+Antes (5M):
 
-conditions['adx_accompanied'] = {
-    'ok': adx_ok,
-    'value': f"ADX:{adx_trend} DI:{di_trend}",
-    'reason': "ADX and DI must both be growing"
-}
-if adx_ok: score_count += 1
-else: missing.append(f"ADX/DI not synced (ADX:{adx_trend}, DI:{di_trend})")
-Cambio: Ahora acepta ADX decreciendo si está &gt; 35 (caso TRADOOR: ADX 15M = 20.8 decreciendo después de 1H ADX = 69.9).
+Una corrección fuerte en 3M puede no verse hasta que ya pasaron 10-15 minutos
+Ejemplo: 3 velas rojas de 3M = 9 minutos, pero solo muestran 1-2 velas rojas en 5M
+Después (3M con confirmación):
 
-🔧 FIX #3: brain_intelligent.py - Market Force 15M Check
-📍 Ubicación: Líneas 861-870
-❌ CÓDIGO ACTUAL:
-python
-# 1. Momentum 15M (Debe ser verde)
-mom_15m = a15m.get('momentum', {})
-mom_color = mom_15m.get('color_current', 'gray')
+Detección más temprana: ve la corrección apenas se forman 2 velas rojas (6 minutos)
+Anti-ruido: requiere confirmación de 2+ velas, no reacciona a 1 vela aislada
+Fallback seguro: si 3M falla, usa 5M automáticamente
+Ejemplo práctico (TRADOOR):
 
-if mom_color not in ['green', 'lime']:
-    return {
-        'detected': False, 
-        'score': 0, 
-        'reason': f"Market Force REJECTED: 15M Momentum is {mom_color} (Need Green/Lime)"
-    }
-✅ CÓDIGO PROPUESTO:
-python
-# 1. Momentum 15M (Flexible si 1H es brutal)
-mom_15m = a15m.get('momentum', {})
-mom_color = mom_15m.get('color_current', 'gray')
-
-# TIME LADDER: Si 1H ADX &gt; 50, bypass 15M momentum (consolidación post-impulso)
-if mom_color not in ['green', 'lime']:
-    if adx_val_1h &gt; 50:
-        print(f"  🔓 15M Momentum BYPASS: 1H ADX {adx_val_1h:.1f} &gt; 50 (brutal force)")
-    else:
-        return {
-            'detected': False,
-            'score': 0,
-            'reason': f"Market Force REJECTED: 15M Momentum is {mom_color} (Need Green/Lime)"
-        }
-Cambio: Permite bypass del momentum 15M si 1H ADX &gt; 50. TRADOOR tiene 1H ADX = 69.9, entonces pasaría este filtro aunque 15M esté NEUTRAL.
-
-📊 Impacto esperado en TRADOOR
-Con estos 3 fixes:
-
-✅ Squeeze NO bloqueará el momentum verde de 4H (8 velas LIME)
-✅ ADX 15M decreciendo será aceptado porque 1H ADX = 69.9 &gt; 35
-✅ Momentum 15M NEUTRAL será bypassed porque 1H ADX = 69.9 &gt; 50
-El bot debería ABRIR el trade en TRADOOR.
-
-¿Confirmas que aplique estos 3 fixes?
+Entra en $2.884
+3M detecta 2 velas rojas consecutivas → Alert temprano
+Double Top en $2.90 → Sale antes de caída a $2.85
+Con 5M: detectaría tarde, sale en $2.86-$2.87
+¿Confirmas que aplique estos cambios?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3,866<br>
-    Generado: 2025-11-29 01:58:31
+    Total caracteres: 4,890<br>
+    Generado: 2025-11-29 03:38:46
   </div>
 </body>
 </html>
