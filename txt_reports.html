@@ -15,17 +15,641 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-01 01:50:28</div>
+  <div class="meta">Última actualización: 2025-12-01 16:21:29</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-asd
+//@version=5 
+indicator("Dashboard Overlay - Indicadores sobre Precio", shorttitle="Overlay Dashboard", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🎛️ SELECTOR DE INDICADORES ACTIVOS (OVERLAY)
+// ═══════════════════════════════════════════════════════════════════════════════════════
+enable_emas = input.bool(true, "4 EMAs (sistema de medias móviles)", group="🎛️ Activar Indicadores Overlay")
+enable_ichimoku = input.bool(false, "Ichimoku (análisis japonés completo)", group="🎛️ Activar Indicadores Overlay")
+enable_zigzag = input.bool(false, "Zig Zag (análisis de swings)", group="🎛️ Activar Indicadores Overlay")
+enable_support_resistance = input.bool(false, "Support/Resistance (con confirmación de volumen)", group="🎛️ Activar Indicadores Overlay")
+enable_multi_vp = input.bool(false, "Multi-Layer Volume Profile (4 capas)", group="🎛️ Activar Indicadores Overlay")
+enable_delta_vp = input.bool(false, "Delta Volume Profile (perfil con delta de volumen)", group="🎛️ Activar Indicadores Overlay")
+enable_candle_time = input.bool(false, "Candle Time Labels (hora apertura/cierre)", group="🎛️ Activar Indicadores Overlay")
+enable_mtpc = input.bool(false, "Multi-Time Period Charts (cajas de timeframes)", group="🎛️ Activar Indicadores Overlay")
+enable_mtf_trend = input.bool(false, "Multi-Timeframe Trend Analysis (análisis EMAs)", group="🎛️ Activar Indicadores Overlay")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🟨 4 EMAS SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+ema1_length = input.int(50, "EMA 1 Período", minval=1, group="🟨 4 EMAs Settings")
+ema2_length = input.int(100, "EMA 2 Período", minval=1, group="🟨 4 EMAs Settings")
+ema3_length = input.int(200, "EMA 3 Período", minval=1, group="🟨 4 EMAs Settings")
+ema4_length = input.int(500, "EMA 4 Período", minval=1, group="🟨 4 EMAs Settings")
+ema1_color = input.color(color.yellow, "Color EMA 1", group="🎨 4 EMAs Colors")
+ema2_color = input.color(color.lime, "Color EMA 2", group="🎨 4 EMAs Colors")
+ema3_color = input.color(color.aqua, "Color EMA 3", group="🎨 4 EMAs Colors")
+ema4_color = input.color(color.purple, "Color EMA 4", group="🎨 4 EMAs Colors")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⛩️ ICHIMOKU SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+ichi_tenkan_period = input.int(9, "Tenkan-Sen Período", minval=1, group="⛩️ Ichimoku Settings")
+ichi_kijun_period = input.int(26, "Kijun-Sen Período", minval=1, group="⛩️ Ichimoku Settings")
+ichi_senkou_b_period = input.int(52, "Senkou Span B Período", minval=1, group="⛩️ Ichimoku Settings")
+ichi_displacement = input.int(26, "Displacement", minval=1, group="⛩️ Ichimoku Settings")
+ichi_tenkan_color = input.color(#007FFF, "Color Tenkan-Sen", group="🎨 Ichimoku Colors")
+ichi_kijun_color = input.color(#FF0016, "Color Kijun-Sen", group="🎨 Ichimoku Colors")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⚡ ZIG ZAG SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+zz_deviation = input.float(5.0, "Price Deviation (%)", minval=0.1, group="⚡ Zig Zag Settings")
+zz_depth = input.int(10, "Pivot Legs", minval=2, group="⚡ Zig Zag Settings")
+zz_up_color = input.color(color.green, "Color Alcista", group="⚡ Zig Zag Settings")
+zz_down_color = input.color(color.red, "Color Bajista", group="⚡ Zig Zag Settings")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📍 SUPPORT/RESISTANCE SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+sr_show_breaks = input.bool(true, "Show Breaks", group="📍 S/R Settings")
+sr_left_bars = input.int(15, "Left Bars", minval=1, group="📍 S/R Settings")
+sr_right_bars = input.int(15, "Right Bars", minval=1, group="📍 S/R Settings")
+sr_volume_threshold = input.int(20, "Volume Threshold %", minval=0, group="📍 S/R Settings")
+sr_resistance_color = input.color(color.red, "Resistance", group="📍 S/R Settings", inline="sr")
+sr_support_color = input.color(#233dee, "Support", group="📍 S/R Settings", inline="sr")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📊 MULTI-LAYER VOLUME PROFILE SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+mvp_period = input.int(300, "Period", minval=50, group="📊 Multi-Layer VP")
+mvp_resolution = input.int(100, "Resolution", minval=20, maxval=200, group="📊 Multi-Layer VP")
+mvp_profile_color = input.color(color.new(#00bbd4, 60), "Profile Color", group="📊 Multi-Layer VP")
+mvp_poc_color = input.color(color.blue, "PoC Color", group="📊 Multi-Layer VP")
+mvp_delta_pos = input.color(color.aqua, "Delta +", group="📊 Multi-Layer VP", inline="delta")
+mvp_delta_neg = input.color(color.red, "Delta -", group="📊 Multi-Layer VP", inline="delta")
+mvp_layer1 = input.bool(true, "Layer 1 (Full)", group="📊 Multi-Layer VP", inline="layers")
+mvp_layer2 = input.bool(true, "Layer 2 (1/2)", group="📊 Multi-Layer VP", inline="layers")
+mvp_layer3 = input.bool(false, "Layer 3 (1/4)", group="📊 Multi-Layer VP", inline="layers2")
+mvp_layer4 = input.bool(false, "Layer 4 (1/8)", group="📊 Multi-Layer VP", inline="layers2")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📊 DELTA VOLUME PROFILE SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+dvp_lookback = input.int(300, "Lookback Period", minval=50, group="📊 Delta Volume Profile")
+dvp_color_plus = input.color(#c9805c, "Volume +", group="📊 Delta Volume Profile")
+dvp_color_minus = input.color(#5c8bc9, "Volume -", group="📊 Delta Volume Profile")
+dvp_poc_plus = input.color(color.blue, "POC +", group="📊 Delta Volume Profile", inline="poc")
+dvp_poc_minus = input.color(color.rgb(218, 131, 0), "POC -", group="📊 Delta Volume Profile", inline="poc")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🕐 CANDLE TIME LABELS SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+ct_show_open = input.bool(true, "Mostrar Hora Apertura", group="🕐 Candle Time")
+ct_show_close = input.bool(true, "Mostrar Hora Cierre", group="🕐 Candle Time")
+ct_only_current = input.bool(false, "Solo Vela Actual", group="🕐 Candle Time")
+ct_open_color = input.color(color.green, "Color Apertura", group="🕐 Candle Time", inline="ct1")
+ct_close_color = input.color(color.red, "Color Cierre", group="🕐 Candle Time", inline="ct1")
+ct_label_size = input.string("small", "Tamaño Etiqueta", options=["tiny", "small", "normal", "large"], group="🕐 Candle Time")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📦 MULTI-TIME PERIOD CHARTS SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+mtpc_auto = input(true, "AutoTimeframe", group="📦 MTPC Settings")
+mtpc_timeframe = input.timeframe("1M", "Timeframe", group="📦 MTPC Settings")
+mtpc_calc_method = input.string("High/Low Range", "Calculation", options = ["High/Low Range", "True Range", "Heikin Ashi Range"], group="📦 MTPC Settings")
+mtpc_track_price = input(true, "Show dashed lines", group="📦 MTPC Settings")
+mtpc_growth_color = input(color.rgb(0, 150, 136, 80), "Body Growth", group="📦 MTPC Settings", inline="mtpc1")
+mtpc_fall_color = input(color.rgb(244, 67, 54, 80), "Body Fall", group="📦 MTPC Settings", inline="mtpc1")
+mtpc_border_growth = input(color.rgb(0, 150, 136), "Border Growth", group="📦 MTPC Settings", inline="mtpc2")
+mtpc_border_fall = input(color.rgb(244, 67, 54), "Border Fall", group="📦 MTPC Settings", inline="mtpc2")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📈 MULTI-TIMEFRAME TREND ANALYSIS SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+mtf_tf1 = input.timeframe("60", "TF1", group="📈 MTF Trend Timeframes")
+mtf_tf2 = input.timeframe("120", "TF2", group="📈 MTF Trend Timeframes")
+mtf_tf3 = input.timeframe("180", "TF3", group="📈 MTF Trend Timeframes")
+mtf_tf4 = input.timeframe("240", "TF4", group="📈 MTF Trend Timeframes")
+mtf_tf5 = input.timeframe("300", "TF5", group="📈 MTF Trend Timeframes")
+mtf_len1 = input.int(20, "EMA1", group="📈 MTF Trend EMA")
+mtf_len2 = input.int(30, "EMA2", group="📈 MTF Trend EMA")
+mtf_len3 = input.int(40, "EMA3", group="📈 MTF Trend EMA")
+mtf_len4 = input.int(50, "EMA4", group="📈 MTF Trend EMA")
+mtf_len5 = input.int(60, "EMA5", group="📈 MTF Trend EMA")
+mtf_col_up = input.color(color.lime, "Color Alcista", group="📈 MTF Trend EMA", inline="mtf1")
+mtf_col_down = input.color(color.purple, "Color Bajista", group="📈 MTF Trend EMA", inline="mtf1")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🧮 FUNCIONES DE CÁLCULO
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+f_4emas() =&gt;
+    [ta.ema(close, ema1_length), ta.ema(close, ema2_length), 
+     ta.ema(close, ema3_length), ta.ema(close, ema4_length)]
+
+f_ichimoku() =&gt;
+    tenkan = math.avg(ta.highest(high, ichi_tenkan_period), ta.lowest(low, ichi_tenkan_period))
+    kijun = math.avg(ta.highest(high, ichi_kijun_period), ta.lowest(low, ichi_kijun_period))
+    senkou_a = math.avg(tenkan, kijun)
+    senkou_b = math.avg(ta.highest(high, ichi_senkou_b_period), ta.lowest(low, ichi_senkou_b_period))
+    [tenkan, kijun, senkou_a, senkou_b]
+
+f_support_resistance() =&gt;
+    high_pivot = ta.pivothigh(high, sr_left_bars, sr_right_bars)
+    low_pivot = ta.pivotlow(low, sr_left_bars, sr_right_bars)
+    var float resistance = na
+    var float support = na
+    if not na(high_pivot)
+        resistance := high_pivot
+    if not na(low_pivot)
+        support := low_pivot
+    short_vol = ta.ema(volume, 5)
+    long_vol = ta.ema(volume, 10)
+    vol_osc = 100 * (short_vol - long_vol) / long_vol
+    res_break_vol = ta.crossover(close, resistance) and vol_osc &gt; sr_volume_threshold
+    sup_break_vol = ta.crossunder(close, support) and vol_osc &gt; sr_volume_threshold
+    bull_wick = ta.crossover(close, resistance) and (open - low) &gt; (close - open)
+    bear_wick = ta.crossunder(close, support) and (open - close) &lt; (high - open)
+    res_break_wick = bull_wick and not res_break_vol
+    sup_break_wick = bear_wick and not sup_break_vol
+    [resistance, support, res_break_vol, sup_break_vol, res_break_wick, sup_break_wick]
+
+f_multi_vp(length, bins, poc_mult, show_style = true) =&gt;
+    if barstate.islast
+        var values = array.new&lt;float&gt;()
+        var vol_bins = array.new&lt;float&gt;(bins)
+        var tot_vol = array.new&lt;float&gt;()
+        var delta_vol = array.new&lt;float&gt;()
+        var bin_levels = array.new&lt;line&gt;()
+        var bin_labels = array.new&lt;label&gt;()
+        values.clear()
+        vol_bins.fill(0)
+        tot_vol.clear()
+        delta_vol.clear()
+        if bin_levels.size() &gt; 0
+            for i = 0 to bin_levels.size() - 1
+                line.delete(bin_levels.get(i))
+            bin_levels.clear()
+        if bin_labels.size() &gt; 0
+            for i = 0 to bin_labels.size() - 1
+                label.delete(bin_labels.get(i))
+            bin_labels.clear()
+        for i = 0 to length - 1
+            values.push(high[i])
+            values.push(low[i])
+        float max_val = values.max()
+        float min_val = values.min()
+        float step = (max_val - min_val) / bins
+        for i = 0 to length - 1
+            c = close[i]
+            o = open[i]
+            vol = volume[i]
+            tot_vol.push(vol)
+            delta_vol.push(c &gt; o ? vol : -vol)
+            for j = 0 to bins - 1
+                lower = min_val + step * j
+                upper = lower + step
+                if c &lt;= upper + step * 1.5 and c &gt;= lower - step * 1.5
+                    vol_bins.set(j, vol_bins.get(j) + vol)
+        var poly = array.new&lt;chart.point&gt;()
+        poly.clear()
+        bool poc_found = false
+        float max_vol = vol_bins.max()
+        for i = 0 to bins - 1
+            lower = min_val + step * i
+            upper = lower + step
+            mid = math.avg(upper, lower)
+            vol = int(vol_bins.get(i) / max_vol * 25)
+            start = bar_index - length
+            end_point = start + vol
+            poly.push(chart.point.from_index(i == 0 ? start : i == bins - 1 ? start : end_point + 1, mid))
+            if vol_bins.get(i) == max_vol and not poc_found
+                poc_found := true
+                bin_labels.push(label.new(start, mid, str.tostring(vol_bins.get(i), format.volume), style=label.style_label_right, color=color.new(mvp_poc_color, 25)))
+                bin_levels.push(line.new(start, mid, start + int(length / poc_mult), mid, color=mvp_poc_color, width=3))
+        if show_style
+            bin_levels.push(line.new(start, max_val, bar_index, max_val, color=chart.fg_color))
+            bin_levels.push(line.new(start, min_val, bar_index, min_val, color=chart.fg_color))
+            bin_levels.push(line.new(start, max_val, start, min_val, color=chart.fg_color))
+            bin_labels.push(label.new(start, max_val, "Total\n" + str.tostring(tot_vol.sum(), format.volume), style=label.style_label_down, color=color.blue, size=size.small))
+            bin_labels.push(label.new(start, min_val, str.tostring(delta_vol.sum(), format.volume) + "\nDelta", style=label.style_label_up, size=size.small, color=delta_vol.sum() &lt; 0 ? mvp_delta_neg : mvp_delta_pos))
+        polyline.delete(polyline.new(poly, line_color=#00e67700, fill_color=mvp_profile_color)[1])
+
+f_delta_vp() =&gt;
+    var max_min = array.new&lt;float&gt;()
+    var vol_plus = array.new&lt;float&gt;()
+    var vol_minus = array.new&lt;float&gt;()
+    var boxes = array.new&lt;box&gt;()
+    var labels = array.new&lt;label&gt;()
+    step = 0.
+    bins = 0
+    atr_val = ta.atr(200)
+    if barstate.islast
+        max_min.clear()
+        if boxes.size() &gt; 0
+            for b in boxes
+                box.delete(b)
+            boxes.clear()
+        if labels.size() &gt; 0
+            for l in labels
+                label.delete(l)
+            labels.clear()
+        for i = 0 to dvp_lookback - 1
+            h = high[i]
+            l = low[i]
+            max_min.push(h)
+            max_min.push(l)
+        bins := int((max_min.max() - max_min.min()) / atr_val)
+        bins := math.max(bins, 20)
+        bins := math.min(bins, 150)
+        step := (max_min.max() - max_min.min()) / bins
+        vol_plus.clear()
+        vol_minus.clear()
+        for i = 0 to bins - 1
+            vol_plus.push(0.0)
+            vol_minus.push(0.0)
+        for i = 0 to dvp_lookback - 1
+            h = high[i]
+            l = low[i]
+            c = close[i]
+            o = open[i]
+            v = volume[i]
+            for k = 0 to bins - 1
+                loww = max_min.min() + step * k
+                mid = loww + step / 2
+                if h &gt; mid and l &lt; mid
+                    if c &gt; o
+                        vol_plus.set(k, vol_plus.get(k) + v)
+                    else
+                        vol_minus.set(k, vol_minus.get(k) + v)
+        for i = 0 to bins - 1
+            loww = max_min.min() + step * i
+            highh = loww + step
+            vp = vol_plus.get(i)
+            vm = vol_minus.get(i)
+            value_plus = vol_plus.sum() &gt; 0 ? int(vp / vol_plus.sum() * 200) : 0
+            value_minus = vol_minus.sum() &gt; 0 ? int(vm / vol_minus.sum() * 200) : 0
+            max_plus = vp == vol_plus.max()
+            max_minus = vm == vol_minus.max()
+            col_plus = color.from_gradient(vp, vol_plus.min(), vol_plus.max(), color.new(dvp_color_plus, 90), dvp_color_plus)
+            col_minus = color.from_gradient(vm, vol_minus.min(), vol_minus.max(), color.new(dvp_color_minus, 90), dvp_color_minus)
+            sum_bars = value_plus + value_minus
+            col_sum = color.from_gradient(sum_bars, 0, 60, color.rgb(189, 189, 189, 100), #787b8699)
+            b1 = box.new(bar_index - dvp_lookback, highh, bar_index, loww, max_plus ? dvp_poc_plus : max_minus ? dvp_poc_minus : color.new(chart.bg_color, 50), bgcolor=col_sum)
+            b2 = box.new(bar_index + 50, highh, bar_index + 50 - value_plus, loww,chart.bg_color, bgcolor=max_plus ? dvp_poc_plus : col_plus, text=vp != 0 ? "+" + str.tostring(vp, format.volume) : "", text_color=chart.fg_color, text_size=size.small,text_halign=text.align_right)
+            b3 = box.new(bar_index + 50, highh, bar_index + 50 + value_minus, loww, chart.bg_color,bgcolor=max_minus ? dvp_poc_minus : col_minus, text=vm != 0 ? "-" + str.tostring(vm, format.volume) : "", text_color=chart.fg_color, text_size=size.small,text_halign=text.align_left)
+            boxes.push(b1)
+            boxes.push(b2)
+            boxes.push(b3)
+        total_vol = vol_plus.sum() + vol_minus.sum()
+        delta_calc = vol_minus.sum() &gt; 0 ? ((vol_plus.sum() - vol_minus.sum()) / vol_minus.sum()) * 100 : 0
+        l1 = label.new(bar_index + 50, max_min.max(),
+             "Delta: " + str.tostring(delta_calc, format.percent),
+             color=delta_calc &gt; 0 ? dvp_color_plus : dvp_color_minus,
+             textcolor=chart.fg_color,
+             style=label.style_label_down)
+        l2 = label.new(bar_index + 50, max_min.min(),
+             "Total: " + str.tostring(total_vol, format.volume),
+             color=color.gray,
+             textcolor=chart.fg_color,
+             style=label.style_label_up)
+        labels.push(l1)
+        labels.push(l2)
+
+f_candle_time_labels() =&gt;
+    label_size_val = ct_label_size == "tiny" ? size.tiny :
+                     ct_label_size == "small" ? size.small :
+                     ct_label_size == "normal" ? size.normal : size.large
+    
+    show_on_bar = ct_only_current ? barstate.islast : true
+    
+    if show_on_bar and enable_candle_time
+        bar_time = time
+        open_hour = hour(bar_time)
+        open_minute = minute(bar_time)
+        open_time_str = str.format("{0,number,00}:{1,number,00}", open_hour, open_minute)
+        
+        close_time = bar_time + (timeframe.in_seconds() * 1000)
+        close_hour = hour(close_time)
+        close_minute = minute(close_time)
+        close_time_str = str.format("{0,number,00}:{1,number,00}", close_hour, close_minute)
+        
+        if ct_show_open
+            label.new(bar_index, low, open_time_str, 
+                     style=label.style_label_up, 
+                     color=ct_open_color, 
+                     textcolor=color.white, 
+                     size=label_size_val)
+        
+        if ct_show_close
+            label.new(bar_index, high, close_time_str, 
+                     style=label.style_label_down, 
+                     color=ct_close_color, 
+                     textcolor=color.white, 
+                     size=label_size_val)
+
+f_mtpc_select_auto_tf() =&gt;
+    timeframe.isseconds ? '120': timeframe.isminutes ? '1440': timeframe.isdaily ? 'W': timeframe.isweekly ? 'M': timeframe.ismonthly and timeframe.multiplier &lt; 3 ? '3M': '12M'
+
+f_mtpc_draw_box(left, right, top, bottom, diff) =&gt;
+    drawnBox = box.new(left, top, right, bottom)
+    if diff &lt; 0
+        box.set_border_color(drawnBox, mtpc_border_fall)
+        box.set_bgcolor(drawnBox, mtpc_fall_color)
+    else
+        box.set_border_color(drawnBox, mtpc_border_growth)
+        box.set_bgcolor(drawnBox, mtpc_growth_color)
+    drawnBox
+
+f_mtpc() =&gt;
+    var prevBarIndex = bar_index
+    tf_to_use = mtpc_auto ? f_mtpc_select_auto_tf() : mtpc_timeframe
+    [previousHigh, previousLow, previousClose, previousOpen, prePreviousClose] = request.security(syminfo.tickerid, tf_to_use, [high[1], low[1], close[1], open[1], close[2]], lookahead=barmerge.lookahead_on)
+    [currentHigh, currentLow, currentClose, currentOpen, prevClose] = request.security(syminfo.tickerid, tf_to_use, [high, low, close, open, close[1]])
+    isNewPeriod = ta.change(time(tf_to_use))
+    drawCurrent = barstate.islast and not isNewPeriod
+    secHigh = drawCurrent ? currentHigh : previousHigh
+    secPrevClose = drawCurrent ? prevClose : prePreviousClose
+    secLow = drawCurrent ? currentLow : previousLow
+    diff = drawCurrent ? currentClose - currentOpen : previousClose - previousOpen
+    left = prevBarIndex
+    right = drawCurrent ? bar_index : bar_index[1]
+    [ashiHigh, ashiLow] = request.security(ticker.heikinashi(syminfo.tickerid), tf_to_use, [high, low])
+    float top = na
+    float bottom = na
+    if mtpc_calc_method == "High/Low Range"
+        top := secHigh
+        bottom := secLow
+    else if mtpc_calc_method == "True Range"
+        top := math.max(secHigh, secPrevClose)
+        bottom := math.min(secLow, secPrevClose)
+    else if mtpc_calc_method == "Heikin Ashi Range"
+        top := ashiHigh
+        bottom := ashiLow
+    if isNewPeriod
+        prevBarIndex := bar_index
+        f_mtpc_draw_box(left, right, top, bottom, diff)
+    var box prevBox = na
+    if barstate.islast
+        if isNewPeriod
+            prevBox := na
+        else
+            box.delete(prevBox)
+            prevBox := f_mtpc_draw_box(left, right, top, bottom, diff)
+    var box prevBox1 = na
+    var float prevTop = na
+    var float prevBottom = na
+    if array.size(box.all) &gt; 1
+        prevBox1 := array.get(box.all, array.size(box.all) - 1)
+        prevTop := box.get_top(prevBox1)
+        prevBottom := box.get_bottom(prevBox1)
+    [prevTop, prevBottom]
+
+f_mtf_convert_tf(tf) =&gt;
+    time_in = timeframe.in_seconds(tf) / 60 / 60
+    time_in &gt;= 24 ? tf : time_in &gt;= 1 ? str.tostring(time_in) + "h" : tf + "m"
+
+f_mtf_request(src1, src2, src3, src4, src5, tf) =&gt;
+    float chartTFInMinutes = timeframe.in_seconds("")
+    float inputTFInMinutes = timeframe.in_seconds(tf)
+    ss1 = src1
+    ss2 = src2
+    ss3 = src3
+    ss4 = src4
+    ss5 = src5
+    
+    if chartTFInMinutes != inputTFInMinutes
+        [s1, s2, s3, s4, s5] = request.security(syminfo.tickerid, tf, [src1, src2, src3, src4, src5])
+        ss1 := s1
+        ss2 := s2
+        ss3 := s3
+        ss4 := s4
+        ss5 := s5
+    
+    [ss1, ss2, ss3, ss4, ss5]
+
+if_mtf_label(cond1, cond2, color_val, tooltip) =&gt;
+    if cond1
+        label.new(bar_index, low, "🢁", color = color(na), textcolor = color_val, style = label.style_label_up, tooltip = tooltip)
+    if cond2
+        label.new(bar_index, high, "🢃", color = color(na), textcolor = color_val, style = label.style_label_down, tooltip = tooltip)
+
+f_mtf_timeframes_trend(table dash1, row, ema_1, ema_2, ema_3, ema_4, ema_5) =&gt;
+    col1 = ema_1 ? mtf_col_up : mtf_col_down
+    col2 = ema_2 ? mtf_col_up : mtf_col_down
+    col3 = ema_3 ? mtf_col_up : mtf_col_down
+    col4 = ema_4 ? mtf_col_up : mtf_col_down
+    col5 = ema_5 ? mtf_col_up : mtf_col_downdash1.cell(row,1, ema_1 ? "🢁" : "🢃", text_color = color.new(col1, 30), bgcolor = color.new(col1, 85))
+dash1.cell(row,2, ema_2 ? "🢁" : "🢃", text_color = color.new(col2, 25), bgcolor = color.new(col2, 80))
+dash1.cell(row,3, ema_3 ? "🢁" : "🢃", text_color = color.new(col3, 20), bgcolor = color.new(col3, 75))
+dash1.cell(row, 4, ema_4 ? "🢁" : "🢃", text_color = color.new(col4, 15), bgcolor = color.new(col4, 70))
+dash1.cell(row, 5, ema_5 ? "🢁" : "🢃", text_color = color.new(col5, 10), bgcolor = color.new(col5, 65))
+
+f_mtf_trend() =&gt;
+    mtf_ema1 = ta.ema(close, mtf_len1)
+    mtf_ema2 = ta.ema(close, mtf_len2)
+    mtf_ema3 = ta.ema(close, mtf_len3)
+    mtf_ema4 = ta.ema(close, mtf_len4)
+    mtf_ema5 = ta.ema(close, mtf_len5)
+    
+    ema_1_ = mtf_ema1 &gt; mtf_ema1[2]
+    ema_2_ = mtf_ema2 &gt; mtf_ema2[2]
+    ema_3_ = mtf_ema3 &gt; mtf_ema3[2]
+    ema_4_ = mtf_ema4 &gt; mtf_ema4[2]
+    ema_5_ = mtf_ema5 &gt; mtf_ema5[2]
+    
+    [ema_tf1, ema_tf2, ema_tf3, ema_tf4, ema_tf5] = f_mtf_request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, mtf_tf1)
+    [ema_tf11, ema_tf22, ema_tf33, ema_tf44, ema_tf55] = f_mtf_request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, mtf_tf2)
+    [ema_tf111, ema_tf222, ema_tf333, ema_tf444, ema_tf555] = f_mtf_request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, mtf_tf3)
+    [ema_tf1111, ema_tf2222, ema_tf3333, ema_tf4444, ema_tf5555] = f_mtf_request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, mtf_tf4)
+    [ema_tf11111, ema_tf22222, ema_tf33333, ema_tf44444, ema_tf55555] = f_mtf_request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, mtf_tf5)
+    
+    [mtf_ema1, mtf_ema2, mtf_ema3, mtf_ema4, mtf_ema5, ema_1_, ema_2_, ema_3_, ema_4_, ema_5_,
+     ema_tf1, ema_tf2, ema_tf3, ema_tf4, ema_tf5,
+     ema_tf11, ema_tf22, ema_tf33, ema_tf44, ema_tf55,
+     ema_tf111, ema_tf222, ema_tf333, ema_tf444, ema_tf555,
+     ema_tf1111, ema_tf2222, ema_tf3333, ema_tf4444, ema_tf5555,
+     ema_tf11111, ema_tf22222, ema_tf33333, ema_tf44444, ema_tf55555]
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🎨 PLOTEO DE INDICADORES
+// ═══════════════════════════════════════════════════════════════════════════════════════
+[ema1, ema2, ema3, ema4] = f_4emas()
+plot(enable_emas ? ema1 : na, "EMA 1", ema1_color, 2)
+plot(enable_emas ? ema2 : na, "EMA 2", ema2_color, 2)
+plot(enable_emas ? ema3 : na, "EMA 3", ema3_color, 2)
+plot(enable_emas ? ema4 : na, "EMA 4", ema4_color, 2)
+
+[tenkan, kijun, senkou_a, senkou_b] = f_ichimoku()
+plot(enable_ichimoku ? tenkan : na, "Tenkan-Sen", ichi_tenkan_color)
+plot(enable_ichimoku ? kijun : na, "Kijun-Sen", ichi_kijun_color)
+p1 = plot(enable_ichimoku ? senkou_a : na, "Senkou A", color.green, offset=ichi_displacement)
+p2 = plot(enable_ichimoku ? senkou_b : na, "Senkou B", color.red, offset=ichi_displacement)
+fill(p1, p2, enable_ichimoku ? color.new(color.gray, 90) : na, title="Kumo")
+plot(enable_ichimoku ? close : na, "Chikou", color.blue, offset=-ichi_displacement)
+
+
+// ZIGZAG — CORREGIDO
+// ============================================================
+
+// Variables del zigzag (fuera del IF)
+var line  zz_line       = na
+var float zz_last_pivot = na
+var int   zz_last_bar   = na
+var bool  zz_was_high   = false
+
+if enable_zigzag
+    ph = ta.pivothigh(high, zz_depth, zz_depth)
+    pl = ta.pivotlow(low, zz_depth, zz_depth)
+
+// --- Pivot High ---
+if not na(ph)
+    current_pivot = ph
+    current_bar   = bar_index - zz_depth
+
+    if not na(zz_last_pivot)
+        zz_line := line.new( zz_last_bar, zz_last_pivot, current_bar, current_pivot, color = current_pivot &gt; zz_last_pivot ? zz_up_color : zz_down_color, width = 2)
+
+    zz_last_pivot := current_pivot
+    zz_last_bar   := current_bar
+    zz_was_high   := true
+
+    // --- Pivot Low ---
+    if not na(pl)
+        current_pivot = pl
+        current_bar   = bar_index - zz_depth
+
+        if not na(zz_last_pivot)
+            zz_line := line.new(zz_last_bar, zz_last_pivot, current_bar, current_pivot, color = current_pivot &lt; zz_last_pivot ? zz_down_color : zz_up_color, width = 2)
+
+        zz_last_pivot := current_pivot
+        zz_last_bar   := current_bar
+        zz_was_high   := false
+
+    // --- Última línea extendida ---
+   // --- Última línea extendida ---
+if not na(zz_last_pivot) and barstate.islast
+    current_color = zz_was_high
+        ? (close &lt; zz_last_pivot ? zz_down_color : zz_up_color)
+        : (close &gt; zz_last_pivot ? zz_up_color : zz_down_color)
+
+    line.new(
+        zz_last_bar, zz_last_pivot,
+        bar_index, close,
+        color = current_color,
+        width = 1,
+        style = line.style_dashed)
+
+// ============================================================
+// CONTINÚA TU CÓDIGO EXACTAMENTE IGUAL
+// ============================================================
+
+[resistance, support, res_break_vol, sup_break_vol, res_break_wick, sup_break_wick] = f_support_resistance()
+res_color = enable_support_resistance and not ta.change(resistance) ? sr_resistance_color : na
+sup_color = enable_support_resistance and not ta.change(support) ? sr_support_color : na
+plot(resistance, color=res_color, offset=-(sr_right_bars+1), title="Resistance")
+plot(support, color=sup_color, offset=-(sr_right_bars+1), title="Support")
+
+plotshape(enable_support_resistance and sr_show_breaks and res_break_vol and not res_break_wick ? close : na,
+     "Res Break", text='B', style=shape.labelup, location=location.belowbar,
+     color=color.green, textcolor=color.white, size=size.tiny)
+
+plotshape(enable_support_resistance and sr_show_breaks and sup_break_vol and not sup_break_wick ? close : na,
+     "Sup Break", text='B', style=shape.labeldown, location=location.abovebar,
+     color=color.red, textcolor=color.white, size=size.tiny)
+
+plotshape(enable_support_resistance and sr_show_breaks and res_break_wick ? close : na,
+     "Bull Wick", text='BW', style=shape.labelup, location=location.belowbar,
+     color=color.green, textcolor=color.white, size=size.tiny)
+
+plotshape(enable_support_resistance and sr_show_breaks and sup_break_wick ? close : na,
+     "Bear Wick", text='BW', style=shape.labeldown, location=location.abovebar,
+     color=color.red, textcolor=color.white, size=size.tiny)
+
+if enable_multi_vp
+    if mvp_layer1
+        f_multi_vp(mvp_period, mvp_resolution, 2, true)
+    if mvp_layer2
+        f_multi_vp(int(mvp_period / 2), mvp_resolution, 2, false)
+    if mvp_layer3
+        f_multi_vp(int(mvp_period / 4), mvp_resolution, 2, false)
+    if mvp_layer4
+        f_multi_vp(int(mvp_period / 8), mvp_resolution, 1, false)
+
+if enable_delta_vp
+    f_delta_vp()
+
+if enable_candle_time
+    f_candle_time_labels()
+
+[mtpc_top, mtpc_bottom] = enable_mtpc ? f_mtpc() : [na, na]
+plot(enable_mtpc and mtpc_track_price ? mtpc_top : na, "MTPC Top", color=color.new(color.blue, 0), trackprice = mtpc_track_price, show_last = 1)
+plot(enable_mtpc and mtpc_track_price ? mtpc_bottom : na, "MTPC Bot", color=color.new(color.blue, 0), trackprice = mtpc_track_price, show_last = 1)
+
+[mtf_ema1, mtf_ema2, mtf_ema3, mtf_ema4, mtf_ema5, mtf_ema_1_, mtf_ema_2_, mtf_ema_3_, mtf_ema_4_, mtf_ema_5_,
+ mtf_ema_tf1, mtf_ema_tf2, mtf_ema_tf3, mtf_ema_tf4, mtf_ema_tf5,
+ mtf_ema_tf11, mtf_ema_tf22, mtf_ema_tf33, mtf_ema_tf44, mtf_ema_tf55,
+ mtf_ema_tf111, mtf_ema_tf222, mtf_ema_tf333, mtf_ema_tf444, mtf_ema_tf555,
+ mtf_ema_tf1111, mtf_ema_tf2222, mtf_ema_tf3333, mtf_ema_tf4444, mtf_ema_tf5555,
+ mtf_ema_tf11111, mtf_ema_tf22222, mtf_ema_tf33333, mtf_ema_tf44444, mtf_ema_tf55555] =
+     enable_mtf_trend ? f_mtf_trend() : [na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na,na]
+
+if enable_mtf_trend and barstate.islast
+    dash = table.new(position.top_right, 10, 10)
+    dash.cell(0,0, "", text_color = color.gray)
+    dash.cell(1,0, f_mtf_convert_tf(mtf_tf1), text_color = chart.fg_color)
+    dash.cell(2,0, f_mtf_convert_tf(mtf_tf2), text_color = chart.fg_color)
+    dash.cell(3,0, f_mtf_convert_tf(mtf_tf3), text_color = chart.fg_color)
+    dash.cell(4,0, f_mtf_convert_tf(mtf_tf4), text_color = chart.fg_color)
+    dash.cell(5,0, f_mtf_convert_tf(mtf_tf5), text_color = chart.fg_color)
+    dash.cell(0,1, "EMA1 - " + str.tostring(mtf_len1), text_color = chart.fg_color)
+    dash.cell(0,2, "EMA2 - " + str.tostring(mtf_len2), text_color = chart.fg_color)
+    dash.cell(0,3, "EMA3 - " + str.tostring(mtf_len3), text_color = chart.fg_color)
+    dash.cell(0,4, "EMA4 - " + str.tostring(mtf_len4), text_color = chart.fg_color)
+    dash.cell(0,5, "EMA5 - " + str.tostring(mtf_len5), text_color = chart.fg_color)
+
+    f_mtf_timeframes_trend(dash, 1, mtf_ema_tf1, mtf_ema_tf11, mtf_ema_tf111, mtf_ema_tf1111, mtf_ema_tf11111)
+    f_mtf_timeframes_trend(dash, 2, mtf_ema_tf2, mtf_ema_tf22, mtf_ema_tf222, mtf_ema_tf2222, mtf_ema_tf22222)
+    f_mtf_timeframes_trend(dash, 3, mtf_ema_tf3, mtf_ema_tf33, mtf_ema_tf333, mtf_ema_tf3333, mtf_ema_tf33333)
+    f_mtf_timeframes_trend(dash, 4, mtf_ema_tf4, mtf_ema_tf44, mtf_ema_tf444, mtf_ema_tf4444, mtf_ema_tf44444)
+    f_mtf_timeframes_trend(dash, 5, mtf_ema_tf5, mtf_ema_tf55, mtf_ema_tf555, mtf_ema_tf5555, mtf_ema_tf55555)
+
+if enable_mtf_trend
+    mtf_col1 = mtf_ema_1_ ? mtf_col_up : mtf_col_down
+    mtf_col2 = mtf_ema_2_ ? mtf_col_up : mtf_col_down
+    mtf_col3 = mtf_ema_3_ ? mtf_col_up : mtf_col_down
+    mtf_col4 = mtf_ema_4_ ? mtf_col_up : mtf_col_down
+    mtf_col5 = mtf_ema_5_ ? mtf_col_up : mtf_col_down
+
+    mtf_p1 = plot(mtf_ema1, "MTF EMA1", color = color.new(mtf_col1, 80))
+    mtf_p2 = plot(mtf_ema2, "MTF EMA2", color = color.new(mtf_col2, 60))
+    mtf_p3 = plot(mtf_ema3, "MTF EMA3", color = color.new(mtf_col3, 40))
+    mtf_p4 = plot(mtf_ema4, "MTF EMA4", color = color.new(mtf_col4, 20))
+    mtf_p5 = plot(mtf_ema5, "MTF EMA5", color = color.new(mtf_col5, 0))
+
+    fill(mtf_p1, mtf_p2, color.new(mtf_col1, 80))
+    fill(mtf_p2, mtf_p3, color.new(mtf_col2, 60))
+    fill(mtf_p3, mtf_p4, color.new(mtf_col3, 40))
+    fill(mtf_p4, mtf_p5, color.new(mtf_col4, 20))
+
+    f_mtf_label(ta.crossover(mtf_ema1, mtf_ema1[2]), ta.crossunder(mtf_ema1, mtf_ema1[2]), color.new(mtf_col1, 80), "EMA1")
+    f_mtf_label(ta.crossover(mtf_ema2, mtf_ema2[2]), ta.crossunder(mtf_ema2, mtf_ema2[2]), color.new(mtf_col2, 60), "EMA2")
+    f_mtf_label(ta.crossover(mtf_ema3, mtf_ema3[2]), ta.crossunder(mtf_ema3, mtf_ema3[2]), color.new(mtf_col3, 40), "EMA3")
+    f_mtf_label(ta.crossover(mtf_ema4, mtf_ema4[2]), ta.crossunder(mtf_ema4, mtf_ema4[2]), color.new(mtf_col4, 20), "EMA4")
+    f_mtf_label(ta.crossover(mtf_ema5, mtf_ema5[2]), ta.crossunder(mtf_ema5, mtf_ema5[2]), color.new(mtf_col5, 0), "EMA5")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📋 PANEL DE INFORMACIÓN
+// ═══════════════════════════════════════════════════════════════════════════════════════
+show_panel = input.bool(true, "Mostrar Panel Info", group="📊 Display")
+if show_panel and barstate.islast
+    active_count = (enable_emas ? 1 : 0) + (enable_ichimoku ? 1 : 0) + (enable_zigzag ? 1 : 0) +
+        (enable_support_resistance ? 1 : 0) + (enable_multi_vp ? 1 : 0) +
+        (enable_delta_vp ? 1 : 0) + (enable_candle_time ? 1 : 0) +
+        (enable_mtpc ? 1 : 0) + (enable_mtf_trend ? 1 : 0)
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3<br>
-    Generado: 2025-12-01 01:50:28
+    Total caracteres: 34,004<br>
+    Generado: 2025-12-01 16:21:29
   </div>
 </body>
 </html>
