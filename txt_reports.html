@@ -15,912 +15,1234 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-03 19:26:17</div>
+  <div class="meta">Última actualización: 2025-12-03 19:59:58</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Tengo un pequeño dashboard overlay en tradingview. Quiero que reemplaces algunos indicadores por otros nuevos que tengo, te paso los indicadores completos que funcionan en tradingview completamente, no toques nada del código de los indicadores que van a quedar, te voy a compartir un link donde vas a ver el programa completo del dashboard que funciona perfectamente y le tenes que sacar algunos indicadores que te voy a confirmar más adelante en el mismo link vas a tener un prompt para un indicador que necesito y  unos pocos indicadores que me gustan, saca del los indicadores completos que te voy a pasar supertrend, ema envelope y bollinger. Puede ser? Entra todo o hay que sacar mas? El prompt y los indicadores que quiero que agregues. Te paso el link:
-
-//@version=5
-indicator("Dashboard Overlay - Indicadores sobre Precio", shorttitle="Overlay Dashboard", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 🎛️ SELECTOR DE INDICADORES ACTIVOS (OVERLAY)
-// ═══════════════════════════════════════════════════════════════════════════════════════
-
-enable_emas = input.bool(true, "4 EMAs (sistema de medias móviles)", group="🎛️ Activar Indicadores Overlay")
-enable_ichimoku = input.bool(false, "Ichimoku (análisis japonés completo)", group="🎛️ Activar Indicadores Overlay")
-enable_zigzag = input.bool(false, "Zig Zag (análisis de swings)", group="🎛️ Activar Indicadores Overlay")
-enable_support_resistance = input.bool(false, "Support/Resistance (con confirmación de volumen)", group="🎛️ Activar Indicadores Overlay")
-enable_multi_vp = input.bool(false, "Multi-Layer Volume Profile (4 capas)", group="🎛️ Activar Indicadores Overlay")
-enable_bb_kc_strategy = input.bool(false, "BB/KC Strategy (Bollinger + Keltner + SAR)", group="🎛️ Activar Indicadores Overlay")
-enable_ema_envelope = input.bool(false, "EMA Envelope (sobre de EMAs con señales)", group="🎛️ Activar Indicadores Overlay")
-enable_supertrend = input.bool(false, "Supertrend (línea de tendencia dinámica)", group="🎛️ Activar Indicadores Overlay")
-enable_delta_vp = input.bool(false, "Delta Volume Profile (perfil con delta de volumen)", group="🎛️ Activar Indicadores Overlay")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 🟨 4 EMAS SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-ema1_length = input.int(50, "EMA 1 Período", minval=1, group="🟨 4 EMAs Settings")
-ema2_length = input.int(100, "EMA 2 Período", minval=1, group="🟨 4 EMAs Settings")
-ema3_length = input.int(200, "EMA 3 Período", minval=1, group="🟨 4 EMAs Settings")
-ema4_length = input.int(500, "EMA 4 Período", minval=1, group="🟨 4 EMAs Settings")
-ema1_color = input.color(color.yellow, "Color EMA 1", group="🎨 4 EMAs Colors")
-ema2_color = input.color(color.lime, "Color EMA 2", group="🎨 4 EMAs Colors")
-ema3_color = input.color(color.aqua, "Color EMA 3", group="🎨 4 EMAs Colors")
-ema4_color = input.color(color.purple, "Color EMA 4", group="🎨 4 EMAs Colors")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// ⛩️ ICHIMOKU SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-ichi_tenkan_period = input.int(9, "Tenkan-Sen Período", minval=1, group="⛩️ Ichimoku Settings")
-ichi_kijun_period = input.int(26, "Kijun-Sen Período", minval=1, group="⛩️ Ichimoku Settings")
-ichi_senkou_b_period = input.int(52, "Senkou Span B Período", minval=1, group="⛩️ Ichimoku Settings")
-ichi_displacement = input.int(26, "Displacement", minval=1, group="⛩️ Ichimoku Settings")
-ichi_tenkan_color = input.color(#007FFF, "Color Tenkan-Sen", group="🎨 Ichimoku Colors")
-ichi_kijun_color = input.color(#FF0016, "Color Kijun-Sen", group="🎨 Ichimoku Colors")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// ⚡ ZIG ZAG SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-zz_deviation = input.float(5.0, "Price Deviation (%)", minval=0.1, group="⚡ Zig Zag Settings")
-zz_depth = input.int(10, "Pivot Legs", minval=2, group="⚡ Zig Zag Settings")
-zz_up_color = input.color(color.green, "Color Alcista", group="⚡ Zig Zag Settings")
-zz_down_color = input.color(color.red, "Color Bajista", group="⚡ Zig Zag Settings")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 📍 SUPPORT/RESISTANCE SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-sr_show_breaks = input.bool(true, "Show Breaks", group="📍 S/R Settings")
-sr_left_bars = input.int(15, "Left Bars", minval=1, group="📍 S/R Settings")
-sr_right_bars = input.int(15, "Right Bars", minval=1, group="📍 S/R Settings")
-sr_volume_threshold = input.int(20, "Volume Threshold %", minval=0, group="📍 S/R Settings")
-sr_resistance_color = input.color(color.red, "Resistance", group="📍 S/R Settings", inline="sr")
-sr_support_color = input.color(#233dee, "Support", group="📍 S/R Settings", inline="sr")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 📊 MULTI-LAYER VOLUME PROFILE SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-mvp_period = input.int(300, "Period", minval=50, group="📊 Multi-Layer VP")
-mvp_resolution = input.int(100, "Resolution", minval=20, maxval=200, group="📊 Multi-Layer VP")
-mvp_profile_color = input.color(color.new(#00bbd4, 60), "Profile Color", group="📊 Multi-Layer VP")
-mvp_poc_color = input.color(color.blue, "PoC Color", group="📊 Multi-Layer VP")
-mvp_delta_pos = input.color(color.aqua, "Delta +", group="📊 Multi-Layer VP", inline="delta")
-mvp_delta_neg = input.color(color.red, "Delta -", group="📊 Multi-Layer VP", inline="delta")
-mvp_layer1 = input.bool(true, "Layer 1 (Full)", group="📊 Multi-Layer VP", inline="layers")
-mvp_layer2 = input.bool(true, "Layer 2 (1/2)", group="📊 Multi-Layer VP", inline="layers")
-mvp_layer3 = input.bool(false, "Layer 3 (1/4)", group="📊 Multi-Layer VP", inline="layers2")
-mvp_layer4 = input.bool(false, "Layer 4 (1/8)", group="📊 Multi-Layer VP", inline="layers2")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 📈 BB/KC STRATEGY SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-bbkc_length = input.int(20, "Length", minval=1, group="📈 BB/KC Strategy")
-bbkc_mult = input.float(1.0, "MultFactor", minval=0.001, maxval=50, group="📈 BB/KC Strategy")
-bbkc_use_true_range = input.bool(false, "Use TrueRange (KC)", group="📈 BB/KC Strategy")
-bbkc_highlight_squeeze = input.bool(true, "Highlight Squeeze", group="📈 BB/KC Strategy")
-bbkc_show_signals = input.bool(true, "Show Bull/Bear Signals", group="📈 BB/KC Strategy")
-bbkc_sar_start = input.float(0.02, "SAR Start", group="📈 BB/KC Strategy")
-bbkc_sar_increment = input.float(0.02, "SAR Increment", group="📈 BB/KC Strategy")
-bbkc_sar_maximum = input.float(0.2, "SAR Maximum", group="📈 BB/KC Strategy")
-bbkc_bb_color = input.color(color.red, "BB Color", group="📈 BB/KC Strategy", inline="bbkc1")
-bbkc_kc_color = input.color(color.lime, "KC Color", group="📈 BB/KC Strategy", inline="bbkc1")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 📊 EMA ENVELOPE SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-emae_length = input.int(20, "EMA Length", minval=1, group="📊 EMA Envelope")
-emae_highlight = input.bool(true, "Bull/Bear Highlights", group="📊 EMA Envelope")
-emae_close_color = input.color(color.aqua, "EMA Close Color", group="📊 EMA Envelope")
-emae_high_color = input.color(color.red, "EMA High Color", group="📊 EMA Envelope")
-emae_low_color = input.color(color.lime, "EMA Low Color", group="📊 EMA Envelope")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 📈 SUPERTREND SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-st_atr_period = input.int(10, "ATR Period", minval=1, group="📈 Supertrend")
-st_multiplier = input.float(3.0, "ATR Multiplier", minval=0.1, step=0.1, group="📈 Supertrend")
-st_change_atr = input.bool(true, "Use ATR (vs SMA of TR)", group="📈 Supertrend")
-st_show_signals = input.bool(true, "Show Buy/Sell Signals", group="📈 Supertrend")
-st_highlighting = input.bool(true, "Trend Highlighting", group="📈 Supertrend")
-st_up_color = input.color(color.green, "Uptrend Color", group="📈 Supertrend", inline="st")
-st_down_color = input.color(color.red, "Downtrend Color", group="📈 Supertrend", inline="st")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 📊 DELTA VOLUME PROFILE SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════════════
-dvp_lookback = input.int(300, "Lookback Period", minval=50, group="📊 Delta Volume Profile")
-dvp_color_plus = input.color(#c9805c, "Volume +", group="📊 Delta Volume Profile")
-dvp_color_minus = input.color(#5c8bc9, "Volume -", group="📊 Delta Volume Profile")
-dvp_poc_plus = input.color(color.blue, "POC +", group="📊 Delta Volume Profile", inline="poc")
-dvp_poc_minus = input.color(color.rgb(218, 131, 0), "POC -", group="📊 Delta Volume Profile", inline="poc")
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 🧮 FUNCIONES DE CÁLCULO
-// ═══════════════════════════════════════════════════════════════════════════════════════
-
-// 4 EMAs Function
-f_4emas() =&gt;
-    [ta.ema(close, ema1_length), ta.ema(close, ema2_length), 
-     ta.ema(close, ema3_length), ta.ema(close, ema4_length)]
-
-// Ichimoku Function
-f_ichimoku() =&gt;
-    tenkan = math.avg(ta.highest(high, ichi_tenkan_period), ta.lowest(low, ichi_tenkan_period))
-    kijun = math.avg(ta.highest(high, ichi_kijun_period), ta.lowest(low, ichi_kijun_period))
-    senkou_a = math.avg(tenkan, kijun)
-    senkou_b = math.avg(ta.highest(high, ichi_senkou_b_period), ta.lowest(low, ichi_senkou_b_period))
-    [tenkan, kijun, senkou_a, senkou_b]
-
-// Support/Resistance Function
-f_support_resistance() =&gt;
-    high_pivot = ta.pivothigh(high, sr_left_bars, sr_right_bars)
-    low_pivot = ta.pivotlow(low, sr_left_bars, sr_right_bars)
-    
-    var float resistance = na
-    var float support = na
-    
-    if not na(high_pivot)
-        resistance := high_pivot
-    if not na(low_pivot)
-        support := low_pivot
-    
-    short_vol = ta.ema(volume, 5)
-    long_vol = ta.ema(volume, 10)
-    vol_osc = 100 * (short_vol - long_vol) / long_vol
-    
-    res_break_vol = ta.crossover(close, resistance) and vol_osc &gt; sr_volume_threshold
-    sup_break_vol = ta.crossunder(close, support) and vol_osc &gt; sr_volume_threshold
-    bull_wick = ta.crossover(close, resistance) and (open - low) &gt; (close - open)
-    bear_wick = ta.crossunder(close, support) and (open - close) &lt; (high - open)
-    res_break_wick = bull_wick and not res_break_vol
-    sup_break_wick = bear_wick and not sup_break_vol
-    
-    [resistance, support, res_break_vol, sup_break_vol, res_break_wick, sup_break_wick]
-
-// Multi-Layer Volume Profile Function
-f_multi_vp(length, bins, poc_mult, show_style = true) =&gt;
-    if barstate.islast
-        var values = array.new&lt;float&gt;()
-        var vol_bins = array.new&lt;float&gt;(bins)
-        var tot_vol = array.new&lt;float&gt;()
-        var delta_vol = array.new&lt;float&gt;()
-        var bin_levels = array.new&lt;line&gt;()
-        var bin_labels = array.new&lt;label&gt;()
-        
-        values.clear()
-        vol_bins.fill(0)
-        tot_vol.clear()
-        delta_vol.clear()
-        
-        // Limpiar líneas y labels anteriores
-        if bin_levels.size() &gt; 0
-            for i = 0 to bin_levels.size() - 1
-                line.delete(bin_levels.get(i))
-            bin_levels.clear()
-        
-        if bin_labels.size() &gt; 0
-            for i = 0 to bin_labels.size() - 1
-                label.delete(bin_labels.get(i))
-            bin_labels.clear()
-        
-        // Recolectar valores para rango
-        for i = 0 to length - 1
-            values.push(high[i])
-            values.push(low[i])
-        
-        float max_val = values.max()
-        float min_val = values.min()
-        float step = (max_val - min_val) / bins
-        
-        // Calcular volumen por bin
-        for i = 0 to length - 1
-            c = close[i]
-            o = open[i]
-            vol = volume[i]
-            
-            tot_vol.push(vol)
-            delta_vol.push(c &gt; o ? vol : -vol)
-            
-            for j = 0 to bins - 1
-                lower = min_val + step * j
-                upper = lower + step
-                
-                if c &lt;= upper + step * 1.5 and c &gt;= lower - step * 1.5
-                    vol_bins.set(j, vol_bins.get(j) + vol)
-        
-        // Dibujar perfil
-        var poly = array.new&lt;chart.point&gt;()
-        poly.clear()
-        
-        bool poc_found = false
-        float max_vol = vol_bins.max()
-        
-        for i = 0 to bins - 1
-            lower = min_val + step * i
-            upper = lower + step
-            mid = math.avg(upper, lower)
-            
-            vol = int(vol_bins.get(i) / max_vol * 25)
-            start = bar_index - length
-            end_point = start + vol
-            
-            poly.push(chart.point.from_index(i == 0 ? start : i == bins - 1 ? start : end_point + 1, mid))
-            
-            // Dibujar POC
-            if vol_bins.get(i) == max_vol and not poc_found
-                poc_found := true
-                bin_labels.push(label.new(start, mid, str.tostring(vol_bins.get(i), format.volume), style=label.style_label_right, color=color.new(mvp_poc_color, 25)))
-                bin_levels.push(line.new(start, mid, start + int(length / poc_mult), mid, color=mvp_poc_color, width=3))
-                
-                if show_style
-                    bin_levels.push(line.new(start, max_val, bar_index, max_val, color=chart.fg_color))
-                    bin_levels.push(line.new(start, min_val, bar_index, min_val, color=chart.fg_color))
-                    bin_levels.push(line.new(start, max_val, start, min_val, color=chart.fg_color))
-                    
-                    bin_labels.push(label.new(start, max_val, "Total\n" + str.tostring(tot_vol.sum(), format.volume), style=label.style_label_down, color=color.blue, size=size.small))
-                    bin_labels.push(label.new(start, min_val, str.tostring(delta_vol.sum(), format.volume) + "\nDelta", style=label.style_label_up, size=size.small, color=delta_vol.sum() &lt; 0 ? mvp_delta_neg : mvp_delta_pos))
-        
-        polyline.delete(polyline.new(poly, line_color=#00e67700, fill_color=mvp_profile_color)[1])
-
-// BB/KC Strategy Function
-f_bb_kc_strategy() =&gt;
-    // Bollinger Bands
-    basis = ta.sma(close, bbkc_length)
-    dev = bbkc_mult * ta.stdev(close, bbkc_length)
-    upper_bb = basis + dev
-    lower_bb = basis - dev
-    
-    // Keltner Channels
-    ma = ta.ema(close, bbkc_length)
-    range_val = bbkc_use_true_range ? ta.tr : high - low
-    rangema = ta.ema(range_val, bbkc_length)
-    upper_kc = ma + rangema * bbkc_mult
-    lower_kc = ma - rangema * bbkc_mult
-    
-    // Señales
-    bearish = low &lt; lower_kc
-    bullish = high &gt; upper_kc
-    
-    // Squeeze (cuando BB está dentro de KC)
-    squeeze_on = upper_bb &lt; upper_kc and lower_bb &gt; lower_kc
-    
-    // SAR
-    sar_value = ta.sar(bbkc_sar_start, bbkc_sar_increment, bbkc_sar_maximum)
-    
-    [basis, upper_bb, lower_bb, ma, upper_kc, lower_kc, bearish, bullish, squeeze_on, sar_value]
-
-// EMA Envelope Function
-f_ema_envelope() =&gt;
-    ema_close = ta.ema(close, emae_length)
-    ema_high = ta.ema(high, emae_length)
-    ema_low = ta.ema(low, emae_length)
-    
-    // Condiciones de tendencia
-    bull_normal = high &gt; ema_high and low &gt; ema_low
-    bear_normal = high &lt; ema_high and low &lt; ema_low
-    sidewise = not bull_normal and not bear_normal
-    
-    // Fuerza de tendencia
-    bull_strong = bull_normal and low &gt; ema_high
-    bear_strong = bear_normal and high &lt; ema_low
-    
-    // Color de fondo
-    bg_color = bull_strong ? color.new(color.lime, 90) :
-               bull_normal ? color.new(color.green, 90) :
-               bear_strong ? color.new(color.red, 90) :
-               bear_normal ? color.new(color.orange, 90) :
-               sidewise ? color.new(color.blue, 95) : na
-    
-    [ema_close, ema_high, ema_low, bg_color, bull_normal, bear_normal, bull_strong, bear_strong]
-
-// Supertrend Function
-f_supertrend() =&gt;
-    src = hl2
-    atr2 = ta.sma(ta.tr, st_atr_period)
-    atr_val = st_change_atr ? ta.atr(st_atr_period) : atr2
-    
-    up = src - (st_multiplier * atr_val)
-    up1 = nz(up[1], up)
-    up := close[1] &gt; up1 ? math.max(up, up1) : up
-    
-    dn = src + (st_multiplier * atr_val)
-    dn1 = nz(dn[1], dn)
-    dn := close[1] &lt; dn1 ? math.min(dn, dn1) : dn
-    
-    var int trend = 1
-    trend := nz(trend[1], trend)
-    trend := trend == -1 and close &gt; dn1 ? 1 : trend == 1 and close &lt; up1 ? -1 : trend
-    
-    buy_signal = trend == 1 and trend[1] == -1
-    sell_signal = trend == -1 and trend[1] == 1
-    
-    [up, dn, trend, buy_signal, sell_signal]
-
-// Delta Volume Profile Function
-f_delta_vp() =&gt;
-    var max_min = array.new&lt;float&gt;()
-    var vol_plus = array.new&lt;float&gt;()
-    var vol_minus = array.new&lt;float&gt;()
-    var boxes = array.new&lt;box&gt;()
-    var labels = array.new&lt;label&gt;()
-    
-    step = 0.
-    bins = 0
-    
-    atr_val = ta.atr(200)
-    
-    if barstate.islast
-        // Limpiar arrays
-        max_min.clear()
-        
-        // Limpiar boxes anteriores
-        if boxes.size() &gt; 0
-            for b in boxes
-                box.delete(b)
-            boxes.clear()
-        
-        // Limpiar labels anteriores
-        if labels.size() &gt; 0
-            for l in labels
-                label.delete(l)
-            labels.clear()
-        
-        // Recolectar máximos y mínimos
-        for i = 0 to dvp_lookback - 1
-            h = high[i]
-            l = low[i]
-            max_min.push(h)
-            max_min.push(l)
-        
-        // Calcular bins y step
-        bins := int((max_min.max() - max_min.min()) / atr_val)
-        bins := math.max(bins, 20) // Mínimo 20 bins
-        bins := math.min(bins, 150) // Máximo 150 bins
-        step := (max_min.max() - max_min.min()) / bins
-        
-        // Inicializar arrays de volumen
-        vol_plus.clear()
-        vol_minus.clear()
-        for i = 0 to bins - 1
-            vol_plus.push(0.0)
-            vol_minus.push(0.0)
-        
-        // Calcular volumen por nivel de precio
-        for i = 0 to dvp_lookback - 1
-            h = high[i]
-            l = low[i]
-            c = close[i]
-            o = open[i]
-            v = volume[i]
-            
-            for k = 0 to bins - 1
-                loww = max_min.min() + step * k
-                mid = loww + step / 2
-                
-                if h &gt; mid and l &lt; mid
-                    if c &gt; o
-                        vol_plus.set(k, vol_plus.get(k) + v)
-                    else
-                        vol_minus.set(k, vol_minus.get(k) + v)
-        
-        // Dibujar perfil
-        for i = 0 to bins - 1
-            loww = max_min.min() + step * i
-            highh = loww + step
-            
-            vp = vol_plus.get(i)
-            vm = vol_minus.get(i)
-            
-            value_plus = vol_plus.sum() &gt; 0 ? int(vp / vol_plus.sum() * 200) : 0
-            value_minus = vol_minus.sum() &gt; 0 ? int(vm / vol_minus.sum() * 200) : 0
-            
-            max_plus = vp == vol_plus.max()
-            max_minus = vm == vol_minus.max()
-            
-            col_plus = color.from_gradient(vp, vol_plus.min(), vol_plus.max(), color.new(dvp_color_plus, 90), dvp_color_plus)
-            col_minus = color.from_gradient(vm, vol_minus.min(), vol_minus.max(), color.new(dvp_color_minus, 90), dvp_color_minus)
-            
-            sum_bars = value_plus + value_minus
-            col_sum = color.from_gradient(sum_bars, 0, 60, color.rgb(189, 189, 189, 100), #787b8699)
-            
-            // Box de fondo (perfil completo)
-            b1 = box.new(bar_index - dvp_lookback, highh, bar_index, loww, max_plus ? dvp_poc_plus : max_minus ? dvp_poc_minus : color.new(chart.bg_color, 50), bgcolor=col_sum)
-            
-            // Box de volumen positivo (hacia la izquierda)
-            b2 = box.new(bar_index + 50, highh, bar_index + 50 - value_plus, loww,chart.bg_color, bgcolor=max_plus ? dvp_poc_plus : col_plus, text=vp != 0 ? "+" + str.tostring(vp, format.volume) : "", text_color=chart.fg_color, text_size=size.small,text_halign=text.align_right)
-            
-            // Box de volumen negativo (hacia la derecha)
-            b3 = box.new(bar_index + 50, highh, bar_index + 50 + value_minus, loww, chart.bg_color,bgcolor=max_minus ? dvp_poc_minus : col_minus, text=vm != 0 ? "-" + str.tostring(vm, format.volume) : "", text_color=chart.fg_color, text_size=size.small,text_halign=text.align_left)
-            
-            boxes.push(b1)
-            boxes.push(b2)
-            boxes.push(b3)
-        
-        // Calcular delta y total
-        total_vol = vol_plus.sum() + vol_minus.sum()
-        delta_calc = vol_minus.sum() &gt; 0 ? ((vol_plus.sum() - vol_minus.sum()) / vol_minus.sum()) * 100 : 0
-        
-        // Label de Delta
-        l1 = label.new(bar_index + 50, max_min.max(), 
-                      "Delta: " + str.tostring(delta_calc, format.percent), 
-                      color=delta_calc &gt; 0 ? dvp_color_plus : dvp_color_minus, 
-                      textcolor=chart.fg_color, 
-                      style=label.style_label_down)
-        
-        // Label de Total
-        l2 = label.new(bar_index + 50, max_min.min(), 
-                      "Total: " + str.tostring(total_vol, format.volume), 
-                      color=color.gray, 
-                      textcolor=chart.fg_color, 
-                      style=label.style_label_up)
-        
-        labels.push(l1)
-        labels.push(l2)
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 🎨 PLOTEO DE INDICADORES
-// ═══════════════════════════════════════════════════════════════════════════════════════
-
-// 4 EMAs
-[ema1, ema2, ema3, ema4] = f_4emas()
-plot(enable_emas ? ema1 : na, "EMA 1", ema1_color, 2)
-plot(enable_emas ? ema2 : na, "EMA 2", ema2_color, 2)
-plot(enable_emas ? ema3 : na, "EMA 3", ema3_color, 2)
-plot(enable_emas ? ema4 : na, "EMA 4", ema4_color, 2)
-
-// Ichimoku
-[tenkan, kijun, senkou_a, senkou_b] = f_ichimoku()
-plot(enable_ichimoku ? tenkan : na, "Tenkan-Sen", ichi_tenkan_color)
-plot(enable_ichimoku ? kijun : na, "Kijun-Sen", ichi_kijun_color)
-
-p1 = plot(enable_ichimoku ? senkou_a : na, "Senkou A", color.green, offset=ichi_displacement)
-p2 = plot(enable_ichimoku ? senkou_b : na, "Senkou B", color.red, offset=ichi_displacement)
-fill(p1, p2, enable_ichimoku ? color.new(color.gray, 90) : na, title="Kumo")
-
-plot(enable_ichimoku ? close : na, "Chikou", color.blue, offset=-ichi_displacement)
-
-// Zig Zag mejorado
-if enable_zigzag
-    var line zz_line = na
-    var float zz_last_pivot = na
-    var int zz_last_bar = na
-    var bool zz_was_high = false
-    
-    ph = ta.pivothigh(high, zz_depth, zz_depth)
-    pl = ta.pivotlow(low, zz_depth, zz_depth)
-    
-    if not na(ph)
-        current_pivot = ph
-        current_bar = bar_index - zz_depth
-        
-        if not na(zz_last_pivot)
-            zz_line := line.new(zz_last_bar, zz_last_pivot, current_bar, current_pivot, color=current_pivot &gt; zz_last_pivot ? zz_up_color : zz_down_color, width=2)
-        
-        zz_last_pivot := current_pivot
-        zz_last_bar := current_bar
-        zz_was_high := true
-    
-    if not na(pl)
-        current_pivot = pl
-        current_bar = bar_index - zz_depth
-        
-        if not na(zz_last_pivot)
-            zz_line := line.new(zz_last_bar, zz_last_pivot, current_bar, current_pivot, color=current_pivot &lt; zz_last_pivot ? zz_down_color : zz_up_color, width=2)
-        
-        zz_last_pivot := current_pivot
-        zz_last_bar := current_bar
-        zz_was_high := false
-    
-    // Extender al precio actual
-    if not na(zz_last_pivot) and barstate.islast
-        current_color = zz_was_high ? (close &lt; zz_last_pivot ? zz_down_color : zz_up_color) : (close &gt; zz_last_pivot ? zz_up_color : zz_down_color)
-        line.new(zz_last_bar, zz_last_pivot, bar_index, close, color=current_color, width=1, style=line.style_dashed)
-
-// Support/Resistance
-[resistance, support, res_break_vol, sup_break_vol, res_break_wick, sup_break_wick] = f_support_resistance()
-
-res_color = enable_support_resistance and not ta.change(resistance) ? sr_resistance_color : na
-sup_color = enable_support_resistance and not ta.change(support) ? sr_support_color : na
-
-plot(resistance, color=res_color, offset=-(sr_right_bars+1), title="Resistance")
-plot(support, color=sup_color, offset=-(sr_right_bars+1), title="Support")
-
-plotshape(enable_support_resistance and sr_show_breaks and res_break_vol and not res_break_wick ? close : na,
-         "Res Break", text='B', style=shape.labelup, location=location.belowbar, 
-         color=color.green, textcolor=color.white, size=size.tiny)
-
-plotshape(enable_support_resistance and sr_show_breaks and sup_break_vol and not sup_break_wick ? close : na,
-         "Sup Break", text='B', style=shape.labeldown, location=location.abovebar, 
-         color=color.red, textcolor=color.white, size=size.tiny)
-
-plotshape(enable_support_resistance and sr_show_breaks and res_break_wick ? close : na,
-         "Bull Wick", text='BW', style=shape.labelup, location=location.belowbar, 
-         color=color.green, textcolor=color.white, size=size.tiny)
-
-plotshape(enable_support_resistance and sr_show_breaks and sup_break_wick ? close : na,
-         "Bear Wick", text='BW', style=shape.labeldown, location=location.abovebar, 
-         color=color.red, textcolor=color.white, size=size.tiny)
-
-// Multi-Layer Volume Profile
-if enable_multi_vp
-    if mvp_layer1
-        f_multi_vp(mvp_period, mvp_resolution, 2, true)
-    if mvp_layer2
-        f_multi_vp(int(mvp_period / 2), mvp_resolution, 2, false)
-    if mvp_layer3
-        f_multi_vp(int(mvp_period / 4), mvp_resolution, 2, false)
-    if mvp_layer4
-        f_multi_vp(int(mvp_period / 8), mvp_resolution, 1, false)
-
-// BB/KC Strategy
-[bb_basis, bb_upper, bb_lower, kc_ma, kc_upper, kc_lower, 
- bbkc_bearish, bbkc_bullish, bbkc_squeeze, sar_value] = f_bb_kc_strategy()
-
-// Bollinger Bands
-plot(enable_bb_kc_strategy ? bb_basis : na, "BB Basis", bbkc_bb_color, 2)
-bb_u = plot(enable_bb_kc_strategy ? bb_upper : na, "BB Upper", bbkc_bb_color, 2)
-bb_l = plot(enable_bb_kc_strategy ? bb_lower : na, "BB Lower", bbkc_bb_color, 2)
-fill(bb_u, bb_l, enable_bb_kc_strategy ? color.new(bbkc_bb_color, 90) : na, title="BB Fill")
-
-// Keltner Channels
-plot(enable_bb_kc_strategy ? kc_ma : na, "KC Basis", bbkc_kc_color)
-kc_u = plot(enable_bb_kc_strategy ? kc_upper : na, "KC Upper", bbkc_kc_color)
-kc_l = plot(enable_bb_kc_strategy ? kc_lower : na, "KC Lower", bbkc_kc_color)
-fill(kc_u, kc_l, enable_bb_kc_strategy ? color.new(bbkc_kc_color, 80) : na, title="KC Fill")
-
-// Señales Bull/Bear
-plotshape(enable_bb_kc_strategy and bbkc_show_signals and bbkc_bearish ? low : na,
-         "Bear Signal", style=shape.xcross, location=location.absolute, 
-         color=color.red, size=size.small)
-
-plotshape(enable_bb_kc_strategy and bbkc_show_signals and bbkc_bullish ? high : na,
-         "Bull Signal", style=shape.xcross, location=location.absolute, 
-         color=color.green, size=size.small)
-
-// Parabolic SAR
-plot(enable_bb_kc_strategy ? sar_value : na, "SAR", color=color.blue, style=plot.style_cross, linewidth=2)
-
-// Squeeze highlight (fondo amarillo cuando squeeze activo)
-bgcolor(enable_bb_kc_strategy and bbkc_highlight_squeeze and bbkc_squeeze ? 
-       color.new(color.yellow, 90) : na, title="Squeeze Background")
-
-// EMA Envelope
-[emae_close, emae_high, emae_low, emae_bg_color, 
- emae_bull, emae_bear, emae_bull_strong, emae_bear_strong] = f_ema_envelope()
-
-plot(enable_ema_envelope ? emae_close : na, "EMA Close", emae_close_color, style=plot.style_cross)
-plot(enable_ema_envelope ? emae_high : na, "EMA High", emae_high_color, 2)
-plot(enable_ema_envelope ? emae_low : na, "EMA Low", emae_low_color, 2)
-
-// Fondo de tendencia
-bgcolor(enable_ema_envelope and emae_highlight ? emae_bg_color : na, title="EMA Envelope Trend")
-
-// Supertrend
-[st_up, st_dn, st_trend, st_buy, st_sell] = f_supertrend()
-
-st_up_plot = plot(enable_supertrend and st_trend == 1 ? st_up : na, "Supertrend Up", 
-                 st_up_color, 2, plot.style_linebr)
-st_dn_plot = plot(enable_supertrend and st_trend == -1 ? st_dn : na, "Supertrend Down", 
-                 st_down_color, 2, plot.style_linebr)
-
-// Señales de compra/venta
-plotshape(enable_supertrend and st_buy ? st_up : na, "Buy Signal", 
-         style=shape.circle, location=location.absolute, color=st_up_color, size=size.tiny)
-plotshape(enable_supertrend and st_show_signals and st_buy ? st_up : na, "Buy Label", 
-         text="Buy", style=shape.labelup, location=location.absolute, 
-         color=st_up_color, textcolor=color.white, size=size.tiny)
-
-plotshape(enable_supertrend and st_sell ? st_dn : na, "Sell Signal", 
-         style=shape.circle, location=location.absolute, color=st_down_color, size=size.tiny)
-plotshape(enable_supertrend and st_show_signals and st_sell ? st_dn : na, "Sell Label", 
-         text="Sell", style=shape.labeldown, location=location.absolute, 
-         color=st_down_color, textcolor=color.white, size=size.tiny)
-
-// Highlighting de tendencia
-st_mid_plot = plot(enable_supertrend ? ohlc4 : na, display=display.none)
-fill(st_mid_plot, st_up_plot, enable_supertrend and st_highlighting and st_trend == 1 ? color.new(st_up_color, 90) : na, title="Uptrend Fill")
-fill(st_mid_plot, st_dn_plot, enable_supertrend and st_highlighting and st_trend == -1 ? color.new(st_down_color, 90) : na, title="Downtrend Fill")
-
-// Delta Volume Profile
-if enable_delta_vp
-    f_delta_vp()
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
-// 📋 PANEL DE INFORMACIÓN
-// ═══════════════════════════════════════════════════════════════════════════════════════
-show_panel = input.bool(true, "Mostrar Panel Info", group="📊 Display")
-
-if show_panel and barstate.islast
-    active_count = (enable_emas ? 1 : 0) + (enable_ichimoku ? 1 : 0) + (enable_zigzag ? 1 : 0) + 
-                   (enable_support_resistance ? 1 : 0) + (enable_multi_vp ? 1 : 0) + 
-                   (enable_bb_kc_strategy ? 1 : 0) + (enable_ema_envelope ? 1 : 0) + 
-                   (enable_supertrend ? 1 : 0) + (enable_delta_vp ? 1 : 0)
-    
-    var table panel = table.new(position.top_right, 2, 4, bgcolor=color.new(color.blue, 90), border_width=1)
-    
-    table.cell(panel, 0, 0, "Overlay Dashboard", bgcolor=color.blue, text_color=color.white, text_size=size.normal)
-    table.cell(panel, 1, 0, "", bgcolor=color.blue)
-    
-    table.cell(panel, 0, 1, "Activos:", text_color=color.white, text_size=size.small)
-    table.cell(panel, 1, 1, str.tostring(active_count) + "/9", text_color=color.yellow, text_size=size.small)
-    
-    table.cell(panel, 0, 2, "Precio:", text_color=color.white, text_size=size.small)
-    table.cell(panel, 1, 2, str.tostring(close, format.mintick), 
-              text_color=close &gt; close[1] ? color.lime : color.red, text_size=size.small)
-    
-    table.cell(panel, 0, 3, "Timeframe:", text_color=color.white, text_size=size.small)
-    table.cell(panel, 1, 3, timeframe.period, text_color=color.white, text_size=size.small)
-
-
-Indicadores a reemplazar
-
-// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © Tradingview
-//@version=5
-indicator("Multi-Time Period Charts", "MTPC", overlay=true, max_boxes_count=500)
-
-AUTO_TIMEFRAME_TOOLTIP = "When the Auto option is selected, the timeframe of the indicator is chosen automatically based on the chart timeframe. The Timeframe dropdown is ignored. The automated timeframes are: \n
-
- '1 day' for any chart timeframes below '1 day' \n
-
- '1 week' for any timeframes starting from '1 day' up to '1 week' \n
-
- '1 month' for any timeframes starting from '1 week' up to '1 month' \n
-
- '3 months' for any timeframes starting from '1 month' up to '3 months' \n
-
- '12 months' for any timeframes above '3 months'"
-
-HLR = "High/Low Range"
-TR = "True Range"
-HAR = "Heikin Ashi Range"
-
-DEFAULT_RESOLUTION = "1M"
-DEFAULT_COLOR_GROWTH = color.rgb(0, 150, 136, 80)
-DEFAULT_COLOR_FALL = color.rgb(244, 67, 54, 80)
-DEFAULT_CALCULATION_METHOD = HLR
-DEFAULT_AUTO_RESOLUTION = true
-
-var prevBarIndex = bar_index
-
-drawBox(left, right, top, bottom, diff, growthColorInput, fallColorInput, borderGrowth, borderFall) =&gt;
-    drawnBox = box.new(left, top, right, bottom)
-    if diff &lt; 0
-        box.set_border_color(drawnBox, borderFall)
-        box.set_bgcolor(drawnBox, fallColorInput)
-    else
-        box.set_border_color(drawnBox, borderGrowth)
-        box.set_bgcolor(drawnBox, growthColorInput)
-    drawnBox
-
-selectAutoTimeframe() =&gt;
-     timeframe.isseconds ? '120':
-     timeframe.isminutes ? '1440':
-     timeframe.isdaily ? 'W':
-     timeframe.isweekly ? 'M':
-     timeframe.ismonthly and timeframe.multiplier &lt; 3 ? '3M': '12M'
-
-autoTimeframeInput = input(DEFAULT_AUTO_RESOLUTION, title="AutoTimeframe", tooltip=AUTO_TIMEFRAME_TOOLTIP)
-timeframeInput = input.timeframe(DEFAULT_RESOLUTION, title="Timeframe")
-timeframe = autoTimeframeInput ? selectAutoTimeframe() : timeframeInput
-
-calculationMethodInput = input.string(DEFAULT_CALCULATION_METHOD, "Calculation", options = [HLR, TR, HAR])
-
-trackPriceInput = input(true, "Show dashed lines")
-
-growthColorInput = input(DEFAULT_COLOR_GROWTH, title="",inline="Body")
-fallColorInput   = input(DEFAULT_COLOR_FALL, title="Body", inline="Body")
-
-growthBorderColor = input(color.new(DEFAULT_COLOR_GROWTH, 0), title="", inline="Outline")
-fallBorderColor = input(color.new(DEFAULT_COLOR_FALL, 0), title="Outline", inline="Outline")
-
-[previousHigh, previousLow, previousClose, previousOpen, prePreviousClose] = request.security(syminfo.tickerid, timeframe, [high[1], low[1], close[1], open[1], close[2]], lookahead=barmerge.lookahead_on)
-[currentHigh, currentLow, currentClose, currentOpen, prevClose] = request.security(syminfo.tickerid, timeframe, [high, low, close, open, close[1]])
-
-isNewPeriod = ta.change(time(timeframe))
-
-drawCurrent = barstate.islast and not isNewPeriod
-secHigh = drawCurrent ? currentHigh : previousHigh
-secPrevClose = drawCurrent ? prevClose : prePreviousClose
-secLow = drawCurrent ? currentLow : previousLow
-
-
-diff = drawCurrent ? currentClose - currentOpen : previousClose - previousOpen
-left = prevBarIndex
-right = drawCurrent ? bar_index : bar_index[1]
-
-[ashiHigh, ashiLow] = request.security(ticker.heikinashi(syminfo.tickerid), timeframe, [high, low])
-float top = na
-float bottom = na
-
-if calculationMethodInput == HLR
-    top := secHigh
-    bottom := secLow
-else if calculationMethodInput == TR
-    top := math.max(secHigh, secPrevClose)
-    bottom := math.min(secLow, secPrevClose)
-else if calculationMethodInput == HAR
-    top := ashiHigh
-    bottom := ashiLow
-
-if isNewPeriod
-    prevBarIndex := bar_index
-    drawBox(left, right, top, bottom, diff, growthColorInput, fallColorInput, growthBorderColor, fallBorderColor)
-
-var box prevBox = na
-
-if barstate.islast
-    if isNewPeriod
-        prevBox := na
-    else
-        box.delete(prevBox)
-        prevBox := drawBox(left, right, top, bottom, diff, growthColorInput, fallColorInput, growthBorderColor, fallBorderColor)
-
-var box prevBox1 = na
-var float prevTop = na
-var float prevBottom = na
-if array.size(box.all) &gt; 1
-    prevBox1 := array.get(box.all, array.size(box.all) - 1)
-    prevTop := box.get_top(prevBox1)
-    prevBottom := box.get_bottom(prevBox1)
-    // box.delete(prevBox1)
-plot(prevTop, "Prev Top", color=color.new(color.blue, trackPriceInput ? 0 : 100), trackprice = trackPriceInput, show_last = 1)
-plot(prevBottom, "Prev Bot", color=color.new(color.blue, trackPriceInput ? 0 : 100), trackprice = trackPriceInput, show_last = 1)
-
-// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © BigBeluga
-
-//@version=6
-indicator("Multi-Timeframe Trend Analysis [BigBeluga]", "MTF Trend [BigBeluga]", overlay = true, max_labels_count = 500)
-
-// ＩＮＰＵＴＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
-tf1 = input.timeframe("60", "TF1", group = "Timeframes")
-tf2 = input.timeframe("120", "TF2", group = "Timeframes")
-tf3 = input.timeframe("180", "TF3", group = "Timeframes")
-tf4 = input.timeframe("240", "TF4", group = "Timeframes")
-tf5 = input.timeframe("300", "TF5", group = "Timeframes")
-
-len1 = input.int(20, "EMA1", group = "EMA")
-len2 = input.int(30, "EMA2", group = "EMA")
-len3 = input.int(40, "EMA3", group = "EMA")
-len4 = input.int(50, "EMA4", group = "EMA")
-len5 = input.int(60, "EMA5", group = "EMA")
-
-col_1 = input.color(color.lime, "", inline = "c")
-col_2 = input.color(color.purple, "", inline = "c")
-
-// }
-// ＣＡＬＣＵＬＡＴＩＯＮＳ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
-convert_tf(tf)=&gt;
-    time_in = timeframe.in_seconds(tf) / 60 / 60
-    time_in &gt;= 24 ? tf : time_in &gt;= 1 ? str.tostring(time_in) + "h" : tf + "m"
-
-request(src1, src2, src3, src4, src5, tf)=&gt;
-    float chartTFInMinutes = timeframe.in_seconds("") 
-    float inputTFInMinutes = timeframe.in_seconds(tf) 
-
-    ss1 = src1
-    ss2 = src2
-    ss3 = src3
-    ss4 = src4
-    ss5 = src5
-
-    if chartTFInMinutes != inputTFInMinutes
-        
-        [s1, s2, s3, s4, s5] = request.security(syminfo.tickerid, tf, [src1, src2, src3, src4, src5])  
-
-        ss1 := s1
-        ss2 := s2
-        ss3 := s3
-        ss4 := s4
-        ss5 := s5
-
-    [ss1, ss2, ss3, ss4, ss5]
-
-
-label_(cond1, cond2, color, tooltip)=&gt;
-    if cond1
-        label.new(bar_index, low, "🢁", color = color(na), textcolor = color, style = label.style_label_up, tooltip = tooltip)
-    if cond2
-        label.new(bar_index, high, "🢃", color = color(na), textcolor = color, style = label.style_label_down, tooltip = tooltip)
-
-timeframes_trend(table dash1, row, ema_1, ema_2, ema_3, ema_4, ema_5)=&gt;
-
-    col1 = ema_1 ? col_1 : col_2
-    col2 = ema_2 ? col_1 : col_2
-    col3 = ema_3 ? col_1 : col_2
-    col4 = ema_4 ? col_1 : col_2
-    col5 = ema_5 ? col_1 : col_2
-
-    dash1.cell(row,1, ema_1 ? "🢁" : "🢃", text_color = color.new(col1, 30), bgcolor = color.new(col1, 85))
-    dash1.cell(row,2, ema_2 ? "🢁" : "🢃", text_color = color.new(col2, 25), bgcolor = color.new(col2, 80))
-    dash1.cell(row,3, ema_3 ? "🢁" : "🢃", text_color = color.new(col3, 20), bgcolor = color.new(col3, 75))
-    dash1.cell(row,4, ema_4 ? "🢁" : "🢃", text_color = color.new(col4, 15), bgcolor = color.new(col4, 70))
-    dash1.cell(row,5, ema_5 ? "🢁" : "🢃", text_color = color.new(col5, 10), bgcolor = color.new(col5, 65))
-
-
-ema1 = ta.ema(close, len1)
-ema2 = ta.ema(close, len2)
-ema3 = ta.ema(close, len3)
-ema4 = ta.ema(close, len4)
-ema5 = ta.ema(close, len5)
-
-ema_1_ = ema1 &gt; ema1[2]
-ema_2_ = ema2 &gt; ema2[2]
-ema_3_ = ema3 &gt; ema3[2]
-ema_4_ = ema4 &gt; ema4[2]
-ema_5_ = ema5 &gt; ema5[2] 
-
-[ema_tf1, ema_tf2, ema_tf3, ema_tf4, ema_tf5] = request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, tf1)
-[ema_tf11, ema_tf22, ema_tf33, ema_tf44, ema_tf55] = request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, tf2)
-[ema_tf111, ema_tf222, ema_tf333, ema_tf444, ema_tf555] = request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, tf3)
-[ema_tf1111, ema_tf2222, ema_tf3333, ema_tf4444, ema_tf5555] = request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, tf4)
-[ema_tf11111, ema_tf22222, ema_tf33333, ema_tf44444, ema_tf55555] = request(ema_1_, ema_2_, ema_3_, ema_4_, ema_5_, tf5)
-
-
-// }
-// ＰＬＯＴ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
-if barstate.islast
-    dash = table.new(position.top_right, 10, 10)
-
-    dash.cell(0,0, "", text_color = color.gray)
-    dash.cell(1,0, convert_tf(tf1), text_color = chart.fg_color)
-    dash.cell(2,0, convert_tf(tf2), text_color = chart.fg_color)
-    dash.cell(3,0, convert_tf(tf3), text_color = chart.fg_color)
-    dash.cell(4,0, convert_tf(tf4), text_color = chart.fg_color)
-    dash.cell(5,0, convert_tf(tf5), text_color = chart.fg_color)
-
-    dash.cell(0,1, "EMA1 - " + str.tostring(len1), text_color = chart.fg_color)
-    dash.cell(0,2, "EMA2 - " + str.tostring(len2), text_color = chart.fg_color)
-    dash.cell(0,3, "EMA3 - " + str.tostring(len3), text_color = chart.fg_color)
-    dash.cell(0,4, "EMA4 - " + str.tostring(len4), text_color = chart.fg_color)
-    dash.cell(0,5, "EMA5 - " + str.tostring(len5), text_color = chart.fg_color)
-
-    timeframes_trend(dash, 1, ema_tf1, ema_tf11, ema_tf111, ema_tf1111, ema_tf11111)
-    timeframes_trend(dash, 2, ema_tf2, ema_tf22, ema_tf222, ema_tf2222, ema_tf22222)
-    timeframes_trend(dash, 3, ema_tf3, ema_tf33, ema_tf333, ema_tf3333, ema_tf33333)
-    timeframes_trend(dash, 4, ema_tf4, ema_tf44, ema_tf444, ema_tf4444, ema_tf44444)
-    timeframes_trend(dash, 5, ema_tf5, ema_tf55, ema_tf555, ema_tf5555, ema_tf55555)
-
-col1 = ema_1_ ? col_1 : col_2
-col2 = ema_2_ ? col_1 : col_2
-col3 = ema_3_ ? col_1 : col_2
-col4 = ema_4_ ? col_1 : col_2
-col5 = ema_5_ ? col_1 : col_2
-
-p1 = plot(ema1, "EMA1", color = color.new(col1, 80))
-p2 = plot(ema2, "EMA2", color = color.new(col2, 60))
-p3 = plot(ema3, "EMA3", color = color.new(col3, 40))
-p4 = plot(ema4, "EMA4", color = color.new(col4, 20))
-p5 = plot(ema5, "EMA5", color = color.new(col5, 0))
-
-fill(p1, p2, color.new(col1, 80))
-fill(p2, p3, color.new(col2, 60))
-fill(p3, p4, color.new(col3, 40))
-fill(p4, p5, color.new(col4, 20))
-
-label_(ta.crossover(ema1, ema1[2]), ta.crossunder(ema1, ema1[2]), color.new(col1, 80), "EMA1")
-label_(ta.crossover(ema2, ema2[2]), ta.crossunder(ema2, ema2[2]), color.new(col2, 60), "EMA2")
-label_(ta.crossover(ema3, ema3[2]), ta.crossunder(ema3, ema3[2]), color.new(col3, 40), "EMA3")
-label_(ta.crossover(ema4, ema4[2]), ta.crossunder(ema4, ema4[2]), color.new(col4, 20), "EMA4")
-label_(ta.crossover(ema5, ema5[2]), ta.crossunder(ema5, ema5[2]), color.new(col5, 0), "EMA5")
-// }
-
-
-Esto es lo  que me escribio Sonnet y de aca saque el código que te pase, espero que este entero.
-
-Voy a revisar el contenido del link que compartiste para entender la estructura completa del dashboard y los indicadores que quieres agregar.
-
-
-
-
+Timestamp	Symbol	Current_Price	Current_PnL_%	ADX	Momentum_Color	Action	       La columna que dice neutral esta vacia, o sea no tiene encabezado           
+2025-12-03 15:24:01	PEPE/USDT:USDT	0.000004774	-0.4587155963	11.37684138	FALSE	0.000004774	neutral
+2025-12-03 15:24:03	ETH/USDT:USDT	3118.29	-0.2415350754	7.302807567	FALSE	3118.29	neutral
+2025-12-03 15:24:10	SHIB/USDT:USDT	0.000009171	-1.099967648	31.62994822	FALSE	0.000009171	neutral
+2025-12-03 15:24:12	PEPE/USDT:USDT	0.000004776	-0.4170141785	11.56588283	FALSE	0.000004776	neutral
+2025-12-03 16:34:50	AVICI/USDT:USDT	7.167	-0.1393339836	7.904796517	FALSE	7.167	neutral
+2025-12-03 16:36:54	AVICI/USDT:USDT	7.138	-0.5434025359	9.962808067	FALSE	7.138	neutral
+2025-12-03 16:36:55	FF/USDT:USDT	0.1279	-0.2340093604	1.189271867	FALSE	0.1279	neutral
+2025-12-03 16:38:55	AVICI/USDT:USDT	7.192	0.2090009753	11.99336182	FALSE	7.192	neutral
+2025-12-03 16:38:56	FF/USDT:USDT	0.1277	-0.3900156006	3.219825617	FALSE	0.1277	neutral
+2025-12-03 16:40:57	AVICI/USDT:USDT	7.206	0.4040685523	14.02158533	FALSE	7.206	neutral
+2025-12-03 16:40:59	FF/USDT:USDT	0.1279	-0.2340093604	5.248049133	FALSE	0.1279	neutral
+2025-12-03 16:42:55	AVICI/USDT:USDT	7.32	1.992475965	15.98491113	FALSE	7.32	neutral
+2025-12-03 16:42:57	FF/USDT:USDT	0.1277	-0.3900156006	7.211374933	FALSE	0.1277	neutral
+2025-12-03 16:45:07	AVICI/USDT:USDT	7.28	1.435140031	18.18790178	FALSE	7.28	neutral
+2025-12-03 16:45:10	FF/USDT:USDT	0.1279	-0.2340093604	9.414365583	FALSE	0.1279	neutral
+2025-12-03 16:47:25	AVICI/USDT:USDT	7.322	2.020342762	20.46170715	TRUE	7.322	neutral
+2025-12-03 16:47:26	FF/USDT:USDT	0.1285	0.2340093604	11.68817095	FALSE	0.1285	neutral
+2025-12-03 16:49:26	AVICI/USDT:USDT	7.395	3.037480842	22.49655627	TRUE	7.395	neutral
+2025-12-03 16:49:27	FF/USDT:USDT	0.1286	0.3120124805	13.72302007	FALSE	0.1286	neutral
+2025-12-03 16:49:57	AVICI/USDT:USDT	7.395	3.037480842	23.00310305	TRUE	7.395	neutral
+2025-12-03 16:49:58	FF/USDT:USDT	0.1287	0.3900156006	14.22956685	FALSE	0.1287	neutral
+2025-12-03 16:49:59	ORDI/USDT:USDT	4.145	0.1207729469	0.11085625	FALSE	4.145	neutral
+2025-12-03 16:50:07	AVICI/USDT:USDT	7.394	3.023547443	23.17257288	TRUE	7.394	neutral
+2025-12-03 16:50:08	FF/USDT:USDT	0.1285	0.2340093604	14.39903668	FALSE	0.1285	neutral
+2025-12-03 16:50:10	ORDI/USDT:USDT	4.144	0.09661835749	0.2803260833	FALSE	4.144	neutral
+2025-12-03 16:50:17	AVICI/USDT:USDT	7.394	3.023547443	23.35296992	TRUE	7.394	neutral
+2025-12-03 16:50:19	FF/USDT:USDT	0.1285	0.2340093604	14.57943372	FALSE	0.1285	neutral
+2025-12-03 16:50:20	ORDI/USDT:USDT	4.145	0.1207729469	0.4607231167	FALSE	4.145	neutral
+2025-12-03 16:50:27	AVICI/USDT:USDT	7.393	3.009614045	23.51992722	TRUE	7.393	neutral
+2025-12-03 16:50:28	FF/USDT:USDT	0.1285	0.2340093604	14.74639102	FALSE	0.1285	neutral
+2025-12-03 16:50:30	ORDI/USDT:USDT	4.147	0.1690821256	0.6276804167	FALSE	4.147	neutral
+2025-12-03 16:50:37	AVICI/USDT:USDT	7.389	2.953880451	23.68088827	TRUE	7.389	neutral
+2025-12-03 16:50:39	FF/USDT:USDT	0.1285	0.2340093604	14.90735207	FALSE	0.1285	neutral
+2025-12-03 16:50:40	ORDI/USDT:USDT	4.148	0.193236715	0.7886414667	FALSE	4.148	neutral
+2025-12-03 16:50:47	AVICI/USDT:USDT	7.391	2.981747248	23.85012108	TRUE	7.391	neutral
+2025-12-03 16:50:49	FF/USDT:USDT	0.1286	0.3120124805	15.07658488	FALSE	0.1286	neutral
+2025-12-03 16:50:50	ORDI/USDT:USDT	4.146	0.1449275362	0.9578742833	FALSE	4.146	neutral
+2025-12-03 16:50:57	AVICI/USDT:USDT	7.393	3.009614045	24.02356797	TRUE	7.393	neutral
+2025-12-03 16:50:59	FF/USDT:USDT	0.1285	0.2340093604	15.25003177	FALSE	0.1285	neutral
+2025-12-03 16:51:01	ORDI/USDT:USDT	4.147	0.1690821256	1.131321167	FALSE	4.147	neutral
+2025-12-03 16:51:08	AVICI/USDT:USDT	7.393	3.009614045	24.20019422	TRUE	7.393	neutral
+2025-12-03 16:51:10	FF/USDT:USDT	0.1286	0.3120124805	15.42665802	FALSE	0.1286	neutral
+2025-12-03 16:51:12	ORDI/USDT:USDT	4.147	0.1690821256	1.307947417	FALSE	4.147	neutral
+2025-12-03 16:51:19	AVICI/USDT:USDT	7.385	2.898146858	24.37967293	TRUE	7.385	neutral
+2025-12-03 16:51:21	FF/USDT:USDT	0.1285	0.2340093604	15.60613673	FALSE	0.1285	neutral
+2025-12-03 16:51:22	ORDI/USDT:USDT	4.148	0.193236715	1.487426133	FALSE	4.148	neutral
+2025-12-03 16:51:29	AVICI/USDT:USDT	7.378	2.80061307	24.55201918	TRUE	7.378	neutral
+2025-12-03 16:51:31	FF/USDT:USDT	0.1286	0.3120124805	15.77848298	FALSE	0.1286	neutral
+2025-12-03 16:51:32	ORDI/USDT:USDT	4.151	0.2657004831	1.659772383	FALSE	4.151	neutral
+2025-12-03 16:51:39	AVICI/USDT:USDT	7.4	3.107147833	24.71565288	TRUE	7.4	neutral
+2025-12-03 16:51:41	FF/USDT:USDT	0.1285	0.2340093604	15.94211668	FALSE	0.1285	neutral
+2025-12-03 16:51:43	ORDI/USDT:USDT	4.152	0.2898550725	1.823406083	FALSE	4.152	neutral
+2025-12-03 16:51:50	AVICI/USDT:USDT	7.4	3.107147833	24.89533662	TRUE	7.4	neutral
+2025-12-03 16:51:52	FF/USDT:USDT	0.1286	0.3120124805	16.12180042	FALSE	0.1286	neutral
+2025-12-03 16:51:54	ORDI/USDT:USDT	4.152	0.2898550725	2.003089817	FALSE	4.152	neutral
+2025-12-03 16:52:01	AVICI/USDT:USDT	7.404	3.162881427	25.07888375	TRUE	7.404	neutral
+2025-12-03 16:52:03	FF/USDT:USDT	0.1286	0.3120124805	16.30534755	FALSE	0.1286	neutral
+2025-12-03 16:52:04	ORDI/USDT:USDT	4.153	0.3140096618	2.18663695	FALSE	4.153	neutral
+2025-12-03 16:52:11	AVICI/USDT:USDT	7.404	3.162881427	25.2573126	TRUE	7.404	neutral
+2025-12-03 16:52:13	FF/USDT:USDT	0.1285	0.2340093604	16.4837764	FALSE	0.1285	neutral
+2025-12-03 16:52:15	ORDI/USDT:USDT	4.152	0.2898550725	2.3650658	FALSE	4.152	neutral
+2025-12-03 16:52:22	AVICI/USDT:USDT	7.41	3.246481817	25.44002233	TRUE	7.41	neutral
+2025-12-03 16:52:24	FF/USDT:USDT	0.1285	0.2340093604	16.66648613	FALSE	0.1285	neutral
+2025-12-03 16:52:25	ORDI/USDT:USDT	4.153	0.3140096618	2.547775533	FALSE	4.153	neutral
+2025-12-03 16:52:35	AVICI/USDT:USDT	7.413	3.288282012	25.65678932	TRUE	7.413	neutral
+2025-12-03 16:52:37	FF/USDT:USDT	0.1285	0.2340093604	16.88325312	FALSE	0.1285	neutral
+2025-12-03 16:52:38	ORDI/USDT:USDT	4.157	0.4106280193	2.764542517	FALSE	4.157	neutral
+2025-12-03 16:52:45	AVICI/USDT:USDT	7.416	3.330082207	25.81861905	TRUE	7.416	neutral
+2025-12-03 16:52:47	FF/USDT:USDT	0.1285	0.2340093604	17.04508285	FALSE	0.1285	neutral
+2025-12-03 16:52:48	ORDI/USDT:USDT	4.155	0.3623188406	2.92637225	FALSE	4.155	neutral
+2025-12-03 16:52:55	AVICI/USDT:USDT	7.412	3.274348614	25.98377608	TRUE	7.412	neutral
+2025-12-03 16:52:56	FF/USDT:USDT	0.1285	0.2340093604	17.21023988	FALSE	0.1285	neutral
+2025-12-03 16:52:57	ORDI/USDT:USDT	4.155	0.3623188406	3.091529283	FALSE	4.155	neutral
+2025-12-03 16:53:04	AVICI/USDT:USDT	7.419	3.371882402	26.14317578	TRUE	7.419	neutral
+2025-12-03 16:53:06	FF/USDT:USDT	0.1286	0.3120124805	17.36963958	FALSE	0.1286	neutral
+2025-12-03 16:53:07	ORDI/USDT:USDT	4.156	0.38647343	3.250928983	FALSE	4.156	neutral
+2025-12-03 16:53:15	AVICI/USDT:USDT	7.427	3.483349589	26.3211715	TRUE	7.427	neutral
+2025-12-03 16:53:17	FF/USDT:USDT	0.1286	0.3120124805	17.5476353	FALSE	0.1286	neutral
+2025-12-03 16:53:19	ORDI/USDT:USDT	4.156	0.38647343	3.4289247	FALSE	4.156	neutral
+2025-12-03 16:53:26	AVICI/USDT:USDT	7.427	3.483349589	26.50814495	TRUE	7.427	neutral
+2025-12-03 16:53:28	FF/USDT:USDT	0.1285	0.2340093604	17.73460875	FALSE	0.1285	neutral
+2025-12-03 16:53:30	ORDI/USDT:USDT	4.156	0.38647343	3.61589815	FALSE	4.156	neutral
+2025-12-03 16:53:38	AVICI/USDT:USDT	7.42	3.3858158	26.68623777	TRUE	7.42	neutral
+2025-12-03 16:53:40	FF/USDT:USDT	0.1285	0.2340093604	17.91270157	FALSE	0.1285	neutral
+2025-12-03 16:53:42	ORDI/USDT:USDT	4.155	0.3623188406	3.793990967	FALSE	4.155	neutral
+2025-12-03 16:53:49	AVICI/USDT:USDT	7.425	3.455482792	26.8852385	TRUE	7.425	neutral
+2025-12-03 16:53:50	FF/USDT:USDT	0.1285	0.2340093604	18.1117023	FALSE	0.1285	neutral
+2025-12-03 16:53:52	ORDI/USDT:USDT	4.155	0.3623188406	3.9929917	FALSE	4.155	neutral
+2025-12-03 16:53:59	AVICI/USDT:USDT	7.43	3.525149784	27.0469357	TRUE	7.43	neutral
+2025-12-03 16:54:01	FF/USDT:USDT	0.1284	0.1560062402	18.2733995	FALSE	0.1284	neutral
+2025-12-03 16:54:03	ORDI/USDT:USDT	4.156	0.38647343	4.1546889	FALSE	4.156	neutral
+2025-12-03 16:54:10	AVICI/USDT:USDT	7.429	3.511216386	27.24193513	TRUE	7.429	neutral
+2025-12-03 16:54:12	FF/USDT:USDT	0.1284	0.1560062402	18.46839893	FALSE	0.1284	neutral
+2025-12-03 16:54:14	ORDI/USDT:USDT	4.149	0.2173913043	4.349688333	FALSE	4.149	neutral
+2025-12-03 16:54:21	AVICI/USDT:USDT	7.436	3.608750174	27.41886513	TRUE	7.436	neutral
+2025-12-03 16:54:23	FF/USDT:USDT	0.1284	0.1560062402	18.64532893	FALSE	0.1284	neutral
+2025-12-03 16:54:24	ORDI/USDT:USDT	4.148	0.193236715	4.526618333	FALSE	4.148	neutral
+2025-12-03 16:54:31	AVICI/USDT:USDT	7.427	3.483349589	27.58232265	TRUE	7.427	neutral
+2025-12-03 16:54:32	FF/USDT:USDT	0.128	-0.1560062402	18.80878645	FALSE	0.128	neutral
+2025-12-03 16:54:34	ORDI/USDT:USDT	4.15	0.2415458937	4.69007585	FALSE	4.15	neutral
+2025-12-03 16:54:40	AVICI/USDT:USDT	7.424	3.441549394	27.7461045	TRUE	7.424	neutral
+2025-12-03 16:54:42	FF/USDT:USDT	0.1283	0.07800312012	18.9725683	FALSE	0.1283	neutral
+2025-12-03 16:54:44	ORDI/USDT:USDT	4.151	0.2657004831	4.8538577	FALSE	4.151	neutral
+2025-12-03 16:54:51	AVICI/USDT:USDT	7.424	3.441549394	27.91500792	TRUE	7.424	neutral
+2025-12-03 16:54:52	FF/USDT:USDT	0.1282	0	19.14147172	FALSE	0.1282	neutral
+2025-12-03 16:54:53	ORDI/USDT:USDT	4.148	0.193236715	5.022761117	FALSE	4.148	neutral
+2025-12-03 16:55:00	AVICI/USDT:USDT	7.431	3.539083182	28.07503413	TRUE	7.431	neutral
+2025-12-03 16:55:02	FF/USDT:USDT	0.1283	0.07800312012	19.30149793	FALSE	0.1283	neutral
+2025-12-03 16:55:04	ORDI/USDT:USDT	4.149	0.2173913043	5.182787333	FALSE	4.149	neutral
+2025-12-03 16:55:12	AVICI/USDT:USDT	7.438	3.636616971	28.25984157	TRUE	7.438	neutral
+2025-12-03 16:55:13	FF/USDT:USDT	0.1284	0.1560062402	19.48630537	FALSE	0.1284	neutral
+2025-12-03 16:55:15	ORDI/USDT:USDT	4.152	0.2898550725	5.367594767	FALSE	4.152	neutral
+2025-12-03 16:55:22	AVICI/USDT:USDT	7.438	3.636616971	28.43374102	TRUE	7.438	neutral
+2025-12-03 16:55:24	FF/USDT:USDT	0.1283	0.07800312012	19.66020482	FALSE	0.1283	neutral
+2025-12-03 16:55:25	ORDI/USDT:USDT	4.154	0.3381642512	5.541494217	FALSE	4.154	neutral
+2025-12-03 16:55:32	AVICI/USDT:USDT	7.431	3.539083182	28.61135197	TRUE	7.431	neutral
+2025-12-03 16:55:34	FF/USDT:USDT	0.1282	0	19.83781577	FALSE	0.1282	neutral
+2025-12-03 16:55:36	ORDI/USDT:USDT	4.155	0.3623188406	5.719105167	FALSE	4.155	neutral
+2025-12-03 16:55:44	AVICI/USDT:USDT	7.433	3.566949979	28.78837578	TRUE	7.433	neutral
+2025-12-03 16:55:45	FF/USDT:USDT	0.1283	0.07800312012	20.01483958	FALSE	0.1283	neutral
+2025-12-03 16:55:47	ORDI/USDT:USDT	4.154	0.3381642512	5.896128983	FALSE	4.154	neutral
+2025-12-03 16:55:54	AVICI/USDT:USDT	7.422	3.413682597	28.96519082	TRUE	7.422	neutral
+2025-12-03 16:55:55	FF/USDT:USDT	0.1285	0.2340093604	20.19165462	FALSE	0.1285	neutral
+2025-12-03 16:55:57	ORDI/USDT:USDT	4.156	0.38647343	6.072944017	FALSE	4.156	neutral
+2025-12-03 16:56:04	AVICI/USDT:USDT	7.422	3.413682597	29.12726463	TRUE	7.422	neutral
+2025-12-03 16:56:06	FF/USDT:USDT	0.1285	0.2340093604	20.35372843	FALSE	0.1285	neutral
+2025-12-03 16:56:09	ORDI/USDT:USDT	4.157	0.4106280193	6.235017833	FALSE	4.157	neutral
+2025-12-03 17:02:55	FF/USDT:USDT	0.1277	-0.3900156006	27.1947457	FALSE	0.1277	neutral
+2025-12-03 17:02:56	ORDI/USDT:USDT	4.165	0.6038647343	13.0760351	FALSE	4.165	neutral
+2025-12-03 17:04:48	FF/USDT:USDT	0.1274	-0.624024961	29.08888467	FALSE	0.1274	neutral
+2025-12-03 17:04:50	ORDI/USDT:USDT	4.149	0.2173913043	14.97017407	FALSE	4.149	neutral
+2025-12-03 17:06:49	FF/USDT:USDT	0.1274	-0.624024961	31.10629728	FALSE	0.1274	neutral
+2025-12-03 17:06:51	ORDI/USDT:USDT	4.148	0.193236715	16.98758668	FALSE	4.148	neutral
+2025-12-03 17:06:53	AVICI/USDT:USDT	7.238	0.01381788034	0.1123028667	FALSE	7.238	neutral
+2025-12-03 17:06:59	FF/USDT:USDT	0.1274	-0.624024961	31.2876885	FALSE	0.1274	neutral
+2025-12-03 17:07:02	ORDI/USDT:USDT	4.152	0.2898550725	17.1689779	FALSE	4.152	neutral
+2025-12-03 17:07:05	AVICI/USDT:USDT	7.423	2.570125743	0.2936940833	TRUE	7.423	neutral
+2025-12-03 17:07:11	FF/USDT:USDT	0.1276	-0.4680187207	31.4908769	FALSE	0.1276	neutral
+2025-12-03 17:07:14	ORDI/USDT:USDT	4.156	0.38647343	17.3721663	FALSE	4.156	neutral
+2025-12-03 17:07:16	AVICI/USDT:USDT	7.423	2.570125743	0.4968824833	TRUE	7.423	neutral
+2025-12-03 17:07:23	FF/USDT:USDT	0.1277	-0.3900156006	31.67756443	FALSE	0.1277	neutral
+2025-12-03 17:07:24	ORDI/USDT:USDT	4.159	0.4589371981	17.55885383	FALSE	4.159	neutral
+2025-12-03 17:07:26	AVICI/USDT:USDT	7.419	2.514854221	0.6835700167	TRUE	7.419	neutral
+2025-12-03 17:07:32	FF/USDT:USDT	0.1276	-0.4680187207	31.84121462	FALSE	0.1276	neutral
+2025-12-03 17:07:38	ORDI/USDT:USDT	4.158	0.4347826087	17.72250402	FALSE	4.158	neutral
+2025-12-03 17:07:40	AVICI/USDT:USDT	7.423	2.570125743	0.8472202	TRUE	7.423	neutral
+2025-12-03 17:07:48	FF/USDT:USDT	0.1276	-0.4680187207	32.08170708	FALSE	0.1276	neutral
+2025-12-03 17:07:49	ORDI/USDT:USDT	4.157	0.4106280193	17.96299648	FALSE	4.157	neutral
+2025-12-03 17:07:51	AVICI/USDT:USDT	7.423	2.570125743	1.087712667	TRUE	7.423	neutral
+2025-12-03 17:07:58	FF/USDT:USDT	0.1277	-0.3900156006	32.26596652	FALSE	0.1277	neutral
+2025-12-03 17:08:00	ORDI/USDT:USDT	4.159	0.4589371981	18.14725592	FALSE	4.159	neutral
+2025-12-03 17:08:02	AVICI/USDT:USDT	7.362	1.727235042	1.2719721	TRUE	7.362	neutral
+2025-12-03 17:08:09	FF/USDT:USDT	0.1277	-0.3900156006	32.45055625	FALSE	0.1277	neutral
+2025-12-03 17:08:10	ORDI/USDT:USDT	4.162	0.5314009662	18.33184565	FALSE	4.162	neutral
+2025-12-03 17:08:12	AVICI/USDT:USDT	7.362	1.727235042	1.456561833	TRUE	7.362	neutral
+2025-12-03 17:08:19	FF/USDT:USDT	0.1276	-0.4680187207	32.614908	FALSE	0.1276	neutral
+2025-12-03 17:08:20	ORDI/USDT:USDT	4.161	0.5072463768	18.4961974	FALSE	4.161	neutral
+2025-12-03 17:10:07	FF/USDT:USDT	0.1277	-0.3900156006	34.40295973	FALSE	0.1277	neutral
+2025-12-03 17:10:09	ORDI/USDT:USDT	4.156	0.38647343	20.28424913	FALSE	4.156	neutral
+2025-12-03 17:11:56	FF/USDT:USDT	0.1275	-0.5460218409	36.2415594	FALSE	0.1275	neutral
+2025-12-03 17:11:58	ORDI/USDT:USDT	4.158	0.4347826087	22.1228488	FALSE	4.158	neutral
+2025-12-03 17:13:25	FF/USDT:USDT	0.1273	-0.7020280811	37.69983482	FALSE	0.1273	neutral
+2025-12-03 17:13:26	ORDI/USDT:USDT	4.147	0.1690821256	23.58112422	FALSE	4.147	neutral
+2025-12-03 17:14:59	FF/USDT:USDT	0.1273	-0.7020280811	39.2890924	FALSE	0.1273	neutral
+2025-12-03 17:15:00	ORDI/USDT:USDT	4.149	0.2173913043	25.1703818	FALSE	4.149	neutral
+2025-12-03 17:16:30	FF/USDT:USDT	0.1272	-0.7800312012	40.8115149	FALSE	0.1272	neutral
+2025-12-03 17:16:33	ORDI/USDT:USDT	4.146	0.1449275362	26.6928043	FALSE	4.146	neutral
+2025-12-03 17:17:59	FF/USDT:USDT	0.1269	-1.014040562	42.2929139	FALSE	0.1269	neutral
+2025-12-03 17:18:01	ORDI/USDT:USDT	4.141	0.02415458937	28.1742033	FALSE	4.141	neutral
+2025-12-03 17:19:23	FF/USDT:USDT	0.1269	-1.014040562	43.69213598	FALSE	0.1269	neutral
+2025-12-03 17:19:25	ORDI/USDT:USDT	4.146	0.1449275362	29.57342538	FALSE	4.146	neutral
+2025-12-03 17:20:41	FF/USDT:USDT	0.1269	-1.014040562	44.98830265	FALSE	0.1269	neutral
+2025-12-03 17:20:42	ORDI/USDT:USDT	4.151	0.2657004831	30.86959205	FALSE	4.151	neutral
+2025-12-03 17:21:57	FF/USDT:USDT	0.1268	-1.092043682	46.25586922	FALSE	0.1268	neutral
+2025-12-03 17:21:59	ORDI/USDT:USDT	4.14	0	32.13715862	FALSE	4.14	neutral
+2025-12-03 17:23:14	FF/USDT:USDT	0.1268	-1.092043682	47.54223595	FALSE	0.1268	neutral
+2025-12-03 17:23:16	ORDI/USDT:USDT	4.13	-0.2415458937	33.42352535	FALSE	4.13	neutral
+2025-12-03 17:24:30	FF/USDT:USDT	0.1269	-1.014040562	48.80796118	FALSE	0.1269	neutral
+2025-12-03 17:24:32	ORDI/USDT:USDT	4.135	-0.1207729469	34.68925058	FALSE	4.135	neutral
+2025-12-03 17:25:58	FF/USDT:USDT	0.127	-0.9360374415	50.27242468	FALSE	0.127	neutral
+2025-12-03 17:26:00	ORDI/USDT:USDT	4.139	-0.02415458937	36.15371408	FALSE	4.139	neutral
+2025-12-03 17:27:10	FF/USDT:USDT	0.1275	-0.5460218409	51.46311302	FALSE	0.1275	neutral
+2025-12-03 17:27:11	ORDI/USDT:USDT	4.139	-0.02415458937	37.34440242	FALSE	4.139	neutral
+2025-12-03 17:34:05	FF/USDT:USDT	0.1269	-1.014040562	58.3866545	FALSE	0.1269	neutral
+2025-12-03 17:34:06	ORDI/USDT:USDT	4.145	0.1207729469	44.2679439	FALSE	4.145	neutral
+2025-12-03 17:35:44	FF/USDT:USDT	0.1269	-1.014040562	60.03629153	FALSE	0.1269	neutral
+2025-12-03 17:35:45	ORDI/USDT:USDT	4.147	0.1690821256	45.91758093	FALSE	4.147	neutral
+2025-12-03 17:37:26	FF/USDT:USDT	0.127	-0.9360374415	61.73326472	FALSE	0.127	neutral
+2025-12-03 17:37:28	ORDI/USDT:USDT	4.15	0.2415458937	47.61455412	FALSE	4.15	neutral
+2025-12-03 17:39:10	FF/USDT:USDT	0.1269	-1.014040562	63.47275625	FALSE	0.1269	neutral
+2025-12-03 17:39:12	ORDI/USDT:USDT	4.14	0	49.35404565	FALSE	4.14	neutral
+2025-12-03 17:40:57	FF/USDT:USDT	0.1271	-0.8580343214	65.24898267	FALSE	0.1271	neutral
+2025-12-03 17:40:59	ORDI/USDT:USDT	4.141	0.02415458937	51.13027207	FALSE	4.141	neutral
+2025-12-03 17:42:42	FF/USDT:USDT	0.1269	-1.014040562	67.00560342	FALSE	0.1269	neutral
+2025-12-03 17:42:45	ORDI/USDT:USDT	4.142	0.04830917874	52.88689282	FALSE	4.142	neutral
+2025-12-03 17:44:31	FF/USDT:USDT	0.1269	-1.014040562	68.82189218	FALSE	0.1269	neutral
+2025-12-03 17:44:32	ORDI/USDT:USDT	4.145	0.1207729469	54.70318158	FALSE	4.145	neutral
+2025-12-03 17:46:17	FF/USDT:USDT	0.127	-0.9360374415	70.56999502	FALSE	0.127	neutral
+2025-12-03 17:46:18	ORDI/USDT:USDT	4.154	0.3381642512	56.45128442	FALSE	4.154	neutral
+2025-12-03 17:48:00	FF/USDT:USDT	0.127	-0.9360374415	72.30190813	FALSE	0.127	neutral
+2025-12-03 17:48:01	ORDI/USDT:USDT	4.148	0.193236715	58.18319753	FALSE	4.148	neutral
+2025-12-03 17:49:38	FF/USDT:USDT	0.1269	-1.014040562	73.93844948	FALSE	0.1269	neutral
+2025-12-03 17:49:41	ORDI/USDT:USDT	4.158	0.4347826087	59.81973888	FALSE	4.158	neutral
+2025-12-03 17:51:24	FF/USDT:USDT	0.1269	-1.014040562	75.702921	FALSE	0.1269	neutral
+2025-12-03 17:51:25	ORDI/USDT:USDT	4.161	0.5072463768	61.5842104	FALSE	4.161	neutral
+2025-12-03 17:53:05	FF/USDT:USDT	0.127	-0.9360374415	77.39538292	FALSE	0.127	neutral
+2025-12-03 17:53:07	ORDI/USDT:USDT	4.181	0.9903381643	63.27667232	FALSE	4.181	neutral
+2025-12-03 17:54:47	FF/USDT:USDT	0.1265	-1.326053042	79.0975128	FALSE	0.1265	neutral
+2025-12-03 17:54:49	ORDI/USDT:USDT	4.164	0.5797101449	64.9788022	FALSE	4.164	neutral
+2025-12-03 17:56:30	FF/USDT:USDT	0.1264	-1.404056162	80.80312367	FALSE	0.1264	neutral
+2025-12-03 17:56:32	ORDI/USDT:USDT	4.161	0.5072463768	66.68441307	FALSE	4.161	neutral
+2025-12-03 17:58:17	FF/USDT:USDT	0.1263	-1.482059282	82.58660383	FALSE	0.1263	neutral
+2025-12-03 17:58:18	ORDI/USDT:USDT	4.155	0.3623188406	68.46789323	FALSE	4.155	neutral
+2025-12-03 18:05:06	FF/USDT:USDT	0.1265	-1.326053042	89.40226898	FALSE	0.1265	neutral
+2025-12-03 18:05:08	ORDI/USDT:USDT	4.17	0.7246376812	75.28355838	FALSE	4.17	neutral
+2025-12-03 18:05:09	AAVE/USDT:USDT	196.61	0.01017345745	6.134558217	FALSE	196.61	neutral
+2025-12-03 18:05:16	FF/USDT:USDT	0.1265	-1.326053042	89.56109337	FALSE	0.1265	neutral
+2025-12-03 18:05:17	ORDI/USDT:USDT	4.172	0.7729468599	75.44238277	FALSE	4.172	neutral
+2025-12-03 18:05:18	AAVE/USDT:USDT	196.65	0.03052037235	6.2933826	FALSE	196.65	neutral
+2025-12-03 18:05:25	FF/USDT:USDT	0.1264	-1.404056162	89.71742653	FALSE	0.1264	neutral
+2025-12-03 18:05:27	ORDI/USDT:USDT	4.172	0.7729468599	75.59871593	FALSE	4.172	neutral
+2025-12-03 18:05:28	AAVE/USDT:USDT	196.61	0.01017345745	6.449715767	FALSE	196.61	neutral
+2025-12-03 18:05:34	FF/USDT:USDT	0.1265	-1.326053042	89.87717248	FALSE	0.1265	neutral
+2025-12-03 18:05:36	ORDI/USDT:USDT	4.17	0.7246376812	75.75846188	FALSE	4.17	neutral
+2025-12-03 18:05:38	AAVE/USDT:USDT	196.75	0.0813876596	6.609461717	FALSE	196.75	neutral
+2025-12-03 18:05:45	FF/USDT:USDT	0.1264	-1.404056162	90.04398967	FALSE	0.1264	neutral
+2025-12-03 18:05:46	ORDI/USDT:USDT	4.171	0.7487922705	75.92527907	FALSE	4.171	neutral
+2025-12-03 18:05:48	AAVE/USDT:USDT	196.65	0.03052037235	6.7762789	FALSE	196.65	neutral
+2025-12-03 18:05:54	FF/USDT:USDT	0.1265	-1.326053042	90.21018962	FALSE	0.1265	neutral
+2025-12-03 18:05:56	ORDI/USDT:USDT	4.17	0.7246376812	76.09147902	FALSE	4.17	neutral
+2025-12-03 18:05:58	AAVE/USDT:USDT	196.64	0.02543364362	6.94247885	FALSE	196.64	neutral
+2025-12-03 18:06:05	FF/USDT:USDT	0.1265	-1.326053042	90.37210125	FALSE	0.1265	neutral
+2025-12-03 18:06:06	ORDI/USDT:USDT	4.168	0.6763285024	76.25339065	FALSE	4.168	neutral
+2025-12-03 18:06:08	AAVE/USDT:USDT	196.6	0.005086728725	7.104390483	FALSE	196.6	neutral
+2025-12-03 18:06:15	FF/USDT:USDT	0.1266	-1.248049922	90.53922682	FALSE	0.1266	neutral
+2025-12-03 18:06:16	ORDI/USDT:USDT	4.17	0.7246376812	76.42051622	FALSE	4.17	neutral
+2025-12-03 18:06:17	AAVE/USDT:USDT	196.6	0.005086728725	7.27151605	FALSE	196.6	neutral
+2025-12-03 18:06:24	FF/USDT:USDT	0.1265	-1.326053042	90.6982585	FALSE	0.1265	neutral
+2025-12-03 18:06:25	ORDI/USDT:USDT	4.173	0.7971014493	76.5795479	FALSE	4.173	neutral
+2025-12-03 18:06:27	AAVE/USDT:USDT	196.8	0.1068213032	7.430547733	FALSE	196.8	neutral
+2025-12-03 18:06:33	FF/USDT:USDT	0.1266	-1.248049922	90.86179428	FALSE	0.1266	neutral
+2025-12-03 18:06:35	ORDI/USDT:USDT	4.171	0.7487922705	76.74308368	FALSE	4.171	neutral
+2025-12-03 18:06:37	AAVE/USDT:USDT	196.92	0.1678620479	7.594083517	FALSE	196.92	neutral
+2025-12-03 18:06:44	FF/USDT:USDT	0.1267	-1.170046802	91.03526202	FALSE	0.1267	neutral
+2025-12-03 18:06:46	ORDI/USDT:USDT	4.174	0.8212560386	76.91655142	FALSE	4.174	neutral
+2025-12-03 18:06:47	AAVE/USDT:USDT	197.06	0.2390762501	7.76755125	FALSE	197.06	neutral
+2025-12-03 18:06:53	FF/USDT:USDT	0.1265	-1.326053042	91.19442095	FALSE	0.1265	neutral
+2025-12-03 18:06:55	ORDI/USDT:USDT	4.174	0.8212560386	77.07571035	FALSE	4.174	neutral
+2025-12-03 18:06:56	AAVE/USDT:USDT	197.11	0.2645098937	7.926710183	FALSE	197.11	neutral
+2025-12-03 18:07:03	FF/USDT:USDT	0.1268	-1.092043682	91.35009268	FALSE	0.1268	neutral
+2025-12-03 18:07:05	ORDI/USDT:USDT	4.17	0.7246376812	77.23138208	FALSE	4.17	neutral
+2025-12-03 18:07:06	AAVE/USDT:USDT	197.07	0.2441629788	8.082381917	FALSE	197.07	neutral
+2025-12-03 18:07:13	FF/USDT:USDT	0.1267	-1.170046802	91.5157787	FALSE	0.1267	neutral
+2025-12-03 18:07:14	ORDI/USDT:USDT	4.168	0.6763285024	77.3970681	FALSE	4.168	neutral
+2025-12-03 18:07:16	AAVE/USDT:USDT	197.06	0.2390762501	8.248067933	FALSE	197.06	neutral
+2025-12-03 18:07:23	FF/USDT:USDT	0.1264	-1.404056162	91.67561912	FALSE	0.1264	neutral
+2025-12-03 18:07:24	ORDI/USDT:USDT	4.168	0.6763285024	77.55690852	FALSE	4.168	neutral
+2025-12-03 18:07:26	AAVE/USDT:USDT	197.06	0.2390762501	8.40790835	FALSE	197.06	neutral
+2025-12-03 18:07:32	FF/USDT:USDT	0.1263	-1.482059282	91.83685118	FALSE	0.1263	neutral
+2025-12-03 18:07:33	ORDI/USDT:USDT	4.165	0.6038647343	77.71814058	FALSE	4.165	neutral
+2025-12-03 18:07:35	AAVE/USDT:USDT	196.86	0.1373416756	8.569140417	FALSE	196.86	neutral
+2025-12-03 18:07:41	FF/USDT:USDT	0.1264	-1.404056162	91.99758328	FALSE	0.1264	neutral
+2025-12-03 18:07:43	ORDI/USDT:USDT	4.165	0.6038647343	77.87887268	FALSE	4.165	neutral
+2025-12-03 18:07:45	AAVE/USDT:USDT	196.71	0.0610407447	8.729872517	FALSE	196.71	neutral
+2025-12-03 18:07:52	FF/USDT:USDT	0.1263	-1.482059282	92.1676474	FALSE	0.1263	neutral
+2025-12-03 18:07:53	ORDI/USDT:USDT	4.161	0.5072463768	78.0489368	FALSE	4.161	neutral
+2025-12-03 18:07:55	AAVE/USDT:USDT	196.76	0.08647438832	8.899936633	FALSE	196.76	neutral
+2025-12-03 18:08:01	FF/USDT:USDT	0.1264	-1.404056162	92.32157502	FALSE	0.1264	neutral
+2025-12-03 18:08:02	ORDI/USDT:USDT	4.163	0.5555555556	78.20286442	FALSE	4.163	neutral
+2025-12-03 18:08:04	AAVE/USDT:USDT	196.81	0.1119080319	9.05386425	FALSE	196.81	neutral
+2025-12-03 18:08:11	FF/USDT:USDT	0.1264	-1.404056162	92.47554387	FALSE	0.1264	neutral
+2025-12-03 18:08:12	ORDI/USDT:USDT	4.163	0.5555555556	78.35683327	FALSE	4.163	neutral
+2025-12-03 18:08:13	AAVE/USDT:USDT	196.85	0.1322549468	9.2078331	FALSE	196.85	neutral
+2025-12-03 18:08:20	FF/USDT:USDT	0.1265	-1.326053042	92.63474638	FALSE	0.1265	neutral
+2025-12-03 18:08:21	ORDI/USDT:USDT	4.166	0.6280193237	78.51603578	FALSE	4.166	neutral
+2025-12-03 18:08:22	AAVE/USDT:USDT	196.8	0.1068213032	9.367035617	FALSE	196.8	neutral
+2025-12-03 18:08:29	FF/USDT:USDT	0.1263	-1.482059282	92.78401072	FALSE	0.1263	neutral
+2025-12-03 18:08:31	ORDI/USDT:USDT	4.165	0.6038647343	78.66530012	FALSE	4.165	neutral
+2025-12-03 18:08:32	AAVE/USDT:USDT	196.81	0.1119080319	9.51629995	FALSE	196.81	neutral
+2025-12-03 18:08:38	FF/USDT:USDT	0.1265	-1.326053042	92.94652467	FALSE	0.1265	neutral
+2025-12-03 18:08:40	ORDI/USDT:USDT	4.169	0.7004830918	78.82781407	FALSE	4.169	neutral
+2025-12-03 18:08:43	AAVE/USDT:USDT	196.95	0.1831222341	9.6788139	FALSE	196.95	neutral
+2025-12-03 18:08:50	FF/USDT:USDT	0.1265	-1.326053042	93.1221399	FALSE	0.1265	neutral
+2025-12-03 18:08:52	ORDI/USDT:USDT	4.168	0.6763285024	79.0034293	FALSE	4.168	neutral
+2025-12-03 18:08:53	AAVE/USDT:USDT	197.16	0.2899435373	9.854429133	FALSE	197.16	neutral
+2025-12-03 18:08:59	FF/USDT:USDT	0.1266	-1.248049922	93.29305345	FALSE	0.1266	neutral
+2025-12-03 18:09:01	ORDI/USDT:USDT	4.167	0.652173913	79.17434285	FALSE	4.167	neutral
+2025-12-03 18:09:02	AAVE/USDT:USDT	197.04	0.2289027926	10.02534268	FALSE	197.04	neutral
+2025-12-03 18:09:08	FF/USDT:USDT	0.1266	-1.248049922	93.44215677	FALSE	0.1266	neutral
+2025-12-03 18:09:10	ORDI/USDT:USDT	4.169	0.7004830918	79.32344617	FALSE	4.169	neutral
+2025-12-03 18:09:11	AAVE/USDT:USDT	196.83	0.1220814894	10.174446	FALSE	196.83	neutral
+2025-12-03 18:09:18	FF/USDT:USDT	0.1264	-1.404056162	93.599056	FALSE	0.1264	neutral
+2025-12-03 18:09:20	ORDI/USDT:USDT	4.166	0.6280193237	79.4803454	FALSE	4.166	neutral
+2025-12-03 18:09:22	AAVE/USDT:USDT	196.7	0.05595401597	10.33134523	FALSE	196.7	neutral
+2025-12-03 18:09:29	FF/USDT:USDT	0.1265	-1.326053042	93.7850055	FALSE	0.1265	neutral
+2025-12-03 18:09:31	ORDI/USDT:USDT	4.164	0.5797101449	79.6662949	FALSE	4.164	neutral
+2025-12-03 18:09:32	AAVE/USDT:USDT	196.54	-0.02543364362	10.51729473	FALSE	196.54	neutral
+2025-12-03 18:09:39	FF/USDT:USDT	0.1263	-1.482059282	93.95254728	FALSE	0.1263	neutral
+2025-12-03 18:09:41	ORDI/USDT:USDT	4.165	0.6038647343	79.83383668	FALSE	4.165	neutral
+2025-12-03 18:09:43	AAVE/USDT:USDT	196.65	0.03052037235	10.68483652	FALSE	196.65	neutral
+2025-12-03 18:09:50	FF/USDT:USDT	0.1263	-1.482059282	94.12096472	FALSE	0.1263	neutral
+2025-12-03 18:09:52	ORDI/USDT:USDT	4.166	0.6280193237	80.00225412	FALSE	4.166	neutral
+2025-12-03 18:09:53	AAVE/USDT:USDT	196.67	0.0406938298	10.85325395	FALSE	196.67	neutral
+2025-12-03 18:10:03	FF/USDT:USDT	0.1264	-1.404056162	94.34869508	FALSE	0.1264	neutral
+2025-12-03 18:10:04	ORDI/USDT:USDT	4.165	0.6038647343	80.22998448	FALSE	4.165	neutral
+2025-12-03 18:10:06	AAVE/USDT:USDT	196.62	0.01526018617	11.08098432	FALSE	196.62	neutral
+2025-12-03 18:10:13	FF/USDT:USDT	0.1263	-1.482059282	94.5115588	FALSE	0.1263	neutral
+2025-12-03 18:10:15	ORDI/USDT:USDT	4.165	0.6038647343	80.3928482	FALSE	4.165	neutral
+2025-12-03 18:10:16	AAVE/USDT:USDT	196.52	-0.03560710107	11.24384803	FALSE	196.52	neutral
+2025-12-03 18:10:23	FF/USDT:USDT	0.1263	-1.482059282	94.67850443	FALSE	0.1263	neutral
+2025-12-03 18:10:25	ORDI/USDT:USDT	4.167	0.652173913	80.55979383	FALSE	4.167	neutral
+2025-12-03 18:10:26	AAVE/USDT:USDT	196.6	0.005086728725	11.41079367	FALSE	196.6	neutral
+2025-12-03 18:10:32	FF/USDT:USDT	0.1264	-1.404056162	94.84442577	FALSE	0.1264	neutral
+2025-12-03 18:10:34	ORDI/USDT:USDT	4.173	0.7971014493	80.72571517	FALSE	4.173	neutral
+2025-12-03 18:10:35	AAVE/USDT:USDT	196.64	0.02543364362	11.576715	FALSE	196.64	neutral
+2025-12-03 18:10:42	FF/USDT:USDT	0.1263	-1.482059282	94.9957842	FALSE	0.1263	neutral
+2025-12-03 18:10:43	ORDI/USDT:USDT	4.173	0.7971014493	80.8770736	FALSE	4.173	neutral
+2025-12-03 18:10:45	AAVE/USDT:USDT	196.64	0.02543364362	11.72807343	FALSE	196.64	neutral
+2025-12-03 18:10:51	FF/USDT:USDT	0.1263	-1.482059282	95.15810707	FALSE	0.1263	neutral
+2025-12-03 18:10:53	ORDI/USDT:USDT	4.175	0.845410628	81.03939647	FALSE	4.175	neutral
+2025-12-03 18:10:54	AAVE/USDT:USDT	196.62	0.01526018617	11.8903963	FALSE	196.62	neutral
+2025-12-03 18:11:01	FF/USDT:USDT	0.1263	-1.482059282	95.31707672	FALSE	0.1263	neutral
+2025-12-03 18:11:02	ORDI/USDT:USDT	4.179	0.9420289855	81.19836612	FALSE	4.179	neutral
+2025-12-03 18:11:03	AAVE/USDT:USDT	196.77	0.09156111705	12.04936595	FALSE	196.77	neutral
+2025-12-03 18:11:10	FF/USDT:USDT	0.1264	-1.404056162	95.46929995	FALSE	0.1264	neutral
+2025-12-03 18:11:12	ORDI/USDT:USDT	4.179	0.9420289855	81.35058935	FALSE	4.179	neutral
+2025-12-03 18:11:14	AAVE/USDT:USDT	196.84	0.1271682181	12.20158918	FALSE	196.84	neutral
+2025-12-03 18:11:20	FF/USDT:USDT	0.1263	-1.482059282	95.64751177	FALSE	0.1263	neutral
+2025-12-03 18:11:23	ORDI/USDT:USDT	4.179	0.9420289855	81.52880117	FALSE	4.179	neutral
+2025-12-03 18:11:24	AAVE/USDT:USDT	196.92	0.1678620479	12.379801	FALSE	196.92	neutral
+2025-12-03 18:11:31	FF/USDT:USDT	0.1263	-1.482059282	95.81714293	FALSE	0.1263	neutral
+2025-12-03 18:11:32	ORDI/USDT:USDT	4.179	0.9420289855	81.69843233	FALSE	4.179	neutral
+2025-12-03 18:11:34	AAVE/USDT:USDT	196.89	0.1526018617	12.54943217	FALSE	196.89	neutral
+2025-12-03 18:11:41	FF/USDT:USDT	0.1264	-1.404056162	95.98556327	FALSE	0.1264	neutral
+2025-12-03 18:11:42	ORDI/USDT:USDT	4.179	0.9420289855	81.86685267	FALSE	4.179	neutral
+2025-12-03 18:11:44	AAVE/USDT:USDT	196.83	0.1220814894	12.7178525	FALSE	196.83	neutral
+2025-12-03 18:11:51	FF/USDT:USDT	0.1263	-1.482059282	96.1416001	FALSE	0.1263	neutral
+2025-12-03 18:11:52	ORDI/USDT:USDT	4.18	0.9661835749	82.0228895	FALSE	4.18	neutral
+2025-12-03 18:11:53	AAVE/USDT:USDT	196.8	0.1068213032	12.87388933	FALSE	196.8	neutral
+2025-12-03 18:12:00	FF/USDT:USDT	0.1264	-1.404056162	96.30278908	FALSE	0.1264	neutral
+2025-12-03 18:12:02	ORDI/USDT:USDT	4.181	0.9903381643	82.18407848	FALSE	4.181	neutral
+2025-12-03 18:12:04	AAVE/USDT:USDT	196.79	0.1017345745	13.03507832	FALSE	196.79	neutral
+2025-12-03 18:12:11	FF/USDT:USDT	0.1264	-1.404056162	96.481935	FALSE	0.1264	neutral
+2025-12-03 18:12:12	ORDI/USDT:USDT	4.177	0.8937198068	82.3632244	FALSE	4.177	neutral
+2025-12-03 18:12:13	AAVE/USDT:USDT	196.85	0.1322549468	13.21422423	FALSE	196.85	neutral
+2025-12-03 18:12:20	FF/USDT:USDT	0.1264	-1.404056162	96.6328771	FALSE	0.1264	neutral
+2025-12-03 18:12:22	ORDI/USDT:USDT	4.177	0.8937198068	82.5141665	FALSE	4.177	neutral
+2025-12-03 18:12:24	AAVE/USDT:USDT	196.88	0.147515133	13.36516633	FALSE	196.88	neutral
+2025-12-03 18:12:31	FF/USDT:USDT	0.1263	-1.482059282	96.80902057	FALSE	0.1263	neutral
+2025-12-03 18:12:32	ORDI/USDT:USDT	4.176	0.8695652174	82.69030997	FALSE	4.176	neutral
+2025-12-03 18:12:33	AAVE/USDT:USDT	196.7	0.05595401597	13.5413098	FALSE	196.7	neutral
+2025-12-03 18:12:40	FF/USDT:USDT	0.1264	-1.404056162	96.96865455	FALSE	0.1264	neutral
+2025-12-03 18:12:42	ORDI/USDT:USDT	4.174	0.8212560386	82.84994395	FALSE	4.174	neutral
+2025-12-03 18:12:44	AAVE/USDT:USDT	196.57	-0.01017345745	13.70094378	FALSE	196.57	neutral
+2025-12-03 18:12:51	FF/USDT:USDT	0.1264	-1.404056162	97.13857743	FALSE	0.1264	neutral
+2025-12-03 18:12:52	ORDI/USDT:USDT	4.174	0.8212560386	83.01986683	FALSE	4.174	neutral
+2025-12-03 18:12:54	AAVE/USDT:USDT	196.58	-0.005086728725	13.87086667	FALSE	196.58	neutral
+2025-12-03 18:13:01	FF/USDT:USDT	0.1264	-1.404056162	97.31222693	FALSE	0.1264	neutral
+2025-12-03 18:13:02	ORDI/USDT:USDT	4.173	0.7971014493	83.19351633	FALSE	4.173	neutral
+2025-12-03 18:13:04	AAVE/USDT:USDT	196.57	-0.01017345745	14.04451617	FALSE	196.57	neutral
+2025-12-03 18:13:10	FF/USDT:USDT	0.1262	-1.560062402	97.47128938	FALSE	0.1262	neutral
+2025-12-03 18:13:11	ORDI/USDT:USDT	4.176	0.8695652174	83.35257878	FALSE	4.176	neutral
+2025-12-03 18:13:13	AAVE/USDT:USDT	196.68	0.04578055852	14.20357862	FALSE	196.68	neutral
+2025-12-03 18:13:19	FF/USDT:USDT	0.126	-1.716068643	97.62053697	FALSE	0.126	neutral
+2025-12-03 18:13:21	ORDI/USDT:USDT	4.176	0.8695652174	83.50182637	FALSE	4.176	neutral
+2025-12-03 18:13:22	AAVE/USDT:USDT	196.71	0.0610407447	14.3528262	FALSE	196.71	neutral
+2025-12-03 18:13:28	FF/USDT:USDT	0.126	-1.716068643	97.77734487	FALSE	0.126	neutral
+2025-12-03 18:13:30	ORDI/USDT:USDT	4.179	0.9420289855	83.65863427	FALSE	4.179	neutral
+2025-12-03 18:13:31	AAVE/USDT:USDT	196.87	0.1424284043	14.5096341	FALSE	196.87	neutral
+2025-12-03 18:13:37	FF/USDT:USDT	0.1262	-1.560062402	97.92731238	FALSE	0.1262	neutral
+2025-12-03 18:13:39	ORDI/USDT:USDT	4.179	0.9420289855	83.80860178	FALSE	4.179	neutral
+2025-12-03 18:13:41	AAVE/USDT:USDT	196.69	0.05086728725	14.65960162	FALSE	196.69	neutral
+2025-12-03 18:13:47	FF/USDT:USDT	0.126	-1.716068643	98.09395067	FALSE	0.126	neutral
+2025-12-03 18:13:49	ORDI/USDT:USDT	4.18	0.9661835749	83.97524007	FALSE	4.18	neutral
+2025-12-03 18:13:52	AAVE/USDT:USDT	196.88	0.147515133	14.8262399	FALSE	196.88	neutral
+2025-12-03 18:13:58	FF/USDT:USDT	0.126	-1.716068643	98.27196215	FALSE	0.126	neutral
+2025-12-03 18:13:59	ORDI/USDT:USDT	4.183	1.038647343	84.15325155	FALSE	4.183	neutral
+2025-12-03 18:14:01	AAVE/USDT:USDT	196.88	0.147515133	15.00425138	FALSE	196.88	neutral
+2025-12-03 18:14:07	FF/USDT:USDT	0.126	-1.716068643	98.42229987	FALSE	0.126	neutral
+2025-12-03 18:14:08	ORDI/USDT:USDT	4.181	0.9903381643	84.30358927	FALSE	4.181	neutral
+2025-12-03 18:14:10	AAVE/USDT:USDT	196.73	0.07121420215	15.1545891	FALSE	196.73	neutral
+2025-12-03 18:14:16	FF/USDT:USDT	0.1261	-1.638065523	98.58129512	FALSE	0.1261	neutral
+2025-12-03 18:14:19	ORDI/USDT:USDT	4.178	0.9178743961	84.46258452	FALSE	4.178	neutral
+2025-12-03 18:14:20	AAVE/USDT:USDT	196.73	0.07121420215	15.31358435	FALSE	196.73	neutral
+2025-12-03 18:14:27	FF/USDT:USDT	0.1261	-1.638065523	98.76306083	FALSE	0.1261	neutral
+2025-12-03 18:14:29	ORDI/USDT:USDT	4.177	0.8937198068	84.64435023	FALSE	4.177	neutral
+2025-12-03 18:14:31	AAVE/USDT:USDT	196.65	0.03052037235	15.49535007	FALSE	196.65	neutral
+2025-12-03 18:14:37	FF/USDT:USDT	0.1261	-1.638065523	98.92466895	FALSE	0.1261	neutral
+2025-12-03 18:14:38	ORDI/USDT:USDT	4.177	0.8937198068	84.80595835	FALSE	4.177	neutral
+2025-12-03 18:14:40	AAVE/USDT:USDT	196.61	0.01017345745	15.65695818	FALSE	196.61	neutral
+2025-12-03 18:14:46	FF/USDT:USDT	0.1261	-1.638065523	99.07487387	FALSE	0.1261	neutral
+2025-12-03 18:14:48	ORDI/USDT:USDT	4.177	0.8937198068	84.95616327	FALSE	4.177	neutral
+2025-12-03 18:14:49	AAVE/USDT:USDT	196.5	-0.04578055852	15.8071631	FALSE	196.5	neutral
+2025-12-03 18:14:55	FF/USDT:USDT	0.1257	-1.950078003	99.22988338	FALSE	0.1257	neutral
+2025-12-03 18:14:57	ORDI/USDT:USDT	4.18	0.9661835749	85.11117278	FALSE	4.18	neutral
+2025-12-03 18:14:59	AAVE/USDT:USDT	196.5	-0.04578055852	15.96217262	FALSE	196.5	neutral
+2025-12-03 18:15:05	FF/USDT:USDT	0.1258	-1.872074883	99.39103	FALSE	0.1258	neutral
+2025-12-03 18:15:06	ORDI/USDT:USDT	4.18	0.9661835749	85.2723194	FALSE	4.18	neutral
+2025-12-03 18:15:09	AAVE/USDT:USDT	196.57	-0.01017345745	16.12331923	FALSE	196.57	neutral
+2025-12-03 18:15:15	FF/USDT:USDT	0.1258	-1.872074883	99.55474675	FALSE	0.1258	neutral
+2025-12-03 18:15:16	ORDI/USDT:USDT	4.181	0.9903381643	85.43603615	FALSE	4.181	neutral
+2025-12-03 18:15:18	AAVE/USDT:USDT	196.68	0.04578055852	16.28703598	FALSE	196.68	neutral
+2025-12-03 18:15:25	FF/USDT:USDT	0.1257	-1.950078003	99.70598575	FALSE	0.1257	neutral
+2025-12-03 18:15:29	ORDI/USDT:USDT	4.179	0.9420289855	85.58727515	FALSE	4.179	neutral
+2025-12-03 18:15:31	AAVE/USDT:USDT	196.63	0.0203469149	16.43827498	FALSE	196.63	neutral
+2025-12-03 18:17:25	ORDI/USDT:USDT	4.188	1.15942029	87.59579118	FALSE	4.188	neutral
+2025-12-03 18:17:28	AAVE/USDT:USDT	197.04	0.02030456853	1.0442749	FALSE	197.04	neutral
+2025-12-03 18:19:08	ORDI/USDT:USDT	4.184	1.062801932	89.32265235	FALSE	4.184	neutral
+2025-12-03 18:19:09	AAVE/USDT:USDT	196.92	-0.04060913706	2.771136067	FALSE	196.92	neutral
+2025-12-03 18:20:52	ORDI/USDT:USDT	4.193	1.280193237	91.054419	FALSE	4.193	neutral
+2025-12-03 18:20:54	AAVE/USDT:USDT	197.05	0.02538071066	4.502902717	FALSE	197.05	neutral
+2025-12-03 18:22:50	ORDI/USDT:USDT	4.195	1.328502415	93.02492533	FALSE	4.195	neutral
+2025-12-03 18:22:52	AAVE/USDT:USDT	197.29	0.1472081218	6.47340905	FALSE	197.29	neutral
+2025-12-03 18:24:39	ORDI/USDT:USDT	4.193	1.280193237	94.84095633	FALSE	4.193	neutral
+2025-12-03 18:24:41	AAVE/USDT:USDT	197.35	0.1776649746	8.28944005	FALSE	197.35	neutral
+2025-12-03 18:26:21	ORDI/USDT:USDT	4.197	1.376811594	96.5448455	FALSE	4.197	neutral
+2025-12-03 18:26:23	AAVE/USDT:USDT	197.92	0.4670050761	9.993329217	FALSE	197.92	neutral
+2025-12-03 18:27:54	ORDI/USDT:USDT	4.192	1.256038647	98.08996073	FALSE	4.192	neutral
+2025-12-03 18:27:56	AAVE/USDT:USDT	197.99	0.5025380711	11.53844445	FALSE	197.99	neutral
+2025-12-03 18:29:37	ORDI/USDT:USDT	4.186	1.111111111	99.7924396	FALSE	4.186	neutral
+2025-12-03 18:29:38	AAVE/USDT:USDT	198.07	0.5431472081	13.24092332	FALSE	198.07	neutral
+2025-12-03 18:37:01	ORDI/USDT:USDT	4.175	0.845410628	107.1998653	FALSE	4.175	neutral
+2025-12-03 18:37:04	AAVE/USDT:USDT	197.84	0.4263959391	20.64834905	FALSE	197.84	neutral
+2025-12-03 18:38:43	ORDI/USDT:USDT	4.175	-0.02394636015	1.070073583	FALSE	4.175	neutral
+2025-12-03 18:38:45	AAVE/USDT:USDT	197.98	0.4974619289	22.34925742	FALSE	197.98	neutral
+2025-12-03 18:40:13	ORDI/USDT:USDT	4.174	-0.04789272031	2.56986655	FALSE	4.174	neutral
+2025-12-03 18:40:14	AAVE/USDT:USDT	198.11	0.5634517766	23.84905038	FALSE	198.11	neutral
+2025-12-03 18:41:43	ORDI/USDT:USDT	4.168	-0.1915708812	4.0779822	FALSE	4.168	neutral
+2025-12-03 18:41:45	AAVE/USDT:USDT	197.67	-0.02528828647	1.0061888	FALSE	197.67	neutral
+2025-12-03 18:43:11	ORDI/USDT:USDT	4.176	0	5.523255633	FALSE	4.176	neutral
+2025-12-03 18:43:12	AAVE/USDT:USDT	197.89	0.08598017398	2.451462233	FALSE	197.89	neutral
+2025-12-03 18:44:46	ORDI/USDT:USDT	4.175	-0.02394636015	7.110276	FALSE	4.175	neutral
+2025-12-03 18:44:48	AAVE/USDT:USDT	198.11	0.1972486344	4.0384826	FALSE	198.11	neutral
+2025-12-03 18:46:16	ORDI/USDT:USDT	4.167	-0.2155172414	8.616391667	FALSE	4.167	neutral
+2025-12-03 18:46:17	AAVE/USDT:USDT	197.77	0.02528828647	5.544598267	FALSE	197.77	neutral
+2025-12-03 18:47:40	ORDI/USDT:USDT	4.169	-0.1676245211	10.0210197	FALSE	4.169	neutral
+2025-12-03 18:47:41	AAVE/USDT:USDT	197.48	-0.121383775	6.9492263	FALSE	197.48	neutral
+2025-12-03 18:49:08	ORDI/USDT:USDT	4.171	-0.1197318008	11.47559713	FALSE	4.171	neutral
+2025-12-03 18:49:09	AAVE/USDT:USDT	197.3	-0.2124216063	8.403803733	FALSE	197.3	neutral
+2025-12-03 18:50:39	ORDI/USDT:USDT	4.17	-0.1436781609	12.98812812	FALSE	4.17	neutral
+2025-12-03 18:50:40	AAVE/USDT:USDT	197.29	-0.2174792636	9.916334717	FALSE	197.29	neutral
+2025-12-03 18:52:07	ORDI/USDT:USDT	4.168	-0.1915708812	14.46828758	FALSE	4.168	neutral
+2025-12-03 18:52:09	AAVE/USDT:USDT	197.33	-0.1972486344	11.39649418	FALSE	197.33	neutral
+2025-12-03 18:53:31	ORDI/USDT:USDT	4.17	-0.1436781609	15.87344237	FALSE	4.17	neutral
+2025-12-03 18:53:32	AAVE/USDT:USDT	196.99	-0.3692089824	12.80164897	FALSE	196.99	neutral
+2025-12-03 18:55:00	ORDI/USDT:USDT	4.17	-0.1436781609	17.35684033	FALSE	4.17	neutral
+2025-12-03 18:55:01	AAVE/USDT:USDT	197.05	-0.3388630386	14.28504693	FALSE	197.05	neutral
+2025-12-03 18:56:26	ORDI/USDT:USDT	4.175	-0.02394636015	18.79109958	FALSE	4.175	neutral
+2025-12-03 18:56:28	AAVE/USDT:USDT	197.32	-0.2023062917	15.71930618	FALSE	197.32	neutral
+2025-12-03 18:57:53	ORDI/USDT:USDT	4.189	0.311302682	20.23040193	FALSE	4.189	neutral
+2025-12-03 18:57:54	AAVE/USDT:USDT	197.94	0.1112684604	17.15860853	FALSE	197.94	neutral
+2025-12-03 18:59:25	ORDI/USDT:USDT	4.198	0.5268199234	21.76779927	FALSE	4.198	neutral
+2025-12-03 18:59:27	AAVE/USDT:USDT	198.35	0.3186324095	18.69600587	FALSE	198.35	neutral
+2025-12-03 19:00:35	ORDI/USDT:USDT	4.201	0.5986590038	22.93755873	FALSE	4.201	neutral
+2025-12-03 19:00:36	AAVE/USDT:USDT	198.18	0.2326522355	19.86576533	FALSE	198.18	neutral
+2025-12-03 19:00:38	LAYER/USDT:USDT	0.2206	-0.1358080579	0.1118905833	FALSE	0.2206	neutral
+2025-12-03 19:06:30	ORDI/USDT:USDT	4.185	0.2155172414	28.85361005	FALSE	4.185	neutral
+2025-12-03 19:06:32	AAVE/USDT:USDT	198.62	0.4551891564	25.78181665	FALSE	198.62	neutral
+2025-12-03 19:06:34	LAYER/USDT:USDT	0.2196	-0.5885015844	6.0279419	FALSE	0.2196	neutral
+2025-12-03 19:06:40	ORDI/USDT:USDT	4.183	0.1676245211	29.02112503	FALSE	4.183	neutral
+2025-12-03 19:06:41	AAVE/USDT:USDT	198.61	0.4501314991	25.94933163	FALSE	198.61	neutral
+2025-12-03 19:06:44	LAYER/USDT:USDT	0.2197	-0.5432322318	6.195456883	FALSE	0.2197	neutral
+2025-12-03 19:06:51	ORDI/USDT:USDT	4.183	0.1676245211	29.19382947	FALSE	4.183	neutral
+2025-12-03 19:06:52	AAVE/USDT:USDT	198.89	0.5917459033	26.12203607	FALSE	198.89	neutral
+2025-12-03 19:06:54	LAYER/USDT:USDT	0.2196	-0.5885015844	6.368161317	FALSE	0.2196	neutral
+2025-12-03 19:07:00	ORDI/USDT:USDT	4.182	0.1436781609	29.3553312	FALSE	4.182	neutral
+2025-12-03 19:07:01	AAVE/USDT:USDT	199	0.6473801335	26.2835378	FALSE	199	neutral
+2025-12-03 19:07:04	LAYER/USDT:USDT	0.2194	-0.6790402897	6.52966305	FALSE	0.2194	neutral
+2025-12-03 19:07:10	ORDI/USDT:USDT	4.183	0.1676245211	29.52442635	FALSE	4.183	neutral
+2025-12-03 19:07:11	AAVE/USDT:USDT	198.91	0.6018612179	26.45263295	FALSE	198.91	neutral
+2025-12-03 19:07:13	LAYER/USDT:USDT	0.2195	-0.6337709371	6.6987582	FALSE	0.2195	neutral
+2025-12-03 19:07:20	ORDI/USDT:USDT	4.184	0.1915708812	29.67540897	FALSE	4.184	neutral
+2025-12-03 19:07:22	AAVE/USDT:USDT	199.06	0.6777260773	26.60361557	FALSE	199.06	neutral
+2025-12-03 19:07:24	LAYER/USDT:USDT	0.2187	-0.9959257583	6.849740817	FALSE	0.2187	neutral
+2025-12-03 19:07:30	ORDI/USDT:USDT	4.187	0.2634099617	29.8611793	FALSE	4.187	neutral
+2025-12-03 19:07:32	AAVE/USDT:USDT	199	0.6473801335	26.7893859	FALSE	199	neutral
+2025-12-03 19:07:33	LAYER/USDT:USDT	0.2187	-0.9959257583	7.03551115	FALSE	0.2187	neutral
+2025-12-03 19:07:39	ORDI/USDT:USDT	4.188	0.2873563218	30.0123514	FALSE	4.188	neutral
+2025-12-03 19:07:41	AAVE/USDT:USDT	198.99	0.6423224762	26.940558	FALSE	198.99	neutral
+2025-12-03 19:07:43	LAYER/USDT:USDT	0.2185	-1.086464464	7.18668325	FALSE	0.2185	neutral
+2025-12-03 19:07:49	ORDI/USDT:USDT	4.188	0.2873563218	30.17710883	FALSE	4.188	neutral
+2025-12-03 19:07:51	AAVE/USDT:USDT	198.91	0.6018612179	27.10531543	FALSE	198.91	neutral
+2025-12-03 19:07:52	LAYER/USDT:USDT	0.2183	-1.177003169	7.351440683	FALSE	0.2183	neutral
+2025-12-03 19:07:59	ORDI/USDT:USDT	4.188	0.2873563218	30.33305407	FALSE	4.188	neutral
+2025-12-03 19:08:01	AAVE/USDT:USDT	198.93	0.6119765325	27.26126067	FALSE	198.93	neutral
+2025-12-03 19:08:03	LAYER/USDT:USDT	0.218	-1.312811227	7.507385917	FALSE	0.218	neutral
+2025-12-03 19:08:09	ORDI/USDT:USDT	4.186	0.2394636015	30.51216927	FALSE	4.186	neutral
+2025-12-03 19:08:11	AAVE/USDT:USDT	198.88	0.586688246	27.44037587	FALSE	198.88	neutral
+2025-12-03 19:08:12	LAYER/USDT:USDT	0.2176	-1.493888637	7.686501117	FALSE	0.2176	neutral
+2025-12-03 19:08:19	ORDI/USDT:USDT	4.187	0.2634099617	30.67080445	FALSE	4.187	neutral
+2025-12-03 19:08:21	AAVE/USDT:USDT	198.89	0.5917459033	27.59901105	FALSE	198.89	neutral
+2025-12-03 19:08:22	LAYER/USDT:USDT	0.2183	-1.177003169	7.8451363	FALSE	0.2183	neutral
+2025-12-03 19:08:29	ORDI/USDT:USDT	4.188	0.2873563218	30.83564778	FALSE	4.188	neutral
+2025-12-03 19:08:31	AAVE/USDT:USDT	198.87	0.5816305887	27.76385438	FALSE	198.87	neutral
+2025-12-03 19:08:32	LAYER/USDT:USDT	0.2186	-1.041195111	8.009979633	FALSE	0.2186	neutral
+2025-12-03 19:08:39	ORDI/USDT:USDT	4.187	0.2634099617	30.99574708	FALSE	4.187	neutral
+2025-12-03 19:08:40	AAVE/USDT:USDT	198.91	0.6018612179	27.92395368	FALSE	198.91	neutral
+2025-12-03 19:08:42	LAYER/USDT:USDT	0.2186	-1.041195111	8.170078933	FALSE	0.2186	neutral
+2025-12-03 19:08:48	ORDI/USDT:USDT	4.188	0.2873563218	31.15939155	FALSE	4.188	neutral
+2025-12-03 19:08:50	AAVE/USDT:USDT	198.89	0.5917459033	28.08759815	FALSE	198.89	neutral
+2025-12-03 19:08:51	LAYER/USDT:USDT	0.2187	-0.9959257583	8.3337234	FALSE	0.2187	neutral
+2025-12-03 19:08:58	ORDI/USDT:USDT	4.188	0.2873563218	31.31960145	FALSE	4.188	neutral
+2025-12-03 19:09:00	AAVE/USDT:USDT	199.05	0.67266842	28.24780805	FALSE	199.05	neutral
+2025-12-03 19:09:02	LAYER/USDT:USDT	0.2188	-0.9506564056	8.4939333	FALSE	0.2188	neutral
+2025-12-03 19:09:08	ORDI/USDT:USDT	4.189	0.311302682	31.49108647	FALSE	4.189	neutral
+2025-12-03 19:09:10	AAVE/USDT:USDT	198.83	0.5613999595	28.41929307	FALSE	198.83	neutral
+2025-12-03 19:09:11	LAYER/USDT:USDT	0.219	-0.8601177003	8.665418317	FALSE	0.219	neutral
+2025-12-03 19:09:17	ORDI/USDT:USDT	4.187	0.2634099617	31.64500743	FALSE	4.187	neutral
+2025-12-03 19:09:19	AAVE/USDT:USDT	198.97	0.6322071616	28.57321403	FALSE	198.97	neutral
+2025-12-03 19:09:21	LAYER/USDT:USDT	0.2189	-0.905387053	8.819339283	FALSE	0.2189	neutral
+2025-12-03 19:09:27	ORDI/USDT:USDT	4.187	0.2634099617	31.80977578	FALSE	4.187	neutral
+2025-12-03 19:09:29	AAVE/USDT:USDT	199	0.6473801335	28.73798238	FALSE	199	neutral
+2025-12-03 19:09:31	LAYER/USDT:USDT	0.219	-0.8601177003	8.984107633	FALSE	0.219	neutral
+2025-12-03 19:09:37	ORDI/USDT:USDT	4.189	0.311302682	31.97373485	FALSE	4.189	neutral
+2025-12-03 19:09:39	AAVE/USDT:USDT	198.86	0.5765729314	28.90194145	FALSE	198.86	neutral
+2025-12-03 19:09:40	LAYER/USDT:USDT	0.219	-0.8601177003	9.1480667	FALSE	0.219	neutral
+2025-12-03 19:09:46	ORDI/USDT:USDT	4.189	0.311302682	32.1322164	FALSE	4.189	neutral
+2025-12-03 19:09:48	AAVE/USDT:USDT	198.8	0.5462269877	29.060423	FALSE	198.8	neutral
+2025-12-03 19:09:49	LAYER/USDT:USDT	0.2191	-0.8148483477	9.30654825	FALSE	0.2191	neutral
+2025-12-03 19:09:56	ORDI/USDT:USDT	4.189	0.311302682	32.28609257	FALSE	4.189	neutral
+2025-12-03 19:09:57	AAVE/USDT:USDT	198.8	0.5462269877	29.21429917	FALSE	198.8	neutral
+2025-12-03 19:09:59	LAYER/USDT:USDT	0.219	-0.8601177003	9.460424417	FALSE	0.219	neutral
+2025-12-03 19:10:06	ORDI/USDT:USDT	4.188	0.2873563218	32.44376175	FALSE	4.188	neutral
+2025-12-03 19:10:07	AAVE/USDT:USDT	198.74	0.5158810439	29.37196835	FALSE	198.74	neutral
+2025-12-03 19:10:09	LAYER/USDT:USDT	0.2197	-0.5432322318	9.6180936	FALSE	0.2197	neutral
+2025-12-03 19:10:16	ORDI/USDT:USDT	4.187	0.2634099617	32.61067673	FALSE	4.187	neutral
+2025-12-03 19:10:18	AAVE/USDT:USDT	198.74	0.5158810439	29.53888333	FALSE	198.74	neutral
+2025-12-03 19:10:19	LAYER/USDT:USDT	0.2195	-0.6337709371	9.785008583	FALSE	0.2195	neutral
+2025-12-03 19:10:26	ORDI/USDT:USDT	4.187	0.2634099617	32.7827645	FALSE	4.187	neutral
+2025-12-03 19:10:28	AAVE/USDT:USDT	198.89	0.5917459033	29.7109711	FALSE	198.89	neutral
+2025-12-03 19:10:30	LAYER/USDT:USDT	0.2196	-0.5885015844	9.95709635	FALSE	0.2196	neutral
+2025-12-03 19:10:37	ORDI/USDT:USDT	4.186	0.2394636015	32.95766037	FALSE	4.186	neutral
+2025-12-03 19:10:38	AAVE/USDT:USDT	198.89	0.5917459033	29.88586697	FALSE	198.89	neutral
+2025-12-03 19:10:40	LAYER/USDT:USDT	0.2197	-0.5432322318	10.13199222	FALSE	0.2197	neutral
+2025-12-03 19:10:47	ORDI/USDT:USDT	4.188	0.2873563218	33.13734948	FALSE	4.188	neutral
+2025-12-03 19:10:48	AAVE/USDT:USDT	198.96	0.6271495043	30.06555608	FALSE	198.96	neutral
+2025-12-03 19:10:50	LAYER/USDT:USDT	0.2197	-0.5432322318	10.31168133	FALSE	0.2197	neutral
+2025-12-03 19:10:57	ORDI/USDT:USDT	4.186	0.2394636015	33.29292188	FALSE	4.186	neutral
+2025-12-03 19:10:58	AAVE/USDT:USDT	198.96	0.6271495043	30.22112848	FALSE	198.96	neutral
+2025-12-03 19:11:00	LAYER/USDT:USDT	0.2195	-0.6337709371	10.46725373	FALSE	0.2195	neutral
+2025-12-03 19:11:06	ORDI/USDT:USDT	4.187	0.2634099617	33.45974305	FALSE	4.187	neutral
+2025-12-03 19:11:08	AAVE/USDT:USDT	198.94	0.6170341898	30.38794965	FALSE	198.94	neutral
+2025-12-03 19:11:09	LAYER/USDT:USDT	0.2195	-0.6337709371	10.6340749	FALSE	0.2195	neutral
+2025-12-03 19:11:15	ORDI/USDT:USDT	4.186	0.2394636015	33.61504173	FALSE	4.186	neutral
+2025-12-03 19:11:18	AAVE/USDT:USDT	199.05	0.67266842	30.54324833	FALSE	199.05	neutral
+2025-12-03 19:11:19	LAYER/USDT:USDT	0.2195	-0.6337709371	10.78937358	FALSE	0.2195	neutral
+2025-12-03 19:11:25	ORDI/USDT:USDT	4.187	0.2634099617	33.77951353	FALSE	4.187	neutral
+2025-12-03 19:11:28	AAVE/USDT:USDT	199.04	0.6676107627	30.70772013	FALSE	199.04	neutral
+2025-12-03 19:11:29	LAYER/USDT:USDT	0.2194	-0.6790402897	10.95384538	FALSE	0.2194	neutral
+2025-12-03 19:11:36	ORDI/USDT:USDT	4.189	0.311302682	33.9450971	FALSE	4.189	neutral
+2025-12-03 19:11:39	AAVE/USDT:USDT	199.1	0.6979567065	30.8733037	FALSE	199.1	neutral
+2025-12-03 19:11:40	LAYER/USDT:USDT	0.2193	-0.7243096424	11.11942895	FALSE	0.2193	neutral
+2025-12-03 19:11:47	ORDI/USDT:USDT	4.189	0.311302682	34.12784902	FALSE	4.189	neutral
+2025-12-03 19:11:48	AAVE/USDT:USDT	199.21	0.7535909367	31.05605562	FALSE	199.21	neutral
+2025-12-03 19:11:50	LAYER/USDT:USDT	0.2195	-0.6337709371	11.30218087	FALSE	0.2195	neutral
+2025-12-03 19:12:00	ORDI/USDT:USDT	4.191	0.3591954023	34.34846453	FALSE	4.191	neutral
+2025-12-03 19:12:02	AAVE/USDT:USDT	199	0.6473801335	31.27667113	FALSE	199	neutral
+2025-12-03 19:12:03	LAYER/USDT:USDT	0.2198	-0.4979628791	11.52279638	FALSE	0.2198	neutral
+2025-12-03 19:12:10	ORDI/USDT:USDT	4.189	0.311302682	34.5194794	FALSE	4.189	neutral
+2025-12-03 19:12:11	AAVE/USDT:USDT	199.01	0.6524377908	31.447686	FALSE	199.01	neutral
+2025-12-03 19:12:12	LAYER/USDT:USDT	0.22	-0.4074241738	11.69381125	FALSE	0.22	neutral
+2025-12-03 19:12:19	ORDI/USDT:USDT	4.187	0.2634099617	34.6706911	FALSE	4.187	neutral
+2025-12-03 19:12:21	AAVE/USDT:USDT	198.95	0.6220918471	31.5988977	FALSE	198.95	neutral
+2025-12-03 19:12:22	LAYER/USDT:USDT	0.2197	-0.5432322318	11.84502295	FALSE	0.2197	neutral
+2025-12-03 19:12:28	ORDI/USDT:USDT	4.187	0.2634099617	34.83158435	FALSE	4.187	neutral
+2025-12-03 19:12:30	AAVE/USDT:USDT	199.01	0.6524377908	31.75979095	FALSE	199.01	neutral
+2025-12-03 19:12:31	LAYER/USDT:USDT	0.2197	-0.5432322318	12.0059162	FALSE	0.2197	neutral
+2025-12-03 19:12:38	ORDI/USDT:USDT	4.187	0.2634099617	34.98593682	FALSE	4.187	neutral
+2025-12-03 19:12:40	AAVE/USDT:USDT	199.04	0.6676107627	31.91414342	FALSE	199.04	neutral
+2025-12-03 19:12:42	LAYER/USDT:USDT	0.2198	-0.4979628791	12.16026867	FALSE	0.2198	neutral
+2025-12-03 19:12:48	ORDI/USDT:USDT	4.191	0.3591954023	35.1573049	FALSE	4.191	neutral
+2025-12-03 19:12:50	AAVE/USDT:USDT	199.02	0.6574954481	32.0855115	FALSE	199.02	neutral
+2025-12-03 19:12:51	LAYER/USDT:USDT	0.2201	-0.3621548212	12.33163675	FALSE	0.2201	neutral
+2025-12-03 19:12:58	ORDI/USDT:USDT	4.192	0.3831417625	35.32028897	FALSE	4.192	neutral
+2025-12-03 19:13:00	AAVE/USDT:USDT	199.02	0.6574954481	32.24849557	FALSE	199.02	neutral
+2025-12-03 19:13:01	LAYER/USDT:USDT	0.22	-0.4074241738	12.49462082	FALSE	0.22	neutral
+2025-12-03 19:13:08	ORDI/USDT:USDT	4.192	0.3831417625	35.48463895	FALSE	4.192	neutral
+2025-12-03 19:13:09	AAVE/USDT:USDT	199.15	0.7232449929	32.41284555	FALSE	199.15	neutral
+2025-12-03 19:13:10	LAYER/USDT:USDT	0.2195	-0.6337709371	12.6589708	FALSE	0.2195	neutral
+2025-12-03 19:13:17	ORDI/USDT:USDT	4.196	0.4789272031	35.63660468	FALSE	4.196	neutral
+2025-12-03 19:13:18	AAVE/USDT:USDT	199.42	0.8598017398	32.56481128	FALSE	199.42	neutral
+2025-12-03 19:13:20	LAYER/USDT:USDT	0.2203	-0.2716161159	12.81093653	FALSE	0.2203	neutral
+2025-12-03 19:13:27	ORDI/USDT:USDT	4.197	0.5028735632	35.80227862	FALSE	4.197	neutral
+2025-12-03 19:13:28	AAVE/USDT:USDT	199.56	0.9306089419	32.73048522	FALSE	199.56	neutral
+2025-12-03 19:13:30	LAYER/USDT:USDT	0.2202	-0.3168854685	12.97661047	FALSE	0.2202	neutral
+2025-12-03 19:13:36	ORDI/USDT:USDT	4.197	0.5028735632	35.95848678	FALSE	4.197	neutral
+2025-12-03 19:13:38	AAVE/USDT:USDT	199.48	0.8901476836	32.88669338	FALSE	199.48	neutral
+2025-12-03 19:13:39	LAYER/USDT:USDT	0.2199	-0.4526935265	13.13281863	FALSE	0.2199	neutral
+2025-12-03 19:13:45	ORDI/USDT:USDT	4.193	0.4070881226	36.11377935	FALSE	4.193	neutral
+2025-12-03 19:13:47	AAVE/USDT:USDT	199.57	0.9356665992	33.04198595	FALSE	199.57	neutral
+2025-12-03 19:13:48	LAYER/USDT:USDT	0.22	-0.4074241738	13.2881112	FALSE	0.22	neutral
+2025-12-03 19:13:55	ORDI/USDT:USDT	4.193	0.4070881226	36.2661198	FALSE	4.193	neutral
+2025-12-03 19:13:56	AAVE/USDT:USDT	199.34	0.8193404815	33.1943264	FALSE	199.34	neutral
+2025-12-03 19:13:57	LAYER/USDT:USDT	0.2199	-0.4526935265	13.44045165	FALSE	0.2199	neutral
+2025-12-03 19:14:04	ORDI/USDT:USDT	4.192	0.3831417625	36.4193641	FALSE	4.192	neutral
+2025-12-03 19:14:05	AAVE/USDT:USDT	199.3	0.7991098523	33.3475707	FALSE	199.3	neutral
+2025-12-03 19:14:07	LAYER/USDT:USDT	0.2199	-0.4526935265	13.59369595	FALSE	0.2199	neutral
+2025-12-03 19:14:13	ORDI/USDT:USDT	4.193	0.4070881226	36.57807457	FALSE	4.193	neutral
+2025-12-03 19:14:15	AAVE/USDT:USDT	199.33	0.8142828242	33.50628117	FALSE	199.33	neutral
+2025-12-03 19:14:17	LAYER/USDT:USDT	0.2201	-0.3621548212	13.75240642	FALSE	0.2201	neutral
+2025-12-03 19:14:24	ORDI/USDT:USDT	4.192	0.3831417625	36.74926917	FALSE	4.192	neutral
+2025-12-03 19:14:25	AAVE/USDT:USDT	199.34	0.8193404815	33.67747577	FALSE	199.34	neutral
+2025-12-03 19:14:27	LAYER/USDT:USDT	0.2206	-0.1358080579	13.92360102	FALSE	0.2206	neutral
+2025-12-03 19:14:33	ORDI/USDT:USDT	4.191	0.3591954023	36.90863638	FALSE	4.191	neutral
+2025-12-03 19:14:34	AAVE/USDT:USDT	199.4	0.8496864252	33.83684298	FALSE	199.4	neutral
+2025-12-03 19:14:36	LAYER/USDT:USDT	0.2206	-0.1358080579	14.08296823	FALSE	0.2206	neutral
+2025-12-03 19:14:42	ORDI/USDT:USDT	4.192	0.3831417625	37.05986168	FALSE	4.192	neutral
+2025-12-03 19:14:44	AAVE/USDT:USDT	199.4	0.8496864252	33.98806828	FALSE	199.4	neutral
+2025-12-03 19:14:45	LAYER/USDT:USDT	0.2209	0	14.23419353	FALSE	0.2209	neutral
+2025-12-03 19:14:52	ORDI/USDT:USDT	4.19	0.3352490421	37.21573213	FALSE	4.19	neutral
+2025-12-03 19:14:54	AAVE/USDT:USDT	199.31	0.8041675096	34.14393873	FALSE	199.31	neutral
+2025-12-03 19:14:55	LAYER/USDT:USDT	0.2207	-0.0905387053	14.39006398	FALSE	0.2207	neutral
+2025-12-03 19:15:01	ORDI/USDT:USDT	4.191	0.3591954023	37.38059532	FALSE	4.191	neutral
+2025-12-03 19:15:03	AAVE/USDT:USDT	199.4	0.8496864252	34.30880192	FALSE	199.4	neutral
+2025-12-03 19:15:04	LAYER/USDT:USDT	0.2202	-0.3168854685	14.55492717	FALSE	0.2202	neutral
+2025-12-03 19:15:11	ORDI/USDT:USDT	4.195	0.4549808429	37.53645205	FALSE	4.195	neutral
+2025-12-03 19:15:13	AAVE/USDT:USDT	199.35	0.8243981388	34.46465865	FALSE	199.35	neutral
+2025-12-03 19:15:15	LAYER/USDT:USDT	0.2202	-0.3168854685	14.7107839	FALSE	0.2202	neutral
+2025-12-03 19:15:21	ORDI/USDT:USDT	4.192	0.3831417625	37.70761978	FALSE	4.192	neutral
+2025-12-03 19:15:22	AAVE/USDT:USDT	199.35	0.8243981388	34.63582638	FALSE	199.35	neutral
+2025-12-03 19:15:24	LAYER/USDT:USDT	0.2206	-0.1358080579	14.88195163	FALSE	0.2206	neutral
+2025-12-03 19:15:31	ORDI/USDT:USDT	4.192	0.3831417625	37.85978507	FALSE	4.192	neutral
+2025-12-03 19:15:32	AAVE/USDT:USDT	199.33	0.8142828242	34.78799167	FALSE	199.33	neutral
+2025-12-03 19:15:33	LAYER/USDT:USDT	0.2209	0	15.03411692	FALSE	0.2209	neutral
+2025-12-03 19:15:40	ORDI/USDT:USDT	4.188	0.2873563218	38.01749022	FALSE	4.188	neutral
+2025-12-03 19:15:41	AAVE/USDT:USDT	199.23	0.7637062513	34.94569682	FALSE	199.23	neutral
+2025-12-03 19:15:43	LAYER/USDT:USDT	0.2211	0.0905387053	15.19182207	FALSE	0.2211	neutral
+2025-12-03 19:15:49	ORDI/USDT:USDT	4.188	0.2873563218	38.17549535	FALSE	4.188	neutral
+2025-12-03 19:15:52	AAVE/USDT:USDT	199.2	0.7485332794	35.10370195	FALSE	199.2	neutral
+2025-12-03 19:15:53	LAYER/USDT:USDT	0.2201	-0.3621548212	15.3498272	FALSE	0.2201	neutral
+2025-12-03 19:16:00	ORDI/USDT:USDT	4.187	0.2634099617	38.34996065	FALSE	4.187	neutral
+2025-12-03 19:16:01	AAVE/USDT:USDT	199.21	0.7535909367	35.27816725	FALSE	199.21	neutral
+2025-12-03 19:16:02	LAYER/USDT:USDT	0.2202	-0.3168854685	15.5242925	FALSE	0.2202	neutral
+2025-12-03 19:16:09	ORDI/USDT:USDT	4.188	0.2873563218	38.5005513	FALSE	4.188	neutral
+2025-12-03 19:16:11	AAVE/USDT:USDT	199.55	0.9255512846	35.4287579	FALSE	199.55	neutral
+2025-12-03 19:16:12	LAYER/USDT:USDT	0.2202	-0.3168854685	15.67488315	FALSE	0.2202	neutral
+2025-12-03 19:16:19	ORDI/USDT:USDT	4.186	0.2394636015	38.6696784	FALSE	4.186	neutral
+2025-12-03 19:16:20	AAVE/USDT:USDT	199.43	0.8648593971	35.597885	FALSE	199.43	neutral
+2025-12-03 19:16:22	LAYER/USDT:USDT	0.2207	-0.0905387053	15.84401025	FALSE	0.2207	neutral
+2025-12-03 19:16:29	ORDI/USDT:USDT	4.188	0.2873563218	38.82461097	FALSE	4.188	neutral
+2025-12-03 19:16:30	AAVE/USDT:USDT	199.33	0.8142828242	35.75281757	FALSE	199.33	neutral
+2025-12-03 19:16:31	LAYER/USDT:USDT	0.2205	-0.1810774106	15.99894282	FALSE	0.2205	neutral
+2025-12-03 19:16:38	ORDI/USDT:USDT	4.184	0.1915708812	38.9874915	FALSE	4.184	neutral
+2025-12-03 19:16:39	AAVE/USDT:USDT	199.15	0.7232449929	35.9156981	FALSE	199.15	neutral
+2025-12-03 19:16:41	LAYER/USDT:USDT	0.2205	-0.1810774106	16.16182335	FALSE	0.2205	neutral
+2025-12-03 19:16:47	ORDI/USDT:USDT	4.183	0.1676245211	39.14478105	FALSE	4.183	neutral
+2025-12-03 19:16:49	AAVE/USDT:USDT	199.38	0.8395711107	36.07298765	FALSE	199.38	neutral
+2025-12-03 19:16:51	LAYER/USDT:USDT	0.2205	-0.1810774106	16.3191129	FALSE	0.2205	neutral
+2025-12-03 19:16:57	ORDI/USDT:USDT	4.184	0.1915708812	39.30967485	FALSE	4.184	neutral
+2025-12-03 19:16:59	AAVE/USDT:USDT	199.37	0.8345134534	36.23788145	FALSE	199.37	neutral
+2025-12-03 19:17:00	LAYER/USDT:USDT	0.2204	-0.2263467632	16.4840067	FALSE	0.2204	neutral
+2025-12-03 19:17:06	ORDI/USDT:USDT	4.182	0.1436781609	39.46180468	FALSE	4.182	neutral
+2025-12-03 19:17:08	AAVE/USDT:USDT	199.41	0.8547440825	36.39001128	FALSE	199.41	neutral
+2025-12-03 19:17:09	LAYER/USDT:USDT	0.2205	-0.1810774106	16.63613653	FALSE	0.2205	neutral
+2025-12-03 19:17:15	ORDI/USDT:USDT	4.183	0.1676245211	39.61537822	FALSE	4.183	neutral
+2025-12-03 19:17:21	AAVE/USDT:USDT	199.48	0.8901476836	36.54358482	FALSE	199.48	neutral
+2025-12-03 19:17:23	LAYER/USDT:USDT	0.2207	-0.0905387053	16.78971007	FALSE	0.2207	neutral
+2025-12-03 19:17:29	ORDI/USDT:USDT	4.187	0.2634099617	39.84027268	FALSE	4.187	neutral
+2025-12-03 19:17:31	AAVE/USDT:USDT	199.57	0.9356665992	36.76847928	FALSE	199.57	neutral
+2025-12-03 19:17:32	LAYER/USDT:USDT	0.2212	0.1358080579	17.01460453	FALSE	0.2212	neutral
+2025-12-03 19:17:39	ORDI/USDT:USDT	4.189	0.311302682	39.99919463	FALSE	4.189	neutral
+2025-12-03 19:17:40	AAVE/USDT:USDT	199.53	0.9154359701	36.92740123	FALSE	199.53	neutral
+2025-12-03 19:17:41	LAYER/USDT:USDT	0.221	0.04526935265	17.17352648	FALSE	0.221	neutral
+2025-12-03 19:17:48	ORDI/USDT:USDT	4.19	0.3352490421	40.15297258	FALSE	4.19	neutral
+2025-12-03 19:17:49	AAVE/USDT:USDT	199.53	0.9154359701	37.08117918	FALSE	199.53	neutral
+2025-12-03 19:17:50	LAYER/USDT:USDT	0.2207	-0.0905387053	17.32730443	FALSE	0.2207	neutral
+2025-12-03 19:17:57	ORDI/USDT:USDT	4.19	0.3352490421	40.30518852	FALSE	4.19	neutral
+2025-12-03 19:17:59	AAVE/USDT:USDT	199.53	0.9154359701	37.23339512	FALSE	199.53	neutral
+2025-12-03 19:18:00	LAYER/USDT:USDT	0.221	0.04526935265	17.47952037	FALSE	0.221	neutral
+2025-12-03 19:18:07	ORDI/USDT:USDT	4.188	0.2873563218	40.47070168	FALSE	4.188	neutral
+2025-12-03 19:18:09	AAVE/USDT:USDT	199.38	0.8395711107	37.39890828	FALSE	199.38	neutral
+2025-12-03 19:18:10	LAYER/USDT:USDT	0.2211	0.0905387053	17.64503353	FALSE	0.2211	neutral
+2025-12-03 19:18:16	ORDI/USDT:USDT	4.188	0.2873563218	40.62733823	FALSE	4.188	neutral
+2025-12-03 19:18:18	AAVE/USDT:USDT	199.46	0.880032369	37.55554483	FALSE	199.46	neutral
+2025-12-03 19:18:19	LAYER/USDT:USDT	0.2211	0.0905387053	17.80167008	FALSE	0.2211	neutral
+2025-12-03 19:18:26	ORDI/USDT:USDT	4.188	0.2873563218	40.78211907	FALSE	4.188	neutral
+2025-12-03 19:18:27	AAVE/USDT:USDT	199.42	0.8598017398	37.71032567	FALSE	199.42	neutral
+2025-12-03 19:18:28	LAYER/USDT:USDT	0.2211	0.0905387053	17.95645092	FALSE	0.2211	neutral
+2025-12-03 19:18:35	ORDI/USDT:USDT	4.189	0.311302682	40.93555107	FALSE	4.189	neutral
+2025-12-03 19:18:37	AAVE/USDT:USDT	199.63	0.966012543	37.86375767	FALSE	199.63	neutral
+2025-12-03 19:18:38	LAYER/USDT:USDT	0.2207	-0.0905387053	18.10988292	FALSE	0.2207	neutral
+2025-12-03 19:18:45	ORDI/USDT:USDT	4.189	0.311302682	41.10173472	FALSE	4.189	neutral
+2025-12-03 19:18:46	AAVE/USDT:USDT	199.58	0.9407242565	38.02994132	FALSE	199.58	neutral
+2025-12-03 19:18:48	LAYER/USDT:USDT	0.2204	-0.2263467632	18.27606657	FALSE	0.2204	neutral
+2025-12-03 19:18:54	ORDI/USDT:USDT	4.19	0.3352490421	41.2573504	FALSE	4.19	neutral
+2025-12-03 19:18:56	AAVE/USDT:USDT	199.26	0.7788792231	38.185557	FALSE	199.26	neutral
+2025-12-03 19:18:57	LAYER/USDT:USDT	0.22	-0.4074241738	18.43168225	FALSE	0.22	neutral
+2025-12-03 19:19:04	ORDI/USDT:USDT	4.187	0.2634099617	41.41775987	FALSE	4.187	neutral
+2025-12-03 19:19:05	AAVE/USDT:USDT	198.9	0.5968035606	38.34596647	FALSE	198.9	neutral
+2025-12-03 19:19:06	LAYER/USDT:USDT	0.2198	-0.4979628791	18.59209172	FALSE	0.2198	neutral
+2025-12-03 19:19:13	ORDI/USDT:USDT	4.186	0.2394636015	41.57105863	FALSE	4.186	neutral
+2025-12-03 19:19:14	AAVE/USDT:USDT	198.54	0.414727898	38.49926523	FALSE	198.54	neutral
+2025-12-03 19:19:16	LAYER/USDT:USDT	0.2196	-0.5885015844	18.74539048	FALSE	0.2196	neutral
+2025-12-03 19:19:22	ORDI/USDT:USDT	4.187	0.2634099617	41.72879252	FALSE	4.187	neutral
+2025-12-03 19:19:24	AAVE/USDT:USDT	198.6	0.4450738418	38.65699912	FALSE	198.6	neutral
+2025-12-03 19:19:25	LAYER/USDT:USDT	0.2197	-0.5432322318	18.90312437	FALSE	0.2197	neutral
+2025-12-03 19:19:32	ORDI/USDT:USDT	4.187	0.2634099617	41.8829637	FALSE	4.187	neutral
+2025-12-03 19:19:33	AAVE/USDT:USDT	198.79	0.5411693304	38.8111703	FALSE	198.79	neutral
+2025-12-03 19:19:34	LAYER/USDT:USDT	0.2204	-0.2263467632	19.05729555	FALSE	0.2204	neutral
+2025-12-03 19:19:41	ORDI/USDT:USDT	4.188	0.2873563218	42.03646217	FALSE	4.188	neutral
+2025-12-03 19:19:42	AAVE/USDT:USDT	198.79	0.5411693304	38.96466877	FALSE	198.79	neutral
+2025-12-03 19:19:44	LAYER/USDT:USDT	0.2202	-0.3168854685	19.21079402	FALSE	0.2202	neutral
+2025-12-03 19:19:50	ORDI/USDT:USDT	4.189	0.311302682	42.19330735	FALSE	4.189	neutral
+2025-12-03 19:19:53	AAVE/USDT:USDT	198.7	0.4956504147	39.12151395	FALSE	198.7	neutral
+2025-12-03 19:19:54	LAYER/USDT:USDT	0.2203	-0.2716161159	19.3676392	FALSE	0.2203	neutral
+2025-12-03 19:20:01	ORDI/USDT:USDT	4.189	0.311302682	42.37028817	FALSE	4.189	neutral
+2025-12-03 19:20:03	AAVE/USDT:USDT	198.72	0.5057657293	39.29849477	FALSE	198.72	neutral
+2025-12-03 19:20:04	LAYER/USDT:USDT	0.2202	-0.3168854685	19.54462002	FALSE	0.2202	neutral
+2025-12-03 19:20:12	ORDI/USDT:USDT	4.192	0.3831417625	42.53488977	FALSE	4.192	neutral
+2025-12-03 19:20:13	AAVE/USDT:USDT	198.86	0.5765729314	39.46309637	FALSE	198.86	neutral
+2025-12-03 19:21:13	ORDI/USDT:USDT	4.189	0.311302682	43.57757323	FALSE	4.189	neutral
+2025-12-03 19:21:15	AAVE/USDT:USDT	198.79	0.5411693304	40.50577983	FALSE	198.79	neutral
+2025-12-03 19:21:16	ETH/USDT:USDT	3164.17	0.006321172451	0.1143096667	FALSE	3164.17	neutral
+2025-12-03 19:21:23	ORDI/USDT:USDT	4.195	0.4549808429	43.73698402	FALSE	4.195	neutral
+2025-12-03 19:21:24	AAVE/USDT:USDT	198.69	0.4905927574	40.66519062	FALSE	198.69	neutral
+2025-12-03 19:21:26	ETH/USDT:USDT	3162.38	-0.05025332099	0.27372045	FALSE	3162.38	neutral
+2025-12-03 19:21:33	ORDI/USDT:USDT	4.195	0.4549808429	43.9028264	FALSE	4.195	neutral
+2025-12-03 19:21:35	AAVE/USDT:USDT	198.61	0.4501314991	40.831033	FALSE	198.61	neutral
+2025-12-03 19:21:37	ETH/USDT:USDT	3160.71	-0.103035111	0.4395628333	FALSE	3160.71	neutral
+2025-12-03 19:21:43	ORDI/USDT:USDT	4.194	0.4310344828	44.07196958	FALSE	4.194	neutral
+2025-12-03 19:21:45	AAVE/USDT:USDT	198.61	0.4501314991	41.00017618	FALSE	198.61	neutral
+2025-12-03 19:21:46	ETH/USDT:USDT	3160.86	-0.09829423161	0.6087060167	FALSE	3160.86	neutral
+2025-12-03 19:21:53	ORDI/USDT:USDT	4.191	0.3591954023	44.23479763	FALSE	4.191	neutral
+2025-12-03 19:21:55	AAVE/USDT:USDT	198.48	0.3843819543	41.16300423	FALSE	198.48	neutral
+2025-12-03 19:21:56	ETH/USDT:USDT	3159.18	-0.1513920802	0.7715340667	FALSE	3159.18	neutral
+2025-12-03 19:22:03	ORDI/USDT:USDT	4.191	0.3591954023	44.39653312	FALSE	4.191	neutral
+2025-12-03 19:22:04	AAVE/USDT:USDT	198.38	0.3338053813	41.32473972	FALSE	198.38	neutral
+2025-12-03 19:22:06	ETH/USDT:USDT	3158.08	-0.1861585287	0.93326955	FALSE	3158.08	neutral
+2025-12-03 19:22:12	ORDI/USDT:USDT	4.183	0.1676245211	44.55936725	FALSE	4.183	neutral
+2025-12-03 19:22:13	AAVE/USDT:USDT	198.29	0.2882864657	41.48757385	FALSE	198.29	neutral
+2025-12-03 19:22:15	ETH/USDT:USDT	3156.29	-0.2427330221	1.096103683	FALSE	3156.29	neutral
+2025-12-03 19:22:21	ORDI/USDT:USDT	4.183	0.1676245211	44.71335233	FALSE	4.183	neutral
+2025-12-03 19:22:23	AAVE/USDT:USDT	198.28	0.2832288084	41.64155893	FALSE	198.28	neutral
+2025-12-03 19:22:24	ETH/USDT:USDT	3156.16	-0.2468417842	1.250088767	FALSE	3156.16	neutral
+2025-12-03 19:22:31	ORDI/USDT:USDT	4.183	0.1676245211	44.86885865	FALSE	4.183	neutral
+2025-12-03 19:22:33	AAVE/USDT:USDT	198.38	0.3338053813	41.79706525	FALSE	198.38	neutral
+2025-12-03 19:22:34	ETH/USDT:USDT	3157.73	-0.1972205805	1.405595083	FALSE	3157.73	neutral
+2025-12-03 19:22:40	ORDI/USDT:USDT	4.183	0.1676245211	45.03077975	FALSE	4.183	neutral
+2025-12-03 19:22:43	AAVE/USDT:USDT	198.67	0.4804774428	41.95898635	FALSE	198.67	neutral
+2025-12-03 19:22:44	ETH/USDT:USDT	3162.18	-0.05657449344	1.567516183	FALSE	3162.18	neutral
+2025-12-03 19:22:51	ORDI/USDT:USDT	4.194	0.4310344828	45.20446782	FALSE	4.194	neutral
+2025-12-03 19:22:53	AAVE/USDT:USDT	198.84	0.5664576168	42.13267442	FALSE	198.84	neutral
+2025-12-03 19:22:55	ETH/USDT:USDT	3162.87	-0.03476644848	1.74120425	FALSE	3162.87	neutral
+2025-12-03 19:23:01	ORDI/USDT:USDT	4.194	0.4310344828	45.37515878	FALSE	4.194	neutral
+2025-12-03 19:23:03	AAVE/USDT:USDT	198.89	0.5917459033	42.30336538	FALSE	198.89	neutral
+2025-12-03 19:23:06	ETH/USDT:USDT	3162.11	-0.05878690379	1.911895217	FALSE	3162.11	neutral
+2025-12-03 19:23:13	ORDI/USDT:USDT	4.191	0.3591954023	45.56827573	FALSE	4.191	neutral
+2025-12-03 19:23:15	AAVE/USDT:USDT	198.89	0.5917459033	42.49648233	FALSE	198.89	neutral
+2025-12-03 19:23:18	ETH/USDT:USDT	3160.2	-0.1191541007	2.105012167	FALSE	3160.2	neutral
+2025-12-03 19:23:24	ORDI/USDT:USDT	4.19	0.3352490421	45.75963167	FALSE	4.19	neutral
+2025-12-03 19:23:26	AAVE/USDT:USDT	198.61	0.4501314991	42.68783827	FALSE	198.61	neutral
+2025-12-03 19:23:32	ETH/USDT:USDT	3161.44	-0.07996283151	2.2963681	FALSE	3161.44	neutral
+2025-12-03 19:23:38	ORDI/USDT:USDT	4.189	0.311302682	45.99076632	FALSE	4.189	neutral
+2025-12-03 19:23:39	AAVE/USDT:USDT	198.94	0.6170341898	42.91897292	FALSE	198.94	neutral
+2025-12-03 19:23:41	ETH/USDT:USDT	3164.31	0.01074599317	2.52750275	FALSE	3164.31	neutral
+2025-12-03 19:23:48	ORDI/USDT:USDT	4.195	0.4549808429	46.14219327	FALSE	4.195	neutral
+2025-12-03 19:23:50	AAVE/USDT:USDT	198.94	0.6170341898	43.07039987	FALSE	198.94	neutral
+2025-12-03 19:23:51	ETH/USDT:USDT	3162.56	-0.04456426578	2.6789297	FALSE	3162.56	neutral
+2025-12-03 19:23:58	ORDI/USDT:USDT	4.196	0.4789272031	46.31543182	FALSE	4.196	neutral
+2025-12-03 19:24:00	AAVE/USDT:USDT	199	0.6473801335	43.24363842	FALSE	199	neutral
+2025-12-03 19:24:02	ETH/USDT:USDT	3162.16	-0.05720661068	2.85216825	FALSE	3162.16	neutral
+2025-12-03 19:24:09	ORDI/USDT:USDT	4.195	0.4549808429	46.49348908	FALSE	4.195	neutral
+2025-12-03 19:24:12	AAVE/USDT:USDT	198.8	0.5462269877	43.42169568	FALSE	198.8	neutral
+2025-12-03 19:24:14	ETH/USDT:USDT	3161.21	-0.08723217982	3.030225517	FALSE	3161.21	neutral
+2025-12-03 19:24:21	ORDI/USDT:USDT	4.195	0.4549808429	46.69948652	FALSE	4.195	neutral
+2025-12-03 19:24:22	AAVE/USDT:USDT	198.79	0.5411693304	43.62769312	FALSE	198.79	neutral
+2025-12-03 19:24:24	ETH/USDT:USDT	3161.18	-0.08818035569	3.23622295	FALSE	3161.18	neutral
+2025-12-03 19:24:30	ORDI/USDT:USDT	4.194	0.4310344828	46.86203648	FALSE	4.194	neutral
+2025-12-03 19:24:32	AAVE/USDT:USDT	198.77	0.5310540158	43.79024308	FALSE	198.77	neutral
+2025-12-03 19:24:33	ETH/USDT:USDT	3160.49	-0.1099884006	3.398772917	FALSE	3160.49	neutral
+2025-12-03 19:24:39	ORDI/USDT:USDT	4.195	0.4549808429	47.01388798	FALSE	4.195	neutral
+2025-12-03 19:24:41	AAVE/USDT:USDT	198.7	0.4956504147	43.94209458	FALSE	198.7	neutral
+2025-12-03 19:24:42	ETH/USDT:USDT	3159.4	-0.1444387905	3.550624417	FALSE	3159.4	neutral
+2025-12-03 19:24:49	ORDI/USDT:USDT	4.189	0.311302682	47.16864578	FALSE	4.189	neutral
+2025-12-03 19:24:50	AAVE/USDT:USDT	198.61	0.4501314991	44.09685238	FALSE	198.61	neutral
+2025-12-03 19:24:52	ETH/USDT:USDT	3159.48	-0.1419103215	3.705382217	FALSE	3159.48	neutral
+2025-12-03 19:24:58	ORDI/USDT:USDT	4.189	0.311302682	47.33238148	FALSE	4.189	neutral
+2025-12-03 19:25:01	AAVE/USDT:USDT	198.67	0.4804774428	44.26058808	FALSE	198.67	neutral
+2025-12-03 19:25:03	ETH/USDT:USDT	3158.57	-0.1706716562	3.869117917	FALSE	3158.57	neutral
+2025-12-03 19:25:10	ORDI/USDT:USDT	4.186	0.2394636015	47.5143551	FALSE	4.186	neutral
+2025-12-03 19:25:11	AAVE/USDT:USDT	198.67	0.4804774428	44.4425617	FALSE	198.67	neutral
+2025-12-03 19:25:13	ETH/USDT:USDT	3157.66	-0.1994329908	4.051091533	FALSE	3157.66	neutral
+2025-12-03 19:25:20	ORDI/USDT:USDT	4.185	0.2155172414	47.67889115	FALSE	4.185	neutral
+2025-12-03 19:25:22	AAVE/USDT:USDT	198.5	0.3944972689	44.60709775	FALSE	198.5	neutral
+2025-12-03 19:25:24	ETH/USDT:USDT	3155.88	-0.2556914256	4.215627583	FALSE	3155.88	neutral
+2025-12-03 19:25:31	ORDI/USDT:USDT	4.18	0.09578544061	47.85764312	FALSE	4.18	neutral
+2025-12-03 19:25:33	AAVE/USDT:USDT	198.3	0.293344123	44.78584972	FALSE	198.3	neutral
+2025-12-03 19:25:34	ETH/USDT:USDT	3154.32	-0.3049965708	4.39437955	FALSE	3154.32	neutral
+2025-12-03 19:25:42	ORDI/USDT:USDT	4.175	-0.02394636015	48.03667472	FALSE	4.175	neutral
+2025-12-03 19:25:44	AAVE/USDT:USDT	198.09	0.1871333198	44.96488132	FALSE	198.09	neutral
+2025-12-03 19:25:46	ETH/USDT:USDT	3158.46	-0.174148301	4.57341115	FALSE	3158.46	neutral
+2025-12-03 19:25:53	ORDI/USDT:USDT	4.182	0.1436781609	48.2279536	FALSE	4.182	neutral
+2025-12-03 19:25:54	AAVE/USDT:USDT	198.41	0.3489783532	45.1561602	FALSE	198.41	neutral
+2025-12-03 19:25:56	ETH/USDT:USDT	3157.28	-0.2114432185	4.764690033	FALSE	3157.28	neutral
+2025-12-03 19:26:03	ORDI/USDT:USDT	4.184	0.1915708812	48.39330622	FALSE	4.184	neutral
+2025-12-03 19:26:04	AAVE/USDT:USDT	198.41	0.3489783532	45.32151282	FALSE	198.41	neutral
+2025-12-03 19:26:05	ETH/USDT:USDT	3158.07	-0.1864745873	4.93004265	FALSE	3158.07	neutral
+2025-12-03 19:26:12	ORDI/USDT:USDT	4.181	0.1197318008	48.55427663	FALSE	4.181	neutral
+2025-12-03 19:26:14	AAVE/USDT:USDT	198.4	0.3439206959	45.48248323	FALSE	198.4	neutral
+2025-12-03 19:26:16	ETH/USDT:USDT	3155.8	-0.2582198946	5.091013067	FALSE	3155.8	neutral
+2025-12-03 19:26:22	ORDI/USDT:USDT	4.181	0.1197318008	48.72545473	FALSE	4.181	neutral
+2025-12-03 19:26:24	AAVE/USDT:USDT	198.12	0.2023062917	45.65366133	FALSE	198.12	neutral
+2025-12-03 19:26:25	ETH/USDT:USDT	3155.62	-0.2639089498	5.262191167	FALSE	3155.62	neutral
+2025-12-03 19:26:31	ORDI/USDT:USDT	4.173	-0.07183908046	48.87844863	FALSE	4.173	neutral
+2025-12-03 19:26:33	AAVE/USDT:USDT	198.13	0.207363949	45.80665523	FALSE	198.13	neutral
+2025-12-03 19:26:34	ETH/USDT:USDT	3155.34	-0.2727585913	5.415185067	FALSE	3155.34	neutral
+2025-12-03 19:26:41	ORDI/USDT:USDT	4.176	0	49.03112438	FALSE	4.176	neutral
+2025-12-03 19:26:42	AAVE/USDT:USDT	198.11	0.1972486344	45.95933098	FALSE	198.11	neutral
+2025-12-03 19:26:43	ETH/USDT:USDT	3154.28	-0.3062608053	5.567860817	FALSE	3154.28	neutral
+2025-12-03 19:26:50	ORDI/USDT:USDT	4.174	-0.04789272031	49.18758302	FALSE	4.174	neutral
+2025-12-03 19:26:51	AAVE/USDT:USDT	198.02	0.1517297188	46.11578962	FALSE	198.02	neutral
+2025-12-03 19:26:53	ETH/USDT:USDT	3154.7	-0.2929863431	5.72431945	FALSE	3154.7	neutral
+2025-12-03 19:26:59	ORDI/USDT:USDT	4.174	-0.04789272031	49.34183337	FALSE	4.174	neutral
+2025-12-03 19:27:00	AAVE/USDT:USDT	198.06	0.171960348	46.27003997	FALSE	198.06	neutral
+2025-12-03 19:27:02	ETH/USDT:USDT	3154.54	-0.2980432811	5.8785698	FALSE	3154.54	neutral
+2025-12-03 19:27:09	ORDI/USDT:USDT	4.175	-0.02394636015	49.49381507	FALSE	4.175	neutral
+2025-12-03 19:27:10	AAVE/USDT:USDT	197.87	0.0758648594	46.42202167	FALSE	197.87	neutral
+2025-12-03 19:27:11	ETH/USDT:USDT	3154.13	-0.3110016846	6.0305515	FALSE	3154.13	neutral
+2025-12-03 19:27:18	ORDI/USDT:USDT	4.173	-0.07183908046	49.6533829	FALSE	4.173	neutral
+2025-12-03 19:27:20	AAVE/USDT:USDT	198.09	0.1871333198	46.5815895	FALSE	198.09	neutral
+2025-12-03 19:27:22	ETH/USDT:USDT	3154.67	-0.293934519	6.190119333	FALSE	3154.67	neutral
+2025-12-03 19:27:28	ORDI/USDT:USDT	4.173	-0.07183908046	49.82846147	FALSE	4.173	neutral
+2025-12-03 19:27:30	AAVE/USDT:USDT	197.97	0.1264414323	46.75666807	FALSE	197.97	neutral
+2025-12-03 19:27:31	ETH/USDT:USDT	3153.46	-0.3321776123	6.3651979	FALSE	3153.46	neutral
+2025-12-03 19:27:38	ORDI/USDT:USDT	4.173	-0.07183908046	49.9889192	FALSE	4.173	neutral
+2025-12-03 19:27:40	AAVE/USDT:USDT	197.96	0.121383775	46.9171258	FALSE	197.96	neutral
+2025-12-03 19:27:42	ETH/USDT:USDT	3153.46	-0.3321776123	6.525655633	FALSE	3153.46	neutral
+2025-12-03 19:27:49	ORDI/USDT:USDT	4.171	-0.1197318008	50.16443078	FALSE	4.171	neutral
+2025-12-03 19:27:50	AAVE/USDT:USDT	197.97	0.1264414323	47.09263738	FALSE	197.97	neutral
+2025-12-03 19:27:54	ETH/USDT:USDT	3154.01	-0.3147943881	6.701167217	FALSE	3154.01	neutral
+2025-12-03 19:28:01	ORDI/USDT:USDT	4.176	0	50.35702827	FALSE	4.176	neutral
+2025-12-03 19:28:03	AAVE/USDT:USDT	198.11	0.1972486344	47.28523487	FALSE	198.11	neutral
+2025-12-03 19:28:04	ETH/USDT:USDT	3157.93	-0.190899408	6.8937647	FALSE	3157.93	neutral
+2025-12-03 19:28:11	ORDI/USDT:USDT	4.177	0.02394636015	50.53683842	FALSE	4.177	neutral
+2025-12-03 19:28:13	AAVE/USDT:USDT	198.15	0.2174792636	47.46504502	FALSE	198.15	neutral
+2025-12-03 19:28:15	ETH/USDT:USDT	3156.73	-0.2288264427	7.07357485	FALSE	3156.73	neutral
+2025-12-03 19:28:22	ORDI/USDT:USDT	4.176	0	50.71810765	FALSE	4.176	neutral
+2025-12-03 19:28:24	AAVE/USDT:USDT	198.1	0.1921909771	47.64631425	FALSE	198.1	neutral
+2025-12-03 19:28:25	ETH/USDT:USDT	3156.56	-0.2341994393	7.254844083	FALSE	3156.56	neutral
+2025-12-03 19:28:33	ORDI/USDT:USDT	4.177	0.02394636015	50.88820332	FALSE	4.177	neutral
+2025-12-03 19:28:34	AAVE/USDT:USDT	198.07	0.1770180053	47.81640992	FALSE	198.07	neutral
+2025-12-03 19:28:36	ETH/USDT:USDT	3156.02	-0.2512666049	7.42493975	FALSE	3156.02	neutral
+2025-12-03 19:28:43	ORDI/USDT:USDT	4.177	0.02394636015	51.06655507	FALSE	4.177	neutral
+2025-12-03 19:28:44	AAVE/USDT:USDT	198.15	0.2174792636	47.99476167	FALSE	198.15	neutral
+2025-12-03 19:28:46	ETH/USDT:USDT	3157	-0.2202928599	7.6032915	FALSE	3157	neutral
+2025-12-03 19:28:52	ORDI/USDT:USDT	4.178	0.04789272031	51.23038765	FALSE	4.178	neutral
+2025-12-03 19:28:54	AAVE/USDT:USDT	198.16	0.2225369209	48.15859425	FALSE	198.16	neutral
+2025-12-03 19:28:56	ETH/USDT:USDT	3156.05	-0.2503184291	7.767124083	FALSE	3156.05	neutral
+2025-12-03 19:29:03	ORDI/USDT:USDT	4.177	0.02394636015	51.39962458	FALSE	4.177	neutral
+2025-12-03 19:29:05	AAVE/USDT:USDT	198.16	0.2225369209	48.32783118	FALSE	198.16	neutral
+2025-12-03 19:29:06	ETH/USDT:USDT	3156.57	-0.2338833807	7.936361017	FALSE	3156.57	neutral
+2025-12-03 19:29:16	ORDI/USDT:USDT	4.178	0.04789272031	51.62699553	FALSE	4.178	neutral
+2025-12-03 19:29:23	AAVE/USDT:USDT	198.43	0.3590936678	48.55520213	FALSE	198.43	neutral
+2025-12-03 19:29:24	ETH/USDT:USDT	3161.12	-0.09007670743	8.163731967	FALSE	3161.12	neutral
+2025-12-03 19:29:33	ORDI/USDT:USDT	4.182	0.1436781609	51.87845922	FALSE	4.182	neutral
+2025-12-03 19:29:34	AAVE/USDT:USDT	198.4	0.3439206959	48.80666582	FALSE	198.4	neutral
+2025-12-03 19:29:35	ETH/USDT:USDT	3158.99	-0.157397194	8.41519565	FALSE	3158.99	neutral
+2025-12-03 19:29:42	ORDI/USDT:USDT	4.181	0.1197318008	52.05181242	FALSE	4.181	neutral
+2025-12-03 19:29:44	AAVE/USDT:USDT	198.26	0.2731134938	48.98001902	FALSE	198.26	neutral
+2025-12-03 19:29:45	ETH/USDT:USDT	3159.86	-0.1299000939	8.58854885	FALSE	3159.86	neutral
+2025-12-03 19:29:51	ORDI/USDT:USDT	4.181	0.1197318008	52.21365158	FALSE	4.181	neutral
+2025-12-03 19:29:53	AAVE/USDT:USDT	198.3	0.293344123	49.14185818	FALSE	198.3	neutral
+2025-12-03 19:29:55	ETH/USDT:USDT	3159.82	-0.1311643284	8.750388017	FALSE	3159.82	neutral
+2025-12-03 19:30:01	ORDI/USDT:USDT	4.181	0.1197318008	52.37595495	FALSE	4.181	neutral
+2025-12-03 19:30:03	AAVE/USDT:USDT	198.29	0.2882864657	49.30416155	FALSE	198.29	neutral
+2025-12-03 19:30:05	ETH/USDT:USDT	3160.09	-0.1226307456	8.912691383	FALSE	3160.09	neutral
+2025-12-03 19:30:11	ORDI/USDT:USDT	4.181	0.1197318008	52.5397742	FALSE	4.181	neutral
+2025-12-03 19:30:12	AAVE/USDT:USDT	198.26	0.2731134938	49.4679808	FALSE	198.26	neutral
+2025-12-03 19:30:14	ETH/USDT:USDT	3162.58	-0.04393214853	9.076510633	FALSE	3162.58	neutral
+2025-12-03 19:30:20	ORDI/USDT:USDT	4.184	0.1915708812	52.6918794	FALSE	4.184	neutral
+2025-12-03 19:30:22	AAVE/USDT:USDT	198.5	0.3944972689	49.620086	FALSE	198.5	neutral
+2025-12-03 19:30:23	ETH/USDT:USDT	3165.61	0.0518336141	9.228615833	FALSE	3165.61	neutral
+2025-12-03 19:30:30	ORDI/USDT:USDT	4.184	0.1915708812	52.85428205	FALSE	4.184	neutral
+2025-12-03 19:30:31	AAVE/USDT:USDT	198.5	0.3944972689	49.78248865	FALSE	198.5	neutral
+2025-12-03 19:30:33	ETH/USDT:USDT	3163.47	-0.01580293113	9.391018483	FALSE	3163.47	neutral
+2025-12-03 19:30:40	ORDI/USDT:USDT	4.179	0.07183908046	53.01545427	FALSE	4.179	neutral
+2025-12-03 19:30:41	AAVE/USDT:USDT	198.33	0.3085170949	49.94366087	FALSE	198.33	neutral
+2025-12-03 19:30:43	ETH/USDT:USDT	3163.34	-0.01991169322	9.5521907	FALSE	3163.34	neutral
+2025-12-03 19:36:53	ORDI/USDT:USDT	4.17	-0.1436781609	59.23152452	FALSE	4.17	neutral
+2025-12-03 19:36:54	AAVE/USDT:USDT	197.88	0.08092251669	56.15973112	FALSE	197.88	neutral
+2025-12-03 19:36:56	ETH/USDT:USDT	3157.99	-0.1890030563	15.76826095	FALSE	3157.99	neutral
+2025-12-03 19:37:02	ORDI/USDT:USDT	4.166	-0.2394636015	59.39332443	FALSE	4.166	neutral
+2025-12-03 19:37:04	AAVE/USDT:USDT	197.82	0.05057657293	56.32153103	FALSE	197.82	neutral
+2025-12-03 19:37:06	ETH/USDT:USDT	3157.25	-0.2123913944	15.93006087	FALSE	3157.25	neutral
+2025-12-03 19:37:13	ORDI/USDT:USDT	4.167	-0.2155172414	59.55704048	FALSE	4.167	neutral
+2025-12-03 19:37:15	AAVE/USDT:USDT	197.88	0.08092251669	56.48524708	FALSE	197.88	neutral
+2025-12-03 19:37:16	ETH/USDT:USDT	3158.43	-0.1750964769	16.09377692	FALSE	3158.43	neutral
+2025-12-03 19:37:22	ORDI/USDT:USDT	4.168	-0.1915708812	59.72846572	FALSE	4.168	neutral
+2025-12-03 19:37:24	AAVE/USDT:USDT	198.09	0.1871333198	56.65667232	FALSE	198.09	neutral
+2025-12-03 19:37:25	ETH/USDT:USDT	3158.17	-0.1833140011	16.26520215	FALSE	3158.17	neutral
+2025-12-03 19:37:32	ORDI/USDT:USDT	4.168	-0.1915708812	59.88201088	FALSE	4.168	neutral
+2025-12-03 19:37:34	AAVE/USDT:USDT	198.09	0.1871333198	56.81021748	FALSE	198.09	neutral
+2025-12-03 19:37:35	ETH/USDT:USDT	3158.75	-0.164982601	16.41874732	FALSE	3158.75	neutral
+2025-12-03 19:37:42	ORDI/USDT:USDT	4.169	-0.1676245211	60.04457145	FALSE	4.169	neutral
+2025-12-03 19:37:43	AAVE/USDT:USDT	198.13	0.207363949	56.97277805	FALSE	198.13	neutral
+2025-12-03 19:37:44	ETH/USDT:USDT	3158.76	-0.1646665424	16.58130788	FALSE	3158.76	neutral
+2025-12-03 19:37:51	ORDI/USDT:USDT	4.17	-0.1436781609	60.20222972	FALSE	4.17	neutral
+2025-12-03 19:37:52	AAVE/USDT:USDT	198.04	0.1618450334	57.13043632	FALSE	198.04	neutral
+2025-12-03 19:37:53	ETH/USDT:USDT	3158.33	-0.1782570631	16.73896615	FALSE	3158.33	neutral
+2025-12-03 19:38:00	ORDI/USDT:USDT	4.171	-0.1197318008	60.35037833	FALSE	4.171	neutral
+2025-12-03 19:38:01	AAVE/USDT:USDT	198.13	0.207363949	57.27858493	FALSE	198.13	neutral
+2025-12-03 19:38:04	ETH/USDT:USDT	3159.96	-0.1267395076	16.88711477	FALSE	3159.96	neutral
+2025-12-03 19:38:10	ORDI/USDT:USDT	4.171	-0.1197318008	60.52380677	FALSE	4.171	neutral
+2025-12-03 19:38:11	AAVE/USDT:USDT	198.13	0.207363949	57.45201337	FALSE	198.13	neutral
+2025-12-03 19:38:13	ETH/USDT:USDT	3161.75	-0.07016501421	17.0605432	FALSE	3161.75	neutral
+2025-12-03 19:38:20	ORDI/USDT:USDT	4.173	-0.07183908046	60.68068605	FALSE	4.173	neutral
+2025-12-03 19:38:21	AAVE/USDT:USDT	198.55	0.4197855553	57.60889265	FALSE	198.55	neutral
+2025-12-03 19:38:23	ETH/USDT:USDT	3163.28	-0.02180804496	17.21742248	FALSE	3163.28	neutral
+2025-12-03 19:38:30	ORDI/USDT:USDT	4.177	0.02394636015	60.85345885	FALSE	4.177	neutral
+2025-12-03 19:38:32	AAVE/USDT:USDT	198.54	0.414727898	57.78166545	FALSE	198.54	neutral
+2025-12-03 19:38:34	ETH/USDT:USDT	3163.69	-0.008849641431	17.39019528	FALSE	3163.69	neutral
+2025-12-03 19:38:40	ORDI/USDT:USDT	4.183	0.1676245211	61.02122467	FALSE	4.183	neutral
+2025-12-03 19:38:42	AAVE/USDT:USDT	198.79	0.5411693304	57.94943127	FALSE	198.79	neutral
+2025-12-03 19:38:44	ETH/USDT:USDT	3167.01	0.09608182126	17.5579611	FALSE	3167.01	neutral
+2025-12-03 19:38:50	ORDI/USDT:USDT	4.183	0.1676245211	61.19029122	FALSE	4.183	neutral
+2025-12-03 19:38:51	AAVE/USDT:USDT	198.91	0.6018612179	58.11849782	FALSE	198.91	neutral
+2025-12-03 19:38:53	ETH/USDT:USDT	3170.18	0.1962724046	17.72702765	FALSE	3170.18	neutral
+2025-12-03 19:38:59	ORDI/USDT:USDT	4.189	0.311302682	61.34059563	FALSE	4.189	neutral
+2025-12-03 19:39:01	AAVE/USDT:USDT	198.75	0.5209387012	58.26880223	FALSE	198.75	neutral
+2025-12-03 19:39:03	ETH/USDT:USDT	3168.35	0.1384336767	17.87733207	FALSE	3168.35	neutral
+2025-12-03 19:39:10	ORDI/USDT:USDT	4.186	0.2394636015	61.51333895	FALSE	4.186	neutral
+2025-12-03 19:39:13	AAVE/USDT:USDT	198.89	0.5917459033	58.44154555	FALSE	198.89	neutral
+2025-12-03 19:39:15	ETH/USDT:USDT	3169.81	0.1845782356	18.05007538	FALSE	3169.81	neutral
+2025-12-03 19:39:21	ORDI/USDT:USDT	4.186	0.2394636015	61.7063209	FALSE	4.186	neutral
+2025-12-03 19:39:22	AAVE/USDT:USDT	198.89	0.5917459033	58.6345275	FALSE	198.89	neutral
+2025-12-03 19:39:24	ETH/USDT:USDT	3170.33	0.2010132839	18.24305733	FALSE	3170.33	neutral
+2025-12-03 19:39:30	ORDI/USDT:USDT	4.188	0.2873563218	61.85516335	FALSE	4.188	neutral
+2025-12-03 19:39:32	AAVE/USDT:USDT	198.93	0.6119765325	58.78336995	FALSE	198.93	neutral
+2025-12-03 19:39:33	ETH/USDT:USDT	3169.55	0.1763607114	18.39189978	FALSE	3169.55	neutral
+2025-12-03 19:39:40	ORDI/USDT:USDT	4.187	0.2634099617	62.0160009	FALSE	4.187	neutral
+2025-12-03 19:39:42	AAVE/USDT:USDT	198.86	0.5765729314	58.9442075	FALSE	198.86	neutral
+2025-12-03 19:39:48	ETH/USDT:USDT	3169.85	0.1858424701	18.55273733	FALSE	3169.85	neutral
+2025-12-03 19:39:54	ORDI/USDT:USDT	4.186	0.2394636015	62.25642185	FALSE	4.186	neutral
+2025-12-03 19:39:55	AAVE/USDT:USDT	198.91	0.6018612179	59.18462845	FALSE	198.91	neutral
+2025-12-03 19:39:57	ETH/USDT:USDT	3169.95	0.1890030563	18.79315828	FALSE	3169.95	neutral
+2025-12-03 19:40:04	ORDI/USDT:USDT	4.185	0.2155172414	62.41993468	FALSE	4.185	neutral
+2025-12-03 19:40:06	AAVE/USDT:USDT	198.59	0.4400161845	59.34814128	FALSE	198.59	neutral
+2025-12-03 19:40:07	ETH/USDT:USDT	3167.84	0.1223146869	18.95667112	FALSE	3167.84	neutral
+2025-12-03 19:40:13	ORDI/USDT:USDT	4.18	0.09578544061	62.576887	FALSE	4.18	neutral
+2025-12-03 19:40:14	AAVE/USDT:USDT	198.38	0.3338053813	59.5050936	FALSE	198.38	neutral
+2025-12-03 19:40:16	ETH/USDT:USDT	3166.74	0.08754823845	19.11362343	FALSE	3166.74	neutral
+2025-12-03 19:40:22	ORDI/USDT:USDT	4.175	-0.02394636015	62.72652287	FALSE	4.175	neutral
+2025-12-03 19:40:24	AAVE/USDT:USDT	198.42	0.3540360105	59.65472947	FALSE	198.42	neutral
+2025-12-03 19:40:25	ETH/USDT:USDT	3167.19	0.1017708765	19.2632593	FALSE	3167.19	neutral
+2025-12-03 19:40:32	ORDI/USDT:USDT	4.177	0.02394636015	62.88681357	FALSE	4.177	neutral
+2025-12-03 19:40:34	AAVE/USDT:USDT	198.28	0.2832288084	59.81502017	FALSE	198.28	neutral
+2025-12-03 19:40:35	ETH/USDT:USDT	3166.73	0.08723217982	19.42355	FALSE	3166.73	neutral
+2025-12-03 19:40:42	ORDI/USDT:USDT	4.175	-0.02394636015	63.04414937	FALSE	4.175	neutral
+2025-12-03 19:40:44	AAVE/USDT:USDT	198.28	0.2832288084	59.97235597	FALSE	198.28	neutral
+2025-12-03 19:40:45	ETH/USDT:USDT	3164.38	0.01295840352	19.5808858	FALSE	3164.38	neutral
+2025-12-03 19:40:53	ORDI/USDT:USDT	4.171	-0.1197318008	63.21829132	FALSE	4.171	neutral
+2025-12-03 19:40:54	AAVE/USDT:USDT	198.24	0.2629981792	60.14649792	FALSE	198.24	neutral
+2025-12-03 19:40:56	ETH/USDT:USDT	3165.8	0.05783872793	19.75502775	FALSE	3165.8	neutral
+2025-12-03 19:41:03	ORDI/USDT:USDT	4.171	-0.1197318008	63.3990504	FALSE	4.171	neutral
+2025-12-03 19:41:05	AAVE/USDT:USDT	198.24	0.2629981792	60.327257	FALSE	198.24	neutral
+2025-12-03 19:41:07	ETH/USDT:USDT	3165.4	0.04519638303	19.93578683	FALSE	3165.4	neutral
+2025-12-03 19:41:13	ORDI/USDT:USDT	4.172	-0.09578544061	63.57966832	FALSE	4.172	neutral
+2025-12-03 19:41:15	AAVE/USDT:USDT	198.25	0.2680558365	60.50787492	FALSE	198.25	neutral
+2025-12-03 19:41:18	ETH/USDT:USDT	3165.06	0.03445038986	20.11640475	FALSE	3165.06	neutral
+2025-12-03 19:41:25	ORDI/USDT:USDT	4.174	-0.04789272031	63.75442867	FALSE	4.174	neutral
+2025-12-03 19:41:26	AAVE/USDT:USDT	198.25	0.2680558365	60.68263527	FALSE	198.25	neutral
+2025-12-03 19:41:29	ETH/USDT:USDT	3165.45	0.04677667614	20.2911651	FALSE	3165.45	neutral
+2025-12-03 19:41:36	ORDI/USDT:USDT	4.17	-0.1436781609	63.94114903	FALSE	4.17	neutral
+2025-12-03 19:41:37	AAVE/USDT:USDT	198.24	0.2629981792	60.86935563	FALSE	198.24	neutral
+2025-12-03 19:41:38	ETH/USDT:USDT	3164.33	0.01137811041	20.47788547	FALSE	3164.33	neutral
+2025-12-03 19:41:45	ORDI/USDT:USDT	4.168	-0.1915708812	64.10295063	FALSE	4.168	neutral
+2025-12-03 19:41:47	AAVE/USDT:USDT	198.12	0.2023062917	61.03115723	FALSE	198.12	neutral
+2025-12-03 19:41:48	ETH/USDT:USDT	3163.07	-0.02844527603	20.63968707	FALSE	3163.07	neutral
+2025-12-03 19:41:54	ORDI/USDT:USDT	4.167	-0.2155172414	64.26303945	FALSE	4.167	neutral
+2025-12-03 19:41:56	AAVE/USDT:USDT	198	0.1416144042	61.19124605	FALSE	198	neutral
+2025-12-03 19:41:57	ETH/USDT:USDT	3162.85	-0.03539856573	20.79977588	FALSE	3162.85	neutral
+2025-12-03 19:42:04	ORDI/USDT:USDT	4.167	-0.2155172414	64.41321778	FALSE	4.167	neutral
+2025-12-03 19:42:05	AAVE/USDT:USDT	198.16	0.2225369209	61.34142438	FALSE	198.16	neutral
+2025-12-03 19:42:07	ETH/USDT:USDT	3166.44	0.07806647977	20.94995422	FALSE	3166.44	neutral
+2025-12-03 19:42:13	ORDI/USDT:USDT	4.172	-0.09578544061	64.57469903	FALSE	4.172	neutral
+2025-12-03 19:42:15	AAVE/USDT:USDT	198.32	0.3034594376	61.50290563	FALSE	198.32	neutral
+2025-12-03 19:42:17	ETH/USDT:USDT	3165.04	0.03381827261	21.11143547	FALSE	3165.04	neutral
+2025-12-03 19:42:24	ORDI/USDT:USDT	4.171	-0.1197318008	64.73934732	FALSE	4.171	neutral
+2025-12-03 19:42:26	AAVE/USDT:USDT	198.27	0.2781711511	61.66755392	FALSE	198.27	neutral
+2025-12-03 19:42:27	ETH/USDT:USDT	3166.13	0.06826866247	21.27608375	FALSE	3166.13	neutral
+2025-12-03 19:42:34	ORDI/USDT:USDT	4.171	-0.1197318008	64.9091362	FALSE	4.171	neutral
+2025-12-03 19:42:37	AAVE/USDT:USDT	198.33	0.3085170949	61.8373428	FALSE	198.33	neutral
+2025-12-03 19:42:38	ETH/USDT:USDT	3167.42	0.1090402248	21.44587263	FALSE	3167.42	neutral
+2025-12-03 19:42:45	ORDI/USDT:USDT	4.173	-0.07183908046	65.10218453	FALSE	4.173	neutral
+2025-12-03 19:42:47	AAVE/USDT:USDT	198.29	0.2882864657	62.03039113	FALSE	198.29	neutral
+2025-12-03 19:42:49	ETH/USDT:USDT	3169.19	0.164982601	21.63892097	FALSE	3169.19	neutral
+2025-12-03 19:42:55	ORDI/USDT:USDT	4.174	-0.04789272031	65.27258575	FALSE	4.174	neutral
+2025-12-03 19:42:57	AAVE/USDT:USDT	198.32	0.3034594376	62.20079235	FALSE	198.32	neutral
+2025-12-03 19:42:58	ETH/USDT:USDT	3173.75	0.3091053329	21.80932218	FALSE	3173.75	neutral
+2025-12-03 19:43:06	ORDI/USDT:USDT	4.174	-0.04789272031	65.43471768	FALSE	4.174	neutral
+2025-12-03 19:43:07	AAVE/USDT:USDT	198.48	0.3843819543	62.36292428	FALSE	198.48	neutral
+2025-12-03 19:43:08	ETH/USDT:USDT	3171.17	0.2275622082	21.97145412	FALSE	3171.17	neutral
+2025-12-03 19:43:15	ORDI/USDT:USDT	4.178	0.04789272031	65.59976867	FALSE	4.178	neutral
+2025-12-03 19:43:16	AAVE/USDT:USDT	198.4	0.3439206959	62.52797527	FALSE	198.4	neutral
+2025-12-03 19:43:18	ETH/USDT:USDT	3170.14	0.1950081701	22.1365051	FALSE	3170.14	neutral
+2025-12-03 19:43:24	ORDI/USDT:USDT	4.176	0	65.76290648	FALSE	4.176	neutral
+2025-12-03 19:43:26	AAVE/USDT:USDT	198.4	0.3439206959	62.69111308	FALSE	198.4	neutral
+2025-12-03 19:43:27	ETH/USDT:USDT	3169.73	0.1820497666	22.29964292	FALSE	3169.73	neutral
+2025-12-03 19:43:33	ORDI/USDT:USDT	4.177	0.02394636015	65.91381133	FALSE	4.177	neutral
+2025-12-03 19:43:35	AAVE/USDT:USDT	198.4	0.3439206959	62.84201793	FALSE	198.4	neutral
+2025-12-03 19:43:36	ETH/USDT:USDT	3169.99	0.1902672908	22.45054777	FALSE	3169.99	neutral
+2025-12-03 19:43:43	ORDI/USDT:USDT	4.178	0.04789272031	66.06273237	FALSE	4.178	neutral
+2025-12-03 19:43:44	AAVE/USDT:USDT	198.46	0.3742666397	62.99093897	FALSE	198.46	neutral
+2025-12-03 19:43:46	ETH/USDT:USDT	3169.76	0.1829979425	22.5994688	FALSE	3169.76	neutral
+2025-12-03 19:43:52	ORDI/USDT:USDT	4.175	-0.02394636015	66.22543378	FALSE	4.175	neutral
+2025-12-03 19:43:53	AAVE/USDT:USDT	198.45	0.3692089824	63.15364038	FALSE	198.45	neutral
+2025-12-03 19:43:55	ETH/USDT:USDT	3168.2	0.1336927973	22.76217022	FALSE	3168.2	neutral
+2025-12-03 19:44:01	ORDI/USDT:USDT	4.176	0	66.37631515	FALSE	4.176	neutral
+2025-12-03 19:44:02	AAVE/USDT:USDT	198.45	0.3692089824	63.30452175	FALSE	198.45	neutral
+2025-12-03 19:44:04	ETH/USDT:USDT	3168.03	0.1283198008	22.91305158	FALSE	3168.03	neutral
+2025-12-03 19:44:10	ORDI/USDT:USDT	4.176	0	66.52668642	FALSE	4.176	neutral
+2025-12-03 19:44:12	AAVE/USDT:USDT	198.43	0.3590936678	63.45489302	FALSE	198.43	neutral
+2025-12-03 19:44:13	ETH/USDT:USDT	3168.22	0.1343249146	23.06342285	FALSE	3168.22	neutral
+2025-12-03 19:44:19	ORDI/USDT:USDT	4.175	-0.02394636015	66.67578348	FALSE	4.175	neutral
+2025-12-03 19:44:20	AAVE/USDT:USDT	198.48	0.3843819543	63.60399008	FALSE	198.48	neutral
+2025-12-03 19:44:22	ETH/USDT:USDT	3167.65	0.1163095731	23.21251992	FALSE	3167.65	neutral
+2025-12-03 19:44:28	ORDI/USDT:USDT	4.176	0	66.82372105	FALSE	4.176	neutral
+2025-12-03 19:44:29	AAVE/USDT:USDT	198.45	0.3692089824	63.75192765	FALSE	198.45	neutral
+2025-12-03 19:44:31	ETH/USDT:USDT	3167.38	0.1077759903	23.36045748	FALSE	3167.38	neutral
+2025-12-03 19:44:37	ORDI/USDT:USDT	4.176	0	66.97432975	FALSE	4.176	neutral
+2025-12-03 19:44:38	AAVE/USDT:USDT	198.42	0.3540360105	63.90253635	FALSE	198.42	neutral
+2025-12-03 19:44:40	ETH/USDT:USDT	3166.69	0.08596794533	23.51106618	FALSE	3166.69	neutral
+2025-12-03 19:44:46	ORDI/USDT:USDT	4.175	-0.02394636015	67.12231973	FALSE	4.175	neutral
+2025-12-03 19:44:47	AAVE/USDT:USDT	198.39	0.3388630386	64.05052633	FALSE	198.39	neutral
+2025-12-03 19:44:49	ETH/USDT:USDT	3166.64	0.08438765222	23.65905617	FALSE	3166.64	neutral
+2025-12-03 19:44:55	ORDI/USDT:USDT	4.173	-0.07183908046	67.27117652	FALSE	4.173	neutral
+2025-12-03 19:44:57	AAVE/USDT:USDT	198.39	0.3388630386	64.19938312	FALSE	198.39	neutral
+2025-12-03 19:44:58	ETH/USDT:USDT	3166.64	0.08438765222	23.80791295	FALSE	3166.64	neutral
+2025-12-03 19:45:04	ORDI/USDT:USDT	4.173	-0.07183908046	67.42826728	FALSE	4.173	neutral
+2025-12-03 19:45:06	AAVE/USDT:USDT	198.4	0.3439206959	64.35647388	FALSE	198.4	neutral
+2025-12-03 19:45:07	ETH/USDT:USDT	3168.3	0.1368533836	23.96500372	FALSE	3168.3	neutral
+2025-12-03 19:45:16	ORDI/USDT:USDT	4.174	-0.04789272031	67.62559868	FALSE	4.174	neutral
+2025-12-03 19:45:18	AAVE/USDT:USDT	198.5	0.3944972689	64.55380528	FALSE	198.5	neutral
+2025-12-03 19:45:19	ETH/USDT:USDT	3171.59	0.2408366704	24.16233512	FALSE	3171.59	neutral
+2025-12-03 19:45:26	ORDI/USDT:USDT	4.179	0.07183908046	67.78004367	FALSE	4.179	neutral
+2025-12-03 19:45:27	AAVE/USDT:USDT	198.72	0.5057657293	64.70825027	FALSE	198.72	neutral
+2025-12-03 19:45:28	ETH/USDT:USDT	3173.96	0.3157425639	24.3167801	FALSE	3173.96	neutral
+2025-12-03 19:45:35	ORDI/USDT:USDT	4.183	0.1676245211	67.93291857	FALSE	4.183	neutral
+2025-12-03 19:45:36	AAVE/USDT:USDT	198.78	0.5361116731	64.86112517	FALSE	198.78	neutral
+2025-12-03 19:45:38	ETH/USDT:USDT	3172.03	0.2547432498	24.469655	FALSE	3172.03	neutral
+2025-12-03 19:45:44	ORDI/USDT:USDT	4.184	0.1915708812	68.09254947	FALSE	4.184	neutral
+2025-12-03 19:45:45	AAVE/USDT:USDT	198.87	0.5816305887	65.02075607	FALSE	198.87	neutral
+2025-12-03 19:45:47	ETH/USDT:USDT	3171.62	0.2417848463	24.6292859	FALSE	3171.62	neutral
+2025-12-03 19:45:53	ORDI/USDT:USDT	4.184	0.1915708812	68.24108097	FALSE	4.184	neutral
+2025-12-03 19:45:55	AAVE/USDT:USDT	199	0.6473801335	65.16928757	FALSE	199	neutral
+2025-12-03 19:45:56	ETH/USDT:USDT	3177.41	0.4247827887	24.7778174	FALSE	3177.41	neutral
+2025-12-03 19:46:03	ORDI/USDT:USDT	4.186	0.2394636015	68.40007675	FALSE	4.186	neutral
+2025-12-03 19:46:05	AAVE/USDT:USDT	199	0.6473801335	65.32828335	FALSE	199	neutral
+2025-12-03 19:46:06	ETH/USDT:USDT	3174.44	0.3309133778	24.93681318	FALSE	3174.44	neutral
+2025-12-03 19:46:13	ORDI/USDT:USDT	4.187	0.2634099617	68.56286965	FALSE	4.187	neutral
+2025-12-03 19:46:14	AAVE/USDT:USDT	198.99	0.6423224762	65.49107625	FALSE	198.99	neutral
+2025-12-03 19:46:16	ETH/USDT:USDT	3175.73	0.3716849401	25.09960608	FALSE	3175.73	neutral
+2025-12-03 19:46:23	ORDI/USDT:USDT	4.187	0.2634099617	68.72442993	FALSE	4.187	neutral
+2025-12-03 19:46:25	AAVE/USDT:USDT	199.09	0.6928990492	65.65263653	FALSE	199.09	neutral
+2025-12-03 19:46:26	ETH/USDT:USDT	3178.87	0.4709273476	25.26116637	FALSE	3178.87	neutral
+2025-12-03 19:46:33	ORDI/USDT:USDT	4.188	0.2873563218	68.89811533	FALSE	4.188	neutral
+2025-12-03 19:46:35	AAVE/USDT:USDT	199.09	0.6928990492	65.82632193	FALSE	199.09	neutral
+2025-12-03 19:46:37	ETH/USDT:USDT	3178.58	0.4617616476	25.43485177	FALSE	3178.58	neutral
+2025-12-03 19:46:44	ORDI/USDT:USDT	4.187	0.2634099617	69.07529257	FALSE	4.187	neutral
+2025-12-03 19:46:45	AAVE/USDT:USDT	199.11	0.7030143637	66.00349917	FALSE	199.11	neutral
+2025-12-03 19:46:46	ETH/USDT:USDT	3178.72	0.4661864683	25.612029	FALSE	3178.72	neutral
+2025-12-03 19:46:53	ORDI/USDT:USDT	4.188	0.2873563218	69.2356509	FALSE	4.188	neutral
+2025-12-03 19:46:55	AAVE/USDT:USDT	199.12	0.708072021	66.1638575	FALSE	199.12	neutral
+2025-12-03 19:46:56	ETH/USDT:USDT	3177.47	0.4266791404	25.77238733	FALSE	3177.47	neutral
+2025-12-03 19:47:03	ORDI/USDT:USDT	4.189	0.311302682	69.39521925	FALSE	4.189	neutral
+2025-12-03 19:47:06	AAVE/USDT:USDT	199.05	0.67266842	66.32342585	FALSE	199.05	neutral
+2025-12-03 19:47:07	ETH/USDT:USDT	3176.21	0.386855754	25.93195568	FALSE	3176.21	neutral
+2025-12-03 19:47:14	ORDI/USDT:USDT	4.188	0.2873563218	69.58373135	FALSE	4.188	neutral
+2025-12-03 19:47:15	AAVE/USDT:USDT	199.05	0.67266842	66.51193795	FALSE	199.05	neutral
+2025-12-03 19:47:18	ETH/USDT:USDT	3175.73	0.3716849401	26.12046778	FALSE	3175.73	neutral
+2025-12-03 19:47:24	ORDI/USDT:USDT	4.189	0.311302682	69.75712512	FALSE	4.189	neutral
+2025-12-03 19:47:25	AAVE/USDT:USDT	199.03	0.6625531054	66.68533172	FALSE	199.03	neutral
+2025-12-03 19:47:27	ETH/USDT:USDT	3174.38	0.3290170261	26.29386155	FALSE	3174.38	neutral
+2025-12-03 19:47:34	ORDI/USDT:USDT	4.183	0.1676245211	69.91642787	FALSE	4.183	neutral
+2025-12-03 19:47:36	AAVE/USDT:USDT	198.9	0.5968035606	66.84463447	FALSE	198.9	neutral
+2025-12-03 19:47:37	ETH/USDT:USDT	3175.47	0.3634674159	26.4531643	FALSE	3175.47	neutral
+2025-12-03 19:47:43	ORDI/USDT:USDT	4.184	0.1915708812	70.07742897	FALSE	4.184	neutral
+2025-12-03 19:47:45	AAVE/USDT:USDT	198.83	0.5613999595	67.00563557	FALSE	198.83	neutral
+2025-12-03 19:47:46	ETH/USDT:USDT	3179.38	0.4870463374	26.6141654	FALSE	3179.38	neutral
+2025-12-03 19:47:52	ORDI/USDT:USDT	4.186	0.2394636015	70.2291978	FALSE	4.186	neutral
+2025-12-03 19:47:54	AAVE/USDT:USDT	199.15	0.7232449929	67.1574044	FALSE	199.15	neutral
+2025-12-03 19:47:55	ETH/USDT:USDT	3184.36	0.6444435314	26.76593423	FALSE	3184.36	neutral
+2025-12-03 19:48:01	ORDI/USDT:USDT	4.191	0.3591954023	70.38017898	FALSE	4.191	neutral
+2025-12-03 19:48:03	AAVE/USDT:USDT	199.22	0.758648594	67.30838558	FALSE	199.22	neutral
+2025-12-03 19:48:04	ETH/USDT:USDT	3182.57	0.5878690379	26.91691542	FALSE	3182.57	neutral
+2025-12-03 19:48:11	ORDI/USDT:USDT	4.19	0.3352490421	70.53610353	FALSE	4.19	neutral
+2025-12-03 19:48:12	AAVE/USDT:USDT	199.11	0.7030143637	67.46431013	FALSE	199.11	neutral
+2025-12-03 19:48:14	ETH/USDT:USDT	3184.81	0.6586661694	27.07283997	FALSE	3184.81	neutral
+2025-12-03 19:48:20	ORDI/USDT:USDT	4.196	0.4789272031	70.69391653	FALSE	4.196	neutral
+2025-12-03 19:48:22	AAVE/USDT:USDT	199.2	0.7485332794	67.62212313	FALSE	199.2	neutral
+2025-12-03 19:48:23	ETH/USDT:USDT	3184.9	0.661510697	27.23065297	FALSE	3184.9	neutral
+2025-12-03 19:48:29	ORDI/USDT:USDT	4.198	0.5268199234	70.84780728	FALSE	4.198	neutral
+2025-12-03 19:48:31	AAVE/USDT:USDT	199.48	0.8901476836	67.77601388	FALSE	199.48	neutral
+2025-12-03 19:48:32	ETH/USDT:USDT	3191.49	0.8697933293	27.38454372	FALSE	3191.49	neutral
+2025-12-03 19:48:39	ORDI/USDT:USDT	4.201	0.5986590038	71.00411312	FALSE	4.201	neutral
+2025-12-03 19:48:40	AAVE/USDT:USDT	199.5	0.9002629982	67.93231972	FALSE	199.5	neutral
+2025-12-03 19:48:41	ETH/USDT:USDT	3191.15	0.8590473361	27.54084955	FALSE	3191.15	neutral
+2025-12-03 19:48:49	ORDI/USDT:USDT	4.203	0.6465517241	71.15313617	FALSE	4.203	neutral
+2025-12-03 19:48:51	AAVE/USDT:USDT	199.57	0.9356665992	68.08134277	FALSE	199.57	neutral
+2025-12-03 19:48:53	ETH/USDT:USDT	3190	0.8227005945	27.6898726	FALSE	3190	neutral
+2025-12-03 19:48:59	ORDI/USDT:USDT	4.202	0.622605364	71.33984887	FALSE	4.202	neutral
+2025-12-03 19:49:01	AAVE/USDT:USDT	199.7	1.001416144	68.26805547	FALSE	199.7	neutral
+2025-12-03 19:49:02	ETH/USDT:USDT	3188.81	0.7850896184	27.8765853	FALSE	3188.81	neutral
+2025-12-03 19:49:09	ORDI/USDT:USDT	4.202	0.622605364	71.50303435	FALSE	4.202	neutral
+2025-12-03 19:49:11	AAVE/USDT:USDT	199.7	1.001416144	68.43124095	FALSE	199.7	neutral
+2025-12-03 19:49:13	ETH/USDT:USDT	3189.47	0.8059494875	28.03977078	FALSE	3189.47	neutral
+2025-12-03 19:49:19	ORDI/USDT:USDT	4.199	0.5507662835	71.67110967	FALSE	4.199	neutral
+2025-12-03 19:49:21	AAVE/USDT:USDT	199.71	1.006473801	68.59931627	FALSE	199.71	neutral
+2025-12-03 19:49:23	ETH/USDT:USDT	3189.89	0.8192239497	28.2078461	FALSE	3189.89	neutral
+2025-12-03 19:49:29	ORDI/USDT:USDT	4.207	0.7423371648	71.84022602	FALSE	4.207	neutral
+2025-12-03 19:49:31	AAVE/USDT:USDT	199.99	1.148088206	68.76843262	FALSE	199.99	neutral
+2025-12-03 19:49:32	ETH/USDT:USDT	3196.59	1.030983227	28.37696245	FALSE	3196.59	neutral
+2025-12-03 19:49:39	ORDI/USDT:USDT	4.212	0.8620689655	72.00105363	FALSE	4.212	neutral
+2025-12-03 19:49:41	AAVE/USDT:USDT	199.92	1.112684604	68.92926023	FALSE	199.92	neutral
+2025-12-03 19:49:43	ETH/USDT:USDT	3189.65	0.8116385427	28.53779007	FALSE	3189.65	neutral
+2025-12-03 19:49:49	ORDI/USDT:USDT	4.203	0.6465517241	72.17559635	FALSE	4.203	neutral
+2025-12-03 19:49:51	AAVE/USDT:USDT	199.5	0.9002629982	69.10380295	FALSE	199.5	neutral
+2025-12-03 19:49:52	ETH/USDT:USDT	3184.83	0.6592982866	28.71233278	FALSE	3184.83	neutral
+2025-12-03 19:49:59	ORDI/USDT:USDT	4.202	0.622605364	72.33017383	FALSE	4.202	neutral
+2025-12-03 19:50:00	AAVE/USDT:USDT	199.2	0.7485332794	69.25838043	FALSE	199.2	neutral
+2025-12-03 19:50:03	ETH/USDT:USDT	3184.9	0.661510697	28.86691027	FALSE	3184.9	neutral
+2025-12-03 19:50:09	ORDI/USDT:USDT	4.197	0.5028735632	72.50419238	FALSE	4.197	neutral
+2025-12-03 19:50:10	AAVE/USDT:USDT	199.16	0.7283026502	69.43239898	FALSE	199.16	neutral
+2025-12-03 19:50:12	ETH/USDT:USDT	3182.39	0.5821799827	29.04092882	FALSE	3182.39	neutral
+2025-12-03 19:50:18	ORDI/USDT:USDT	4.197	0.5028735632	72.65407058	FALSE	4.197	neutral
+2025-12-03 19:50:20	AAVE/USDT:USDT	198.83	0.5613999595	69.58227718	FALSE	198.83	neutral
+2025-12-03 19:50:21	ETH/USDT:USDT	3181.93	0.5676412861	29.19080702	FALSE	3181.93	neutral
+2025-12-03 19:50:27	ORDI/USDT:USDT	4.196	0.4789272031	72.81024875	FALSE	4.196	neutral
+2025-12-03 19:50:28	AAVE/USDT:USDT	198.94	0.6170341898	69.73845535	FALSE	198.94	neutral
+2025-12-03 19:50:30	ETH/USDT:USDT	3182.6	0.5888172138	29.34698518	FALSE	3182.6	neutral
+2025-12-03 19:50:37	ORDI/USDT:USDT	4.197	0.5028735632	72.96026858	FALSE	4.197	neutral
+2025-12-03 19:50:41	AAVE/USDT:USDT	199.02	0.6574954481	69.88847518	FALSE	199.02	neutral
+2025-12-03 19:50:42	ETH/USDT:USDT	3184.14	0.6374902417	29.49700502	FALSE	3184.14	neutral
+2025-12-03 19:50:48	ORDI/USDT:USDT	4.197	0.5028735632	73.16554948	FALSE	4.197	neutral
+2025-12-03 19:50:50	AAVE/USDT:USDT	199.14	0.7181873356	70.09375608	FALSE	199.14	neutral
+2025-12-03 19:50:51	ETH/USDT:USDT	3188.35	0.7705509218	29.70228592	FALSE	3188.35	neutral
+2025-12-03 19:50:57	ORDI/USDT:USDT	4.199	0.5507662835	73.31311108	FALSE	4.199	neutral
+2025-12-03 19:50:59	AAVE/USDT:USDT	199.17	0.7333603075	70.24131768	FALSE	199.17	neutral
+2025-12-03 19:51:00	ETH/USDT:USDT	3187.99	0.7591728114	29.84984752	FALSE	3187.99	neutral
+2025-12-03 19:51:07	ORDI/USDT:USDT	4.202	0.622605364	73.46567665	FALSE	4.202	neutral
+2025-12-03 19:51:08	AAVE/USDT:USDT	199.18	0.7384179648	70.39388325	FALSE	199.18	neutral
+2025-12-03 19:51:10	ETH/USDT:USDT	3188.54	0.7765560356	30.00241308	FALSE	3188.54	neutral
+2025-12-03 19:51:17	ORDI/USDT:USDT	4.203	0.6465517241	73.62578205	FALSE	4.203	neutral
+2025-12-03 19:51:18	AAVE/USDT:USDT	199.18	0.7384179648	70.55398865	FALSE	199.18	neutral
+2025-12-03 19:51:20	ETH/USDT:USDT	3188.13	0.7635976321	30.16251848	FALSE	3188.13	neutral
+2025-12-03 19:51:26	ORDI/USDT:USDT	4.206	0.7183908046	73.79227477	FALSE	4.206	neutral
+2025-12-03 19:51:28	AAVE/USDT:USDT	199.25	0.7738215659	70.72048137	FALSE	199.25	neutral
+2025-12-03 19:51:29	ETH/USDT:USDT	3186.42	0.7095516076	30.3290112	FALSE	3186.42	neutral
+2025-12-03 19:51:36	ORDI/USDT:USDT	4.205	0.6944444444	73.95328442	FALSE	4.205	neutral
+2025-12-03 19:51:37	AAVE/USDT:USDT	199.16	0.7283026502	70.88149102	FALSE	199.16	neutral
+2025-12-03 19:51:39	ETH/USDT:USDT	3180.7	0.5287660755	30.49002085	FALSE	3180.7	neutral
+2025-12-03 19:51:47	ORDI/USDT:USDT	4.2	0.5747126437	74.12016617	FALSE	4.2	neutral
+2025-12-03 19:51:49	AAVE/USDT:USDT	198.89	0.5917459033	71.04837277	FALSE	198.89	neutral
+2025-12-03 19:51:50	ETH/USDT:USDT	3183.63	0.6213712519	30.6569026	FALSE	3183.63	neutral
+2025-12-03 19:51:56	ORDI/USDT:USDT	4.197	0.5028735632	74.2972165	FALSE	4.197	neutral
+2025-12-03 19:51:58	AAVE/USDT:USDT	199.02	0.6574954481	71.2254231	FALSE	199.02	neutral
+2025-12-03 19:52:00	ETH/USDT:USDT	3183.55	0.618842783	30.83395293	FALSE	3183.55	neutral
+2025-12-03 19:52:07	ORDI/USDT:USDT	4.196	0.4789272031	74.46090287	FALSE	4.196	neutral
+2025-12-03 19:52:08	AAVE/USDT:USDT	198.97	0.6322071616	71.38910947	FALSE	198.97	neutral
+2025-12-03 19:52:10	ETH/USDT:USDT	3187.67	0.7490589355	30.9976393	FALSE	3187.67	neutral
+2025-12-03 19:52:16	ORDI/USDT:USDT	4.199	0.5507662835	74.6230648	FALSE	4.199	neutral
+2025-12-03 19:52:17	AAVE/USDT:USDT	199.14	0.7181873356	71.5512714	FALSE	199.14	neutral
+2025-12-03 19:52:19	ETH/USDT:USDT	3184.3	0.6425471797	31.15980123	FALSE	3184.3	neutral
+2025-12-03 19:52:25	ORDI/USDT:USDT	4.199	0.5507662835	74.7709107	FALSE	4.199	neutral
+2025-12-03 19:52:27	AAVE/USDT:USDT	199.1	0.6979567065	71.6991173	FALSE	199.1	neutral
+2025-12-03 19:52:28	ETH/USDT:USDT	3185.08	0.6671997522	31.30764713	FALSE	3185.08	neutral
+2025-12-03 19:52:34	ORDI/USDT:USDT	4.2	0.5747126437	74.92992907	FALSE	4.2	neutral
+2025-12-03 19:52:36	AAVE/USDT:USDT	199.11	0.7030143637	71.85813567	FALSE	199.11	neutral
+2025-12-03 19:52:37	ETH/USDT:USDT	3181.74	0.5616361723	31.4666655	FALSE	3181.74	neutral
+2025-12-03 19:52:44	ORDI/USDT:USDT	4.201	0.5986590038	75.08003097	FALSE	4.201	neutral
+2025-12-03 19:52:46	AAVE/USDT:USDT	199	0.6473801335	72.00823757	FALSE	199	neutral
+2025-12-03 19:52:47	ETH/USDT:USDT	3180.6	0.5256054893	31.6167674	FALSE	3180.6	neutral
+2025-12-03 19:52:54	ORDI/USDT:USDT	4.201	0.5986590038	75.24994985	FALSE	4.201	neutral
+2025-12-03 19:52:55	AAVE/USDT:USDT	198.86	0.5765729314	72.17815645	FALSE	198.86	neutral
+2025-12-03 19:52:56	ETH/USDT:USDT	3179.31	0.484833927	31.78668628	FALSE	3179.31	neutral
+2025-12-03 19:53:03	ORDI/USDT:USDT	4.2	0.5747126437	75.40024213	FALSE	4.2	neutral
+2025-12-03 19:53:05	AAVE/USDT:USDT	198.86	0.5765729314	72.32844873	FALSE	198.86	neutral
+2025-12-03 19:53:07	ETH/USDT:USDT	3180.95	0.5366675411	31.93697857	FALSE	3180.95	neutral
+2025-12-03 19:53:13	ORDI/USDT:USDT	4.201	0.5986590038	75.57372685	FALSE	4.201	neutral
+2025-12-03 19:53:15	AAVE/USDT:USDT	199.15	0.7232449929	72.50193345	FALSE	199.15	neutral
+2025-12-03 19:53:16	ETH/USDT:USDT	3183.64	0.6216873106	32.11046328	FALSE	3183.64	neutral
+2025-12-03 19:53:23	ORDI/USDT:USDT	4.202	0.622605364	75.73108187	FALSE	4.202	neutral
+2025-12-03 19:53:24	AAVE/USDT:USDT	199.16	0.7283026502	72.65928847	FALSE	199.16	neutral
+2025-12-03 19:53:26	ETH/USDT:USDT	3183.45	0.6156821967	32.2678183	FALSE	3183.45	neutral
+2025-12-03 19:53:32	ORDI/USDT:USDT	4.204	0.6704980843	75.88900407	FALSE	4.204	neutral
+2025-12-03 19:53:33	AAVE/USDT:USDT	199.15	0.7232449929	72.81721067	FALSE	199.15	neutral
+2025-12-03 19:53:35	ETH/USDT:USDT	3183.69	0.6232676037	32.4257405	FALSE	3183.69	neutral
+2025-12-03 19:53:42	ORDI/USDT:USDT	4.204	0.6704980843	76.05107252	FALSE	4.204	neutral
+2025-12-03 19:53:43	AAVE/USDT:USDT	199.16	0.7283026502	72.97927912	FALSE	199.16	neutral
+2025-12-03 19:53:45	ETH/USDT:USDT	3180.45	0.52086461	32.58780895	FALSE	3180.45	neutral
+2025-12-03 19:53:51	ORDI/USDT:USDT	4.204	0.6704980843	76.21038088	FALSE	4.204	neutral
+2025-12-03 19:53:53	AAVE/USDT:USDT	199.08	0.6878413919	73.13858748	FALSE	199.08	neutral
+2025-12-03 19:53:55	ETH/USDT:USDT	3180.84	0.5331908962	32.74711732	FALSE	3180.84	neutral
+2025-12-03 19:54:02	ORDI/USDT:USDT	4.201	0.5986590038	76.38082035	FALSE	4.201	neutral
+2025-12-03 19:54:03	AAVE/USDT:USDT	199.04	0.6676107627	73.30902695	FALSE	199.04	neutral
+2025-12-03 19:54:05	ETH/USDT:USDT	3180.22	0.5135952616	32.91755678	FALSE	3180.22	neutral
+2025-12-03 19:54:11	ORDI/USDT:USDT	4.202	0.622605364	76.54178827	FALSE	4.202	neutral
+2025-12-03 19:54:13	AAVE/USDT:USDT	199.04	0.6676107627	73.46999487	FALSE	199.04	neutral
+2025-12-03 19:54:14	ETH/USDT:USDT	3181.24	0.5458332411	33.0785247	FALSE	3181.24	neutral
+2025-12-03 19:54:21	ORDI/USDT:USDT	4.199	0.5507662835	76.70019405	FALSE	4.199	neutral
+2025-12-03 19:54:22	AAVE/USDT:USDT	199.05	0.67266842	73.62840065	FALSE	199.05	neutral
+2025-12-03 19:54:23	ETH/USDT:USDT	3179.18	0.4807251649	33.23693048	FALSE	3179.18	neutral
+2025-12-03 19:54:30	ORDI/USDT:USDT	4.196	0.4789272031	76.8517648	FALSE	4.196	neutral
+2025-12-03 19:54:31	AAVE/USDT:USDT	198.96	0.6271495043	73.7799714	FALSE	198.96	neutral
+2025-12-03 19:54:32	ETH/USDT:USDT	3179.38	0.4870463374	33.38850123	FALSE	3179.38	neutral
+2025-12-03 19:54:39	ORDI/USDT:USDT	4.192	0.3831417625	77.0021589	FALSE	4.192	neutral
+2025-12-03 19:54:40	AAVE/USDT:USDT	198.99	0.6423224762	73.9303655	FALSE	198.99	neutral
+2025-12-03 19:54:42	ETH/USDT:USDT	3178.19	0.4494353613	33.53889533	FALSE	3178.19	neutral
+2025-12-03 19:54:48	ORDI/USDT:USDT	4.193	0.4070881226	77.15662728	FALSE	4.193	neutral
+2025-12-03 19:54:49	AAVE/USDT:USDT	198.99	0.6423224762	74.08483388	FALSE	198.99	neutral
+2025-12-03 19:54:51	ETH/USDT:USDT	3180.01	0.5069580306	33.69336372	FALSE	3180.01	neutral
+2025-12-03 19:54:57	ORDI/USDT:USDT	4.194	0.4310344828	77.30501585	FALSE	4.194	neutral
+2025-12-03 19:54:58	AAVE/USDT:USDT	199.04	0.6676107627	74.23322245	FALSE	199.04	neutral
+2025-12-03 19:55:00	ETH/USDT:USDT	3180.21	0.513279203	33.84175228	FALSE	3180.21	neutral
+2025-12-03 19:55:06	ORDI/USDT:USDT	4.196	0.4789272031	77.4600538	FALSE	4.196	neutral
+2025-12-03 19:55:08	AAVE/USDT:USDT	199.03	0.6625531054	74.3882604	FALSE	199.03	neutral
+2025-12-03 19:55:09	ETH/USDT:USDT	3178.42	0.4567047096	33.99679023	FALSE	3178.42	neutral
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 42,547<br>
-    Generado: 2025-12-03 19:26:17
+    Total caracteres: 105,754<br>
+    Generado: 2025-12-03 19:59:58
   </div>
 </body>
 </html>
