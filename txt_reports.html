@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-04 19:50:01</div>
+  <div class="meta">Última actualización: 2025-12-04 19:51:34</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -2040,11 +2040,339 @@ class MarketPatternEngine:
             return 'PREPARE_SHORT'
         return 'WAIT'
 
+Modulo: brain_scenarios.py
+
+"""
+BRAIN SCENARIOS - Proyección de Escenarios Múltiples
+Anticipa plan A, plan B con probabilidades
+"""
+from brain_calculator import detect_support_resistance_with_memory
+
+class ScenarioProjector:
+    """Proyecta múltiples escenarios con probabilidades"""
+    
+    def project_scenarios(self, symbol, current_price, ladder_analysis):
+        """
+        Proyecta escenarios múltiples con probabilidades (ROADMAP)
+        Usa niveles de 4H/1H para definir el "Mapa" y 5M para la ejecución.
+        
+        Returns:
+            {
+                'primary': {scenario A con mayor probabilidad},
+                'secondary': {scenario B alternativo},
+                'hedge': {scenario C cobertura},
+                'current_bias': BULLISH/BEARISH/NEUTRAL,
+                'switch_triggers': {triggers para cambiar de plan}
+            }
+        """
+        # 1. DETECTAR PATRÓN ACTUAL (Contexto)
+        pattern_context = self.detect_current_context(ladder_analysis)
+        
+        # 2. Extraer niveles del Time Ladder (El Mapa Completo)
+        a4h = ladder_analysis.get('4h', {})
+        a1h = ladder_analysis.get('1h', {})
+        a5m = ladder_analysis.get('5m', {})
+        
+        # Niveles Mayores (Roadmap)
+        res_4h = a4h.get('sr', {}).get('resistances', [])
+        sup_4h = a4h.get('sr', {}).get('supports', [])
+        
+        # Niveles Intermedios
+        res_1h = a1h.get('sr', {}).get('resistances', [])
+        sup_1h = a1h.get('sr', {}).get('supports', [])
+        
+        # Niveles Ejecución
+        sr_5m = a5m.get('sr', {})
+        zigzag_5m = a5m.get('zigzag', {})
+        vp_5m = a5m.get('volume_profile', {})
+        
+        # Consolidar Resistencias (Ordenadas ascendente)
+        all_res = sorted(list(set(res_4h + res_1h + sr_5m.get('resistances', []))))
+        resistances = [r for r in all_res if r &gt; current_price * 1.001] # Filtrar muy cercanas
+        
+        # Consolidar Soportes (Ordenados descendente)
+        all_sup = sorted(list(set(sup_4h + sup_1h + sr_5m.get('supports', []))), reverse=True)
+        supports = [s for s in all_sup if s &lt; current_price * 0.999]
+        
+        pivot_highs = zigzag_5m.get('pivot_highs', [])
+        pivot_lows = zigzag_5m.get('pivot_lows', [])
+        poc = vp_5m.get('poc_current', current_price)
+        
+        # Determinar bias actual (Roadmap Direction)
+        direction = a4h.get('direction', 'NEUTRAL')
+        
+        scenarios = {}
+        
+        if direction == 'BULLISH':
+            scenarios = self.project_bullish_scenarios(
+                current_price, resistances, pivot_highs, 
+                supports, pivot_lows, poc
+            )
+        elif direction == 'BEARISH':
+            scenarios = self.project_bearish_scenarios(
+                current_price, resistances, pivot_highs,
+                supports, pivot_lows, poc
+            )
+        else:
+            scenarios = {
+                'primary': {'probability': 0, 'action': 'WAIT'},
+                'secondary': {'probability': 0, 'action': 'WAIT'},
+                'hedge': {'probability': 0, 'action': 'WAIT'},
+                'current_bias': 'NEUTRAL'
+            }
+            
+        # 3. TRIGGERS DINÁMICOS
+        scenarios['switch_triggers'] = {
+            'to_plan_b': self.get_invalidation_level(pattern_context, current_price, direction),
+            'to_plan_c': self.get_stop_level(pattern_context, current_price, direction)
+        }
+        
+        return scenarios
+
+    def detect_current_context(self, ladder_analysis):
+        """Detecta contexto básico para switch triggers"""
+        return {
+            'direction': ladder_analysis.get('4h', {}).get('direction', 'NEUTRAL'),
+            'volatility': 'NORMAL' # Placeholder
+        }
+
+    def get_invalidation_level(self, context, price, direction):
+        """Nivel donde Plan A se invalida y pasamos a Plan B"""
+        if direction == 'BULLISH':
+            return price * 0.995 # 0.5% abajo
+        else:
+            return price * 1.005 # 0.5% arriba
+
+    def get_stop_level(self, context, price, direction):
+        """Nivel de stop loss duro (Plan C/Hedge)"""
+        if direction == 'BULLISH':
+            return price * 0.985 # 1.5% abajo
+        else:
+            return price * 1.015 # 1.5% arriba
+
+    def project_bullish_scenarios(self, price, resistances, highs, supports, lows, poc):
+        """Escenarios para contexto alcista"""
+        
+        # Resistencia más cercana
+        nearest_res = resistances[0] if resistances else price * 1.05
+        dist_to_res = ((nearest_res - price) / price) * 100
+        
+        # HH más cercano
+        next_hh = max([h for h in highs if h &gt; price], default=price * 1.08)
+        dist_to_hh = ((next_hh - price) / price) * 100
+        
+        # HL más cercano (soporte)
+        last_hl = max([l for l in lows if l &lt; price], default=price * 0.95)
+        dist_to_hl = ((price - last_hl) / price) * 100
+        
+        # ESCENARIO A (Primario): Breakout
+        if dist_to_res &lt; 2.0:  # Resistencia cerca
+            entry_price = nearest_res
+            target_price = next_hh
+            stop_price = last_hl
+            
+            risk = abs(entry_price - stop_price)
+            reward = abs(target_price - entry_price)
+            rr = reward / risk if risk &gt; 0 else 0
+            
+            primary = {
+                'probability': 60,
+                'trigger': f'Breakout ${nearest_res:.4f} con volumen &gt;1.5x',
+                'target': f'${next_hh:.4f} (+{dist_to_hh:.1f}%)',
+                'stop': f'${last_hl:.4f} (bajo HL)',
+                'action': 'WAIT_BREAKOUT',
+                'condition': f'SI rompe ${nearest_res:.4f}',
+                # Numerical Data
+                'entry_price': entry_price,
+                'target_price': target_price,
+                'stop_price': stop_price,
+                'rr_ratio': round(rr, 2)
+            }
+            
+            # Secondary (Pullback)
+            entry_sec = poc
+            target_sec = nearest_res
+            stop_sec = last_hl # Conservative
+            risk_sec = abs(entry_sec - stop_sec)
+            reward_sec = abs(target_sec - entry_sec)
+            rr_sec = reward_sec / risk_sec if risk_sec &gt; 0 else 0
+            
+            secondary = {
+                'probability': 30,
+                'trigger': f'Rechazo en ${nearest_res:.4f}',
+                'target': f'Pullback ${poc:.4f} (POC)',
+                'stop': 'Esperar confirmación',
+                'action': 'WAIT_PULLBACK',
+                'condition': f'SI rechaza ${nearest_res:.4f}',
+                # Numerical Data
+                'entry_price': entry_sec,
+                'target_price': target_sec,
+                'stop_price': stop_sec,
+                'rr_ratio': round(rr_sec, 2)
+            }
+        else:  # Espacio limpio
+            entry_price = price
+            target_price = nearest_res
+            stop_price = last_hl
+            
+            risk = abs(entry_price - stop_price)
+            reward = abs(target_price - entry_price)
+            rr = reward / risk if risk &gt; 0 else 0
+            
+            primary = {
+                'probability': 60, # Ajustado a 60% base
+                'trigger': 'Entrada inmediata (espacio limpio)',
+                'target': f'${nearest_res:.4f} (+{dist_to_res:.1f}%)',
+                'stop': f'${last_hl:.4f} (-{dist_to_hl:.1f}%)',
+                'action': 'ENTER_NOW',
+                'condition': 'Espacio &gt;2% hasta resistencia',
+                # Numerical Data
+                'entry_price': entry_price,
+                'target_price': target_price,
+                'stop_price': stop_price,
+                'rr_ratio': round(rr, 2)
+            }
+            
+            secondary = {
+                'probability': 30,
+                'trigger': f'Pullback a ${poc:.4f}',
+                'target': 'Re-entrada en soporte',
+                'stop': f'Bajo ${last_hl:.4f}',
+                'action': 'WAIT_PULLBACK',
+                'condition': 'SI retrocede sin romper estructura',
+                'entry_price': poc,
+                'target_price': price,
+                'stop_price': last_hl,
+                'rr_ratio': 0 # Indeterminado
+            }
+        
+        # Hedge (Plan C) - Cobertura rápida
+        hedge = {
+            'probability': 10,
+            'action': 'HEDGE_SHORT',
+            'trigger': f'Breakdown ${last_hl:.4f}',
+            'target': f'${price * 0.95:.4f}'
+        }
+        
+        return {
+            'primary': primary,
+            'secondary': secondary,
+            'hedge': hedge,
+            'current_bias': 'BULLISH'
+        }
+
+    def project_bearish_scenarios(self, price, resistances, highs, supports, lows, poc):
+        """Escenarios para contexto bajista"""
+        
+        nearest_sup = supports[0] if supports else price * 0.95
+        dist_to_sup = ((price - nearest_sup) / price) * 100
+        
+        next_ll = min([l for l in lows if l &lt; price], default=price * 0.92)
+        dist_to_ll = ((price - next_ll) / price) * 100
+        
+        last_lh = min([h for h in highs if h &gt; price], default=price * 1.05)
+        dist_to_lh = ((last_lh - price) / price) * 100
+        
+        if dist_to_sup &lt; 2.0:
+            # Primary: Breakdown
+            entry_price = nearest_sup
+            target_price = next_ll
+            stop_price = last_lh
+            
+            risk = abs(stop_price - entry_price)
+            reward = abs(entry_price - target_price)
+            rr = reward / risk if risk &gt; 0 else 0
+            
+            primary = {
+                'probability': 60,
+                'trigger': f'Breakdown ${nearest_sup:.4f} con volumen &gt;1.5x',
+                'target': f'${next_ll:.4f} (-{dist_to_ll:.1f}%)',
+                'stop': f'${last_lh:.4f} (sobre LH)',
+                'action': 'WAIT_BREAKDOWN',
+                'condition': f'SI rompe ${nearest_sup:.4f}',
+                # Numerical
+                'entry_price': entry_price,
+                'target_price': target_price,
+                'stop_price': stop_price,
+                'rr_ratio': round(rr, 2)
+            }
+            
+            secondary = {
+                'probability': 30,
+                'trigger': f'Rebote en ${nearest_sup:.4f}',
+                'target': f'Pullback ${poc:.4f} (POC)',
+                'stop': 'Esperar confirmación',
+                'action': 'WAIT_BOUNCE',
+                'condition': f'SI rebota en ${nearest_sup:.4f}',
+                'entry_price': nearest_sup,
+                'target_price': poc,
+                'stop_price': last_lh,
+                'rr_ratio': 0
+            }
+        else:
+            # Primary: Enter Now
+            entry_price = price
+            target_price = nearest_sup
+            stop_price = last_lh
+            
+            risk = abs(stop_price - entry_price)
+            reward = abs(entry_price - target_price)
+            rr = reward / risk if risk &gt; 0 else 0
+            
+            primary = {
+                'probability': 60,
+                'trigger': 'Short inmediato (espacio limpio)',
+                'target': f'${nearest_sup:.4f} (-{dist_to_sup:.1f}%)',
+                'stop': f'${last_lh:.4f} (+{dist_to_lh:.1f}%)',
+                'action': 'ENTER_NOW',
+                'condition': 'Espacio &gt;2% hasta soporte',
+                # Numerical
+                'entry_price': entry_price,
+                'target_price': target_price,
+                'stop_price': stop_price,
+                'rr_ratio': round(rr, 2)
+            }
+            
+            secondary = {
+                'probability': 30,
+                'trigger': f'Rally a ${poc:.4f}',
+                'target': 'Re-entrada en resistencia',
+                'stop': f'Sobre ${last_lh:.4f}',
+                'action': 'WAIT_RALLY',
+                'condition': 'SI retrocede sin romper estructura',
+                'entry_price': poc,
+                'target_price': price,
+                'stop_price': last_lh,
+                'rr_ratio': 0
+            }
+        
+        # Hedge (Plan C)
+        hedge = {
+            'probability': 10,
+            'action': 'HEDGE_LONG',
+            'trigger': f'Breakout ${last_lh:.4f}',
+            'target': f'${price * 1.05:.4f}'
+        }
+        
+        return {
+            'primary': primary,
+            'secondary': secondary,
+            'hedge': hedge,
+            'current_bias': 'BEARISH'
+        }
+
+# Instancia global para uso directo
+projector = ScenarioProjector()
+
+def project_scenarios(symbol, current_price, ladder_analysis):
+    """Wrapper para compatibilidad"""
+    return projector.project_scenarios(symbol, current_price, ladder_analysis)
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 85,835<br>
-    Generado: 2025-12-04 19:50:01
+    Total caracteres: 98,495<br>
+    Generado: 2025-12-04 19:51:34
   </div>
 </body>
 </html>
