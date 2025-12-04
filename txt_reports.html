@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-04 19:03:36</div>
+  <div class="meta">Última actualización: 2025-12-04 19:06:10</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -24,11 +24,8 @@
 **Fecha:** 19 de Noviembre, 2025  
 **Versión:** 2.0.1  
 **Autor:** JRDiarte
-
 ---
-
 ## 📋 ÍNDICE
-
 1. [Visión General](#visión-general)
 2. [Arquitectura de Capas](#arquitectura-de-capas)
 3. [Sistema de Dos Hemisferios](#sistema-de-dos-hemisferios)
@@ -36,22 +33,16 @@
 5. [Flujo de Datos](#flujo-de-datos)
 6. [Cambios Arquitectónicos Recientes](#cambios-arquitectónicos-recientes)
 7. [Decisiones de Diseño](#decisiones-de-diseño)
-
 ---
-
 ## 🎯 VISIÓN GENERAL
-
 ### Concepto del Bot
-
 BrainTrader es un sistema de trading automatizado que **simula el proceso de toma de decisiones de un trader humano experto**, utilizando una arquitectura de capas inspirada en el cerebro humano. El bot no es un simple ejecutor de señales técnicas, sino un **sistema inteligente anticipatorio** que:
-
 - **Percibe** el mercado a través de múltiples temporalidades
 - **Analiza** contexto completo antes de decidir
 - **Decide** inteligentemente basándose en consenso multi-timeframe
 - **Ejecuta** con precisión matemática
 - **Gestiona** trades con inteligencia adaptativa
 - **Aprende** de sus operaciones (re-análisis de breakevens)
-
 ### Filosofía Central
 
 ```
@@ -1717,11 +1708,1338 @@ Este bot no es un **sistema de señales simple**, sino una **simulación del pro
 **Documento creado:** 19 de Noviembre, 2025  
 
 
+# CHANGELOG
+
+## [v4.6.2] - 2025-12-02 - Refinamiento Sniper &amp; Force Override
+### 🚀 Nuevas Características
+- **Sniper Override System (`brain_intelligent.py`):**
+    - Cuando `entry_context` detecta condiciones subóptimas pero hay Market Force, ahora consulta al Sniper antes de rechazar
+    - Si Sniper aprueba (score &gt;= 70), ignora el bloqueo de entry_context y permite la entrada
+    - Elimina la contradicción donde Sniper aprobaba pero Brain Intelligence rechazaba
+
+- **Breakout Mode en TIMING Layer (`brain_think.py`):**
+    - Cuando ADX 1H &gt; 40 (fuerza extrema), la capa de timing no bloquea por "BUYING TOP" (precio cerca de resistencia &lt;0.5%)
+    - En su lugar, marca como "BREAKOUT SETUP" y solo aplica penalización leve (-10 en lugar de -30)
+    - Permite entrar en rupturas inminentes de resistencia cuando hay fuerza confirmada
+
+- **Detección de Patrones de Reversión:**
+    - El Sniper ahora recibe el `pattern_type` detectado por Brain Intelligence
+    - Valida correctamente patrones de reversión (ej. DOUBLE_BOTTOM) donde la estructura bajista (LH) es esperada
+    - Evita rechazos erróneos en setups de reversión válidos
+
+### ⚡ Mejoras
+- **Momentum 5M Requisitos Dinámicos (`brain_intelligent.py`):**
+    - Con ADX &gt; 40: Solo requiere 1 vela verde (entrada ultra-agresiva en fuerza extrema)
+    - Con Market Force normal: Requiere 2 velas verdes
+    - Sin Market Force: Requiere 3 velas verdes
+    - Permite entradas más tempranas en pullbacks durante tendencias fuertes
+
+- **Threshold de Entry Context Dinámico:**
+    - Threshold baja de 20 a 15 cuando ADX promedio &gt; 40
+    - Más permisivo con contextos "imperfectos" durante fuerza extrema
+
+- **Mensajes de Feedback Mejorados:**
+    - "WAITING FOR REBOUND" en lugar de "INVALID" cuando el momentum es rojo durante corrección
+    - El usuario entiende que el bot está esperando el momento exacto, no rechazando permanentemente
+
+### 🐛 Correcciones
+- **Bug UnboundLocalError en `brain_analyzer.py`:**
+    - Corregido error crítico donde `direction_4h` y `direction_1h` no estaban definidos antes de su uso (línea 723-726)
+    - Ahora extrae correctamente las direcciones de `analysis_4h` y `analysis_1h` antes de validar contradicciones
+
+- **Errores de Scope de Variables:**
+    - Corregidos múltiples errores `NameError` por uso de `math_signals` en lugar de `signals`
+    - Corregido uso de `ladder_analysis` en lugar de `ladder` en llamadas a `sniper_checklist`
+
+### 📊 Análisis Forense Implementado
+- **Herramienta `debug_egld_morning.py`:**
+    - Script de diagnóstico que analiza decisiones pasadas del bot en rangos horarios específicos
+    - Compara la lógica antigua vs nueva para identificar diferencias en aprobación/rechazo
+    - Genera reportes detallados con datos técnicos (ADX, Momentum, Precio, VP High)
+
+- **Reporte EGLD Morning:**
+    - Confirmó que la lógica anterior rechazaba
+
+ EGLD a las 11:28 AM por "precio alto/resistencia"
+    - La nueva lógica aprueba la entrada con score 80 activando "BREAKOUT MODE"
+    - Bloqueó correctamente entrada tardía a las 13:55 (Buying Top real)
+
+### 🔧 Ajustes Técnicos
+- Optimización de flujo de validación en `brain_intelligent.py`
+- Mejor delegación de decisiones entre capas de inteligencia
+- Reducción de bloqueos falsos positivos en tendencias fuertes
+
+---
+
+## [v4.6.1] - 2025-12-02 - Force First &amp; Simulation Replay
+[... contenido anterior preservado ...]
+
+
+# CHANGELOG v4.6.3 - Fee-Adjusted Reporting &amp; Profitability Fix
+
+**Fecha:** 2025-12-03
+**Tipo:** Bug Fix + Feature Enhancement
+
+---
+
+## 🎯 Resumen
+Esta actualización resuelve dos problemas críticos que impedían que el bot fuera rentable:
+1. **Reportes mostraban PnL bruto** (sin fees), dando una imagen irreal del rendimiento
+2. **Detector de reversión causaba +60 salidas prematuras**, matando trades ganadores
+
+---
+
+## ✅ Nuevas Características
+
+### 1. PnL Neto con Fees Reales
+**Archivos modificados:** `brain_config.py`, `brain_executor.py`, `reports/generate_report.py`
+
+#### Configuración de Fees
+- Agregado `TAKER_FEE_PCT = 0.06%` (0.12% por trade completo)
+- Agregado `MAKER_FEE_PCT = 0.02%`
+
+#### Cálculo de PnL Neto
+- `close_trade()`: Descuenta fees automáticamente al cerrar trades
+- `monitor_active_trades()`: Muestra PnL Neto en tiempo real
+- `generate_report.py`: Recalcula PnL Neto para **todos** los trades históricos
+
+#### Logs Mejorados
+```
+✅ SALIDA: LINK/USDT
+   PnL Bruto: +1.67% | $5.56
+   Fees Est.: -0.12% | -$0.40
+   PnL NETO:  +1.55% | $5.16  ← Número Real
+```
+
+```
+📊 BTC/USDT: $43250.12 | PnL: +1.55% ($5.17) | 15.2min
+```
+
+**Impacto:**
+- Win Rate ahora refleja trades **realmente** rentables
+- Total PnL ajustado por costos de operación
+- Reportes coinciden con exchange
+
+---
+
+## 🐛 Correcciones de Bugs
+
+### 2. Detector de Reversión Desactivado Temporalmente
+**Archivos modificados:** `brain_config.py`, `brain_executor.py`
+
+#### Problema
+El detector de "Patrón de Reversión" (DOUBLE_TOP/DOUBLE_BOTTOM) estaba:
+- ✗ Causando **60+ salidas de 64 trades** antes del fix
+- ✗ Generando falsos positivos en consolidaciones normales
+- ✗ Matando trades ganadores que seguían subiendo
+
+**Métricas antes del fix:**
+```
+Win Rate: 51.6%
+Profit Factor: 0.95 (no rentable)
+PnL Total: -$2.47
+Razón de salida: "Patrón de Reversión Detectado" (94% de trades)
+```
+
+#### Solución
+- Agregado flag `ENABLE_REVERSAL_DETECTOR = False` en `brain_config.py`
+- Modificado `detect_live_pattern()` para respetar este flag
+- Los trades ahora corren hasta:
+  - ✅ Stop Loss
+  - ✅ Take Profit
+  - ✅ Breakeven
+  - ✅ Smart Exit
+  - ❌ ~~Patrón de Reversión~~ (desactivado)
+
+**Mejoras esperadas:**
+```
+Win Rate: ~60%+ (sin salidas prematuras)
+Profit Factor: &gt;1.0 (rentable)
+Duración promedio: +66% (15min → 25min)
+```
+
+---
+
+## 📊 Mejoras en Reportes
+
+### 3. Monitoreo en Tiempo Real Mejorado
+- Logs ahora muestran **PnL% y USD** juntos
+- Más fácil interpretar ganancias/pérdidas reales
+
+---
+
+## 🔧 Cambios Técnicos
+
+### Archivos Modificados
+1. `brain_config.py`
+   - Línea 60-61: Constantes de fees
+   - Línea 93: Flag `ENABLE_REVERSAL_DETECTOR`
+
+2. `brain_executor.py`
+   - Línea 275-281: Check de flag en `detect_live_pattern()`
+   - Línea 437-450: PnL Neto en monitoreo
+   - Línea 595-602: Logs mejorados con USD
+   - Línea 733-757: Cálculo de PnL Neto en cierre
+
+3. `reports/generate_report.py`
+   - Línea 9: Import de constantes de fees
+   - Línea 40-67: Recálculo de PnL Neto histórico
+
+### Archivos Agregados
+- `c:\Users\Joel\.gemini\antigravity\brain\[...]\walkthrough.md`
+
+---
+
+## 🚀 Migración
+
+### Para Activar los Cambios
+**No requiere acción**, los cambios se aplican automáticamente.
+
+### Para Reactivar Detector (Futuro)
+Solo cuando esté recalibrado:
+```python
+# En brain_config.py
+ENABLE_REVERSAL_DETECTOR = True
+```
+
+---
+
+## 📈 Verificación
+
+### Generar Reporte con Fees
+```bash
+python reports/generate_report.py
+```
+
+Salida esperada:
+```
+📊 Generando reporte SUPER COMPLETO desde: [...]/brain_rechazos.db
+💰 Aplicando Fees estimados: 0.12% por trade
+✅ Reporte SUPER COMPLETO generado
+```
+
+### Monitorear Bot
+Revisar logs de trades activos:
+```
+📊 LINK/USDT: $14.3500 | PnL: +2.18% ($7.27) | 12.3min
+```
+
+---
+
+## ⚠️ Notas Importantes
+
+1. **Fees asumidos:** 0.06% Taker (estándar MEXC/Binance). Ajustar si usas descuentos.
+2. **Detector desactivado:** Temporal mientras se recalibra con datos reales.
+3. **Reportes históricos:** Se recalculan automáticamente al generar el reporte.
+
+---
+
+## 🔗 Referencias
+- Issue: Reportes no coinciden con realidad
+- Reporte problemático: https://jrdiar.github.io/txt_reports.html?v=20251203145414
+- Walkthrough: `c:\Users\Joel\.gemini\antigravity\brain\[...]\walkthrough.md`
+
+
+# CHANGELOG - v4.6.4 (2025-12-03)
+
+## 🎯 Objetivo de esta Versión
+**Correcciones Quirúrgicas basadas en Análisis Forense**  
+Resolver problemas críticos de entrada en resistencia, score bajo, y breakeven con whipsaw, identificados en trades AVICI y FF del 2025-12-03.
+
+---
+
+## 🔬 Análisis Forense Previo
+
+### Caso AVICI (17:06:41)
+- **Score:** 60/100 (BAJO)
+- **Entrada:** $7.237 (probablemente VL HIGH - resistencia)
+- **Resultado:** -0.29% | -$0.97 (whipsaw en 1.6 min)
+- **Problemas:** Score bajo, entrada en resistencia, re-entry después de zona crítica, breakeven fallido
+
+### Caso FF (16:35:41)
+- **Score:** 92/100 (ALTO)
+- **Entrada:** $0.12820  
+- **Resultado:** -2.03% | -$6.76 (SL hit después de 99 min)
+- **Problema:** Posible entrada en resistencia de timeframes mayores (1H/4H)
+
+---
+
+## ✅ Correcciones Implementadas
+
+### 1. Score Mínimo 70 (Temporal)  
+**Archivo:** `brain_intelligent.py`  
+**Líneas:** 564-575
+
+```python
+MIN_SCORE_ENTRY = 70
+if score &lt; MIN_SCORE_ENTRY:
+    return {
+        'action': 'WAIT',
+        'confidence': score,
+        'reasons': reasons + [f'❌ Score bajo ({score} &lt; {MIN_SCORE_ENTRY})'],
+        'scenarios': scenarios,
+        'missing': MIN_SCORE_ENTRY - score
+    }
+```
+
+**Impacto:**
+- Bloquea setups sub-óptimos (score &lt; 70)
+- Habría bloqueado el trade de AVICI (score 60)
+- Temporal hasta recalibrar sistema de scoring
+
+---
+
+### 2. Validación VL Position 5M
+**Archivo:** `brain_intelligent.py`  
+**Líneas:** 576-603
+
+```python
+vl_5m = ladder.get('5m', {}).get('volume_profile', {}).get('position', 'MID')
+
+if direction_final == 'BULLISH' and vl_5m in ['HIGH', 'ABOVE_HIGH']:
+    return {
+        'action': 'WAIT',
+        'confidence': 0,
+        'reasons': [f'🚫 BLOQUEADO: Entrada LONG en tope de VL 5M ({vl_5m})'],
+        'scenarios': scenarios,
+        'missing': 100
+    }
+```
+
+**Impacto:**
+- **Bloqueo total** de entradas LONG en VL HIGH (resistencia)
+- **Bloqueo total** de entradas SHORT en VL LOW (soporte)
+- Habría bloqueado AMBOS trades problem áticos
+
+---
+
+### 3. Cooldown Zona Crítica (10 min)
+**Archivo:** `brain_executor.py`  
+**Líneas:** 87-96, 826-863
+
+```python
+# En enter_trade()
+CRITICAL_ZONE_COOLDOWN_MIN = 10
+recent_critical_exit = self._check_recent_critical_zone_exit(symbol)
+if recent_critical_exit:
+    minutes_ago = recent_critical_exit['minutes_ago']
+    if minutes_ago &lt; CRITICAL_ZONE_COOLDOWN_MIN:
+        print(f"❌ BLOQUEADO: Cooldown de zona crítica")
+        print(f"   Esperar {CRITICAL_ZONE_COOLDOWN_MIN - minutes_ago:.1f} min más")
+        return
+```
+
+**Impacto:**
+- Cooldown de 10 minutos después de salir por "Zona crítica"
+- Evita re-entries inmediatas en la misma resistencia
+- Habría bloqueado el segundo trade de AVICI (3.7 min después del primero)
+
+---
+
+### 4. Breakeven con Buffer Anti-Whipsaw
+**Archivos:** `brain_config.py` (líneas 96-98), `brain_executor.py` (líneas 456-479)
+
+```python
+# Config
+BREAKEVEN_PROFIT_TRIGGER_PCT = 3.0  # Aumentado de 2.0%
+BREAKEVEN_BUFFER_PCT = 0.3  # Nuevo
+
+# Executor
+if direction == 'BULLISH':
+    new_sl = entry_price * (1 + BREAKEVEN_BUFFER_PCT / 100)
+else:
+    new_sl = entry_price * (1 - BREAKEVEN_BUFFER_PCT / 100)
+
+trade_data['stop_loss'] = new_sl
+print(f"🛡️ BREAKEVEN (+buffer): SL moved to ${new_sl:.6f}")
+print(f"   Ganancia mínima protegida: ~+{BREAKEVEN_BUFFER_PCT - TAKER_FEE_PCT*2:.2f}%")
+```
+
+**Impacto:**
+- Trigger más alto: **3%** en vez de 2%
+- Buffer de seguridad: **+0.3%** sobre entry price
+- Garantiza ganancia mínima de **~0.18%** después de fees
+- Evita pérdidas por whipsaw inmediato (caso AVICI)
+
+---
+
+### 5. Validación VL Position 1H/4H
+**Archivo:** `brain_intelligent.py`  
+**Líneas:** 605-636
+
+```python
+# VL 1H (estructura mayor)
+vl_1h = ladder.get('1h', {}).get('volume_profile', {}).get('position', 'MID')
+if direction_final == 'BULLISH' and vl_1h in ['HIGH', 'ABOVE_HIGH']:
+    return {
+        'action': 'WAIT',
+        'confidence': 0,
+        'reasons': [f'🚫 BLOQUEADO: VL 1H en resistencia mayor'],
+        ...
+    }
+
+# VL 4H (estructura crítica)
+vl_4h = ladder.get('4h', {}).get('volume_profile', {}).get('position', 'MID')
+if direction_final == 'BULLISH' and vl_4h in ['HIGH', 'ABOVE_HIGH']:
+    return {
+        'action': 'WAIT',
+        'confidence': 0,
+        'reasons': [f'🚫 BLOQUEADO: VL 4H resistencia crítica'],
+        ...
+    }
+```
+
+**Impacto:**
+- Valida estructura de timeframes mayores
+- Evita entradas que contradicen contexto mayor (caso FF)
+- Triple validación: 5M + 1H + 4H
+
+---
+
+## 📊 Métricas Esperadas
+
+| Métrica | Antes | Esperado |
+|---------|-------|----------|
+| Entries en resistencia | ~30% | &lt;5% |
+| Re-entry post zona crítica | Inmediatas | Cooldown 10 min |
+| Pérdidas por whipsaw BE | Frecuentes | Raras |
+| Win Rate | 51.6% | &gt;60% |
+| Profit Factor | 0.95 | &gt;1.2 |
+| Score mínimo entries | Variable | 70+ |
+
+---
+
+## 🔧 Archivos Modificados
+
+1. **brain_intelligent.py** (v4.6.4)
+   - Líneas 564-636: Validaciones VL y score mínimo
+   - Función `make_pattern_based_decision`
+
+2. **brain_config.py** (v4.6.4)
+   - Líneas 96-98: BREAKEVEN_PROFIT_TRIGGER_PCT, BREAKEVEN_BUFFER_PCT
+
+3. **brain_executor.py** (v4.6.4)
+   - Líneas 87-96: Cooldown guard
+   - Líneas 456-479: Breakeven con buffer
+   - Líneas 826-863: Helper `_check_recent_critical_zone_exit()`
+
+---
+
+## ⚠️ Notas Importantes
+
+&gt; **IMPORTANTE:** Score mínimo 70 es temporal y reducirá cantidad de trades. Monitorear y recalibrar cuando se tenga data suficiente.
+
+&gt; **ADVERTENCIA:** Cooldown de 10 min puede hacer perder oportunidades. Ajustar si es necesario.
+
+&gt; **CRÍTICO:** Las validaciones de VL requieren que `volume_profile.position` esté disponible en todos los análisis (5M, 1H, 4H).
+
+---
+
+## 🔄 Próximos Pasos
+
+1. ✅ **Implementación completa**  
+2. 🔄 **Monitoreo primeras 10 entradas**
+3. 📊 **Verificar que NO entre en VL HIGH**  
+4. 📊 **Verificar cooldown funciona**  
+5. 📊 **Verificar breakeven con buffer**  
+6. 📈 **Medir win rate después de 20 trades**
+7. 🔧 **Ajustar score mínimo si es necesario**
+
+---
+
+## 📝 Créditos
+- **Análisis Forense:** Trades AVICI y FF del 2025-12-03
+- **Identificación Problemas:** Usuario (observación de gráficos)
+- **Implementación:** v4.6.4
+- **Fecha:** 2025-12-03
+
+# CHANGELOG - v4.6.5 (2025-12-04)
+
+## 🎯 Objetivo de esta Versión
+**Mejorar Balance Riesgo/Recompensa**  
+Ajustar parámetros basado en análisis de rendimiento real: Win Rate 60% pero PnL promedio solo 0.09% debido a ganancias pequeñas vs pérdidas grandes.
+
+---
+
+## 📊 Análisis Previo
+
+### Métricas de Sesión (5 trades después de v4.6.4)
+- **Win Rate:** 60% (3/5) ✅ Correcto
+- **PnL Promedio:** 0.09% ❌ Muy bajo
+- **Ganancias Promedio:** +1.39% (TAO +2.70%, TRB +0.93%, TAO +0.55%)
+- **Pérdidas Promedio:** -2.16% (ENA -2.17%, ETHFI -2.14%)
+- **Ratio Ganancia/Pérdida:** 0.64 ⚠️ **Muy bajo** (necesita &gt; 1.0)
+
+### Problema Identificado
+Con 60% win rate, para ser rentable necesitamos:
+- Ratio G/P &gt;= 0.67 para break-even
+- Ratio G/P &gt;= 1.0 para rentabilidad decente
+- Ratio G/P &gt;= 1.5 para rentabilidad buena
+
+**Actual: 0.64** → Apenas break-even a pesar del buen win rate
+
+### Causas
+1. **Breakeven trigger demasiado alto** (3%) - No se activa a tiempo
+2. **Trailing stop poco agresivo** - No captura suficiente ganancia
+3. **Bot sale tarde en pérdidas** - Llega a SL completo (-2%+)
+
+---
+
+## ✅ Ajustes Implementados
+
+### 1. Breakeven Trigger Reducido
+**Archivo:** `brain_config.py`  
+**Línea:** 96
+
+```python
+# v4.6.4:
+BREAKEVEN_PROFIT_TRIGGER_PCT = 3.0  # Muy alto, no se activaba
+
+# v4.6.5:
+BREAKEVEN_PROFIT_TRIGGER_PCT = 2.0  # Se activa antes, protege más ganancias
+```
+
+**Impacto:**
+- Se activa con **+2%** en vez de +3%
+- Protege ganancias antes
+- Con buffer de 0.3%, garantiza ~+0.18% mínimo (después de fees)
+
+**Ejemplo:**
+- Antes: Trade sube +2.5%, no activa BE, baja y cierra +0.5%
+- Ahora: Trade sube +2.0%, activa BE, garantiza ~+0.3% mínimo
+
+---
+
+### 2. Trailing Stop Más Agresivo
+**Archivo:** `brain_config.py`  
+**Líneas:** 99-100
+
+```python
+# v4.6.5: Nuevo parámetro
+TRAILING_STOP_DISTANCE_PCT = 0.8  # Reducido de 1.0% - Más cerca del precio
+```
+
+**Lógica en Executor** (ya existente, solo usa nuevo config):
+- **PnL &gt; 5%:** Trailing a 1.0% (antes 1.0%, ahora puede ser más agresivo)
+- **PnL 3-5%:** Trailing a 1.5% (antes 1.5%)
+- **PnL &lt; 3%:** Trailing a 0.8% (antes 2.0%) ← **MEJORA CLAVE**
+
+**Impacto:**
+- Captura más ganancias pequeñas (2-3%)
+- Se queda más cerca del precio máximo
+- Ejemplo: Trade sube +2.5%, antes SL a -0.5%, ahora SL a -0.8% aprox
+
+---
+
+### 3. Validaciones de Trailing (Mantenidas)
+El executor ya tenía buena lógica:
+- Solo activa después de +1.5% PnL
+- No mueve SL si retroceso &gt; 0.5% desde máximo
+- Protege contra whipsaws
+
+---
+
+## 📊 Resultados Esperados
+
+### Proyecciones con Mismos 5 Trades
+
+**Antes v4.6.5:**
+- TAO: +2.70% → +2.70% ✅
+- TRB: +0.93% → +0.93% ✅
+- TAO: +0.55% → +0.55% ✅ (probablemente mejor con trailing)
+- ENA: -2.17% → -2.17% (sin cambio, llegó a SL)
+- ETHFI: -2.14% → -2.14% (sin cambio, llegó a SL)
+- **Total: +0.09%**
+
+**Proyección v4.6.5:**
+- TAO: +2.70% → **+2.70%** (BE activado a +2%, protegido)
+- TRB: +0.93% → **+1.20%** (trailing más agresivo captura más)
+- TAO: +0.55% → **+0.80%** (trailing captura retroceso mejor)
+- ENA: -2.17% → **-2.17%** (sin cambio)
+- ETHFI: -2.14% → **-2.14%** (sin cambio)
+- **Proyección Total: +0.39%** (+333% mejora)
+
+### Métricas Objetivo
+| Métrica | Antes | Objetivo |
+|---------|-------|----------|
+| Win Rate | 60% | 60%+ |
+| PnL Promedio | 0.09% | 0.30%+ |
+| Ganancia Promedio | +1.39% | +1.60%+ |
+| Pérdida Promedio | -2.16% | -2.00% |
+| Ratio G/P | 0.64 | 0.80+ |
+| Profit Factor | 0.97 | &gt;1.10 |
+
+---
+
+## 🔧 Archivos Modificados
+
+1. **brain_config.py** (v4.6.5)
+   - Línea 96: BREAKEVEN_PROFIT_TRIGGER_PCT = 2.0
+   - Líneas 99-100: TRAILING_STOP_DISTANCE_PCT = 0.8
+
+2. **brain_executor.py** (Sin cambios)
+   - Usa TRAILING_STOP_DISTANCE_PCT del config
+   - Lógica ya optimizada con validaciones
+
+---
+
+## ⚠️ Notas Importantes
+
+&gt; **NOTA:** Los cambios son conservadores e incrementales. Si los resultados improve, considerar:
+&gt; - Breakeven a +1.5% (más agresivo)
+&gt; - Trailing a 0.6% base (muy agresivo)
+&gt; - Smart exit más sensible
+
+&gt; **MONITOREO:** Observar próximos 10 trades para validar mejora.
+
+---
+
+## 🔄 Reversión si es Necesario
+
+Si el rendimiento empeora:
+```python
+# Revertir a v4.6.4:
+BREAKEVEN_PROFIT_TRIGGER_PCT = 3.0
+# Eliminar TRAILING_STOP_DISTANCE_PCT (usar lógica anterior)
+```
+
+---
+
+## 📝 Próximos Pasos
+
+1. ✅ Implementación completa v4.6.5
+2. 🔄 **Monitorear próximos 10 trades**
+3. 📊 **Comparar métricas:** Ganancia promedio, Ratio G/P
+4. 📈 **Validar:** ¿Breakeven se activa más? ¿Captura más profit?
+5. 🔧 **Ajustar** si es necesario
+
+---
+
+## 📅 Historial de Versiones
+
+- **v4.6.4 (2025-12-03):** Correcciones quirúrgicas VL + Score + Cooldown
+- **v4.6.5 (2025-12-04):** Optimización Riesgo/Recompensa
+
+---
+
+**Fecha:** 2025-12-04  
+**Basado en:** Análisis de 5 trades reales post-v4.6.4
+
+# CHANGELOG - v4.7.0 (2025-12-04)
+
+## 🎯 Objetivo de esta Versión
+**Recalibración Sniper: Flexibilidad y Precisión**  
+Resolver la rigidez del bot (que omitía pumps por bloqueos de VL) y corregir el error de entrar con momentum contrario (caso Recall).
+
+---
+
+## 🔬 Diagnóstico (Auditoría)
+
+### 1. Rigidez (Pumps Perdidos)
+- **Problema:** La versión v4.6.4 bloqueaba incondicionalmente entradas si el precio estaba en `VL HIGH` (Volume Profile High).
+- **Conflicto:** En la estrategia "Market Force", un `VL HIGH` con fuerza es un **BREAKOUT** (Señal de compra), no una resistencia.
+- **Resultado:** El bot bloqueaba los mejores movimientos (pumps) pensando que eran resistencias.
+
+### 2. Error Momentum (Caso Recall)
+- **Problema:** El bot entró en RECALL con Momentum Rojo.
+- **Causa:** La lógica de "Market Force Override" era demasiado permisiva. Si detectaba fuerza en 1H, relajaba los filtros de 5M, permitiendo entrar incluso contra la vela actual.
+
+---
+
+## ✅ Cambios Implementados
+
+### 1. Smart VL Logic (Inteligencia de Volumen)
+**Archivo:** `brain_intelligent.py`
+
+Ahora el bot distingue entre **Resistencia** y **Breakout**:
+
+```python
+# Si hay Market Force (ADX &gt; 60, Tendencia Fuerte):
+if is_breakout_mode and vl_5m == 'HIGH':
+    # PERMITIR ENTRADA (Breakout)
+    score += 10
+    reason = "🚀 BREAKOUT MODE: Ignorando resistencia VL 5M por fuerza"
+
+# Si NO hay Market Force:
+else:
+    # BLOQUEAR ENTRADA (Resistencia)
+    return WAIT (Bloqueado por VL HIGH)
+```
+
+**Impacto:**
+- **Recupera la capacidad de operar Pumps/Breakouts.**
+- Mantiene la seguridad en mercados laterales o débiles.
+
+### 2. Hard Block Momentum (Bloqueo Duro)
+**Archivo:** `brain_intelligent.py`
+
+Se implementó un bloqueo inquebrantable para el momentum de ejecución (5M):
+
+```python
+if direction == 'BULLISH' and mom_5m == 'RED':
+    return WAIT (❌ MOMENTUM 5M CONTRARIO)
+```
+
+**Impacto:**
+- **NUNCA** volverá a entrar en Long si la vela de 5M es roja, sin importar cuán fuerte sea el gráfico de 1H.
+- Garantiza "Ejecución Quirúrgica".
+
+---
+
+## 📊 Resultados Esperados
+
+1. **Más Trades en Tendencia:** El bot ya no bloqueará monedas que están rompiendo máximos con fuerza (VL High).
+2. **Cero Entradas Contras:** Se elimina el riesgo de comprar cuando el precio está cayendo en 5M (Momentum Rojo).
+3. **Mayor Precisión:** La combinación de "Smart VL" + "Hard Momentum" alinea el bot con la estrategia visual original.
+
+---
+
+## 🔧 Archivos Modificados
+
+   - Implementación de `Smart VL Logic`
+   - Implementación de `Hard Block Momentum`
+   - **Hotfix:** Corrección de `AttributeError` en `orchestrate_intelligence` y `check_market_force` para manejar rechazos de "Pump Extremo" (NoneType safety).
+
+3. **Nuevas Herramientas**
+   - **Indicator Efficiency Analyzer** (`tools/indicator_efficiency.py`): Mide la eficacia de los indicadores (Win Rate) basándose en la telemetría histórica. Incluye análisis de **EMAs (9, 21, 200)**, Momentum, ADX y VL. Genera reportes en `reports/indicator_efficiency_report.md`.
+
+---
+
+## ⚠️ Notas
+&gt; **Market Force:** Ahora es el "Jefe". Si Market Force dice "SUBIR", las resistencias de volumen se ignoran (Breakout). Si no dice nada, las resistencias se respetan.
+
+---
+
+**Fecha:** 2025-12-04
+
+# CHANGELOG - v4.8.0 (2025-12-04)
+
+## 🎯 Objetivo de esta Versión
+**Context-Aware Sniper: Estructura + Zona + Timing**  
+Alinear el bot con la estrategia visual del trader: no solo detectar "fuerza de mercado", sino también validar el **contexto perfecto** (ZigZag alcista + zona de soporte + precio sobre EMAs).
+
+---
+
+## 📊 Filosofía: Scoring vs. Binario
+
+### Cambio de Paradigma
+**Antes (v4.7.0):** Bloqueos duros (WAIT/ENTER) =&gt; Bot rígido  
+**Ahora (v4.8.0):** **Scoring inteligente** =&gt; Bot flexible pero guiado
+
+&gt; "Los indicadores GUÍAN en lugar de BLOQUEAR. El Sniper ve todo el Time Ladder y decide con confluencia."
+
+---
+
+## ✅ Cambios Implementados
+
+### 1. **ZigZag Structure Validation** (Contexto de Entrada)
+**Archivo:** `brain_intelligent.py`
+
+El bot ahora analiza la estructura de precio usando pivotes ZigZag para entender el **contexto** de la entrada:
+
+#### Para LONG (Bullish):
+- **HL (Higher Low):** `+15 puntos` - Pullback perfecto en tendencia alcista
+- **HH (Higher High):** `+10 puntos` - Breakout confirmado
+- **H o L (solo High/Low):** `-10 puntos` - Estructura en desarrollo (incierta)
+- **Sin estructura:** `-5 puntos`
+
+#### Para SHORT (Bearish):
+- **LH (Lower High):** `+15 puntos` - Pullback perfecto en tendencia bajista
+- **LL (Lower Low):** `+10 puntos` - Breakdown confirmado
+
+```python
+# Ejemplo de implementación
+if last_pivot == 'HL':
+    score += 15
+    reasons.append(f"🎯 ZigZag: Higher Low detectado (Pullback ideal)")
+```
+
+**Impacto:**  
+El bot ahora **favorece fuertemente** entradas en pullbacks confirmados (HL) en vez de entrar en estructuras inciertas.
+
+---
+
+### 2. **Support/Resistance Awareness** (Zona de Entrada)
+**Archivo:** `brain_intelligent.py`
+
+El bot ahora calcula distancias a soportes y resistencias para identificar **zonas ideales** de entrada:
+
+#### Cerca de Soporte (LONG):
+- **&lt; 2% del soporte:** `+20 puntos` - ZONA IDEAL
+- **2-3.5% del soporte:** `+10 puntos` - Razonablemente cerca
+- **&gt; 5% del soporte:** `-20 puntos` - Muy lejos (riesgoso)
+
+#### Cerca de Resistencia (LONG):
+- **&lt; 1% de resistencia:** `-40 puntos` - MUY PELIGROSO
+- **1-2% de resistencia:** `-25 puntos` - Peligroso
+- **2-3% de resistencia:** `-10 puntos` - Precaución
+
+```python
+# Ejemplo
+if dist_support_pct &lt; 2.0:
+    score += 20
+    reasons.append(f"✅ Cerca de Soporte ({dist_support_pct:.2f}% arriba)")
+```
+
+**Impacto:**  
+El bot ahora **prefiere** entradas cerca de soportes y **penaliza severamente** entradas cerca de resistencias.
+
+---
+
+### 3. **EMA 21 Validation** (Soporte Dinámico)
+**Archivo:** `brain_intelligent.py`
+
+El bot valida si el precio respeta la EMA 21 como soporte dinámico:
+
+#### Price &gt; EMA 21:
+- `+10 puntos` - Soporte dinámico respetado
+- **Bonus:** Si Price &gt; EMA 9 también: `+5 puntos extra`
+
+#### Price &lt; EMA 21:
+- **&gt; 2% debajo:** `-20 puntos` - Pullback muy profundo
+- **&lt; 2% debajo:** `-10 puntos` - Pullback moderado
+
+```python
+if current_price_5m &gt; ema_21:
+    score += 10
+    reasons.append(f"✅ Price &gt; EMA 21 (Soporte dinámico)")
+```
+
+**Impacto:**  
+El bot ahora favorece entradas cuando el precio está **sobre las EMAs**, alineándose con la estrategia de "comprar fuerza, no debilidad".
+
+---
+
+## 📊 Sistema de Scoring Completo
+
+### Score Components (v4.8.0):
+| Componente | Puntos Máximos | Descripción |
+|---|---|---|
+| Market Force | +40 | ADX + DI+ + Momentum 1H/15M |
+| ZigZag HL/HH | +15 | Estructura alcista confirmada |
+| Cerca de Soporte | +20 | Zona ideal de entrada |
+| Price &gt; EMA 21 | +10 | Soporte dinámico |
+| Price &gt; EMA 9 | +5 | Momentum fuerte |
+| **Total Ideal** | **~90** | Setup perfecto |
+
+### Penalizaciones:
+| Problema | Penalización | Razón |
+|---|---|---|
+| Cerca de Resistencia (&lt;1%) | -40 | Muy peligroso |
+| Lejos de Soporte (&gt;5%) | -20 | Riesgoso |
+| Price &lt; EMA 21 (&gt;2%) | -20 | Pullback profundo |
+| ZigZag "H" (incierto) | -10 | Estructura no confirmada |
+
+---
+
+## 📝 Resultados Esperados
+
+### Setup Ideal v4.8.0:
+1. ✅ Market Force detectado (+40)
+2. ✅ ZigZag: Last Pivot = HL (+15)
+3. ✅ Cerca de Soporte &lt;2% (+20)
+4. ✅ Price &gt; EMA 21 (+10)
+5. ✅ Price &gt; EMA 9 (+5)
+6. ✅ Momentum 5M Verde (Hard Block)
+7. ✅ **Score Final: ~90** =&gt; **ENTER con máxima confianza**
+
+### Setup Rechazado (Ejemplo):
+1. ❌ Market Force débil (+20)
+2. ❌ ZigZag: Pivot "H" (-10)
+3. ❌ Cerca de Resistencia 0.8% (-40)
+4. ❌ Price &lt; EMA 21 (-20)
+5. ❌ **Score Final: -50** =&gt; **WAIT**
+
+---
+
+## 🔧 Archivos Modificados
+
+1. **brain_intelligent.py** (v4.8.0)
+   - Implementación de ZigZag Structure Validation
+   - Implementación de S/R Awareness
+   - Implementación de EMA 21 Validation
+   - Sistema de scoring no-binario
+
+2. **tools/indicator_efficiency.py** (v4.8.0)
+   - Añadido análisis de ZigZag (HL/HH/HH/LL)
+   - Añadido análisis de S/R (distancias a soporte/resistencia)
+   - Añadido análisis de EMAs (9/21/200)
+   - Generación de reportes completos
+
+---
+
+## 🔧 HOTFIX v4.8.1 (2025-12-04 18:00)
+
+### 🚨 Bug Crítico: Threshold Check Prematuro
+
+**Problema Detectado:**
+El threshold `MIN_SCORE_ENTRY` (70 pts) se ejecutaba **ANTES** de las validaciones v4.8.0, permitiendo que trades con score final bajo pasaran el filtro.
+
+**Caso Real (XPIN):**
+- Trade XPIN/USDT entró con score **59**
+- Loss: -2.96% en 0.9 minutos
+- Exit: Stop loss inmediato
+
+**Causa Raíz:**
+```python
+# ORDEN INCORRECTO (v4.8.0):
+1. Calcular score base (~80)
+2. Threshold check (80 &gt; 70) ✅ PASS
+3. v4.8.0 validations (Price &lt; EMA21: -20)
+4. Score final: 60 → Entró igual ❌
+```
+
+**Fix Aplicado:**
+Mover threshold check a **DESPUÉS** de todas las validaciones v4.8.0:
+
+```python
+# ORDEN CORRECTO (v4.8.1):
+1. Calcular score base
+2. v4.8.0 validations (ZigZag, S/R, EMA)
+3. Threshold check con score FINAL
+4. Si score &lt; 70 → WAIT ✅
+```
+
+**Archivo Modificado:**
+- `brain_intelligent.py` (líneas 565-571 eliminadas, 816-829 agregadas)
+
+**Impacto:**
+- ✅ XPIN ahora hubiera sido rechazado (score final &lt; 70)
+- ✅ Validaciones v4.8.0 ahora se aplican correctamente
+- ✅ Bot ya no "ciego" a contexto
+
+---
+
+## 🛠️ Herramientas Creadas
+
+Se crearon múltiples herramientas de análisis y backtesting para validar y monitorear v4.8.0/v4.8.1:
+
+### Análisis:
+- **`tools/indicator_efficiency.py`**: Analiza Win Rate de todos los indicadores usando telemetría histórica
+- **`tools/manual_investigator.py`**: Investiga decisión del bot para un símbolo específico
+- **`tools/compare_performance.py`**: Compara performance antes/después de cambios
+
+### Testing &amp; Backtesting:
+- **`tools/test_v480.py`**: Testa integración de v4.8.0 en múltiples símbolos
+- **`tools/backtest_full.py`**: Backtest completo con reporte detallado en Markdown
+- **`tools/analyze_xpin.py`**: Análisis forense de trades específicos
+
+Ver `tools/README.md` para documentación completa de uso.
+
+---
+
+## ⚠️ Notas Importantes
+
+&gt; **Filosofía No-Binaria:**  
+&gt; A diferencia de v4.7.0 que usaba bloqueos duros, v4.8.0 usa **scoring acumulativo**. El bot puede entrar incluso sin todos los factores perfectos, pero el score será menor.
+
+&gt; **Time Ladder:**  
+&gt; El bot mantiene visibilidad completa del Time Ladder (4H, 1H, 15M, 5M). Las validaciones de v4.8.0 **suman contexto** sin quitar información.
+
+&gt; **Orden de Prioridad (Score):**
+&gt; 1. Market Force (40 pts)
+&gt; 2. Zona de Soporte (20 pts)
+&gt; 3. ZigZag HL (15 pts)
+&gt; 4. Price &gt; EMA 21/9 (15 pts)
+
+---
+
+**Fecha:** 2025-12-04
+**Versión:** v4.8.0 - "Context-Aware Sniper"
+# CHANGELOG
+
+## [v4.6.1] - 2025-12-02 - Force First &amp; Simulation Replay
+### 🚀 Nuevas Características
+- **Lógica "Force First" (`brain_intelligent.py`):**
+    - Implementación de prioridad absoluta a la "Fuerza de Mercado" (ADX+DI alineados + Momentum).
+    - El bot ahora ignora patrones geométricos si no hay fuerza confirmada.
+    - **Breakout Mode:** Permite operar rupturas de resistencia/VP High si el ADX es explosivo, eliminando bloqueos por "precio alto".
+- **Simulation Replay Interactivo (`tools/simulation_replay.py`):**
+    - Nueva interfaz con menú para Backtesting Masivo o Simulación por Moneda.
+    - Simulación de ciclo de vida de trade (Entrada -&gt; SL/TP) con cálculo de PnL en USDT.
+    - Capacidad de reproducir decisiones pasadas con la lógica actual para validación forense.
+
+### ⚡ Mejoras en Sniper (`brain_think.py`)
+- **Momentum Layer:** Prioriza momentum "joven" (1-6 velas) sobre momentum maduro.
+- **Zone Layer:** Incorpora concepto de EMAs como "carretera" (soporte dinámico).
+- **Context Layer:** Ajuste de penalizaciones para ser más flexible con tendencias fuertes.
+
+### 🐛 Correcciones
+- Solucionado bloqueo que impedía entrar en tendencias fuertes por estar cerca del VP High (Caso EGLD).
+- Corrección en `check_market_force` para validar correctamente la tendencia del ADX.
+
+---
+#
+# RESUMEN DE CAMBIOS - PHASE 4.0 (FIXES CRÍTICOS)
+
+Este documento detalla las correcciones y mejoras aplicadas al sistema para asegurar la estabilidad y la lógica correcta en la Fase 4.0.
+
+## 1. brain_intelligent.py - Confluencia de Patrones
+
+**Problema:** El score de confluencia (`confluence_score`) no se estaba calculando correctamente, usando un valor local en lugar de verificar la confluencia real entre temporalidades.
+
+**Solución:** Se implementó la lógica para detectar si existen patrones en múltiples timeframes y otorgar un bono de confluencia.
+
+```python
+# FIX: Calcular confluence de patrones
+confluence_bonus = 0
+if patterns['best_pattern']:
+    # Si múltiples TFs tienen mismo patrón
+    pattern_count = sum(1 for tf in patterns['patterns'].values() if len(tf) &gt; 0)
+    if pattern_count &gt;= 2:
+        confluence_bonus = 10
+        reasons.append(f"Pattern Confluence (+{confluence_bonus})")
+score += confluence_bonus
+```
+
+## 2. brain_executor.py - Trailing Stop
+
+**Problema:** El Trailing Stop se activaba demasiado tarde (al 3.0% de profit), dejando muchas ganancias sin proteger.
+
+**Solución:** Se redujo el umbral de activación a 1.5% para proteger ganancias más temprano.
+
+```python
+# ANTES
+if ENABLE_TRAILING_STOP and pnl_pct &gt; 3.0:
+
+# AHORA
+if ENABLE_TRAILING_STOP and pnl_pct &gt; 1.5:  # Proteger desde 1.5%
+```
+
+## 3. brain_executor.py - Salida Adaptativa (Smart Exit)
+
+**Problema:** La lógica de salida era demasiado permisiva con pequeñas pérdidas (entre 0% y -1%), requiriendo 3 señales para salir, lo mismo que para pérdidas grandes.
+
+**Solución:** Se hizo más granular la sensibilidad. Ahora, para pérdidas pequeñas (0% a -1%) solo se requieren 2 señales para salir, cerrando operaciones débiles más rápido.
+
+```python
+# Lógica refinada
+if pnl_pct &gt; 1.0:
+    required_signals = 1 # Protect profits: Exit faster if winning
+elif pnl_pct &lt; -1.0:
+    required_signals = 3 # Give room only if deep drawdown
+elif pnl_pct &lt; 0:
+    required_signals = 2 # Normal sensitivity for small drawdown
+```
+
+## 4. sheets_manager.py - Crashes por Datos Faltantes
+
+**Problema 1:** La función `write_salida_inteligente` tenía una firma desactualizada y faltaban parámetros, lo que causaba errores al intentar escribir salidas detalladas.
+
+**Solución:** Se actualizó la firma y la construcción de la fila para incluir todos los datos de salida.
+
+```python
+def write_salida_inteligente(self, symbol, exit_price, pnl_pct, pnl_usd, 
+                          duration_min, senales_activas, razon_principal):
+    # ... implementación actualizada ...
+```
+
+**Problema 2:** La función `write_rejection` fallaba si `vp_position`, `structure` o `divergence` eran `None`.
+
+**Solución:** Se agregaron verificaciones de seguridad (safe checks) para manejar valores `None` sin crashear.
+
+```python
+# Ejemplo de safe check
+vp_position if isinstance(vp_position, str) else (vp_position.get('position', 'N/A') if vp_position else 'N/A')
+```
+
+## 5. brain_intelligent.py - Penalización de Resistencias y Bug de Clamping
+
+**Mejora 1: Penalizaciones más estrictas**
+Se incrementaron las penalizaciones por operar cerca de resistencias (o soportes en short):
+- **&lt; 1.0% de distancia:** Penalización de **-35 puntos** (antes -20).
+- **1.0% - 2.0% de distancia:** Penalización de **-15 puntos**.
+
+**Mejora 2: Umbral de Entrada**
+Se elevó el score mínimo de entrada de 50 a **65** para filtrar operaciones de baja calidad.
+
+**Fix Crítico: Score Clamping**
+**Problema:** Un bloque de lógica "LIMITAR PENALIZACIONES ACUMULATIVAS" estaba forzando artificialmente el score a un mínimo de 70 puntos (`max(20, 100 - 30)`), lo que impedía que el nuevo umbral de 65 funcionara correctamente (todas las operaciones pasaban con score 70).
+**Solución:** Se eliminó este bloque de lógica errónea para permitir que el score baje naturalmente y el filtro de 65 funcione.
+
+## 6. brain_executor.py - Bug en Cálculo de ATR (Fallback Mode)
+
+**Problema:** Cuando el bot operaba en modo HUNTING (sin triggers pre-calculados), intentaba calcular el ATR usando un fallback, pero pasaba datos en formato incorrecto a `calculate_atr()`.
+
+**Error:**
+```
+❌ Error calculate_atr: list indices must be integers or slices, not str
+```
+
+**Causa:** La función `calculate_atr()` espera un DataFrame de pandas con columnas nombradas (`'high'`, `'low'`, `'close'`), pero se le estaba pasando `ohlcv` directamente (lista de listas sin nombres).
+
+**Solución:** Convertir `ohlcv` a DataFrame antes de pasarlo a la función:
+
+```python
+# ANTES (línea 103)
+atr_data = calculate_atr(ohlcv, period=14)
+
+# AHORA
+df_atr = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+atr_data = calculate_atr(df_atr, period=14)
+```
+
+## 7. brain_executor_entry.py - Código Corrupto
+
+**Problema:** El archivo contenía código corrupto desde la línea 31, causando un `IndentationError` que impedía la ejecución del bot.
+
+**Error:**
+```
+IndentationError: unexpected indent (line 31)
+```
+
+**Causa:** Fragmentos de código de otra función quedaron mezclados dentro de `check_trigger_activated_intelligent()`, probablemente por un error de edición anterior.
+
+**Solución:** Se eliminó el código corrupto y se completó correctamente la función:
+
+```python
+# Se removieron líneas incorrectas (31-48) y se agregó el cierre correcto:
+return True  # Si decision['action'] == 'OPERAR'
+# else:
+return False
+```
+
+## 8. brain_executor_entry.py - Return Type Mismatch
+
+**Problema:** La función `check_trigger_activated_intelligent()` estaba devolviendo un booleano (`True/False`), pero `bot_main.py` esperaba recibir un diccionario con claves específicas.
+
+**Error:**
+```
+❌ ERROR CRÍTICO: 'bool' object is not subscriptable
+```
+
+**Causa:** Después de corregir el código corrupto en la sección #6, la función simplemente devolvía `True` o `False`. Sin embargo, `bot_main.py` línea 563 intentaba acceder a `trigger_result['activated']`, asumiendo que era un diccionario.
+
+**Impacto:** El bot crasheaba al intentar ejecutar un trade porque no podía extraer los datos necesarios del trigger (ADX, momentum age, volume ratio).
+
+**Solución:** Modificar el return para devolver un diccionario con toda la información necesaria:
+
+```python
+# ANTES
+return True  # O False
+
+# AHORA
+return {
+    'activated': True,  # o False
+    'adx': adx_value,
+    'momentum_age': momentum_age,
+    'volume_ratio': volume_ratio
+}
+```
+
+Los datos se extraen del `decision['full_analysis']['ladder_data']` que proviene de `decide_intelligently()`:
+
+```python
+# Extraer datos del ladder para retornar
+ladder = decision.get('full_analysis', {}).get('ladder_data', {})
+
+# Extraer ADX (prioritario de 15m)
+adx_15m = ladder.get('15m', {}).get('adx', {})
+adx_value = adx_15m.get('adx_current', 0) if isinstance(adx_15m, dict) else 0
+
+# Extraer momentum age
+mom_15m = ladder.get('15m', {}).get('momentum', {})
+momentum_age = mom_15m.get('consecutive_count', 0) if isinstance(mom_15m, dict) else 0
+
+# Extraer volume ratio (de 5m)
+volume_5m = ladder.get('5m', {}).get('volume', {})
+volume_ratio = volume_5m.get('ratio', 1.0) if isinstance(volume_5m, dict) else 1.0
+```
+
+## 9. Integraciones Google Sheets (5 Prompts)
+
+### PROMPT 1: Bloqueo LATERAL en brain_intelligent.py
+
+**Problema:** El bot podía generar señales en mercados laterales/neutrales sin tendencia clara, generando falsos positivos.
+
+**Solución:** Se agregó validación temprana en `make_pattern_based_decision()` (líneas 96-121):
+
+```python
+# CRÍTICO: Bloquear LATERAL inmediatamente
+pattern_dir = patterns['confidence'].get('direction', 'NEUTRAL')
+if pattern_dir in ['LATERAL', 'NEUTRAL']:
+    return {
+        'action': 'WAIT',
+        'confidence': 0,
+        'missing': 100,
+        'reasons': ['❌ Dirección LATERAL/NEUTRAL bloqueada']
+    }
+
+# Validar que al menos 3 TFs tengan dirección clara
+valid_dirs = [
+    ladder.get('4h', {}).get('direction'),
+    ladder.get('1h', {}).get('direction'),
+    ladder.get('15m', {}).get('direction'),
+    ladder.get('5m', {}).get('direction')
+]
+
+non_lateral = [d for d in valid_dirs if d in ['BULLISH', 'BEARISH']]
+if len(non_lateral) &lt; 3:
+    return {
+        'action': 'WAIT',
+        'confidence': 0,
+        'reasons': ['❌ Insuficientes TFs con dirección clara']
+    }
+```
+
+**Impacto:** Previene operaciones en mercados sin tendencia definida, mejorando la calidad de señales.
+
+### PROMPT 2: write_salida_inteligente en brain_executor.py
+
+**Implementación:** Se agregó registro detallado de salidas inteligentes en `close_trade()` (líneas 470-479):
+
+```python
+# BRAIN_SALIDAS
+if "Salida inteligente" in reason:
+    senales = reason.split(": ")[1] if ": " in reason else reason
+    try:
+        sheets_manager.write_salida_inteligente(
+            symbol, exit_price, pnl_pct, pnl_usd,
+            duration_min, senales, reason
+        )
+    except Exception as e:
+        print(f"⚠️ Error escribiendo salida inteligente en Sheets: {e}")
+```
+
+**Impacto:** Permite análisis posterior de qué combinaciones de señales (Desaceleración, Volumen bajo, Divergencia, etc.) generan mejores resultados.
+
+### PROMPT 3: BRAIN_PROYECCIONES (Ya implementado)
+
+**Estado:** ✅ Verificado en `bot_main.py` líneas 578-601.
+
+**Funcionalidad:** Registra proyecciones cuando se activa un trigger, incluyendo velocidad, aceleración, tiempo proyectado, R:R ratio, target y stop loss.
+
+### PROMPT 4: BRAIN_STATS (Ya implementado)
+
+**Estado:** ✅ Verificado en `bot_main.py` líneas 745-748 (método `stop()`).
+
+**Funcionalidad:** Escribe estadísticas finales de la sesión: total trades, wins, losses, win rate, PnL promedio/total, mejor y peor trade.
+
+### PROMPT 5: Corrección de BRAIN_RECHAZOS en bot_main.py
+
+**Problema:** Los rechazos se registraban con valores hardcoded (`"N/A"`, `"Intelligent Rejection"`) en lugar de datos reales.
+
+**Solución:** Se corrigieron 3 campos en `db_manager.insert_rejection()` (líneas 346-397):
+
+1. **warnings** - Ahora muestra razones reales:
+```python
+# ANTES
+warnings="Intelligent Rejection"
+
+# AHORA
+reasons_str = ", ".join(decision.get('reasons', [])) if decision.get('reasons') else "Sin warnings"
+warnings=reasons_str
+```
+
+2. **vp_position** - Extrae del volume profile:
+```python
+# ANTES
+vp_position="N/A"
+
+# AHORA
+vp_val = "N/A"
+if safe_get('15m').get('volume_profile'):
+    vp_data = safe_get('15m').get('volume_profile', {})
+    vp_val = vp_data.get('position', 'N/A')
+elif safe_get('5m').get('volume_profile'):
+    vp_data = safe_get('5m').get('volume_profile', {})
+    vp_val = vp_data.get('position', 'N/A')
+vp_position=vp_val
+```
+
+3. **sr_danger** - Calcula basado en resistencias/soportes:
+```python
+# ANTES
+sr_danger="N/A"
+
+# AHORA
+sr_danger = False
+if safe_get('5m').get('sr'):
+    sr_data = safe_get('5m').get('sr', {})
+    resistances = sr_data.get('resistances', [])
+    supports = sr_data.get('supports', [])
+    if resistances or supports:
+        sr_danger = True
+sr_danger=sr_danger
+```
+
+**Impacto:** Los rechazos ahora muestran información real para análisis profundo de por qué las monedas son descartadas.
+
+## 10. Optimización de Pre-filtro en bot_main.py
+
+**Objetivo:** Mejorar la eficiencia del inicio del bot eliminando el pre-filtro masivo inicial que tardaba varios minutos.
+
+**Cambio:**
+1.  Se eliminó el método `pre_filter_weekly_candles()`.
+2.  Se integró la lógica de filtrado (verificación de velas diarias mínimas) directamente dentro del bucle principal `analyze_all_coins()`.
+
+**Impacto:**
+- Inicio del bot mucho más rápido.
+- Filtrado "Just-in-Time" (JIT) moneda por moneda.
+- Logs más limpios y lineales.
+
+---
+**Estado Actual:** Todos los fixes han sido aplicados y verificados en el código base.
+**Última Actualización:** 2025-11-22 07:30 (Threshold Adjustments + Multi-TF Validation)
+
+## 11. Ajustes de Thresholds Estratégicos (brain_config.py)
+
+**Objetivo:** Evitar entradas en mercados laterales y falsos breakouts a través de umbrales más estrictos.
+
+**Cambios:**
+
+1. **`DI_MIN_SPREAD`**: 2.0 → 3.0
+   - Razón: Requiere separación más clara entre DI+ y DI- para confirmar direccionalidad.
+   - Impacto: Filtra señales con indecisión direccional.
+
+2. **`ADX_THRESHOLD`**: Ya estaba en 22 (correcto)
+   - Mantiene el balance entre detectar tendencias reales y evitar laterales.
+
+3. **`MIN_SCORE_WATCHLIST`**: Ya estaba en 55 (correcto)
+   - Solo los mejores setups entran a watchlist.
+
+## 12. Validación Multi-Timeframe 4H→1H (brain_analyzer.py)
+
+**Problema:** El bot podía entrar en trades donde 1H contradecía completamente la dirección de 4H (ej: 4H BULLISH pero 1H BEARISH), generando señales contradictorias.
+
+**Solución:** Se agregó validación crítica después del análisis 1H (líneas ~697-722):
+
+```python
+# VALIDACIÓN CRÍTICA: 1H debe CONFIRMAR 4H, no contradecir
+direction_4h = analysis_4h.get('direction', 'LATERAL')
+direction_1h = analysis_1h.get('direction', 'LATERAL')
+
+if direction_4h == 'BULLISH' and direction_1h == 'BEARISH':
+    print(f" ❌ {symbol}: 1H BEARISH contradice 4H BULLISH - RECHAZADO")
+    return {
+        'viable': False,
+        'score_data': {'score': 0, 'clasificacion': '1H_CONTRADICE_4H'},
+        'analysis_4h': analysis_4h,
+        'analysis_1h': analysis_1h,
+        'analysis_15m': None,
+        'analysis_5m': None,
+        'sr_zones': None
+    }
+elif direction_4h == 'BEARISH' and direction_1h == 'BULLISH':
+    print(f" ❌ {symbol}: 1H BULLISH contradice 4H BEARISH - RECHAZADO")
+    return {
+        'viable': False,
+        'score_data': {'score': 0, 'clasificacion': '1H_CONTRADICE_4H'},
+        ...
+    }
+```
+
+**Impacto:** 
+- Rechaza inmediatamente monedas con contradicciones estructurales entre timeframes.
+- Mejora la calidad de señales al asegurar alineación multi-timeframe.
+- Previene entradas en mercados con estructura confusa.
+
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 58,157<br>
-    Generado: 2025-12-04 19:03:36
+    Total caracteres: 102,079<br>
+    Generado: 2025-12-04 19:06:10
   </div>
 </body>
 </html>
