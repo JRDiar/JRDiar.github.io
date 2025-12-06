@@ -15,154 +15,66 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 19:05:29</div>
+  <div class="meta">Última actualización: 2025-12-06 19:47:09</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - Entry Validation Improvements (Bug #17) - SCORY ONLY
+Implementation Plan - Bug #21: Exhausted Momentum Validation
 Goal Description
-Enhance the bot's "Patience" using Scoring Penalties instead of hard blocks. This respects the "Time Ladder" philosophy where stronger signals can override weaker ones. We address 3 key areas:
+Fix a critical bug where the bot validates "Market Force" even when the 1H momentum is completely exhausted (e.g., 99 candles old). We need to distinguish between "Mature" momentum (acceptable, 6-15 bars) and "Exhausted" momentum (rejectable, &gt;15 bars).
 
-ZigZag Structure: Penalize if entering at a Top/Bottom (-30).
-Active Bounce: Penalize if price is actively bouncing against direction (-30).
-Momentum Development: Penalize if momentum is very fresh (&lt;2 candles) (-20).
 User Review Required
 IMPORTANT
 
-API Change: 
-validate_timing_layer
- in 
-brain_think.py
- will now require the symbol argument to fetch the latest candles for bounce detection. Philosophy Corrected: All checks now modify score positively or negatively. No return False or valid = False blocks are used in these specific checks.
+Logic Change: High ADX will no longer save a trade if the momentum is ancient. This might reduce the number of signals for very long-running trends to prevent buying the absolute top/bottom.
 
 Proposed Changes
-1. ZigZag Structure Validation (Scoring)
-File: 
+[MODIFY] 
 brain_intelligent.py
- Function: 
-detect_entry_context
+Location: 
+check_market_force
+ function (lines ~1280+)
 
-Logic: Apply specific bonuses or penalties based on the last pivot type.
+Current Code:
 
-# ... after pullback_pct calculation ...
-    
-    # 1.5 ZIGZAG STRUCTURE VALIDATION (SCORING)
-    structure_data = ladder.get('5m', {}).get('zigzag', {})
-    pivot_types = structure_data.get('pivot_types', [])
-    last_pivot = pivot_types[-1] if pivot_types else None
-    
-    if pattern_dir == 'BULLISH':
-        if last_pivot in ['H', 'HH']:
-            # Estructura en TOPE: Penalización fuerte (pero no bloqueo)
-            context_score -= 30
-            context_reasons.append(f"⚠️ ZigZag en TOPE ({last_pivot})")
-        elif last_pivot == 'HL':
-            # Rebote ideal
-            context_score += 15
-            context_reasons.append(f"✅ ZigZag HL (Pullback)")
-        elif last_pivot == 'L':
-            # Inicio
-            context_score += 10
-            context_reasons.append(f"✅ ZigZag L (Inicio)")
-            
-    elif pattern_dir == 'BEARISH':
-        if last_pivot in ['L', 'LL']:
-            # Estructura en FONDO: Penalización fuerte
-            context_score -= 30
-            context_reasons.append(f"⚠️ ZigZag en FONDO ({last_pivot})")
-        elif last_pivot == 'LH':
-            # Rebote bajista ideal
-            context_score += 15
-            context_reasons.append(f"✅ ZigZag LH (Pullback bajista)")
-        elif last_pivot == 'H':
-            # Inicio caída
-            context_score += 10
-            context_reasons.append(f"✅ ZigZag H (Inicio caída)")
-2. Active Bounce Detection (Scoring)
-File: 
-brain_think.py
- Function: 
-validate_timing_layer
- (add symbol param)
+# Bonificación por "Desarrollo" (Barras 1-5 son las mejores)
+    if 1 &lt;= mom_bars_1h &lt;= 6:
+        score += 30
+        reasons.append(f"🚀 Momentum 1H en desarrollo ({mom_bars_1h} barras)")
+    elif mom_bars_1h &gt; 6:
+        score += 15
+        reasons.append(f"⚠️ Momentum 1H maduro ({mom_bars_1h} barras)")
+    else:
+        return {'detected': False, 'score': 0, 'reason': "Momentum 1H sin desarrollo"}
+New Code:
 
-Logic: Penalize active bounces against the trend near S/R levels.
-
-def validate_timing_layer(symbol, ladder, current_price): # NOTE: Symbol added
-    # ... existing code ...
-    # --- NUEVO: DETECTAR REBOTE ACTIVO (SCORING) ---
-    try:
-        from exchange_connection import fetch_ohlcv
-        import pandas as pd
-        
-        ohlcv = fetch_ohlcv(symbol, '5m', 5)
-        
-        if ohlcv and len(ohlcv) &gt;= 3:
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            closes = df['close'].values
-            opens = df['open'].values
-            
-            last_3_green = sum(1 for i in range(-3, 0) if closes[i] &gt; opens[i])
-            last_3_red = sum(1 for i in range(-3, 0) if closes[i] &lt; opens[i])
-            
-            # RESISTENCIA
-            if resistances and current_price &gt; 0:
-                nearest_res = resistances[0]
-                dist_pct = ((nearest_res - current_price) / current_price) * 100
-                
-                if 0 &lt; dist_pct &lt; 2.0 and last_3_green &gt;= 2:
-                    # Rebote activo contra resistencia: Penalización
-                    score -= 30
-                    reasons.append(f"⚠️ Rebote activo vs Res ({last_3_green}v verdes)")
-                elif 0 &lt; dist_pct &lt; 2.0 and last_3_green == 1:
-                     score -= 15
-                     reasons.append(f"⚠️ Inicio rebote vs Res (1v verde)")
-            # SOPORTE (Assuming extraction logic added)
-            # if supports ...
-            #    if 0 &lt; dist_pct &lt; 2.0 and last_3_red &gt;= 2:
-            #        score -= 30
-            #        reasons.append(f"⚠️ Caída activa vs Sup ({last_3_red}v rojas)")
-    except Exception as e:
-        pass
-3. Strict Momentum Development (Scoring)
-File: 
-brain_intelligent.py
- Function: 
-detect_entry_context
-
-Logic: Penalize "immature" momentum (1 candle) instead of blocking it.
-
-# ... inside momentum check ...
-    
-    # 2. MOMENTUM RECUPERÁNDOSE (SCORING)
-    MIN_CANDLES_ALWAYS = 2
-    
-    if pattern_dir == 'BULLISH':
-        if color in ['green', 'lime']:
-            if consecutive &gt;= 3:
-                context_score += 15
-                context_reasons.append(f"✅ Momentum desarrollado ({consecutive}v)")
-            elif consecutive &gt;= MIN_CANDLES_ALWAYS:
-                context_score += 10
-                context_reasons.append(f"✅ Momentum confirmado ({consecutive}v)")
-            else: # consecutive == 1
-                # Penalización, NO rechazo
-                context_score -= 20
-                context_reasons.append(f"⚠️ Momentum débil ({consecutive}v, prefiere {MIN_CANDLES_ALWAYS}+)")
-        elif color in ['red', 'maroon']:
-             context_score -= 30
-             context_reasons.append(f"⚠️ Momentum contrario ({color})")
-             # NOT returning False here either, let threshold decide (unless critical earlier)
+# Bonificación por "Desarrollo" (Barras 1-5 son las mejores)
+    # v4.9.4 FIX BUG #21: Validar agotamiento
+    if 1 &lt;= mom_bars_1h &lt;= 6:
+        score += 30
+        reasons.append(f"🚀 Momentum 1H en desarrollo ({mom_bars_1h} barras)")
+    elif 6 &lt; mom_bars_1h &lt;= 15:
+        # Momentum maduro pero aceptable (~6-15 horas)
+        score += 15
+        reasons.append(f"⚠️ Momentum 1H maduro ({mom_bars_1h} barras)")
+    elif mom_bars_1h &gt; 15:
+        # Momentum AGOTADO: Rechazo absoluto
+        return {
+            'detected': False, 
+            'score': 0, 
+            'reason': f"❌ Momentum 1H agotado/extendido ({mom_bars_1h} barras &gt; 15)"
+        }
+    else:
+        return {'detected': False, 'score': 0, 'reason': "Momentum 1H sin desarrollo"}
 Verification Plan
-Syntax Check: Verify all files compile.
-Argument Flow: Confirm symbol is passed to 
-validate_timing_layer
-.
+Syntax Check: Ensure code compiles.
+Logic Trace: Verify mom_bars_1h = 99 triggers the rejection block.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,528<br>
-    Generado: 2025-12-06 19:05:29
+    Total caracteres: 1,963<br>
+    Generado: 2025-12-06 19:47:09
   </div>
 </body>
 </html>
