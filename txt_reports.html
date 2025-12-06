@@ -15,132 +15,166 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 12:45:30</div>
+  <div class="meta">Última actualización: 2025-12-06 15:18:47</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-REPORTE COMPLETADO: PREPARACION_REINGENIERIA_v4.9.1
+Implementation Plan - WAITING_REBOTE Logic
+Goal Description
+Implement a "WAITING_REBOTE" (Waiting for Rebound) logic to replace the current "Hard Block" when 5M momentum contradicts the main direction. Instead of instantly rejecting the trade, the bot will now analyze if there is sufficient underlying market force to justify waiting for a rebound. If confirmed, this state is propagated by the orchestrator.
 
-He analizado a fondo el código y he preparado el reporte detallado que solicitaste con los 3 cambios críticos listos para ser implementados:
+User Review Required
+IMPORTANT
 
-Limpieza de Duplicados: Eliminar claves structure y zigzag redundantes en analyze_4h/analyze_1h.
-Anti-Pump Relajado: Subir tolerancia a 30% (vela) y 25x (volumen) para no matar volatilidad sana.
-Contradicción Inteligente: Reemplazar el castigo fijo de -30 por una evaluación basada en fuerza ADX, diferenciando entre "Pullback Saludable" (castigo bajo) y "Reversión Real" (castigo alto).
-El archivo PREPARACION_REINGENIERIA_v4.9.1.md contiene el código "Antes" y "Después" exacto.
+This change introduces a new return state WAITING_REBOTE which propagates specific configuration for the "Sniper" or execution engine to monitor the asset.
 
-¿Te parece bien este plan? Si das luz verde, procedo a aplicar los cambios en brain_analyzer.py inmediatamente.
+Proposed Changes
+Logic Comparison
+Feature	Current Logic	New Logic
+Momentum Conflict	Returns WAIT (Block)	Returns WAITING_REBOTE (if Force &gt; 25 &amp; Pattern &gt; 70)
+Orchestrator	Returns OPERAR/NO_OPERAR	Adds return case for WAITING_REBOTE
+Code Changes
+[MODIFY] 
+brain_intelligent.py
+Change 1: Orchestrator Logic (Lines ~126-140) Instead of binary ENTER/WAIT, we handle the new status.
 
-# 📋 REPORTE DE REINGENIERÍA v4.9.1 - DETALLE TÉCNICO
-
-Este documento detalla los cambios exactos requeridos para limpiar bugs y optimizar la lógica en `brain_analyzer.py`, según sus instrucciones.
-
----
-
-## 🔧 1. LIMpieza DE DUPLICADOS (brain_analyzer.py)
-
-**Problema:** Se están asignando claves duplicadas en la construcción de los diccionarios de retorno, lo cual es redundante y sucio.
-
-### 🔴 Código Actual (Bug)
-**Ubicación:** `analyze_4h` (Líneas ~196-199) y `analyze_1h`
-```python
-return {
-    # ...
-    'structure': structure,
-    'structure': structure,  # &lt;--- DUPLICADO
-    'zigzag': zigzag,
-    'zigzag': zigzag,        # &lt;--- DUPLICADO
-    # ...
-}
-```
-
-### 🟢 Código Propuesto (Fix)
-Eliminar las líneas redundantes.
-```python
-return {
-    # ...
-    'structure': structure,
-    'zigzag': zigzag,
-    # ...
-}
-```
-
----
-
-## 🔧 2. SUAVIZAR ANTI-PUMP (brain_analyzer.py)
-
-**Problema:** El filtro actual es demasiado sensible (`15x` volumen y `20%` subida), bloqueando movimientos legítimos de alta volatilidad.
-
-### 🔴 Código Actual (Muy Estricto)
-**Ubicación:** `analyze_15m` (Línea ~326)
-```python
-# Solo rechazar si volumen &gt; 15x Y vela &gt; 20% (pump claro)
-if last_vol &gt; vol_avg * 15 and last_candle_pct &gt; 20:
-    print(f"⚠️ PUMP EXTREMO en {symbol}: Vol {last_vol/vol_avg:.1f}x + Vela {last_candle_pct:.1f}%. Rechazando.")
-    return None
-```
-
-### 🟢 Código Propuesto (Más Tolerante)
-Subir umbrales a `25x` volumen y `30%` subida.
-```python
-# Solo rechazar si es pump EXTREMO (vela &gt; 30% + volumen &gt; 25x)
-if last_vol &gt; vol_avg * 25 and last_candle_pct &gt; 30:
-    print(f"⚠️ PUMP EXTREMO en {symbol}: Vol {last_vol/vol_avg:.1f}x + Vela {last_candle_pct:.1f}%. Rechazando.")
-    return None
-```
-
----
-
-## 🔧 3. PENALIZACIÓN DINÁMICA DE CONTRADICCIÓN (brain_analyzer.py)
-
-**Problema:** Si 4H es ALCISTA pero 1H es BAJISTA, se aplica una penalización fija de `-30`, matando el trade incluso si 1H es solo un pullback débil (ADX bajo).
-
-### 🔴 Código Actual (Castigo Fijo)
-**Ubicación:** `analyze_coin_complete` (Líneas ~625)
-```python
-if direction_4h == 'BULLISH' and direction_1h == 'BEARISH':
-    contradiction_penalty = 30  # ← MUY ALTO
-```
-
-### 🟢 Código Propuesto (Inteligente)
-Evaluar la fuerza (ADX) del timeframe contradictorio.
-```python
-# Diferenciar pullback (ADX 1H bajo) vs reversión (ADX 1H alto)
-adx_1h_val = analysis_1h.get('adx', {}).get('adx_current', 0)
-
-if direction_4h == 'BULLISH' and direction_1h == 'BEARISH':
-    if adx_1h_val &gt; 30:
-        # Reversión fuerte: Castigo total
-        contradiction_penalty = 30
-    elif adx_1h_val &gt; 20:
-        # Pullback moderado: Castigo medio
-        contradiction_penalty = 15
+# Formatear para consumo del bot_main
+    if decision['action'] == 'ENTER':
+        return {
+            'action': 'OPERAR',
+            'trade_type': decision['strategy']['type'],
+            'confidence': decision['confidence'],
+            'pattern': decision.get('pattern'),
+            'reasons': decision['reasons'],
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'patterns': patterns_result
+            },
+            'position_size': decision['strategy']['position_size']
+        }
+    elif decision['action'] == 'WAITING_REBOTE':
+        return {
+            'action': 'WAITING_REBOTE',
+            'confidence': decision['confidence'],
+            'reasons': decision['reasons'],
+            'rebote_config': decision.get('rebote_config'),
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'patterns': patterns_result
+            }
+        }
     else:
-        # Corrección débil (normal): Castigo leve
-        contradiction_penalty = 5
+        return {
+            'action': 'NO_OPERAR',
+            'reasons': decision['reasons'],
+            'missing_points': decision.get('missing', 0)
+        }
+Change 2: Momentum Logic (Lines ~551-566) Replace hard block with smart wait.
+
+# v4.9.2: Momentum contrario = ESPERAR REBOTE (si hay fuerza)
+    if direction_final == 'BULLISH' and mom_color_5m in ['red', 'maroon']:
+        # Verificar si hay FUERZA suficiente para esperar rebote
+        adx_avg = signals.get('adx_val', 0)
+        market_force_score = market_force.get('score', 0)
+        pattern_conf = patterns['best_pattern']['confidence'] if patterns['best_pattern'] else 0
         
-# APLICAR LÓGICA SIMÉTRICA PARA EL CASO INVERSO (BEARISH vs BULLISH)
-elif direction_4h == 'BEARISH' and direction_1h == 'BULLISH':
-    if adx_1h_val &gt; 30:
-        contradiction_penalty = 30
-    elif adx_1h_val &gt; 20:
-        contradiction_penalty = 15
-    else:
-        contradiction_penalty = 5
-```
-
----
-
-## 📝 Resumen de Acción
-Aplicar estos 3 cambios transformará el sistema de "Bloqueo Rígido" a "Evaluación Matizada", permitiendo entradas en pullbacks y evitando falsos positivos por pumps moderados.
-
-¿Procedo a aplicar los parches?
-
+        # Calcular score base (sin momentum 5M)
+        base_score = score  # Score acumulado hasta ahora
+        
+        # CRITERIOS para WAITING_REBOTE:
+        # 1. ADX promedio &gt; 25 (hay fuerza)
+        # 2. Patrón confirmado &gt; 70% O Market Force &gt; 60
+        # 3. Score base &gt; 40
+        
+        has_force = adx_avg &gt; 25
+        has_pattern = pattern_conf &gt; 70 or market_force_score &gt; 60
+        has_potential = base_score &gt; 40
+        
+        if has_force and has_pattern and has_potential:
+            # FUERZA DETECTADA: Esperar rebote
+            return {
+                'action': 'WAITING_REBOTE',
+                'confidence': base_score,
+                'reasons': reasons + [
+                    f'🦅 WAITING REBOTE: Fuerza detectada (ADX {adx_avg:.1f})',
+                    f'Pattern: {patterns["best_pattern"]["type"] if patterns["best_pattern"] else "None"} ({pattern_conf}%)',
+                    f'Momentum 5M {mom_color_5m} → Esperando giro a green/lime'
+                ],
+                'scenarios': scenarios,
+                'missing': 0,
+                'rebote_config': {
+                    'direction': direction_final,
+                    'required_momentum_color': ['green', 'lime'],
+                    'min_consecutive': 2,  # Mínimo 2 velas verdes
+                    'max_wait_minutes': 60  # Timeout 1 hora
+                }
+            }
+        else:
+            # SIN FUERZA: Rechazar completamente
+            return {
+                'action': 'WAIT',
+                'confidence': 0,
+                'reasons': [
+                    f'❌ Momentum 5M contrario SIN fuerza suficiente',
+                    f'ADX: {adx_avg:.1f} (need &gt;25)',
+                    f'Pattern: {pattern_conf}% (need &gt;70)',
+                    f'Base Score: {base_score} (need &gt;40)'
+                ],
+                'scenarios': scenarios,
+                'missing': 100
+            }
+    # APLICAR MISMA LÓGICA para BEARISH (momentum contrario = green/lime)
+    elif direction_final == 'BEARISH' and mom_color_5m in ['green', 'lime']:
+        # Verificar si hay FUERZA suficiente para esperar rebote
+        adx_avg = signals.get('adx_val', 0)
+        market_force_score = market_force.get('score', 0)
+        pattern_conf = patterns['best_pattern']['confidence'] if patterns['best_pattern'] else 0
+        base_score = score
+        
+        has_force = adx_avg &gt; 25
+        has_pattern = pattern_conf &gt; 70 or market_force_score &gt; 60
+        has_potential = base_score &gt; 40
+        
+        if has_force and has_pattern and has_potential:
+            return {
+                'action': 'WAITING_REBOTE',
+                'confidence': base_score,
+                'reasons': reasons + [
+                    f'🦅 WAITING REBOTE: Fuerza detectada (ADX {adx_avg:.1f})',
+                    f'Pattern: {patterns["best_pattern"]["type"] if patterns["best_pattern"] else "None"} ({pattern_conf}%)',
+                    f'Momentum 5M {mom_color_5m} → Esperando giro a red/maroon'
+                ],
+                'scenarios': scenarios,
+                'missing': 0,
+                'rebote_config': {
+                    'direction': direction_final,
+                    'required_momentum_color': ['red', 'maroon'],
+                    'min_consecutive': 2,
+                    'max_wait_minutes': 60
+                }
+            }
+        else:
+             return {
+                'action': 'WAIT',
+                'confidence': 0,
+                'reasons': [
+                    f'❌ Momentum 5M contrario SIN fuerza suficiente',
+                    f'ADX: {adx_avg:.1f} (need &gt;25)',
+                    f'Pattern: {pattern_conf}% (need &gt;70)',
+                    f'Base Score: {base_score} (need &gt;40)'
+                ],
+                'scenarios': scenarios,
+                'missing': 100
+            }
+Verification Plan
+Static Analysis: Verify logic flow and variable existence.
+Syntax Check: Run python -m py_compile brain_intelligent.py.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,064<br>
-    Generado: 2025-12-06 12:45:30
+    Total caracteres: 6,552<br>
+    Generado: 2025-12-06 15:18:47
   </div>
 </body>
 </html>
