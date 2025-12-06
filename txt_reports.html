@@ -15,172 +15,147 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 15:24:53</div>
+  <div class="meta">Última actualización: 2025-12-06 15:45:01</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - WAITING_REBOTE Logic
+Implementation Plan - Sniper Redesign (Force Priority)
 Goal Description
-Implement a "WAITING_REBOTE" (Waiting for Rebound) logic to replace the current "Hard Block" when 5M momentum contradicts the main direction. Instead of instantly rejecting the trade, the bot will now analyze if there is sufficient underlying market force to justify waiting for a rebound. If confirmed, this state is propagated by the orchestrator.
+Redesign the 
+sniper_checklist
+ function in the "Thinking" module (
+brain_think.py
+) to transition from a strict binary blocking model ("All Valid") to a Force-Prioritized Model.
+
+If the market shows significant power (ADX &gt; 25, Momentum Aligned), we should not blindly discard the trade due to sub-optimal timing or structure. Instead, we typically want to wait for a better entry pattern (WAITING_PATTERN), or if everything aligns perfecty, go READY.
 
 User Review Required
 IMPORTANT
 
-This change introduces a new return state WAITING_REBOTE which propagates specific configuration for the "Sniper" or execution engine to monitor the asset. Correction: The NO_OPERAR case has been strictly defined to maintain compatibility with existing consumers (singular reason field).
+Fundamental Logic Shift: The Sniper will no longer return False just because one layer failed.
 
+Old Logic: ready = all_valid (One fail = Reject)
+New Logic:
+No Force? -&gt; Reject (False)
+Force + Bad Score? -&gt; Reject (False)
+Force + Good Score + Bad Timing? -&gt; Wait (WAITING_PATTERN)
+Force + Good Score + Good Timing? -&gt; Go (True)
 Proposed Changes
-Logic Comparison
-Feature	Current Logic	New Logic
-Momentum Conflict	Returns WAIT (Block)	Returns WAITING_REBOTE (if Force &gt; 25 &amp; Pattern &gt; 70)
-Orchestrator	Returns OPERAR/NO_OPERAR	Adds return case for WAITING_REBOTE
-NO_OPERAR Schema	Incomplete in previous draft	Fully compatible (confidence, reason, full_analysis)
-Code Changes
 [MODIFY] 
-brain_intelligent.py
-Change 1: Orchestrator Logic (Lines ~126-140) Updated to handle WAITING_REBOTE and fix NO_OPERAR compatibility.
+brain_think.py
+Location: Lines ~585-610 (
+sniper_checklist
+ logic block)
 
-# Formatear para consumo del bot_main
-    if decision['action'] == 'ENTER':
-        return {
-            'action': 'OPERAR',
-            'trade_type': decision['strategy']['type'],
-            'confidence': decision['confidence'],
-            'pattern': decision.get('pattern'),
-            'reasons': decision['reasons'],
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                'patterns': patterns_result
-            },
-            'position_size': decision['strategy']['position_size']
-        }
-    elif decision['action'] == 'WAITING_REBOTE':
-        return {
-            'action': 'WAITING_REBOTE',
-            'confidence': decision['confidence'],
-            'reasons': decision['reasons'],
-            'rebote_config': decision.get('rebote_config'),
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                'patterns': patterns_result
-            }
-        }
+Current Code (Strict Binary):
+
+# Resultados
+    total_score = sum(layer['score'] for layer in layers.values())
+    all_valid = all(layer['valid'] for layer in layers.values())
+    
+    # Imprimir resultados
+    for name, result in layers.items():
+        status = "✅" if result['valid'] else "❌"
+        print(f"  {status} {name.upper()}: {result['reason']} (+{result['score']})")
+    
+    print("-" * 50)
+    print(f"  TOTAL SCORE: {total_score}/100")
+    print(f"  READY: {'🟢 YES' if all_valid else '🔴 NO'}")
+    print("=" * 50)
+    
+    # Construir summary
+    failed_layers = [name for name, result in layers.items() if not result['valid']]
+    if all_valid:
+        summary = f"✅ ALL LAYERS PASSED (Score: {total_score})"
     else:
-        # CASO NO_OPERAR (CORREGIDO PARA COMPATIBILIDAD)
-        return {
-            'action': 'NO_OPERAR',
-            'confidence': decision['confidence'],
-            'reason': f"Low confidence ({decision['confidence']}): {', '.join(decision['reasons'][:2])}",
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                'patterns': patterns_result
-            }
-        }
-Change 2: Momentum Logic (Lines ~551-566) Replace hard block with smart wait (unchanged from previous valid draft).
+        summary = f"❌ BLOCKED by: {', '.join(failed_layers)}"
+    
+    return {
+        'ready': all_valid,
+        'total_score': total_score,
+        'layers': layers,
+        'summary': summary
+    }
+New Code (Force Priority):
 
-# v4.9.2: Momentum contrario = ESPERAR REBOTE (si hay fuerza)
-    if direction_final == 'BULLISH' and mom_color_5m in ['red', 'maroon']:
-        # Verificar si hay FUERZA suficiente para esperar rebote
-        adx_avg = signals.get('adx_val', 0)
-        market_force_score = market_force.get('score', 0)
-        pattern_conf = patterns['best_pattern']['confidence'] if patterns['best_pattern'] else 0
+# v4.9.3: FUERZA PRIORITARIA - Esperar patrón óptimo
+    force_score = layers['force']['score']
+    context_score = layers['context']['score']
+    timing_score = layers['timing']['score']
+    structure_score = layers['structure']['score']
+    
+    # Calc Total
+    total_score = sum(layer['score'] for layer in layers.values())
+    
+    # Imprimir resultados detallados
+    for name, result in layers.items():
+        status = "✅" if result['valid'] else "❌"
+        print(f"  {status} {name.upper()}: {result['reason']} (+{result['score']})")
+    print("-" * 50)
+    print(f"  TOTAL SCORE: {total_score}/100")
+    # PASO 1: Verificar FUERZA mínima (Gatekeeper)
+    # Force Layer &gt; 20 implica ADX&gt;25 y Momentum alineado en 2+ TFs
+    # Context Layer &gt; 0 implica que no es catastróficamente opuesto
+    has_force = force_score &gt;= 20 
+    has_context = context_score &gt;= 0 
+    if not has_force:
+        # SIN FUERZA: Rechazar completamente
+        ready = False
+        summary = f"❌ REJECTED: No Force Detected (Force Score: {force_score})"
+        print(f"  READY: 🔴 NO (Sin fuerza)")
         
-        # Calcular score base (sin momentum 5M)
-        base_score = score  # Score acumulado hasta ahora
+    elif total_score &lt; 50:
+         # FUERZA PERO SCORE MUY BAJO: Rechazar
+        ready = False
+        summary = f"❌ REJECTED: Low Quality Setup (Score {total_score} &lt; 50)"
+        print(f"  READY: 🔴 NO (Low score)")
         
-        # CRITERIOS para WAITING_REBOTE:
-        # 1. ADX promedio &gt; 25 (hay fuerza)
-        # 2. Patrón confirmado &gt; 70% O Market Force &gt; 60
-        # 3. Score base &gt; 40
+    else:
+        # HAY FUERZA Y CALIDAD DECENTE -&gt; Evaluar Timing
         
-        has_force = adx_avg &gt; 25
-        has_pattern = pattern_conf &gt; 70 or market_force_score &gt; 60
-        has_potential = base_score &gt; 40
+        # PATRÓN ÓPTIMO = Timing + Estructura buenos
+        # Timing &gt; 0 (No penalizado por resistencia)
+        # Structure &gt; 15 (No es corrección)
+        optimal_pattern = timing_score &gt;= 10 and structure_score &gt;= 15
         
-        if has_force and has_pattern and has_potential:
-            # FUERZA DETECTADA: Esperar rebote
-            return {
-                'action': 'WAITING_REBOTE',
-                'confidence': base_score,
-                'reasons': reasons + [
-                    f'🦅 WAITING REBOTE: Fuerza detectada (ADX {adx_avg:.1f})',
-                    f'Pattern: {patterns["best_pattern"]["type"] if patterns["best_pattern"] else "None"} ({pattern_conf}%)',
-                    f'Momentum 5M {mom_color_5m} → Esperando giro a green/lime'
-                ],
-                'scenarios': scenarios,
-                'missing': 0,
-                'rebote_config': {
-                    'direction': direction_final,
-                    'required_momentum_color': ['green', 'lime'],
-                    'min_consecutive': 2,  # Mínimo 2 velas verdes
-                    'max_wait_minutes': 60  # Timeout 1 hora
-                }
-            }
+        if optimal_pattern and total_score &gt;= 70:
+            # PATRÓN PERFECTO: Operar ahora
+            ready = True
+            summary = f"✅ READY: Perfect Setup (Score: {total_score})"
+            print(f"  READY: 🟢 YES (Perfect Setup)")
+            
         else:
-            # SIN FUERZA: Rechazar completamente
-            return {
-                'action': 'WAIT',
-                'confidence': 0,
-                'reasons': [
-                    f'❌ Momentum 5M contrario SIN fuerza suficiente',
-                    f'ADX: {adx_avg:.1f} (need &gt;25)',
-                    f'Pattern: {pattern_conf}% (need &gt;70)',
-                    f'Base Score: {base_score} (need &gt;40)'
-                ],
-                'scenarios': scenarios,
-                'missing': 100
-            }
-    # APLICAR MISMA LÓGICA para BEARISH (momentum contrario = green/lime)
-    elif direction_final == 'BEARISH' and mom_color_5m in ['green', 'lime']:
-        # Verificar si hay FUERZA suficiente para esperar rebote
-        adx_avg = signals.get('adx_val', 0)
-        market_force_score = market_force.get('score', 0)
-        pattern_conf = patterns['best_pattern']['confidence'] if patterns['best_pattern'] else 0
-        base_score = score
-        
-        has_force = adx_avg &gt; 25
-        has_pattern = pattern_conf &gt; 70 or market_force_score &gt; 60
-        has_potential = base_score &gt; 40
-        
-        if has_force and has_pattern and has_potential:
-            return {
-                'action': 'WAITING_REBOTE',
-                'confidence': base_score,
-                'reasons': reasons + [
-                    f'🦅 WAITING REBOTE: Fuerza detectada (ADX {adx_avg:.1f})',
-                    f'Pattern: {patterns["best_pattern"]["type"] if patterns["best_pattern"] else "None"} ({pattern_conf}%)',
-                    f'Momentum 5M {mom_color_5m} → Esperando giro a red/maroon'
-                ],
-                'scenarios': scenarios,
-                'missing': 0,
-                'rebote_config': {
-                    'direction': direction_final,
-                    'required_momentum_color': ['red', 'maroon'],
-                    'min_consecutive': 2,
-                    'max_wait_minutes': 60
-                }
-            }
-        else:
-             return {
-                'action': 'WAIT',
-                'confidence': 0,
-                'reasons': [
-                    f'❌ Momentum 5M contrario SIN fuerza suficiente',
-                    f'ADX: {adx_avg:.1f} (need &gt;25)',
-                    f'Pattern: {pattern_conf}% (need &gt;70)',
-                    f'Base Score: {base_score} (need &gt;40)'
-                ],
-                'scenarios': scenarios,
-                'missing': 100
-            }
+            # FUERZA PERO PATRÓN SUBÓPTIMO: Esperar mejor momento
+            ready = 'WAITING_PATTERN'
+            missing_reasons = []
+            
+            if timing_score &lt; 10:
+                missing_reasons.append("Timing subóptimo")
+            if structure_score &lt; 15:
+                missing_reasons.append("Structure weak")
+            if total_score &lt; 70:
+                missing_reasons.append("Low confidence")
+            
+            summary = f"🦅 WAITING PATTERN: Force OK, waiting improvement ({', '.join(missing_reasons)})"
+            print(f"  READY: 🦅 WAITING PATTERN")
+    print("=" * 50)
+    return {
+        'ready': ready,
+        'total_score': total_score,
+        'layers': layers,
+        'summary': summary
+    }
 Verification Plan
-Static Analysis: Verify logic flow and variable existence.
-Syntax Check: Run python -m py_compile brain_intelligent.py.
+Logic Check: Ensure force_score logic in 
+validate_force_propagation
+ aligns with the threshold (&gt;=20 requires 2 TFs with aligned ADX &gt; 25).
+Output Check: Verify the print outputs match the user's expectation for "🦅 WAITING PATTERN".
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 7,080<br>
-    Generado: 2025-12-06 15:24:53
+    Total caracteres: 4,849<br>
+    Generado: 2025-12-06 15:45:01
   </div>
 </body>
 </html>
