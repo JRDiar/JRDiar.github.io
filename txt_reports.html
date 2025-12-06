@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 15:45:01</div>
+  <div class="meta">Última actualización: 2025-12-06 15:50:40</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -37,10 +37,10 @@ Fundamental Logic Shift: The Sniper will no longer return False just because one
 
 Old Logic: ready = all_valid (One fail = Reject)
 New Logic:
-No Force? -&gt; Reject (False)
+No Force/Context? -&gt; Reject (False)
 Force + Bad Score? -&gt; Reject (False)
 Force + Good Score + Bad Timing? -&gt; Wait (WAITING_PATTERN)
-Force + Good Score + Good Timing? -&gt; Go (True)
+Force + Good Score + Good Timing? -&gt; Go (True) Correction (Bug #14): has_context now requires score &gt;= 10 (at least 1 TF aligned), preventing neutral setups from passing.
 Proposed Changes
 [MODIFY] 
 brain_think.py
@@ -54,22 +54,7 @@ Current Code (Strict Binary):
     total_score = sum(layer['score'] for layer in layers.values())
     all_valid = all(layer['valid'] for layer in layers.values())
     
-    # Imprimir resultados
-    for name, result in layers.items():
-        status = "✅" if result['valid'] else "❌"
-        print(f"  {status} {name.upper()}: {result['reason']} (+{result['score']})")
-    
-    print("-" * 50)
-    print(f"  TOTAL SCORE: {total_score}/100")
-    print(f"  READY: {'🟢 YES' if all_valid else '🔴 NO'}")
-    print("=" * 50)
-    
-    # Construir summary
-    failed_layers = [name for name, result in layers.items() if not result['valid']]
-    if all_valid:
-        summary = f"✅ ALL LAYERS PASSED (Score: {total_score})"
-    else:
-        summary = f"❌ BLOCKED by: {', '.join(failed_layers)}"
+    # ... logic ...
     
     return {
         'ready': all_valid,
@@ -96,14 +81,17 @@ New Code (Force Priority):
     print(f"  TOTAL SCORE: {total_score}/100")
     # PASO 1: Verificar FUERZA mínima (Gatekeeper)
     # Force Layer &gt; 20 implica ADX&gt;25 y Momentum alineado en 2+ TFs
-    # Context Layer &gt; 0 implica que no es catastróficamente opuesto
+    # Context Layer &gt;= 10 implica AL MENOS 1 TF alineado (no permitir neutro/contrario)
     has_force = force_score &gt;= 20 
-    has_context = context_score &gt;= 0 
-    if not has_force:
-        # SIN FUERZA: Rechazar completamente
+    has_context = context_score &gt;= 10 
+    if not has_force or not has_context:
+        # SIN FUERZA O CONTEXTO: Rechazar completamente
         ready = False
-        summary = f"❌ REJECTED: No Force Detected (Force Score: {force_score})"
-        print(f"  READY: 🔴 NO (Sin fuerza)")
+        if not has_force:
+            summary = f"❌ REJECTED: No Force (Score: {force_score})"
+        else:
+            summary = f"❌ REJECTED: Bad Context (Score: {context_score})"
+        print(f"  READY: 🔴 NO")
         
     elif total_score &lt; 50:
          # FUERZA PERO SCORE MUY BAJO: Rechazar
@@ -147,15 +135,13 @@ New Code (Force Priority):
         'summary': summary
     }
 Verification Plan
-Logic Check: Ensure force_score logic in 
-validate_force_propagation
- aligns with the threshold (&gt;=20 requires 2 TFs with aligned ADX &gt; 25).
-Output Check: Verify the print outputs match the user's expectation for "🦅 WAITING PATTERN".
+Logic Check: Confirm has_context threshold is &gt;= 10.
+Output Check: Verify rejection messages distinguish between force and context failures.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,849<br>
-    Generado: 2025-12-06 15:45:01
+    Total caracteres: 4,431<br>
+    Generado: 2025-12-06 15:50:40
   </div>
 </body>
 </html>
