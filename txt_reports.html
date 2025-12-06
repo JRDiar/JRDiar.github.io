@@ -15,18 +15,18 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 18:55:39</div>
+  <div class="meta">Última actualización: 2025-12-06 19:05:29</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - Entry Validation Improvements (Bug #17)
+Implementation Plan - Entry Validation Improvements (Bug #17) - SCORY ONLY
 Goal Description
-Enhance the bot's "Patience" by strictly validating the development of the price action before entry. This prevents premature entries on the first sign of force by ensuring:
+Enhance the bot's "Patience" using Scoring Penalties instead of hard blocks. This respects the "Time Ladder" philosophy where stronger signals can override weaker ones. We address 3 key areas:
 
-Structural Readiness: The ZigZag structure is in a "Rebound" (HL/LH) or "Start" (L/H) phase, NOT at a "Top/Bottom" (H/HH/L/LL).
-Momentum Maturity: Momentum has at least 2 candles of development, regardless of ADX strength.
-Active Bounce Check: The price is not actively bouncing against our direction (e.g., 3 green candles when trying to short near active support).
+ZigZag Structure: Penalize if entering at a Top/Bottom (-30).
+Active Bounce: Penalize if price is actively bouncing against direction (-30).
+Momentum Development: Penalize if momentum is very fresh (&lt;2 candles) (-20).
 User Review Required
 IMPORTANT
 
@@ -34,152 +34,135 @@ API Change:
 validate_timing_layer
  in 
 brain_think.py
- will now require the symbol argument to fetch the latest candles for bounce detection.
+ will now require the symbol argument to fetch the latest candles for bounce detection. Philosophy Corrected: All checks now modify score positively or negatively. No return False or valid = False blocks are used in these specific checks.
 
 Proposed Changes
-1. ZigZag Structure Validation
+1. ZigZag Structure Validation (Scoring)
 File: 
 brain_intelligent.py
  Function: 
 detect_entry_context
 
-Logic: Reject entries if the market structure suggests we are at the end of a move (Top/Bottom) rather than the beginning or strict pullback.
+Logic: Apply specific bonuses or penalties based on the last pivot type.
 
 # ... after pullback_pct calculation ...
     
-    # 1.5 ZIGZAG STRUCTURE VALIDATION (NUEVO PROMPT 1)
+    # 1.5 ZIGZAG STRUCTURE VALIDATION (SCORING)
     structure_data = ladder.get('5m', {}).get('zigzag', {})
     pivot_types = structure_data.get('pivot_types', [])
     last_pivot = pivot_types[-1] if pivot_types else None
     
     if pattern_dir == 'BULLISH':
-        # Para LONG: Queremos HL (rebote) o L (inicio)
-        # NO queremos H (tope) o HH (final de subida)
         if last_pivot in ['H', 'HH']:
-            # Estructura en TOPE: Rechazar entrada
-            context_reasons.append(f"❌ ZigZag en TOPE ({last_pivot}) - Esperar pullback")
-            return {'valid': False, 'score_bonus': 0, 'reasons': context_reasons}
+            # Estructura en TOPE: Penalización fuerte (pero no bloqueo)
+            context_score -= 30
+            context_reasons.append(f"⚠️ ZigZag en TOPE ({last_pivot})")
         elif last_pivot == 'HL':
             # Rebote ideal
             context_score += 15
-            context_reasons.append(f"✅ ZigZag HL (Pullback confirmado)")
+            context_reasons.append(f"✅ ZigZag HL (Pullback)")
         elif last_pivot == 'L':
-            # Inicio de subida
+            # Inicio
             context_score += 10
-            context_reasons.append(f"✅ ZigZag L (Inicio detectado)")
+            context_reasons.append(f"✅ ZigZag L (Inicio)")
             
     elif pattern_dir == 'BEARISH':
-        # Para SHORT: Queremos LH (rebote bajista) o H (inicio caída)
-        # NO queremos L (fondo) o LL (final de caída)
         if last_pivot in ['L', 'LL']:
-            # Estructura en FONDO: Rechazar entrada
-            context_reasons.append(f"❌ ZigZag en FONDO ({last_pivot}) - Esperar rebote")
-            return {'valid': False, 'score_bonus': 0, 'reasons': context_reasons}
+            # Estructura en FONDO: Penalización fuerte
+            context_score -= 30
+            context_reasons.append(f"⚠️ ZigZag en FONDO ({last_pivot})")
         elif last_pivot == 'LH':
             # Rebote bajista ideal
             context_score += 15
             context_reasons.append(f"✅ ZigZag LH (Pullback bajista)")
         elif last_pivot == 'H':
-            # Inicio de caída
+            # Inicio caída
             context_score += 10
             context_reasons.append(f"✅ ZigZag H (Inicio caída)")
-2. Active Bounce Detection
+2. Active Bounce Detection (Scoring)
 File: 
 brain_think.py
  Function: 
 validate_timing_layer
- (Update signature to 
-validate_timing_layer(symbol, ladder, current_price)
-)
+ (add symbol param)
 
-Logic: Check the last 3-5 candles. If we are near resistance but the last 3 candles are green, it's an active breakout/bounce towards resistance, so we penalize shorting (or waiting for pullback) until it slows down.
+Logic: Penalize active bounces against the trend near S/R levels.
 
 def validate_timing_layer(symbol, ladder, current_price): # NOTE: Symbol added
     # ... existing code ...
-    # --- NUEVO: DETECTAR REBOTE ACTIVO (PROMPT 2) ---
+    # --- NUEVO: DETECTAR REBOTE ACTIVO (SCORING) ---
     try:
         from exchange_connection import fetch_ohlcv
         import pandas as pd
         
-        # Obtener últimas 5 velas para contexto inmediato
         ohlcv = fetch_ohlcv(symbol, '5m', 5)
         
         if ohlcv and len(ohlcv) &gt;= 3:
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            
-            # Verificar velas recientes
             closes = df['close'].values
             opens = df['open'].values
             
-            # Contar velas VERDES y ROJAS en las últimas 3
             last_3_green = sum(1 for i in range(-3, 0) if closes[i] &gt; opens[i])
             last_3_red = sum(1 for i in range(-3, 0) if closes[i] &lt; opens[i])
             
-            # Detección para RESISTENCIA (Problema en BARRITAS)
+            # RESISTENCIA
             if resistances and current_price &gt; 0:
                 nearest_res = resistances[0]
                 dist_pct = ((nearest_res - current_price) / current_price) * 100
                 
-                # Si está cerca de resistencia (&lt;2%) Y subiendo con fuerza (2+ verdes)
                 if 0 &lt; dist_pct &lt; 2.0 and last_3_green &gt;= 2:
-                    score -= 25
-                    reasons.append(f"⚠️ ACTIVE BOUNCE to Res (3v: {last_3_green} green)")
-                    valid = False # Bloquear entrada en la cara de la vela verde
-            
-            # Detección para SOPORTE
-            if supports and current_price &gt; 0: # supports undefined in original context, need to extract
-                pass # (Logic implies checking supports similar to resistances)
-                # Note: original function only extracted resistances. Will simply add support extraction.
-                
-                # ... extraction logic ...
-                # nearest_sup = ...
-                # if 0 &lt; dist_pct &lt; 2.0 and last_3_red &gt;= 2:
-                #    score -= 25
-                #    reasons.append(f"⚠️ ACTIVE DROP to Sup (3v: {last_3_red} red)")
-                #    valid = False
-            
+                    # Rebote activo contra resistencia: Penalización
+                    score -= 30
+                    reasons.append(f"⚠️ Rebote activo vs Res ({last_3_green}v verdes)")
+                elif 0 &lt; dist_pct &lt; 2.0 and last_3_green == 1:
+                     score -= 15
+                     reasons.append(f"⚠️ Inicio rebote vs Res (1v verde)")
+            # SOPORTE (Assuming extraction logic added)
+            # if supports ...
+            #    if 0 &lt; dist_pct &lt; 2.0 and last_3_red &gt;= 2:
+            #        score -= 30
+            #        reasons.append(f"⚠️ Caída activa vs Sup ({last_3_red}v rojas)")
     except Exception as e:
-        pass # Fallback silencioso
-3. Strict Momentum Development
+        pass
+3. Strict Momentum Development (Scoring)
 File: 
 brain_intelligent.py
  Function: 
 detect_entry_context
 
-Logic: Enforce MIN_CANDLES_ALWAYS = 2. Remove the loophole where extreme ADX allowed entering on the first candle.
+Logic: Penalize "immature" momentum (1 candle) instead of blocking it.
 
 # ... inside momentum check ...
     
-    # 2. MOMENTUM RECUPERÁNDOSE (VERSIÓN MÁS ESTRICTA - PROMPT 3)
-    # v4.9.4: EXIGIR mínimo 2 velas SIEMPRE (sin excepciones)
+    # 2. MOMENTUM RECUPERÁNDOSE (SCORING)
     MIN_CANDLES_ALWAYS = 2
     
     if pattern_dir == 'BULLISH':
-        if color in ['green', 'lime'] and consecutive &gt;= MIN_CANDLES_ALWAYS:
+        if color in ['green', 'lime']:
             if consecutive &gt;= 3:
                 context_score += 15
                 context_reasons.append(f"✅ Momentum desarrollado ({consecutive}v)")
-            else:
+            elif consecutive &gt;= MIN_CANDLES_ALWAYS:
                 context_score += 10
                 context_reasons.append(f"✅ Momentum confirmado ({consecutive}v)")
-        elif consecutive &lt; MIN_CANDLES_ALWAYS:
-            # RECHAZAR si no tiene desarrollo mínimo
-            context_reasons.append(f"❌ Momentum insuficiente ({consecutive}v, need {MIN_CANDLES_ALWAYS}+)")
-            return {'valid': False, 'score_bonus': 0, 'reasons': context_reasons}
+            else: # consecutive == 1
+                # Penalización, NO rechazo
+                context_score -= 20
+                context_reasons.append(f"⚠️ Momentum débil ({consecutive}v, prefiere {MIN_CANDLES_ALWAYS}+)")
         elif color in ['red', 'maroon']:
-             # ... existing rejection ...
+             context_score -= 30
+             context_reasons.append(f"⚠️ Momentum contrario ({color})")
+             # NOT returning False here either, let threshold decide (unless critical earlier)
 Verification Plan
 Syntax Check: Verify all files compile.
-Argument Check: Ensure 
-sniper_checklist
- passes symbol to the updated 
+Argument Flow: Confirm symbol is passed to 
 validate_timing_layer
 .
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 6,755<br>
-    Generado: 2025-12-06 18:55:39
+    Total caracteres: 5,528<br>
+    Generado: 2025-12-06 19:05:29
   </div>
 </body>
 </html>
