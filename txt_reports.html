@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 15:18:47</div>
+  <div class="meta">Última actualización: 2025-12-06 15:24:53</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -27,17 +27,18 @@ Implement a "WAITING_REBOTE" (Waiting for Rebound) logic to replace the current 
 User Review Required
 IMPORTANT
 
-This change introduces a new return state WAITING_REBOTE which propagates specific configuration for the "Sniper" or execution engine to monitor the asset.
+This change introduces a new return state WAITING_REBOTE which propagates specific configuration for the "Sniper" or execution engine to monitor the asset. Correction: The NO_OPERAR case has been strictly defined to maintain compatibility with existing consumers (singular reason field).
 
 Proposed Changes
 Logic Comparison
 Feature	Current Logic	New Logic
 Momentum Conflict	Returns WAIT (Block)	Returns WAITING_REBOTE (if Force &gt; 25 &amp; Pattern &gt; 70)
 Orchestrator	Returns OPERAR/NO_OPERAR	Adds return case for WAITING_REBOTE
+NO_OPERAR Schema	Incomplete in previous draft	Fully compatible (confidence, reason, full_analysis)
 Code Changes
 [MODIFY] 
 brain_intelligent.py
-Change 1: Orchestrator Logic (Lines ~126-140) Instead of binary ENTER/WAIT, we handle the new status.
+Change 1: Orchestrator Logic (Lines ~126-140) Updated to handle WAITING_REBOTE and fix NO_OPERAR compatibility.
 
 # Formatear para consumo del bot_main
     if decision['action'] == 'ENTER':
@@ -65,12 +66,17 @@ Change 1: Orchestrator Logic (Lines ~126-140) Instead of binary ENTER/WAIT, we h
             }
         }
     else:
+        # CASO NO_OPERAR (CORREGIDO PARA COMPATIBILIDAD)
         return {
             'action': 'NO_OPERAR',
-            'reasons': decision['reasons'],
-            'missing_points': decision.get('missing', 0)
+            'confidence': decision['confidence'],
+            'reason': f"Low confidence ({decision['confidence']}): {', '.join(decision['reasons'][:2])}",
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'patterns': patterns_result
+            }
         }
-Change 2: Momentum Logic (Lines ~551-566) Replace hard block with smart wait.
+Change 2: Momentum Logic (Lines ~551-566) Replace hard block with smart wait (unchanged from previous valid draft).
 
 # v4.9.2: Momentum contrario = ESPERAR REBOTE (si hay fuerza)
     if direction_final == 'BULLISH' and mom_color_5m in ['red', 'maroon']:
@@ -173,8 +179,8 @@ Syntax Check: Run python -m py_compile brain_intelligent.py.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 6,552<br>
-    Generado: 2025-12-06 15:18:47
+    Total caracteres: 7,080<br>
+    Generado: 2025-12-06 15:24:53
   </div>
 </body>
 </html>
