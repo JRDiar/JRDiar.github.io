@@ -15,20 +15,27 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 19:47:09</div>
+  <div class="meta">Última actualización: 2025-12-06 20:04:01</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - Bug #21: Exhausted Momentum Validation
+Implementation Plan - Bug #21: Exhausted Momentum Validation (Scoring Logic)
 Goal Description
-Fix a critical bug where the bot validates "Market Force" even when the 1H momentum is completely exhausted (e.g., 99 candles old). We need to distinguish between "Mature" momentum (acceptable, 6-15 bars) and "Exhausted" momentum (rejectable, &gt;15 bars).
+Fix a critical bug where the bot validates "Market Force" even when the 1H momentum is completely exhausted (e.g., typically &gt; 30 bars). Instead of a binary "Hard Block" (Time Ladder Violation), we implementation Scoring Penalties. This allows a trade with Extreme ADX (e.g., ADX 70) to potentially "override" the exhausted momentum if the total score remains high enough (&gt;50).
 
 User Review Required
 IMPORTANT
 
-Logic Change: High ADX will no longer save a trade if the momentum is ancient. This might reduce the number of signals for very long-running trends to prevent buying the absolute top/bottom.
+Philosophy Change: We are moving from "Binary Rejection" to "Penalty &amp; Threshold".
 
+Old Logic: Momentum &gt; 6 bars = +15 points (Always Bonus)
+New Logic:
+6-15 bars: +15 points (Mature)
+15-30 bars: -10 points (Old)
+30 bars: -25 points (Exhausted)
+
+Threshold: Final Score &lt; 50 =&gt; REJECT
 Proposed Changes
 [MODIFY] 
 brain_intelligent.py
@@ -47,34 +54,49 @@ Current Code:
         reasons.append(f"⚠️ Momentum 1H maduro ({mom_bars_1h} barras)")
     else:
         return {'detected': False, 'score': 0, 'reason': "Momentum 1H sin desarrollo"}
-New Code:
+New Code (Scoring Penalty):
 
 # Bonificación por "Desarrollo" (Barras 1-5 son las mejores)
-    # v4.9.4 FIX BUG #21: Validar agotamiento
+    # v4.9.4 FIX BUG #21: Validar agotamiento con SCORING
     if 1 &lt;= mom_bars_1h &lt;= 6:
         score += 30
         reasons.append(f"🚀 Momentum 1H en desarrollo ({mom_bars_1h} barras)")
     elif 6 &lt; mom_bars_1h &lt;= 15:
-        # Momentum maduro pero aceptable (~6-15 horas)
+        # Momentum maduro pero aceptable
         score += 15
         reasons.append(f"⚠️ Momentum 1H maduro ({mom_bars_1h} barras)")
-    elif mom_bars_1h &gt; 15:
-        # Momentum AGOTADO: Rechazo absoluto
-        return {
-            'detected': False, 
-            'score': 0, 
-            'reason': f"❌ Momentum 1H agotado/extendido ({mom_bars_1h} barras &gt; 15)"
-        }
+    elif 15 &lt; mom_bars_1h &lt;= 30:
+        # Momentum viejo: SIN bonus, CON penalización
+        score -= 10
+        reasons.append(f"⚠️ Momentum 1H viejo ({mom_bars_1h} barras)")
+    elif mom_bars_1h &gt; 30:
+        # Momentum AGOTADO: Penalización fuerte
+        score -= 25
+        reasons.append(f"⚠️ Momentum 1H AGOTADO ({mom_bars_1h} barras &gt; 30)")
     else:
+        # Caso 0 o negativo?
         return {'detected': False, 'score': 0, 'reason': "Momentum 1H sin desarrollo"}
+    # FINAL THRESHOLD CHECK
+    if score &lt; 50:
+        return {
+            'detected': False,
+            'score': 0,
+            'reason': f"Score insuficiente ({score} &lt; 50) - " + " | ".join(reasons)
+        }
+    return {
+        'detected': True,
+        'score': min(100, score),
+        'reason': " | ".join(reasons),
+        'direction': direction
+    }
 Verification Plan
 Syntax Check: Ensure code compiles.
-Logic Trace: Verify mom_bars_1h = 99 triggers the rejection block.
+Logic Trace: Verify mom_bars_1h = 99 results in a -25 penalty. Verify a low total score (&lt;50) triggers rejection.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 1,963<br>
-    Generado: 2025-12-06 19:47:09
+    Total caracteres: 2,759<br>
+    Generado: 2025-12-06 20:04:01
   </div>
 </body>
 </html>
