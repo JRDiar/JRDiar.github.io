@@ -15,73 +15,59 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-06 21:57:50</div>
+  <div class="meta">Última actualización: 2025-12-06 22:04:09</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan - ZigZag Direction Validation
+Implementation Plan - ZigZag Direction Validation (Pure Time Ladder)
 Goal Description
-CRITICAL: Validate that the ZigZag structure aligns with the trade direction. Even if we are not at a "Top" (H/HH), we must ensure we are not in a counter-trend structure (e.g., trying to LONG when the structure is L-&gt;H-&gt;LL). This adds a Severe Penalty (-50) if the structure contradicts the intended trade, effectively blocking bad structural entries without a hard return False (unless score drops too low).
+CRITICAL: Validate that the ZigZag structure aligns with the trade direction. We must ensure we are not in a counter-trend structure (e.g., trying to LONG when the structure is L-&gt;H-&gt;LL). Philosophical Correction: Instead of a "Soft Block" (returning False if score is low), we apply a Severe Penalty (-50) and allow the standard validation flow to proceed. The final threshold (70) will naturally reject the trade, maintaining the "Time Ladder" philosophy where Score is King.
 
 User Review Required
 IMPORTANT
 
-Severe Penalty: A -50 penalty is massive. It effectively requires a perfect score elsewhere (Market Force + Momentum + Volume) to even be considered. This acts as a "Soft Block".
+Pure Time Ladder: We are removing the if context_score &lt; 15: return check. The -50 penalty guarantees rejection in 99% of cases, but theoretically allows an entry if the initial score was &gt; 120 (impossible in current scoring), which is mathematically robust.
 
 Proposed Changes
 [MODIFY] 
 brain_intelligent.py
 Location: 
 detect_entry_context
- function (lines ~1080, after existing ZigZag checks)
+ function (lines ~1080)
 
-Current Code (ZigZag Pivot Check Only):
-
-# ... previous pivot type check ...
-    elif pattern_dir == 'BEARISH':
-        if last_pivot in ['L', 'LL']:
-            context_score -= 30
-            context_reasons.append(f"⚠️ ZigZag en FONDO ({last_pivot})")
-        # ...
-New Code (Add Direction Validation):
+New Code (Pure Penalty Logic):
 
 # ... previous pivot type check ...
     # CRÍTICO: ZigZag debe ir en dirección del trade (NUEVO)
+    # FIX BUG #22: Eliminar soft block, usar Pure Time Ladder (-50 penalty)
+    
+    last_structure = structure_data.get('last_structure', '')
+    
     if pattern_dir == 'BEARISH':
         # Para SHORT: Necesitamos H→L (bajando) o LH (pullback bajista)
-        # RECHAZAR si está L→H (subiendo)
-        last_structure = structure_data.get('last_structure', '')
-        
-        # Si estructura es BULLISH o el pivot es alcista (L/HL)
+        # RECHAZAR si está L→H (subiendo) o HL
         if 'BULLISH' in last_structure or last_pivot in ['L', 'HL']:
             # ZigZag va CONTRA la dirección SHORT
             context_score -= 50  # Penalización SEVERA
             context_reasons.append(f"❌ ZigZag CONTRARIO ({last_pivot}, {last_structure}) - Precio subiendo en SHORT")
-            
-            # Si score baja de threshold seguro, abortar temprano
-            if context_score &lt; 15:
-                return {'valid': False, 'score_bonus': context_score, 'reasons': context_reasons}
+            # NO RETURN - Dejar que el score final decida
         
     elif pattern_dir == 'BULLISH':
         # Para LONG: Necesitamos L→H (subiendo) o HL (pullback alcista)
-        # RECHAZAR si está H→L (bajando)
-        last_structure = structure_data.get('last_structure', '')
-        
+        # RECHAZAR si está H→L (bajando) o LH
         if 'BEARISH' in last_structure or last_pivot in ['H', 'LH']:
             context_score -= 50
             context_reasons.append(f"❌ ZigZag CONTRARIO ({last_pivot}, {last_structure})")
-            
-            if context_score &lt; 15:
-                return {'valid': False, 'score_bonus': context_score, 'reasons': context_reasons}
+            # NO RETURN - Dejar que el score final decida
 Verification Plan
-Logic Check: Verify that last_structure is available in structure_data (it comes from detect_market_structure via brain_analyzer).
-Penalty Check: Confirm -50 penalty is applied.
+Logic Check: Confirm -50 penalty is applied when direction mismatch occurs.
+Flow Check: Confirm execution continues to specific momentum checks even after penalty (allowing full analysis reasoning).
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 2,784<br>
-    Generado: 2025-12-06 21:57:50
+    Total caracteres: 2,369<br>
+    Generado: 2025-12-06 22:04:09
   </div>
 </body>
 </html>
