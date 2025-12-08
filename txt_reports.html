@@ -15,834 +15,841 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-07 22:01:17</div>
+  <div class="meta">Última actualización: 2025-12-08 11:47:32</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Implementation Plan: Force Detection Fix (ULTIMA Case) - CORREGIDO
-Problema Crítico: Bot rechaza monedas explosivas por requisitos demasiado estrictos
-Caso: ULTIMA/USDT - ADX 44.9, Pattern DOUBLE_BOTTOM 75% → RECHAZADO
-Root Cause: Requisito momentum 2+ consecutivas bloquea explosiones tempranas
+Este indicador funciona perfecto, hay que agregar el indicador de abajo. Gracias.
+//@version=5
+indicator("Dashboard Overlay - Indicadores sobre Precio", shorttitle="Overlay Dashboard", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
-🎯 FILOSOFÍA FUERZA PRIMERO - VALIDADA
-✅ CRÍTICO: FUERZA = ADX + DI alineados + Momentum confirmando
-✅ SIEMPRE validar momentum (No override permitido)
-✅ Bug #28 implementado CORRECTAMENTE - mantener sin cambios
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🎛️ SELECTOR DE INDICADORES ACTIVOS (OVERLAY)
+// ═══════════════════════════════════════════════════════════════════════════════════════
 
-Bug #28 - YA IMPLEMENTADO ✅
-# brain_analyzer.py líneas 138-155
-if di_direction == 'BULLISH':
-    if momentum_data['color_current'] not in expected_colors_bullish:
-        direction = 'LATERAL'  # ✅ Momentum contradice = NO hay fuerza
-    elif last_pivot in ['H', 'LH']:
-        direction = 'LATERAL'
-    else:
-        direction = 'BULLISH'
-Este código es CORRECTO - Respeta filosofía FUERZA PRIMERO
+enable_emas = input.bool(true, "4 EMAs (sistema de medias móviles)", group="🎛️ Activar Indicadores Overlay")
+enable_ichimoku = input.bool(false, "Ichimoku (análisis japonés completo)", group="🎛️ Activar Indicadores Overlay")
+enable_zigzag = input.bool(false, "Zig Zag (análisis de swings)", group="🎛️ Activar Indicadores Overlay")
+enable_support_resistance = input.bool(false, "Support/Resistance (con confirmación de volumen)", group="🎛️ Activar Indicadores Overlay")
+enable_multi_vp = input.bool(false, "Multi-Layer Volume Profile (4 capas)", group="🎛️ Activar Indicadores Overlay")
+enable_bb_kc_strategy = input.bool(false, "BB/KC Strategy (Bollinger + Keltner + SAR)", group="🎛️ Activar Indicadores Overlay")
+enable_ema_envelope = input.bool(false, "EMA Envelope (sobre de EMAs con señales)", group="🎛️ Activar Indicadores Overlay")
+enable_supertrend = input.bool(false, "Supertrend (línea de tendencia dinámica)", group="🎛️ Activar Indicadores Overlay")
+enable_delta_vp = input.bool(false, "Delta Volume Profile (perfil con delta de volumen)", group="🎛️ Activar Indicadores Overlay")
 
-🔍 ROOT CAUSE ANALYSIS - CORREGIDO
-Caso ULTIMA/USDT - Análisis Real
-ADX 1D: 56.1 (STRONG)
-ADX 4H: 44.9 (STRONG) - DI+ 28.0 &gt;&gt; DI- 8.4
-Momentum 4H: 3v VERDE ✅ (confirma fuerza)
-Pivot 4H: 'H' ❌ (estructura bajista)
-ADX 15M: 37.2 (STRONG)
-Momentum 15M: 1v VERDE ✅ (confirma fuerza, pero inmaduro)
-Pattern: DOUBLE_BOTTOM (75% confidence)
-Resultado: 
-- 4H: LATERAL (degradado por pivot 'H')
-- Force Propagation: "No force" +10 pts
-- RECHAZADO
-Problemas Identificados
-Problema #1: Pivot 'H' Bloquea Fuerza Brutal (ESTRUCTURA)
-Archivo: 
-brain_analyzer.py
- línea 143
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🟨 4 EMAS SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+ema1_length = input.int(50, "EMA 1 Período", minval=1, group="🟨 4 EMAs Settings")
+ema2_length = input.int(100, "EMA 2 Período", minval=1, group="🟨 4 EMAs Settings")
+ema3_length = input.int(200, "EMA 3 Período", minval=1, group="🟨 4 EMAs Settings")
+ema4_length = input.int(500, "EMA 4 Período", minval=1, group="🟨 4 EMAs Settings")
+ema1_color = input.color(color.yellow, "Color EMA 1", group="🎨 4 EMAs Colors")
+ema2_color = input.color(color.lime, "Color EMA 2", group="🎨 4 EMAs Colors")
+ema3_color = input.color(color.aqua, "Color EMA 3", group="🎨 4 EMAs Colors")
+ema4_color = input.color(color.purple, "Color EMA 4", group="🎨 4 EMAs Colors")
 
-# ACTUAL
-elif last_pivot in ['H', 'LH']:
-    direction = 'LATERAL'  # ❌ Bloqueo absoluto
-Análisis:
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⛩️ ICHIMOKU SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+ichi_tenkan_period = input.int(9, "Tenkan-Sen Período", minval=1, group="⛩️ Ichimoku Settings")
+ichi_kijun_period = input.int(26, "Kijun-Sen Período", minval=1, group="⛩️ Ichimoku Settings")
+ichi_senkou_b_period = input.int(52, "Senkou Span B Período", minval=1, group="⛩️ Ichimoku Settings")
+ichi_displacement = input.int(26, "Displacement", minval=1, group="⛩️ Ichimoku Settings")
+ichi_tenkan_color = input.color(#007FFF, "Color Tenkan-Sen", group="🎨 Ichimoku Colors")
+ichi_kijun_color = input.color(#FF0016, "Color Kijun-Sen", group="🎨 Ichimoku Colors")
 
-ULTIMA tenía momentum VERDE 3v ✅ (confirma fuerza)
-Pero pivot 'H' → Degradó a LATERAL
-ADX 44.9 indica fuerza BRUTAL
-Solución Propuesta:
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⚡ ZIG ZAG SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+zz_deviation = input.float(5.0, "Price Deviation (%)", minval=0.1, group="⚡ Zig Zag Settings")
+zz_depth = input.int(10, "Pivot Legs", minval=2, group="⚡ Zig Zag Settings")
+zz_up_color = input.color(color.green, "Color Alcista", group="⚡ Zig Zag Settings")
+zz_down_color = input.color(color.red, "Color Bajista", group="⚡ Zig Zag Settings")
 
-✅ MANTENER validación momentum (filosofía FUERZA)
-✅ Permitir pivot 'H' si ADX + momentum EXTREMOS
-✅ Time Ladder: Graduar según intensidad
-Problema #2: Momentum 1v Bloqueado (MADUREZ)
-Archivo: 
-brain_think.py
- línea 407
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📍 SUPPORT/RESISTANCE SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+sr_show_breaks = input.bool(true, "Show Breaks", group="📍 S/R Settings")
+sr_left_bars = input.int(15, "Left Bars", minval=1, group="📍 S/R Settings")
+sr_right_bars = input.int(15, "Right Bars", minval=1, group="📍 S/R Settings")
+sr_volume_threshold = input.int(20, "Volume Threshold %", minval=0, group="📍 S/R Settings")
+sr_resistance_color = input.color(color.red, "Resistance", group="📍 S/R Settings", inline="sr")
+sr_support_color = input.color(#233dee, "Support", group="📍 S/R Settings", inline="sr")
 
-# ACTUAL - validate_force_propagation
-has_force = adx_val &gt; 25 and mom_color in ['green', 'lime'] and consecutive &gt;= 2
-Análisis:
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📊 MULTI-LAYER VOLUME PROFILE SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+mvp_period = input.int(300, "Period", minval=50, group="📊 Multi-Layer VP")
+mvp_resolution = input.int(100, "Resolution", minval=20, maxval=200, group="📊 Multi-Layer VP")
+mvp_profile_color = input.color(color.new(#00bbd4, 60), "Profile Color", group="📊 Multi-Layer VP")
+mvp_poc_color = input.color(color.blue, "PoC Color", group="📊 Multi-Layer VP")
+mvp_delta_pos = input.color(color.aqua, "Delta +", group="📊 Multi-Layer VP", inline="delta")
+mvp_delta_neg = input.color(color.red, "Delta -", group="📊 Multi-Layer VP", inline="delta")
+mvp_layer1 = input.bool(true, "Layer 1 (Full)", group="📊 Multi-Layer VP", inline="layers")
+mvp_layer2 = input.bool(true, "Layer 2 (1/2)", group="📊 Multi-Layer VP", inline="layers")
+mvp_layer3 = input.bool(false, "Layer 3 (1/4)", group="📊 Multi-Layer VP", inline="layers2")
+mvp_layer4 = input.bool(false, "Layer 4 (1/8)", group="📊 Multi-Layer VP", inline="layers2")
 
-ULTIMA 15M: ADX 37.2, Momentum VERDE 1v
-Bloqueado por consecutive &gt;= 2
-1v verde CONFIRMA fuerza (filosofía) pero falta madurez
-Solución Propuesta:
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📈 BB/KC STRATEGY SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+bbkc_length = input.int(20, "Length", minval=1, group="📈 BB/KC Strategy")
+bbkc_mult = input.float(1.0, "MultFactor", minval=0.001, maxval=50, group="📈 BB/KC Strategy")
+bbkc_use_true_range = input.bool(false, "Use TrueRange (KC)", group="📈 BB/KC Strategy")
+bbkc_highlight_squeeze = input.bool(true, "Highlight Squeeze", group="📈 BB/KC Strategy")
+bbkc_show_signals = input.bool(true, "Show Bull/Bear Signals", group="📈 BB/KC Strategy")
+bbkc_sar_start = input.float(0.02, "SAR Start", group="📈 BB/KC Strategy")
+bbkc_sar_increment = input.float(0.02, "SAR Increment", group="📈 BB/KC Strategy")
+bbkc_sar_maximum = input.float(0.2, "SAR Maximum", group="📈 BB/KC Strategy")
+bbkc_bb_color = input.color(color.red, "BB Color", group="📈 BB/KC Strategy", inline="bbkc1")
+bbkc_kc_color = input.color(color.lime, "KC Color", group="📈 BB/KC Strategy", inline="bbkc1")
 
-✅ MANTENER validación color momentum (filosofía)
-✅ Reducir requisito a 1v para detectar fuerza emergente
-✅ Graduar scoring por madurez (1v vs 2v vs 3v+)
-Problema #3: Thresholds Fijos No Consideran Fuerza Extrema
-Archivo: 
-brain_think.py
- línea 624
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📊 EMA ENVELOPE SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+emae_length = input.int(20, "EMA Length", minval=1, group="📊 EMA Envelope")
+emae_highlight = input.bool(true, "Bull/Bear Highlights", group="📊 EMA Envelope")
+emae_close_color = input.color(color.aqua, "EMA Close Color", group="📊 EMA Envelope")
+emae_high_color = input.color(color.red, "EMA High Color", group="📊 EMA Envelope")
+emae_low_color = input.color(color.lime, "EMA Low Color", group="📊 EMA Envelope")
 
-# ACTUAL - sniper_checklist
-has_force = force_score &gt;= 20
-Análisis:
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📈 SUPERTREND SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+st_atr_period = input.int(10, "ATR Period", minval=1, group="📈 Supertrend")
+st_multiplier = input.float(3.0, "ATR Multiplier", minval=0.1, step=0.1, group="📈 Supertrend")
+st_change_atr = input.bool(true, "Use ATR (vs SMA of TR)", group="📈 Supertrend")
+st_show_signals = input.bool(true, "Show Buy/Sell Signals", group="📈 Supertrend")
+st_highlighting = input.bool(true, "Trend Highlighting", group="📈 Supertrend")
+st_up_color = input.color(color.green, "Uptrend Color", group="📈 Supertrend", inline="st")
+st_down_color = input.color(color.red, "Downtrend Color", group="📈 Supertrend", inline="st")
 
-Con ULTIMA, force_score = 10 (solo bonus ADX)
-Threshold 20 es fijo
-No considera que ADX 44.9 es extremo
-Solución Propuesta:
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📊 DELTA VOLUME PROFILE SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+dvp_lookback = input.int(300, "Lookback Period", minval=50, group="📊 Delta Volume Profile")
+dvp_color_plus = input.color(#c9805c, "Volume +", group="📊 Delta Volume Profile")
+dvp_color_minus = input.color(#5c8bc9, "Volume -", group="📊 Delta Volume Profile")
+dvp_poc_plus = input.color(color.blue, "POC +", group="📊 Delta Volume Profile", inline="poc")
+dvp_poc_minus = input.color(color.rgb(218, 131, 0), "POC -", group="📊 Delta Volume Profile", inline="poc")
 
-✅ Thresholds dinámicos según ADX
-✅ Mantener validación momentum en force_propagation
-🛠️ FIXES PROPUESTOS - RESPETANDO FILOSOFÍA
-Fix #1: Permitir Pivot 'H' con Fuerza Extrema (ESTRUCTURA)
-Archivo: 
-brain_analyzer.py
- - Funciones 
-analyze_4h
-, 
-analyze_1h
-, 
-analyze_15m
-, 
-analyze_5m
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🧮 FUNCIONES DE CÁLCULO
+// ═══════════════════════════════════════════════════════════════════════════════════════
 
-PRINCIPIO:
-Estructura NO bloquea fuerza extrema SI momentum confirma
-Momentum SIEMPRE requerido (filosofía FUERZA PRIMERO)
+// 4 EMAs Function
+f_4emas() =&gt;
+    [ta.ema(close, ema1_length), ta.ema(close, ema2_length), 
+     ta.ema(close, ema3_length), ta.ema(close, ema4_length)]
 
-CÓDIGO ACTUAL (analyze_4h líneas 138-155):
-# ===== VALIDACIÓN CRUZADA (Bug #28 Fix) =====
-if di_direction == 'BULLISH':
-    # Validar con momentum y estructura
-    if momentum_data['color_current'] not in expected_colors_bullish:
-        direction = 'LATERAL'
-    elif last_pivot in ['H', 'LH']:
-        direction = 'LATERAL'  # ❌ Bloqueo absoluto por estructura
-    else:
-        direction = 'BULLISH'
-CÓDIGO PROPUESTO:
-# ===== VALIDACIÓN CRUZADA (Bug #28 Fix + ULTIMA Fix) =====
-if di_direction == 'BULLISH':
-    # PASO 1: Validar momentum (SIEMPRE requerido - filosofía FUERZA)
-    if momentum_data['color_current'] not in expected_colors_bullish:
-        direction = 'LATERAL'  # ✅ Sin momentum verde = NO hay fuerza
-    # PASO 2: Validar estructura (con excepción para fuerza extrema)
-    elif last_pivot in ['H', 'LH']:
-        # ✅ CORREGIDO: Permitir pivot 'H' si fuerza es EXTREMA Y momentum verde
-        # Fuerza extrema = ADX &gt; 40 + Spread &gt; 15 + Momentum maduro + Momentum VERDE (ya validado en PASO 1)
-        if adx_now &gt; 40 and abs(adx_data['spread']) &gt; 15 and momentum_data['consecutive_count'] &gt;= 2:
-            direction = 'BULLISH'  # Fuerza extrema supera estructura (momentum ya validado)
-        else:
-            direction = 'LATERAL'  # Estructura bloquea (fuerza normal)
-    else:
-        direction = 'BULLISH'
-Validación Filosofía:
+// Ichimoku Function
+f_ichimoku() =&gt;
+    tenkan = math.avg(ta.highest(high, ichi_tenkan_period), ta.lowest(low, ichi_tenkan_period))
+    kijun = math.avg(ta.highest(high, ichi_kijun_period), ta.lowest(low, ichi_kijun_period))
+    senkou_a = math.avg(tenkan, kijun)
+    senkou_b = math.avg(ta.highest(high, ichi_senkou_b_period), ta.lowest(low, ichi_senkou_b_period))
+    [tenkan, kijun, senkou_a, senkou_b]
 
-✅ Momentum SIEMPRE validado PRIMERO (línea 146)
-✅ Sin momentum verde → LATERAL (respeta filosofía)
-✅ Con momentum verde + fuerza extrema → Permite pivot 'H'
-✅ Time Ladder: Gradación por intensidad (ADX + spread + consecutive)
-✅ CRÍTICO: Línea 152 solo se ejecuta SI momentum es verde (pasó validación línea 146)
-Validación Filosofía:
+// Support/Resistance Function
+f_support_resistance() =&gt;
+    high_pivot = ta.pivothigh(high, sr_left_bars, sr_right_bars)
+    low_pivot = ta.pivotlow(low, sr_left_bars, sr_right_bars)
+    
+    var float resistance = na
+    var float support = na
+    
+    if not na(high_pivot)
+        resistance := high_pivot
+    if not na(low_pivot)
+        support := low_pivot
+    
+    short_vol = ta.ema(volume, 5)
+    long_vol = ta.ema(volume, 10)
+    vol_osc = 100 * (short_vol - long_vol) / long_vol
+    
+    res_break_vol = ta.crossover(close, resistance) and vol_osc &gt; sr_volume_threshold
+    sup_break_vol = ta.crossunder(close, support) and vol_osc &gt; sr_volume_threshold
+    bull_wick = ta.crossover(close, resistance) and (open - low) &gt; (close - open)
+    bear_wick = ta.crossunder(close, support) and (open - close) &lt; (high - open)
+    res_break_wick = bull_wick and not res_break_vol
+    sup_break_wick = bear_wick and not sup_break_vol
+    
+    [resistance, support, res_break_vol, sup_break_vol, res_break_wick, sup_break_wick]
 
-✅ Momentum SIEMPRE validado PRIMERO
-✅ Sin momentum verde → LATERAL (respeta filosofía)
-✅ Con momentum verde + fuerza extrema → Permite pivot 'H'
-✅ Time Ladder: Gradación por intensidad (ADX + spread + consecutive)
-Caso ULTIMA con Fix:
-
-Momentum 3v verde → ✅ PASA (filosofía)
-ADX 44.9 &gt; 40 ✅, Spread 19.6 &gt; 15 ✅, Consecutive 3 &gt;= 2 ✅
-Direction: BULLISH (fuerza extrema supera pivot 'H')
-Fix #2: Reducir Requisito Consecutive a 1v (MADUREZ)
-Archivo: 
-brain_think.py
- - 
-validate_force_propagation()
- (líneas 386-464)
-
-PRINCIPIO:
-Momentum 1v verde CONFIRMA fuerza (filosofía)
-Graduar scoring por madurez: 1v (emergente) vs 2v (confirmado) vs 3v+ (maduro)
-
-CÓDIGO ACTUAL:
-def validate_force_propagation(ladder, direction):
-    for tf in tfs:
-        adx_val = analysis.get('adx', {}).get('adx_current', 0)
-        mom_color = mom_data.get('color_current', 'neutral')
-        consecutive = mom_data.get('consecutive_count', 0)
+// Multi-Layer Volume Profile Function
+f_multi_vp(length, bins, poc_mult, show_style = true) =&gt;
+    if barstate.islast
+        var values = array.new&lt;float&gt;()
+        var vol_bins = array.new&lt;float&gt;(bins)
+        var tot_vol = array.new&lt;float&gt;()
+        var delta_vol = array.new&lt;float&gt;()
+        var bin_levels = array.new&lt;line&gt;()
+        var bin_labels = array.new&lt;label&gt;()
         
-        # ❌ REQUISITO ESTRICTO: 2+ consecutivas
-        if direction == 'BULLISH':
-            has_force = adx_val &gt; 25 and mom_color in ['green', 'lime'] and consecutive &gt;= 2
-        else:
-            has_force = adx_val &gt; 25 and mom_color in ['red', 'maroon'] and consecutive &gt;= 2
-CÓDIGO PROPUESTO:
-def validate_force_propagation(ladder, direction):
-    """
-    Detecta fuerza PROPAGÁNDOSE en CUALQUIER combinación de TFs.
-    AJUSTADO: 1v suficiente para confirmar fuerza (filosofía FUERZA PRIMERO)
-    """
-    score = 0
-    reasons = []
-    
-    # Extraer datos
-    tfs = ['4h', '1h', '15m', '5m']
-    force_map = {}
-    
-    for tf in tfs:
-        analysis = ladder.get(tf, {}) or {}
-        adx_val = analysis.get('adx', {}).get('adx_current', 0)
-        mom_data = analysis.get('momentum', {})
-        mom_color = mom_data.get('color_current', 'neutral')
-        consecutive = mom_data.get('consecutive_count', 0)
+        values.clear()
+        vol_bins.fill(0)
+        tot_vol.clear()
+        delta_vol.clear()
         
-        # ✅ VALIDACIÓN FILOSOFÍA: Color momentum confirma dirección
-        if direction == 'BULLISH':
-            mom_confirms = mom_color in ['green', 'lime']
-        else:
-            mom_confirms = mom_color in ['red', 'maroon']
+        // Limpiar líneas y labels anteriores
+        if bin_levels.size() &gt; 0
+            for i = 0 to bin_levels.size() - 1
+                line.delete(bin_levels.get(i))
+            bin_levels.clear()
         
-        # ✅ NUEVO: Graduar fuerza por madurez
-        has_mature_force = adx_val &gt; 25 and mom_confirms and consecutive &gt;= 3  # Maduro
-        has_confirmed_force = adx_val &gt; 25 and mom_confirms and consecutive &gt;= 2 # Confirmado
-        has_emerging_force = adx_val &gt; 25 and mom_confirms and consecutive &gt;= 1  # Emergente
+        if bin_labels.size() &gt; 0
+            for i = 0 to bin_labels.size() - 1
+                label.delete(bin_labels.get(i))
+            bin_labels.clear()
         
-        force_map[tf] = {
-            'has_mature': has_mature_force,
-            'has_confirmed': has_confirmed_force,
-            'has_emerging': has_emerging_force,
-            'adx': adx_val,
-            'consecutive': consecutive,
-            'mom_color': mom_color
-        }
-    
-    # Detectar propagación (MATURE/CONFIRMED)
-    consecutive_strong = 0
-    max_consecutive_strong = 0
-    
-    # Detectar propagación (ANY: mature/confirmed/emerging)
-    consecutive_any = 0
-    max_consecutive_any = 0
-    
-    strongest_tf = None
-    max_adx = 0
-    
-    for tf in tfs:
-        # Strong = mature o confirmed
-        if force_map[tf]['has_mature'] or force_map[tf]['has_confirmed']:
-            consecutive_strong += 1
-        else:
-            max_consecutive_strong = max(max_consecutive_strong, consecutive_strong)
-            consecutive_strong = 0
+        // Recolectar valores para rango
+        for i = 0 to length - 1
+            values.push(high[i])
+            values.push(low[i])
         
-        # Any = mature, confirmed o emerging
-        if force_map[tf]['has_emerging']:
-            consecutive_any += 1
-            if force_map[tf]['adx'] &gt; max_adx:
-                max_adx = force_map[tf]['adx']
-                strongest_tf = tf
-        else:
-            max_consecutive_any = max(max_consecutive_any, consecutive_any)
-            consecutive_any = 0
-    
-    max_consecutive_strong = max(max_consecutive_strong, consecutive_strong)
-    max_consecutive_any = max(max_consecutive_any, consecutive_any)
-    
-    # ===== SCORING GRADUADO (Time Ladder) =====
-    if max_consecutive_strong &gt;= 4:
-        score = 40  # Full cascade maduro/confirmado
-        reasons.append(f"🔥 Full cascade STRONG (4H→5M, ADX {max_adx:.1f})")
-    elif max_consecutive_strong == 3:
-        score = 35  # 3 TFs maduros
-        reasons.append(f"⚡ Strong cascade (3 TFs, ADX {max_adx:.1f})")
-    elif max_consecutive_strong == 2:
-        score = 30  # 2 TFs maduros
-        reasons.append(f"✅ Force confirmed (2 TFs strong, ADX {max_adx:.1f})")
-    elif max_consecutive_any &gt;= 3:
-        # ✅ NUEVO: 3 TFs con fuerza (incluyendo emergente 1v)
-        score = 25
-        reasons.append(f"⚡ Emerging force (3 TFs, ADX {max_adx:.1f})")
-    elif max_consecutive_any == 2:
-        # ✅ NUEVO: 2 TFs con fuerza
-        score = 20
-        reasons.append(f"✅ Force propagating (2 TFs, ADX {max_adx:.1f})")
-    elif max_consecutive_any == 1 and max_adx &gt; 35:
-        # ✅ NUEVO: 1 TF pero ADX muy alto
-        score = 15
-        reasons.append(f"💪 Single TF strong force (ADX {max_adx:.1f})")
-    else:
-        score = 0
-        reasons.append("❌ No force propagation")
-    
-    # Bonus ADX extremo (mantener)
-    if max_adx &gt; 40:
-        score += 10
-        reasons.append(f"💥 BRUTAL FORCE (ADX {max_adx:.1f})")
-    elif max_adx &gt; 30:
-        score += 5
-        reasons.append(f"💪 Strong ADX ({max_adx:.1f})")
-    
-    # ✅ Válido si: 2+ TFs con fuerza O 1 TF con ADX &gt; 35
-    valid = max_consecutive_any &gt;= 2 or (max_adx &gt; 35 and max_consecutive_any &gt;= 1)
-    
-    return {
-        'valid': valid,
-        'score': score,
-        'reason': ' | '.join(reasons),
-        'data': {
-            'max_consecutive_strong': max_consecutive_strong,
-            'max_consecutive_any': max_consecutive_any,
-            'strongest_tf': strongest_tf,
-            'max_adx': max_adx
-        }
-    }
-Validación Filosofía:
-
-✅ mom_confirms valida color momentum (filosofía FUERZA)
-✅ 1v verde = fuerza emergente (válido)
-✅ Scoring graduado 15-40 por madurez (Time Ladder)
-✅ Sin momentum verde → NO fuerza (filosofía)
-Caso ULTIMA con Fix:
-
-4H: ADX 44.9, Mom 3v verde → MATURE ✅
-15M: ADX 37.2, Mom 1v verde → EMERGING ✅
-Score: 25 (emerging 2 TFs) + 10 (ADX&gt;40) = 35 pts ✅
-Fix #3: Thresholds Dinámicos por ADX
-Archivo: 
-brain_think.py
- - 
-sniper_checklist()
- (línea 624)
-
-CÓDIGO ACTUAL:
-# PASO 1: Verificar FUERZA mínima (Gatekeeper)
-has_force = force_score &gt;= 20
-has_context = context_score &gt;= 10
-CÓDIGO PROPUESTO:
-# PASO 1: Verificar FUERZA mínima (DINÁMICO por ADX)
-max_adx = layers['force']['data'].get('max_adx', 0)
-# ✅ Threshold dinámico: ADX extremo permite score más bajo
-if max_adx &gt; 40:
-    force_threshold = 15  # ADX brutal
-elif max_adx &gt; 35:
-    force_threshold = 18  # ADX fuerte
-else:
-    force_threshold = 20  # Normal
-has_force = force_score &gt;= force_threshold
-has_context = context_score &gt;= 10
-Validación Filosofía:
-
-✅ force_score viene de 
-validate_force_propagation
- que valida momentum
-✅ Threshold más bajo solo si ADX extremo (gradación)
-✅ Momentum siempre validado en propagation (filosofía)
-Caso ULTIMA con Fix:
-
-force_score: 35
-max_adx: 44.9
-Threshold: 15 (ADX&gt;40)
-has_force: TRUE ✅
-Fix #4: Aplicar Fix #1 a Todos los TFs
-Replicar la lógica de "fuerza extrema supera estructura" en:
-
-analyze_1h()
- (misma lógica)
-analyze_15m()
- (misma lógica)
-analyze_5m()
- (misma lógica)
-Fix #5: Bonus Pattern + Fuerza Brutal
-Archivo: 
-brain_intelligent.py
- - 
-make_pattern_based_decision()
- (línea 178)
-
-CÓDIGO ACTUAL:
-if patterns['best_pattern'] and patterns['best_pattern']['confidence'] &gt; 70:
-    score += 25
-    reasons.append(f"✨ High Confidence Pattern: {patterns['best_pattern']['type']}")
-CÓDIGO PROPUESTO:
-if patterns['best_pattern'] and patterns['best_pattern']['confidence'] &gt; 70:
-    pattern_bonus = 25
-    
-    # ✅ Bonus extra si fuerza brutal (ADX avg &gt; 40)
-    adx_avg = signals.get('adx_val', 0)
-    if market_force.get('detected') and adx_avg &gt; 40:
-        pattern_bonus = 35
-        reasons.append(f"🔥 EXPLOSIVE COMBO: Pattern {patterns['best_pattern']['type']} + BRUTAL FORCE (ADX {adx_avg:.1f})")
-    else:
-        reasons.append(f"✨ High Confidence Pattern: {patterns['best_pattern']['type']}")
-    
-    score += pattern_bonus
-Validación Filosofía:
-
-✅ 
-market_force
- viene de validación que requiere momentum
-✅ Bonus solo si fuerza REAL (momentum confirmado)
-📊 Impacto Esperado - ULTIMA
-Antes (Con Bugs):
-Componente	Score	Razón
-4H Direction	LATERAL	Pivot 'H' bloqueó ❌
-Force Propagation	10	Solo bonus ADX (1 TF requisito 2v) ❌
-has_force	FALSE	10 &lt; 20 ❌
-Resultado	RECHAZADO	❌
-Después (Con Fixes):
-Componente	Score	Razón
-4H Direction	BULLISH	Momentum verde + ADX&gt;40 supera pivot ✅
-Force Propagation	35	2 TFs (4H mature, 15M emerging) + ADX&gt;40 bonus ✅
-has_force	TRUE	35 &gt;= 15 (threshold ADX&gt;40) ✅
-Pattern Bonus	35	DOUBLE_BOTTOM + BRUTAL FORCE ✅
-Resultado	READY o WAITING_PATTERN	✅
-🎯 Filosofía FUERZA PRIMERO - VALIDACIÓN FINAL
-✅ SIEMPRE Valida Momentum
-# TODOS los fixes validan momentum PRIMERO
-if momentum_data['color_current'] not in expected_colors_bullish:
-    direction = 'LATERAL'  # ✅ Sin momentum verde = NO fuerza
-✅ Time Ladder Scoring
-Momentum 1v: +15-25 (emergente)
-Momentum 2v: +20-30 (confirmado)
-Momentum 3v+: +30-40 (maduro)
-✅ No Código Binario
-Estructura no bloquea si fuerza extrema
-Thresholds dinámicos por ADX
-Múltiples caminos para clasificar BULLISH
-✅ FUERZA = ADX + DI + Momentum
-Bug #28: ✅ Mantenido sin cambios
-Fixes ULTIMA: ✅ Relajan estructura/madurez
-Momentum: ✅ SIEMPRE requerido
-📝 Archivos a Modificar
-1. 
-brain_analyzer.py
-analyze_4h()
- (líneas 138-155) - Fix #1
-analyze_1h()
- (similar) - Fix #4
-analyze_15m()
- (similar) - Fix #4
-analyze_5m()
- (similar) - Fix #4
-2. 
-brain_think.py
-validate_force_propagation()
- (líneas 386-464) - Fix #2
-sniper_checklist()
- (línea 624) - Fix #3
-3. 
-brain_intelligent.py
-make_pattern_based_decision()
- (línea 178) - Fix #5
-✅ Checklist Pre-Implementación
- Leer plan completo
- Validar que respeta filosofía FUERZA PRIMERO
- Confirmar que Bug #28 se mantiene
- Aprobar implementación
-Estado: ⏳ PENDIENTE APROBACIÓN
-
-Problema Crítico: Bot rechaza monedas explosivas por requisitos demasiado estrictos
-Caso: ULTIMA/USDT - ADX 44.9, Pattern DOUBLE_BOTTOM 75% → RECHAZADO
-Root Cause: 
-validate_force_propagation
- requiere momentum 2+ en TODOS los TFs
-
-🔍 ROOT CAUSE ANALYSIS
-Caso ULTIMA/USDT - Datos Reales
-ADX 1D: 56.1 (STRONG)
-ADX 4H: 44.9 (STRONG) - DI+ 28.0 &gt;&gt; DI- 8.4 - Momentum 3v  
-ADX 15M: 37.2 (STRONG) - Momentum 1v ❌
-Pattern: DOUBLE_BOTTOM (75% confidence)
-Resultado: "No force propagation" +10 pts → RECHAZADO
-Problema #1: Momentum Requirement Demasiado Estricto
-Archivo: 
-brain_think.py
- línea 407
-
-CÓDIGO ACTUAL (INCORRECTO):
-def validate_force_propagation(ladder, direction):
-    for tf in tfs:
-        adx_val = analysis.get('adx', {}).get('adx_current', 0)
-        mom_color = mom_data.get('color_current', 'neutral')
-        consecutive = mom_data.get('consecutive_count', 0)
+        float max_val = values.max()
+        float min_val = values.min()
+        float step = (max_val - min_val) / bins
         
-        # ❌ PROBLEMA: Requiere 2+ consecutivas EN CADA TF
-        if direction == 'BULLISH':
-            has_force = adx_val &gt; 25 and mom_color in ['green', 'lime'] and consecutive &gt;= 2
-Problema:
-
-ULTIMA 15M tenía ADX 37.2 + Momentum verde PERO solo 1 vela
-Bloqueado por consecutive &gt;= 2
-Pierde monedas en inicio de explosión
-Problema #2: Direction LATERAL Rompe Force Detection
-Archivo: 
-brain_analyzer.py
- línea 140 (Bug #28 fix)
-
-CÓDIGO ACTUAL:
-# analyze_4h()
-if di_direction == 'BULLISH':
-    if momentum_data['color_current'] not in expected_colors_bullish:
-        direction = 'LATERAL'  # ❌ Degrada a LATERAL
-    elif last_pivot in ['H', 'LH']:
-        direction = 'LATERAL'  # ❌ Degrada a LATERAL
-Problema ULTIMA:
-
-Output: 4H | ULTIMA | LATERAL STRONG | ADX:44.9
-DI+ 28.0 &gt;&gt; DI- 8.4 → Debería ser BULLISH
-Momentum 3v verde → Confirma fuerza
-Degradado a LATERAL probablemente por pivot 'H'
-Impacto en Force Detection:
-
-# sniper_checklist línea 624
-if not has_force or not has_context:
-    if not has_force:
-        summary = "❌ REJECTED: No Force"
-Si 4H es LATERAL → 
-validate_context_layer
- da menor score → Falla contexto
-
-Problema #3: Momentum 1v es Válido para Explosiones
-En inicio de movimientos explosivos:
-
-ADX puede ser ALTO (heredado de velas anteriores)
-Momentum puede ser 1v (primer vela verde después de corrección)
-Esto ES fuerza - solo falta madurez
-Solución: Graduar scoring por consecutive:
-
-1v: +15 (fuerza iniciando)
-2v: +20 (fuerza confirmada)
-3v+: +30-35 (fuerza madura)
-🛠️ FIXES PROPUESTOS
-Fix #1: Relajar Momentum Requirement en 
-validate_force_propagation
-Archivo: 
-brain_think.py
- (líneas 386-464)
-
-CÓDIGO PROPUESTO:
-def validate_force_propagation(ladder, direction):
-    """
-    Detecta fuerza PROPAGÁNDOSE en CUALQUIER combinación de TFs.
-    AJUSTADO: Requisitos más flexibles para captar explosiones tempranas
-    """
-    score = 0
-    reasons = []
-    
-    # Extraer datos
-    tfs = ['4h', '1h', '15m', '5m']
-    force_map = {}
-    
-    for tf in tfs:
-        analysis = ladder.get(tf, {}) or {}
-        adx_val = analysis.get('adx', {}).get('adx_current', 0)
-        mom_data = analysis.get('momentum', {})
-        mom_color = mom_data.get('color_current', 'neutral')
-        consecutive = mom_data.get('consecutive_count', 0)
+        // Calcular volumen por bin
+        for i = 0 to length - 1
+            c = close[i]
+            o = open[i]
+            vol = volume[i]
+            
+            tot_vol.push(vol)
+            delta_vol.push(c &gt; o ? vol : -vol)
+            
+            for j = 0 to bins - 1
+                lower = min_val + step * j
+                upper = lower + step
+                
+                if c &lt;= upper + step * 1.5 and c &gt;= lower - step * 1.5
+                    vol_bins.set(j, vol_bins.get(j) + vol)
         
-        # ✅ NUEVO: Graduar fuerza por madurez de momentum
-        if direction == 'BULLISH':
-            mom_aligned = mom_color in ['green', 'lime']
-        else:
-            mom_aligned = mom_color in ['red', 'maroon']
+        // Dibujar perfil
+        var poly = array.new&lt;chart.point&gt;()
+        poly.clear()
         
-        # Detectar fuerza con requisitos graduados
-        has_strong_force = adx_val &gt; 25 and mom_aligned and consecutive &gt;= 2
-        has_emerging_force = adx_val &gt; 25 and mom_aligned and consecutive &gt;= 1  # ✅ NUEVO
+        bool poc_found = false
+        float max_vol = vol_bins.max()
         
-        force_map[tf] = {
-            'has_strong_force': has_strong_force,
-            'has_emerging_force': has_emerging_force,
-            'adx': adx_val,
-            'mom_consecutive': consecutive,
-            'mom_color': mom_color
-        }
-    
-    # Detectar propagación (STRONG)
-    consecutive_strong = 0
-    max_consecutive_strong = 0
-    
-    # Detectar propagación (EMERGING + STRONG)
-    consecutive_any = 0
-    max_consecutive_any = 0
-    
-    strongest_tf = None
-    max_adx = 0
-    
-    for tf in tfs:
-        # Track STRONG force
-        if force_map[tf]['has_strong_force']:
-            consecutive_strong += 1
-        else:
-            max_consecutive_strong = max(max_consecutive_strong, consecutive_strong)
-            consecutive_strong = 0
+        for i = 0 to bins - 1
+            lower = min_val + step * i
+            upper = lower + step
+            mid = math.avg(upper, lower)
+            
+            vol = int(vol_bins.get(i) / max_vol * 25)
+            start = bar_index - length
+            end_point = start + vol
+            
+            poly.push(chart.point.from_index(i == 0 ? start : i == bins - 1 ? start : end_point + 1, mid))
+            
+            // Dibujar POC
+            if vol_bins.get(i) == max_vol and not poc_found
+                poc_found := true
+                bin_labels.push(label.new(start, mid, str.tostring(vol_bins.get(i), format.volume), style=label.style_label_right, color=color.new(mvp_poc_color, 25)))
+                bin_levels.push(line.new(start, mid, start + int(length / poc_mult), mid, color=mvp_poc_color, width=3))
+                
+                if show_style
+                    bin_levels.push(line.new(start, max_val, bar_index, max_val, color=chart.fg_color))
+                    bin_levels.push(line.new(start, min_val, bar_index, min_val, color=chart.fg_color))
+                    bin_levels.push(line.new(start, max_val, start, min_val, color=chart.fg_color))
+                    
+                    bin_labels.push(label.new(start, max_val, "Total\n" + str.tostring(tot_vol.sum(), format.volume), style=label.style_label_down, color=color.blue, size=size.small))
+                    bin_labels.push(label.new(start, min_val, str.tostring(delta_vol.sum(), format.volume) + "\nDelta", style=label.style_label_up, size=size.small, color=delta_vol.sum() &lt; 0 ? mvp_delta_neg : mvp_delta_pos))
         
-        # Track ANY force (emerging or strong)
-        if force_map[tf]['has_emerging_force'] or force_map[tf]['has_strong_force']:
-            consecutive_any += 1
-            if force_map[tf]['adx'] &gt; max_adx:
-                max_adx = force_map[tf]['adx']
-                strongest_tf = tf
-        else:
-            max_consecutive_any = max(max_consecutive_any, consecutive_any)
-            consecutive_any = 0
+        polyline.delete(polyline.new(poly, line_color=#00e67700, fill_color=mvp_profile_color)[1])
+
+// BB/KC Strategy Function
+f_bb_kc_strategy() =&gt;
+    // Bollinger Bands
+    basis = ta.sma(close, bbkc_length)
+    dev = bbkc_mult * ta.stdev(close, bbkc_length)
+    upper_bb = basis + dev
+    lower_bb = basis - dev
     
-    max_consecutive_strong = max(max_consecutive_strong, consecutive_strong)
-    max_consecutive_any = max(max_consecutive_any, consecutive_any)
+    // Keltner Channels
+    ma = ta.ema(close, bbkc_length)
+    range_val = bbkc_use_true_range ? ta.tr : high - low
+    rangema = ta.ema(range_val, bbkc_length)
+    upper_kc = ma + rangema * bbkc_mult
+    lower_kc = ma - rangema * bbkc_mult
     
-    # Scoring GRADUADO (Time Ladder)
-    if max_consecutive_strong &gt;= 4:
-        score = 40  # Full cascade STRONG
-        reasons.append(f"🔥 Full cascade STRONG (4H→5M, ADX {max_adx:.1f})")
-    elif max_consecutive_strong == 3:
-        score = 35  # 3 TFs STRONG
-        reasons.append(f"⚡ Strong cascade (3 TFs, ADX {max_adx:.1f})")
-    elif max_consecutive_strong == 2:
-        score = 30  # 2 TFs STRONG
-        reasons.append(f"✅ Force confirmed (2 TFs, ADX {max_adx:.1f})")
-    elif max_consecutive_any &gt;= 3:
-        # ✅ NUEVO: 3 TFs con fuerza emergente
-        score = 25
-        reasons.append(f"⚡ Emerging force (3 TFs, ADX {max_adx:.1f})")
-    elif max_consecutive_any == 2:
-        # ✅ NUEVO: 2 TFs con fuerza emergente
-        score = 20
-        reasons.append(f"✅ Force detected (2 TFs emerging, ADX {max_adx:.1f})")
-    elif max_consecutive_any == 1 and max_adx &gt; 35:
-        # ✅ NUEVO: 1 TF pero ADX BRUTAL
-        score = 15
-        reasons.append(f"💪 Single TF BRUTAL force (ADX {max_adx:.1f})")
-    else:
-        score = 0
-        reasons.append("❌ No force propagation")
+    // Señales
+    bearish = low &lt; lower_kc
+    bullish = high &gt; upper_kc
     
-    # Bonus ADX extremo
-    if max_adx &gt; 40:
-        score += 10
-        reasons.append(f"💥 BRUTAL FORCE (ADX {max_adx:.1f})")
-    elif max_adx &gt; 30:
-        score += 5
-        reasons.append(f"💪 Strong ADX ({max_adx:.1f})")
+    // Squeeze (cuando BB está dentro de KC)
+    squeeze_on = upper_bb &lt; upper_kc and lower_bb &gt; lower_kc
     
-    valid = max_consecutive_any &gt;= 2 or (max_adx &gt; 35 and max_consecutive_any &gt;= 1)
+    // SAR
+    sar_value = ta.sar(bbkc_sar_start, bbkc_sar_increment, bbkc_sar_maximum)
     
-    return {
-        'valid': valid,
-        'score': score,
-        'reason': ' | '.join(reasons),
-        'data': {
-            'max_consecutive_strong': max_consecutive_strong,
-            'max_consecutive_any': max_consecutive_any,
-            'strongest_tf': strongest_tf,
-            'max_adx': max_adx
-        }
-    }
-Cambios Clave:
+    [basis, upper_bb, lower_bb, ma, upper_kc, lower_kc, bearish, bullish, squeeze_on, sar_value]
 
-✅ Detecta fuerza "emergente" (1v+) y "strong" (2v+)
-✅ Score graduado 15-40 según madurez
-✅ Permite 1 TF si ADX &gt; 35 (fuerza brutal)
-✅ Bonus ADX 30-40 (+5), &gt;40 (+10)
-Caso ULTIMA con Fix:
-
-4H: ADX 44.9, Mom 3v → STRONG ✅
-15M: ADX 37.2, Mom 1v → EMERGING ✅
-Score: 25 (emerging) + 10 (ADX&gt;40) = 35 pts ✅
-Fix #2: No Degradar a LATERAL si ADX es BRUTAL
-Archivo: 
-brain_analyzer.py
- - 
-analyze_4h()
- (líneas 138-154)
-
-CÓDIGO ACTUAL (PROBLEMÁTICO):
-# ===== VALIDACIÓN CRUZADA (Bug #28 Fix) =====
-if di_direction == 'BULLISH':
-    # Validar con momentum y estructura
-    if momentum_data['color_current'] not in expected_colors_bullish:
-        direction = 'LATERAL'  # ❌ Degradación absoluta
-    elif last_pivot in ['H', 'LH']:
-        direction = 'LATERAL'  # ❌ Degradación absoluta
-    else:
-        direction = 'BULLISH'
-CÓDIGO PROPUESTO:
-# ===== VALIDACIÓN CRUZADA CON EXCEPCIÓN PARA FUERZA BRUTAL =====
-if di_direction == 'BULLISH':
-    # ✅ NUEVO: Si ADX es BRUTAL (&gt;40), permitir BULLISH incluso con estructura contra
-    if adx_now &gt; 40 and abs(adx_data['spread']) &gt; 15:
-        # Fuerza BRUTAL - permitir incluso si momentum no es perfecto
-        direction = 'BULLISH'
-    # Validar con momentum y estructura (requisitos normales)
-    elif momentum_data['color_current'] not in expected_colors_bullish:
-        direction = 'LATERAL'
-    elif last_pivot in ['H', 'LH']:
-        # ✅ NUEVO: Si ADX &gt; 35 y momentum fuerte, no degradar por pivot
-        if adx_now &gt; 35 and momentum_data['consecutive_count'] &gt;= 2:
-            direction = 'BULLISH'  # Fuerza supera estructura
-        else:
-            direction = 'LATERAL'
-    else:
-        direction = 'BULLISH'
-Casos:
-
-ADX &gt; 40 + Spread &gt; 15 → BULLISH (fuerza brutal)
-ADX &gt; 35 + Mom 2v+ en pivot H → BULLISH (fuerza supera estructura)
-Otros → Validación normal
-Caso ULTIMA con Fix:
-
-ADX 44.9 &gt; 40 ✅
-Spread 19.6 &gt; 15 ✅
-Direction: BULLISH (no degradado a LATERAL)
-Fix #3: Aplicar Misma Lógica a 
-analyze_1h
-, 
-analyze_15m
-, 
-analyze_5m
-Replicar la lógica de "fuerza brutal" en los otros 3 TFs para consistencia.
-
-Fix #4: Reducir Threshold has_force en Sniper
-Archivo: 
-brain_think.py
- - 
-sniper_checklist()
- (línea 624)
-
-CÓDIGO ACTUAL:
-# PASO 1: Verificar FUERZA mínima (Gatekeeper)
-has_force = force_score &gt;= 20 
-has_context = context_score &gt;= 10
-CÓDIGO PROPUESTO:
-# PASO 1: Verificar FUERZA mínima (AJUSTADO para captar explosiones)
-# ✅ NUEVO: Con ADX brutal, relajar threshold
-max_adx = layers['force']['data'].get('max_adx', 0)
-if max_adx &gt; 40:
-    has_force = force_score &gt;= 15  # ✅ Threshold más bajo con fuerza brutal
-elif max_adx &gt; 35:
-    has_force = force_score &gt;= 18
-else:
-    has_force = force_score &gt;= 20  # Normal
-has_context = context_score &gt;= 10
-Caso ULTIMA con Fix:
-
-force_score: 35
-max_adx: 44.9
-Threshold: 15 (ADX&gt;40)
-has_force: TRUE ✅
-Fix #5: Bonus para Patterns de Alta Confianza
-Archivo: 
-brain_intelligent.py
- - 
-make_pattern_based_decision()
- (línea 178)
-
-CÓDIGO ACTUAL:
-if patterns['best_pattern'] and patterns['best_pattern']['confidence'] &gt; 70:
-    score += 25
-    reasons.append(f"✨ High Confidence Pattern: {patterns['best_pattern']['type']}")
-CÓDIGO PROPUESTO:
-if patterns['best_pattern'] and patterns['best_pattern']['confidence'] &gt; 70:
-    pattern_bonus = 25
+// EMA Envelope Function
+f_ema_envelope() =&gt;
+    ema_close = ta.ema(close, emae_length)
+    ema_high = ta.ema(high, emae_length)
+    ema_low = ta.ema(low, emae_length)
     
-    # ✅ NUEVO: Bonus extra si hay fuerza brutal
-    if market_force.get('detected') and signals.get('adx_val', 0) &gt; 40:
-        pattern_bonus = 35  # Pattern + Fuerza = Combo explosivo
-        reasons.append(f"🔥 EXPLOSIVE: Pattern {patterns['best_pattern']['type']} + BRUTAL FORCE")
-    else:
-        reasons.append(f"✨ High Confidence Pattern: {patterns['best_pattern']['type']}")
+    // Condiciones de tendencia
+    bull_normal = high &gt; ema_high and low &gt; ema_low
+    bear_normal = high &lt; ema_high and low &lt; ema_low
+    sidewise = not bull_normal and not bear_normal
     
-    score += pattern_bonus
-Caso ULTIMA con Fix:
+    // Fuerza de tendencia
+    bull_strong = bull_normal and low &gt; ema_high
+    bear_strong = bear_normal and high &lt; ema_low
+    
+    // Color de fondo
+    bg_color = bull_strong ? color.new(color.lime, 90) :
+               bull_normal ? color.new(color.green, 90) :
+               bear_strong ? color.new(color.red, 90) :
+               bear_normal ? color.new(color.orange, 90) :
+               sidewise ? color.new(color.blue, 95) : na
+    
+    [ema_close, ema_high, ema_low, bg_color, bull_normal, bear_normal, bull_strong, bear_strong]
 
-Pattern: DOUBLE_BOTTOM 75% ✅
-ADX avg: ~40
-Bonus: 35 (en vez de 25)
-📊 Impacto Esperado - Caso ULTIMA
-Antes (Con Bugs):
-Componente	Score	Razón
-Force Propagation	10	"No force" (solo bonus ADX) ❌
-4H Direction	LATERAL	Degradado por pivot H ❌
-Context	Bajo	4H LATERAL reduce score ❌
-has_force	FALSE	force_score 10 &lt; 20 ❌
-Resultado	RECHAZADO	❌
-Después (Con Fixes):
-Componente	Score	Razón
-Force Propagation	35	Emerging (25) + ADX&gt;40 (10) ✅
-4H Direction	BULLISH	ADX&gt;40 + Spread&gt;15 ✅
-Context	Alto	4H BULLISH aumenta score ✅
-has_force	TRUE	force_score 35 &gt;= 15 (ADX&gt;40) ✅
-Pattern Bonus	35	DOUBLE_BOTTOM + BRUTAL FORCE ✅
-Resultado	READY o WAITING_PATTERN	✅
-🎯 Filosofía Time Ladder Mantenida
-✅ Scoring Graduado:
+// Supertrend Function
+f_supertrend() =&gt;
+    src = hl2
+    atr2 = ta.sma(ta.tr, st_atr_period)
+    atr_val = st_change_atr ? ta.atr(st_atr_period) : atr2
+    
+    up = src - (st_multiplier * atr_val)
+    up1 = nz(up[1], up)
+    up := close[1] &gt; up1 ? math.max(up, up1) : up
+    
+    dn = src + (st_multiplier * atr_val)
+    dn1 = nz(dn[1], dn)
+    dn := close[1] &lt; dn1 ? math.min(dn, dn1) : dn
+    
+    var int trend = 1
+    trend := nz(trend[1], trend)
+    trend := trend == -1 and close &gt; dn1 ? 1 : trend == 1 and close &lt; up1 ? -1 : trend
+    
+    buy_signal = trend == 1 and trend[1] == -1
+    sell_signal = trend == -1 and trend[1] == 1
+    
+    [up, dn, trend, buy_signal, sell_signal]
 
-Momentum 1v: +15 (emergente)
-Momentum 2v: +20 (confirmado)
-Momentum 3v+: +30-40 (maduro)
-✅ Thresholds Dinámicos:
+// Delta Volume Profile Function
+f_delta_vp() =&gt;
+    var max_min = array.new&lt;float&gt;()
+    var vol_plus = array.new&lt;float&gt;()
+    var vol_minus = array.new&lt;float&gt;()
+    var boxes = array.new&lt;box&gt;()
+    var labels = array.new&lt;label&gt;()
+    
+    step = 0.
+    bins = 0
+    
+    atr_val = ta.atr(200)
+    
+    if barstate.islast
+        // Limpiar arrays
+        max_min.clear()
+        
+        // Limpiar boxes anteriores
+        if boxes.size() &gt; 0
+            for b in boxes
+                box.delete(b)
+            boxes.clear()
+        
+        // Limpiar labels anteriores
+        if labels.size() &gt; 0
+            for l in labels
+                label.delete(l)
+            labels.clear()
+        
+        // Recolectar máximos y mínimos
+        for i = 0 to dvp_lookback - 1
+            h = high[i]
+            l = low[i]
+            max_min.push(h)
+            max_min.push(l)
+        
+        // Calcular bins y step
+        bins := int((max_min.max() - max_min.min()) / atr_val)
+        bins := math.max(bins, 20) // Mínimo 20 bins
+        bins := math.min(bins, 150) // Máximo 150 bins
+        step := (max_min.max() - max_min.min()) / bins
+        
+        // Inicializar arrays de volumen
+        vol_plus.clear()
+        vol_minus.clear()
+        for i = 0 to bins - 1
+            vol_plus.push(0.0)
+            vol_minus.push(0.0)
+        
+        // Calcular volumen por nivel de precio
+        for i = 0 to dvp_lookback - 1
+            h = high[i]
+            l = low[i]
+            c = close[i]
+            o = open[i]
+            v = volume[i]
+            
+            for k = 0 to bins - 1
+                loww = max_min.min() + step * k
+                mid = loww + step / 2
+                
+                if h &gt; mid and l &lt; mid
+                    if c &gt; o
+                        vol_plus.set(k, vol_plus.get(k) + v)
+                    else
+                        vol_minus.set(k, vol_minus.get(k) + v)
+        
+        // Dibujar perfil
+        for i = 0 to bins - 1
+            loww = max_min.min() + step * i
+            highh = loww + step
+            
+            vp = vol_plus.get(i)
+            vm = vol_minus.get(i)
+            
+            value_plus = vol_plus.sum() &gt; 0 ? int(vp / vol_plus.sum() * 200) : 0
+            value_minus = vol_minus.sum() &gt; 0 ? int(vm / vol_minus.sum() * 200) : 0
+            
+            max_plus = vp == vol_plus.max()
+            max_minus = vm == vol_minus.max()
+            
+            col_plus = color.from_gradient(vp, vol_plus.min(), vol_plus.max(), color.new(dvp_color_plus, 90), dvp_color_plus)
+            col_minus = color.from_gradient(vm, vol_minus.min(), vol_minus.max(), color.new(dvp_color_minus, 90), dvp_color_minus)
+            
+            sum_bars = value_plus + value_minus
+            col_sum = color.from_gradient(sum_bars, 0, 60, color.rgb(189, 189, 189, 100), #787b8699)
+            
+            // Box de fondo (perfil completo)
+            b1 = box.new(bar_index - dvp_lookback, highh, bar_index, loww, max_plus ? dvp_poc_plus : max_minus ? dvp_poc_minus : color.new(chart.bg_color, 50), bgcolor=col_sum)
+            
+            // Box de volumen positivo (hacia la izquierda)
+            b2 = box.new(bar_index + 50, highh, bar_index + 50 - value_plus, loww,chart.bg_color, bgcolor=max_plus ? dvp_poc_plus : col_plus, text=vp != 0 ? "+" + str.tostring(vp, format.volume) : "", text_color=chart.fg_color, text_size=size.small,text_halign=text.align_right)
+            
+            // Box de volumen negativo (hacia la derecha)
+            b3 = box.new(bar_index + 50, highh, bar_index + 50 + value_minus, loww, chart.bg_color,bgcolor=max_minus ? dvp_poc_minus : col_minus, text=vm != 0 ? "-" + str.tostring(vm, format.volume) : "", text_color=chart.fg_color, text_size=size.small,text_halign=text.align_left)
+            
+            boxes.push(b1)
+            boxes.push(b2)
+            boxes.push(b3)
+        
+        // Calcular delta y total
+        total_vol = vol_plus.sum() + vol_minus.sum()
+        delta_calc = vol_minus.sum() &gt; 0 ? ((vol_plus.sum() - vol_minus.sum()) / vol_minus.sum()) * 100 : 0
+        
+        // Label de Delta
+        l1 = label.new(bar_index + 50, max_min.max(), 
+                      "Delta: " + str.tostring(delta_calc, format.percent), 
+                      color=delta_calc &gt; 0 ? dvp_color_plus : dvp_color_minus, 
+                      textcolor=chart.fg_color, 
+                      style=label.style_label_down)
+        
+        // Label de Total
+        l2 = label.new(bar_index + 50, max_min.min(), 
+                      "Total: " + str.tostring(total_vol, format.volume), 
+                      color=color.gray, 
+                      textcolor=chart.fg_color, 
+                      style=label.style_label_up)
+        
+        labels.push(l1)
+        labels.push(l2)
 
-ADX &gt; 40: Threshold 15
-ADX &gt; 35: Threshold 18
-ADX normal: Threshold 20
-✅ No Código Binario:
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🎨 PLOTEO DE INDICADORES
+// ═══════════════════════════════════════════════════════════════════════════════════════
 
-Degradación a LATERAL solo si NO hay fuerza brutal
-Múltiples caminos para clasificar BULLISH
-✅ FUERZA PRIMERO:
+// 4 EMAs
+[ema1, ema2, ema3, ema4] = f_4emas()
+plot(enable_emas ? ema1 : na, "EMA 1", ema1_color, 2)
+plot(enable_emas ? ema2 : na, "EMA 2", ema2_color, 2)
+plot(enable_emas ? ema3 : na, "EMA 3", ema3_color, 2)
+plot(enable_emas ? ema4 : na, "EMA 4", ema4_color, 2)
 
-ADX brutal (&gt;40) override estructura
-Patterns + Fuerza = Combo bonus
-📝 Archivos a Modificar
-✅ 
-brain_think.py
-:
+// Ichimoku
+[tenkan, kijun, senkou_a, senkou_b] = f_ichimoku()
+plot(enable_ichimoku ? tenkan : na, "Tenkan-Sen", ichi_tenkan_color)
+plot(enable_ichimoku ? kijun : na, "Kijun-Sen", ichi_kijun_color)
 
-validate_force_propagation()
- (líneas 386-464)
-sniper_checklist()
- (línea 624)
-✅ 
-brain_analyzer.py
-:
+p1 = plot(enable_ichimoku ? senkou_a : na, "Senkou A", color.green, offset=ichi_displacement)
+p2 = plot(enable_ichimoku ? senkou_b : na, "Senkou B", color.red, offset=ichi_displacement)
+fill(p1, p2, enable_ichimoku ? color.new(color.gray, 90) : na, title="Kumo")
 
-analyze_4h()
- (líneas 138-154)
-analyze_1h()
- (similar)
-analyze_15m()
- (similar)
-analyze_5m()
- (similar)
-✅ 
-brain_intelligent.py
-:
+plot(enable_ichimoku ? close : na, "Chikou", color.blue, offset=-ichi_displacement)
 
-make_pattern_based_decision()
- (línea 178)
-✅ Validación
- Sintaxis check
- Backtest con ULTIMA/USDT
- No romper fixes anteriores (Bug #28)
- Filosofía Time Ladder mantenida
+// Zig Zag mejorado
+if enable_zigzag
+    var line zz_line = na
+    var float zz_last_pivot = na
+    var int zz_last_bar = na
+    var bool zz_was_high = false
+    
+    ph = ta.pivothigh(high, zz_depth, zz_depth)
+    pl = ta.pivotlow(low, zz_depth, zz_depth)
+    
+    if not na(ph)
+        current_pivot = ph
+        current_bar = bar_index - zz_depth
+        
+        if not na(zz_last_pivot)
+            zz_line := line.new(zz_last_bar, zz_last_pivot, current_bar, current_pivot, color=current_pivot &gt; zz_last_pivot ? zz_up_color : zz_down_color, width=2)
+        
+        zz_last_pivot := current_pivot
+        zz_last_bar := current_bar
+        zz_was_high := true
+    
+    if not na(pl)
+        current_pivot = pl
+        current_bar = bar_index - zz_depth
+        
+        if not na(zz_last_pivot)
+            zz_line := line.new(zz_last_bar, zz_last_pivot, current_bar, current_pivot, color=current_pivot &lt; zz_last_pivot ? zz_down_color : zz_up_color, width=2)
+        
+        zz_last_pivot := current_pivot
+        zz_last_bar := current_bar
+        zz_was_high := false
+    
+    // Extender al precio actual
+    if not na(zz_last_pivot) and barstate.islast
+        current_color = zz_was_high ? (close &lt; zz_last_pivot ? zz_down_color : zz_up_color) : (close &gt; zz_last_pivot ? zz_up_color : zz_down_color)
+        line.new(zz_last_bar, zz_last_pivot, bar_index, close, color=current_color, width=1, style=line.style_dashed)
+
+// Support/Resistance
+[resistance, support, res_break_vol, sup_break_vol, res_break_wick, sup_break_wick] = f_support_resistance()
+
+res_color = enable_support_resistance and not ta.change(resistance) ? sr_resistance_color : na
+sup_color = enable_support_resistance and not ta.change(support) ? sr_support_color : na
+
+plot(resistance, color=res_color, offset=-(sr_right_bars+1), title="Resistance")
+plot(support, color=sup_color, offset=-(sr_right_bars+1), title="Support")
+
+plotshape(enable_support_resistance and sr_show_breaks and res_break_vol and not res_break_wick ? close : na,
+         "Res Break", text='B', style=shape.labelup, location=location.belowbar, 
+         color=color.green, textcolor=color.white, size=size.tiny)
+
+plotshape(enable_support_resistance and sr_show_breaks and sup_break_vol and not sup_break_wick ? close : na,
+         "Sup Break", text='B', style=shape.labeldown, location=location.abovebar, 
+         color=color.red, textcolor=color.white, size=size.tiny)
+
+plotshape(enable_support_resistance and sr_show_breaks and res_break_wick ? close : na,
+         "Bull Wick", text='BW', style=shape.labelup, location=location.belowbar, 
+         color=color.green, textcolor=color.white, size=size.tiny)
+
+plotshape(enable_support_resistance and sr_show_breaks and sup_break_wick ? close : na,
+         "Bear Wick", text='BW', style=shape.labeldown, location=location.abovebar, 
+         color=color.red, textcolor=color.white, size=size.tiny)
+
+// Multi-Layer Volume Profile
+if enable_multi_vp
+    if mvp_layer1
+        f_multi_vp(mvp_period, mvp_resolution, 2, true)
+    if mvp_layer2
+        f_multi_vp(int(mvp_period / 2), mvp_resolution, 2, false)
+    if mvp_layer3
+        f_multi_vp(int(mvp_period / 4), mvp_resolution, 2, false)
+    if mvp_layer4
+        f_multi_vp(int(mvp_period / 8), mvp_resolution, 1, false)
+
+// BB/KC Strategy
+[bb_basis, bb_upper, bb_lower, kc_ma, kc_upper, kc_lower, 
+ bbkc_bearish, bbkc_bullish, bbkc_squeeze, sar_value] = f_bb_kc_strategy()
+
+// Bollinger Bands
+plot(enable_bb_kc_strategy ? bb_basis : na, "BB Basis", bbkc_bb_color, 2)
+bb_u = plot(enable_bb_kc_strategy ? bb_upper : na, "BB Upper", bbkc_bb_color, 2)
+bb_l = plot(enable_bb_kc_strategy ? bb_lower : na, "BB Lower", bbkc_bb_color, 2)
+fill(bb_u, bb_l, enable_bb_kc_strategy ? color.new(bbkc_bb_color, 90) : na, title="BB Fill")
+
+// Keltner Channels
+plot(enable_bb_kc_strategy ? kc_ma : na, "KC Basis", bbkc_kc_color)
+kc_u = plot(enable_bb_kc_strategy ? kc_upper : na, "KC Upper", bbkc_kc_color)
+kc_l = plot(enable_bb_kc_strategy ? kc_lower : na, "KC Lower", bbkc_kc_color)
+fill(kc_u, kc_l, enable_bb_kc_strategy ? color.new(bbkc_kc_color, 80) : na, title="KC Fill")
+
+// Señales Bull/Bear
+plotshape(enable_bb_kc_strategy and bbkc_show_signals and bbkc_bearish ? low : na,
+         "Bear Signal", style=shape.xcross, location=location.absolute, 
+         color=color.red, size=size.small)
+
+plotshape(enable_bb_kc_strategy and bbkc_show_signals and bbkc_bullish ? high : na,
+         "Bull Signal", style=shape.xcross, location=location.absolute, 
+         color=color.green, size=size.small)
+
+// Parabolic SAR
+plot(enable_bb_kc_strategy ? sar_value : na, "SAR", color=color.blue, style=plot.style_cross, linewidth=2)
+
+// Squeeze highlight (fondo amarillo cuando squeeze activo)
+bgcolor(enable_bb_kc_strategy and bbkc_highlight_squeeze and bbkc_squeeze ? 
+       color.new(color.yellow, 90) : na, title="Squeeze Background")
+
+// EMA Envelope
+[emae_close, emae_high, emae_low, emae_bg_color, 
+ emae_bull, emae_bear, emae_bull_strong, emae_bear_strong] = f_ema_envelope()
+
+plot(enable_ema_envelope ? emae_close : na, "EMA Close", emae_close_color, style=plot.style_cross)
+plot(enable_ema_envelope ? emae_high : na, "EMA High", emae_high_color, 2)
+plot(enable_ema_envelope ? emae_low : na, "EMA Low", emae_low_color, 2)
+
+// Fondo de tendencia
+bgcolor(enable_ema_envelope and emae_highlight ? emae_bg_color : na, title="EMA Envelope Trend")
+
+// Supertrend
+[st_up, st_dn, st_trend, st_buy, st_sell] = f_supertrend()
+
+st_up_plot = plot(enable_supertrend and st_trend == 1 ? st_up : na, "Supertrend Up", 
+                 st_up_color, 2, plot.style_linebr)
+st_dn_plot = plot(enable_supertrend and st_trend == -1 ? st_dn : na, "Supertrend Down", 
+                 st_down_color, 2, plot.style_linebr)
+
+// Señales de compra/venta
+plotshape(enable_supertrend and st_buy ? st_up : na, "Buy Signal", 
+         style=shape.circle, location=location.absolute, color=st_up_color, size=size.tiny)
+plotshape(enable_supertrend and st_show_signals and st_buy ? st_up : na, "Buy Label", 
+         text="Buy", style=shape.labelup, location=location.absolute, 
+         color=st_up_color, textcolor=color.white, size=size.tiny)
+
+plotshape(enable_supertrend and st_sell ? st_dn : na, "Sell Signal", 
+         style=shape.circle, location=location.absolute, color=st_down_color, size=size.tiny)
+plotshape(enable_supertrend and st_show_signals and st_sell ? st_dn : na, "Sell Label", 
+         text="Sell", style=shape.labeldown, location=location.absolute, 
+         color=st_down_color, textcolor=color.white, size=size.tiny)
+
+// Highlighting de tendencia
+st_mid_plot = plot(enable_supertrend ? ohlc4 : na, display=display.none)
+fill(st_mid_plot, st_up_plot, enable_supertrend and st_highlighting and st_trend == 1 ? color.new(st_up_color, 90) : na, title="Uptrend Fill")
+fill(st_mid_plot, st_dn_plot, enable_supertrend and st_highlighting and st_trend == -1 ? color.new(st_down_color, 90) : na, title="Downtrend Fill")
+
+// Delta Volume Profile
+if enable_delta_vp
+    f_delta_vp()
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 📋 PANEL DE INFORMACIÓN
+// ═══════════════════════════════════════════════════════════════════════════════════════
+show_panel = input.bool(true, "Mostrar Panel Info", group="📊 Display")
+
+if show_panel and barstate.islast
+    active_count = (enable_emas ? 1 : 0) + (enable_ichimoku ? 1 : 0) + (enable_zigzag ? 1 : 0) + 
+                   (enable_support_resistance ? 1 : 0) + (enable_multi_vp ? 1 : 0) + 
+                   (enable_bb_kc_strategy ? 1 : 0) + (enable_ema_envelope ? 1 : 0) + 
+                   (enable_supertrend ? 1 : 0) + (enable_delta_vp ? 1 : 0)
+    
+    var table panel = table.new(position.top_right, 2, 4, bgcolor=color.new(color.blue, 90), border_width=1)
+    
+    table.cell(panel, 0, 0, "Overlay Dashboard", bgcolor=color.blue, text_color=color.white, text_size=size.normal)
+    table.cell(panel, 1, 0, "", bgcolor=color.blue)
+    
+    table.cell(panel, 0, 1, "Activos:", text_color=color.white, text_size=size.small)
+    table.cell(panel, 1, 1, str.tostring(active_count) + "/9", text_color=color.yellow, text_size=size.small)
+    
+    table.cell(panel, 0, 2, "Precio:", text_color=color.white, text_size=size.small)
+    table.cell(panel, 1, 2, str.tostring(close, format.mintick), 
+              text_color=close &gt; close[1] ? color.lime : color.red, text_size=size.small)
+    
+    table.cell(panel, 0, 3, "Timeframe:", text_color=color.white, text_size=size.small)
+    table.cell(panel, 1, 3, timeframe.period, text_color=color.white, text_size=size.small)
+
+
+
+Aca se termina el indicador overlay completo, este indicador funciona perfecto, no quiero que cambies nada, solo agrega el indicador de abajo.
+Quiero agregar este indicador
+
+//@version=5
+indicator("Dashboard Overlay - Indicadores sobre Precio", shorttitle="Overlay Dashboard", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500, dynamic_requests=true)
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🎛️ SELECTOR DE INDICADORES ACTIVOS (OVERLAY)
+// ═══════════════════════════════════════════════════════════════════════════════════════
+enable_emas = input.bool(true, "4 EMAs (sistema de medias móviles)", group="🎛️ Activar Indicadores Overlay")
+enable_ichimoku = input.bool(false, "Ichimoku (análisis japonés completo)", group="🎛️ Activar Indicadores Overlay")
+enable_zigzag = input.bool(false, "Zig Zag (análisis de swings)", group="🎛️ Activar Indicadores Overlay")
+enable_support_resistance = input.bool(false, "Support/Resistance (con confirmación de volumen)", group="🎛️ Activar Indicadores Overlay")
+enable_multi_vp = input.bool(false, "Multi-Layer Volume Profile (4 capas)", group="🎛️ Activar Indicadores Overlay")
+enable_delta_vp = input.bool(false, "Delta Volume Profile (perfil con delta de volumen)", group="🎛️ Activar Indicadores Overlay")
+enable_candle_time = input.bool(false, "Candle Time Labels (hora apertura/cierre)", group="🎛️ Activar Indicadores Overlay")
+enable_mtpc = input.bool(false, "Multi-Time Period Charts (cajas de timeframes)", group="🎛️ Activar Indicadores Overlay")
+enable_mtf_trend = input.bool(false, "Multi-Timeframe Trend Analysis (análisis EMAs)", group="🎛️ Activar Indicadores Overlay")
+// 🕐 CANDLE TIME LABELS SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+ct_show_open = input.bool(true, "Mostrar Hora Apertura", group="🕐 Candle Time")
+ct_show_close = input.bool(true, "Mostrar Hora Cierre", group="🕐 Candle Time")
+ct_only_current = input.bool(false, "Solo Vela Actual", group="🕐 Candle Time")
+ct_open_color = input.color(color.green, "Color Apertura", group="🕐 Candle Time", inline="ct1")
+ct_close_color = input.color(color.red, "Color Cierre", group="🕐 Candle Time", inline="ct1")
+ct_label_size = input.string("small", "Tamaño Etiqueta", options=["tiny", "small", "normal", "large"], group="🕐 Candle Time")
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🎨 PLOTEO DE INDICADORES
+
+// Candle Time Labels
+if enable_candle_time
+f_candle_time_labels()
+
+// MTPC (Multi-Timeframe Price Channel)
+float mtpc_top = na
+float mtpc_bottom = na
+
+if enable_mtpc
+[mtpc_top, mtpc_bottom] = f_mtpc()
+
+plot(enable_mtpc and mtpc_track_price ? mtpc_top : na, "MTPC Top", color=color.new(color.blue, 0), trackprice=mtpc_track_price, show_last=1)
+plot(enable_mtpc and mtpc_track_price ? mtpc_bottom : na, "MTPC Bot", color=color.new(color.blue, 0), trackprice=mtpc_track_price, show_last=1)
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 🧮 FUNCIONES DE CÁLCULO
+// ═══════════════════════════════════════════════════════════════════════════════════════
+f_candle_time_labels() =&gt;
+    label_size_val = ct_label_size == "tiny" ? size.tiny :
+                     ct_label_size == "small" ? size.small :
+                     ct_label_size == "normal" ? size.normal : size.large
+    
+    show_on_bar = ct_only_current ? barstate.islast : true
+    
+    if show_on_bar
+        bar_time = time
+        open_hour = hour(bar_time)
+        open_minute = minute(bar_time)
+        open_time_str = str.format("{0,number,00}:{1,number,00}", open_hour, open_minute)
+        
+        close_time = bar_time + (timeframe.in_seconds() * 1000)
+        close_hour = hour(close_time)
+        close_minute = minute(close_time)
+        close_time_str = str.format("{0,number,00}:{1,number,00}", close_hour, close_minute)
+        
+        if ct_show_open
+            label.new(bar_index, low, open_time_str,
+                 style=label.style_label_up,
+                 color=ct_open_color,
+                 textcolor=color.white,
+                 size=label_size_val)
+        
+        if ct_show_close
+            label.new(bar_index, high, close_time_str,
+                 style=label.style_label_down,
+                 color=ct_close_color,
+                 textcolor=color.white,
+                 size=label_size_val)
+
+f_mtpc_select_auto_tf() =&gt;
+    timeframe.isseconds ? '120' : timeframe.isminutes ? '1440' : timeframe.isdaily ? 'W' : timeframe.isweekly ? 'M' : timeframe.ismonthly and timeframe.multiplier &lt; 3 ? '3M' : '12M'
+
+f_mtpc_draw_box(left, right, top, bottom, diff) =&gt;
+    drawnBox = box.new(left, top, right, bottom)
+    if diff &lt; 0
+        box.set_border_color(drawnBox, mtpc_border_fall)
+        box.set_bgcolor(drawnBox, mtpc_fall_color)
+    else
+        box.set_border_color(drawnBox, mtpc_border_growth)
+        box.set_bgcolor(drawnBox, mtpc_growth_color)
+    drawnBox
+
+f_mtpc() =&gt;
+    var prevBarIndex = bar_index
+    tf_to_use = mtpc_auto ? f_mtpc_select_auto_tf() : mtpc_timeframe
+    
+    [previousHigh, previousLow, previousClose, previousOpen, prePreviousClose] = request.security(syminfo.tickerid, tf_to_use, [high[1], low[1], close[1], open[1], close[2]], lookahead=barmerge.lookahead_on)
+    [currentHigh, currentLow, currentClose, currentOpen, prevClose] = request.security(syminfo.tickerid, tf_to_use, [high, low, close, open, close[1]])
+    
+    isNewPeriod = ta.change(time(tf_to_use))
+    drawCurrent = barstate.islast and not isNewPeriod
+    
+    secHigh = drawCurrent ? currentHigh : previousHigh
+    secPrevClose = drawCurrent ? prevClose : prePreviousClose
+    secLow = drawCurrent ? currentLow : previousLow
+    diff = drawCurrent ? currentClose - currentOpen : previousClose - previousOpen
+    
+    left = prevBarIndex
+    right = drawCurrent ? bar_index : bar_index[1]
+    
+    [ashiHigh, ashiLow] = request.security(ticker.heikinashi(syminfo.tickerid), tf_to_use, [high, low])
+    
+    float top = na
+    float bottom = na
+    
+    if mtpc_calc_method == "High/Low Range"
+        top := secHigh
+        bottom := secLow
+    else if mtpc_calc_method == "True Range"
+        top := math.max(secHigh, secPrevClose)
+        bottom := math.min(secLow, secPrevClose)
+    else if mtpc_calc_method == "Heikin Ashi Range"
+        top := ashiHigh
+        bottom := ashiLow
+    
+    if isNewPeriod
+        prevBarIndex := bar_index
+        f_mtpc_draw_box(left, right, top, bottom, diff)
+    
+    var box prevBox = na
+    if barstate.islast
+        if isNewPeriod
+            prevBox := na
+        else
+            box.delete(prevBox)
+            prevBox := f_mtpc_draw_box(left, right, top, bottom, diff)
+    
+    var box prevBox1 = na
+    var float prevTop = na
+    var float prevBottom = na
+    
+    if array.size(box.all) &gt; 1
+        prevBox1 := array.get(box.all, array.size(box.all) - 1)
+        prevTop := box.get_top(prevBox1)
+        prevBottom := box.get_bottom(prevBox1)
+    
+    [prevTop, prevBottom]
+
+f_mtf_convert_tf(tf) =&gt;
+    time_in = timeframe.in_seconds(tf) / 60 / 60
+    time_in &gt;= 24 ? tf : time_in &gt;= 1 ? str.tostring(time_in) + "h" : tf + "m"
+
+f_mtf_request(src1, src2, src3, src4, src5, tf) =&gt;
+    float chartTFInMinutes = timeframe.in_seconds("")
+    float inputTFInMinutes = timeframe.in_seconds(tf)
+    
+    ss1 = src1
+    ss2 = src2
+    ss3 = src3
+    ss4 = src4
+    ss5 = src5
+
+if chartTFInMinutes != inputTFInMinutes
+    ss1 := request.security(syminfo.tickerid, tf, src1)
+    ss2 := request.security(syminfo.tickerid, tf, src2)
+    ss3 := request.security(syminfo.tickerid, tf, src3)
+    ss4 := request.security(syminfo.tickerid, tf, src4)
+    ss5 := request.security(syminfo.tickerid, tf, src5)
+
+[ss1, ss2, ss3, ss4, ss5]
+
+f_mtf_label(cond1, cond2, color_val, tooltip) =&gt;
+if cond1
+label.new(bar_index, low, "🢁", color = color(na), textcolor = color_val, style = label.style_label_up, tooltip = tooltip)
+if cond2
+label.new(bar_index, high, "🢃", color = color(na), textcolor = color_val, style = label.style_label_down, tooltip = tooltip)
+
+f_mtf_timeframes_trend(table dash1, row, ema_1, ema_2, ema_3, ema_4, ema_5) =&gt;
+col1 = ema_1 ? mtf_col_up : mtf_col_down
+col2 = ema_2 ? mtf_col_up : mtf_col_down
+col3 = ema_3 ? mtf_col_up : mtf_col_down
+col4 = ema_4 ? mtf_col_up : mtf_col_down
+col5 = ema_5 ? mtf_col_up : mtf_col_down
+
+dash1.cell(row, 1, ema_1 ? "🢁" : "🢃", text_color = color.new(col1, 30), bgcolor = color.new(col1, 85))
+dash1.cell(row, 2, ema_2 ? "🢁" : "🢃", text_color = color.new(col2, 25), bgcolor = color.new(col2, 80))
+dash1.cell(row, 3, ema_3 ? "🢁" : "🢃", text_color = color.new(col3, 20), bgcolor = color.new(col3, 75))
+dash1.cell(row, 4, ema_4 ? "🢁" : "🢃", text_color = color.new(col4, 15), bgcolor = color.new(col4, 70))
+dash1.cell(row, 5, ema_5 ? "🢁" : "🢃", text_color = color.new(col5, 10), bgcolor = color.new(col5, 65))
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 26,538<br>
-    Generado: 2025-12-07 22:01:17
+    Total caracteres: 39,905<br>
+    Generado: 2025-12-08 11:47:32
   </div>
 </body>
 </html>
