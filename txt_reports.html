@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-12 08:37:38</div>
+  <div class="meta">Última actualización: 2025-12-12 08:44:02</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -1788,12 +1788,343 @@ def project_scenarios(symbol, current_price, ladder_analysis):
     """Wrapper para compatibilidad"""
     return projector.project_scenarios(symbol, current_price, ladder_analysis)
 
+Modulo adx_validator.py
+
+"""
+ADX Validator - Validación de fuerza y separación
+Verifica ADX mínimo y separación DI+/DI-
+"""
+
+def validate_adx_separation(ladder, direction, timeframe='5m'):
+    """
+    Valida separación ADX para confirmar fuerza direccional.
+    Incluye lógica 'Force Awareness' corregida para evitar entradas contra-tendencia.
+    """
+    result = {
+        'separated': False,
+        'score_adjustment': 0,
+        'reason': '',
+        'adx_value': 0,
+        'di_spread': 0,
+        'is_explosive': False,
+        'force_state': 'CHOPPY'
+    }
+    
+    tf_data = ladder.get(timeframe, {})
+    adx_data = tf_data.get('adx', {})
+    
+    adx_val = adx_data.get('adx_current', 0)
+    di_plus = adx_data.get('di_plus_current', 0)
+    di_minus = adx_data.get('di_minus_current', 0)
+    
+    result['adx_value'] = adx_val
+    result['di_spread'] = abs(di_plus - di_minus)
+    
+    # 1. CLASIFICACIÓN DE FUERZA
+    if adx_val &gt;= 45:
+        result['force_state'] = 'EXPLOSIVE'
+        result['is_explosive'] = True
+    elif adx_val &gt;= 30:
+        result['force_state'] = 'STRONG'
+    elif adx_val &gt;= 20:
+        result['force_state'] = 'TRENDING'
+    else:
+        result['force_state'] = 'CHOPPY'
+
+    # 2. VALIDACIÓN DIRECCIONAL BÁSICA
+    # Fallback si falta historial
+    di_plus_prev = adx_data.get('di_plus_prev', None)
+    
+    has_separation = False
+    is_direction_correct = False
+    
+    if direction == 'BULLISH':
+        is_direction_correct = di_plus &gt; di_minus # Básico: Verde sobre Rojo
+        has_separation = di_plus &gt; di_minus + 5   # Óptimo: Con margen
+    elif direction == 'BEARISH':
+        is_direction_correct = di_minus &gt; di_plus
+        has_separation = di_minus &gt; di_plus + 5
+
+    # 3. CÁLCULO DE SCORE (Time Ladder)
+    if result['force_state'] == 'EXPLOSIVE':
+        # FIX DE SEGURIDAD: Solo activar modo explosivo si la fuerza es A FAVOR
+        if is_direction_correct:
+            result['separated'] = True
+            result['score_adjustment'] = 40
+            result['reason'] = f"🚀 ADX EXPLOSIVO A FAVOR ({adx_val:.1f})"
+        else:
+            # Si es explosivo en contra, PENALIZACIÓN MÁXIMA (Crash Protection)
+            result['separated'] = False
+            result['score_adjustment'] = -100
+            result['reason'] = f"⛔ ADX EXPLOSIVO EN CONTRA ({adx_val:.1f})"
+            result['is_explosive'] = False # Desactivar flag para no engañar a otros módulos
+        
+    elif result['force_state'] == 'STRONG':
+        if has_separation:
+            result['separated'] = True
+            result['score_adjustment'] = 25
+            result['reason'] = f"💪 ADX Fuerte ({adx_val:.1f}) y Separado"
+        elif is_direction_correct:
+             # Dirección correcta pero poca separación
+            result['separated'] = False
+            result['score_adjustment'] = -5 
+            result['reason'] = f"⚠️ ADX Fuerte pero sin separación clara"
+        else:
+             result['separated'] = False
+             result['score_adjustment'] = -20
+             result['reason'] = f"❌ ADX Fuerte en contra"
+            
+    elif result['force_state'] == 'TRENDING':
+        if has_separation:
+            result['separated'] = True
+            result['score_adjustment'] = 10
+            result['reason'] = f"📈 Tendencia sana ({adx_val:.1f})"
+        else:
+            result['separated'] = False
+            result['score_adjustment'] = -15
+            result['reason'] = f"⚠️ Tendencia débil"
+            
+    else: # CHOPPY
+        result['separated'] = False
+        result['score_adjustment'] = -25
+        result['reason'] = f"⚠️ Mercado CHOPPY ({adx_val:.1f})"
+        
+    return result
+
+Modulo momentum_validator.py
+
+"""
+Momentum Validator - Detecta reversiones de momentum
+Crítico para identificar fin de corrección y comienzo de rebote
+"""
+
+def validate_momentum_reversal(ladder, direction, timeframe='5m', force_mode_active=False):
+    """
+    Detecta reversiones de momentum.
+    Args:
+        force_mode_active (bool): Si es True, acepta reversión de 1 sola vela.
+    """
+    result = {
+        'reversal_detected': False,
+        'score_adjustment': 0,
+        'reason': '',
+        'momentum_color': 'neutral',
+        'consecutive': 0
+    }
+    
+    tf_data = ladder.get(timeframe, {})
+    momentum = tf_data.get('momentum', {})
+    
+    if not momentum or 'color_current' not in momentum:
+        result['score_adjustment'] = -10
+        result['reason'] = "⚠️ Momentum no disponible"
+        return result
+    
+    color = momentum['color_current']
+    color_prev = momentum.get('color_prev', 'neutral')
+    consecutive = momentum.get('consecutive_count', 1)
+    
+    result['momentum_color'] = color
+    result['consecutive'] = consecutive
+    
+    # Definir colores objetivo
+    target_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
+    opposing_colors = ['red', 'maroon'] if direction == 'BULLISH' else ['green', 'lime']
+    
+    # LÓGICA DE VALIDACIÓN
+    if color in target_colors:
+        # CASO 1: Reversión Confirmada (Múltiples velas)
+        if consecutive &gt;= 3:
+            result['reversal_detected'] = True
+            result['score_adjustment'] = 30
+            result['reason'] = f"✅ Reversión MADURA ({consecutive}v+)"
+        
+        elif consecutive == 2:
+            result['reversal_detected'] = True
+            result['score_adjustment'] = 20
+            result['reason'] = f"✅ Reversión confirmada (2v)"
+            
+        # CASO 2: Reversión Temprana (1 vela)
+        elif consecutive == 1:
+            if force_mode_active:
+                # AQUÍ ESTÁ EL CAMBIO CLAVE: FORCE OVERRIDE
+                result['reversal_detected'] = True
+                result['score_adjustment'] = 25 # Bonus alto por captura temprana en explosión
+                result['reason'] = f"🚀 Reversión INMEDIATA (Force Mode Override)"
+            else:
+                # Sin fuerza, 1 vela es riesgosa
+                result['reversal_detected'] = True
+                result['score_adjustment'] = 5
+                result['reason'] = f"⚠️ Reversión iniciando (1v) - Esperando confirmación"
+                
+    elif color in opposing_colors:
+        result['score_adjustment'] = -25
+        result['reason'] = f"❌ Momentum contrario activo ({consecutive}v)"
+    else:
+        result['score_adjustment'] = -10
+        result['reason'] = f"⚠️ Momentum neutral"
+        
+    return result
+
+Modulo zigzag_validator.py
+
+"""
+ZigZag Validator - Validación de alineación estructural
+Verifica que la estructura ZigZag vaya en la dirección del trade
+"""
+
+def detect_current_movement(structure_data, current_price):
+    """
+    Detecta movimiento actual del precio (últimas 5 velas + current_price)
+    
+    Args:
+        structure_data: Dict con datos ZigZag incluyendo 'prices'
+        current_price: Precio actual para comparar con última vela
+    
+    Returns:
+        str: 'RISING', 'FALLING', or 'SIDEWAYS'
+    """
+    prices = structure_data.get('prices', [])
+    
+    if len(prices) &lt; 5:
+        return 'UNKNOWN'
+    
+    # Últimas 5 velas
+    recent = prices[-5:]
+    last_price = prices[-1]
+    
+    # Comparar current_price vs último precio cerrado
+    if current_price &lt; last_price * 0.998:  # -0.2% threshold
+        movement_now = 'FALLING'
+    elif current_price &gt; last_price * 1.002:  # +0.2% threshold
+        movement_now = 'RISING'
+    else:
+        movement_now = 'SIDEWAYS'
+    
+    # Confirmar con tendencia de 5 velas
+    rising_count = sum(1 for i in range(4) if recent[i+1] &gt; recent[i])
+    
+    if rising_count &gt;= 4 and movement_now in ['RISING', 'SIDEWAYS']:
+        return 'RISING'
+    elif rising_count &lt;= 1 and movement_now in ['FALLING', 'SIDEWAYS']:
+        return 'FALLING'
+    
+    return 'SIDEWAYS'
+
+
+def validate_zigzag_alignment(ladder, direction, current_price):
+    """
+    Valida alineación de ZigZag con dirección del trade
+    
+    Args:
+        ladder: Dict con análisis multi-timeframe
+        direction: 'BULLISH' o 'BEARISH'
+        current_price: Precio actual
+    
+    Returns:
+        dict: {
+            'aligned': bool,
+            'score_adjustment': int (-50 a +15),
+            'reason': str,
+            'pivot_type': str,
+            'structure': str
+        }
+    """
+    result = {
+        'aligned': True,
+        'score_adjustment': 0,
+        'reason': '',
+        'pivot_type': 'Unknown',
+        'structure': 'Unknown'
+    }
+    
+    # Extraer datos ZigZag de 5M
+    structure_data = ladder.get('5m', {}).get('zigzag', {})
+    pivot_types = structure_data.get('pivot_types', [])
+    last_pivot = pivot_types[-1] if pivot_types else None
+    last_structure = structure_data.get('last_structure', '')
+    
+    result['pivot_type'] = last_pivot or 'Unknown'
+    result['structure'] = last_structure
+    
+    if direction == 'BEARISH':
+        # SHORT necesita estructura bajista
+        if 'BULLISH' in last_structure or last_pivot in ['L', 'HL']:
+            result['aligned'] = False
+            result['score_adjustment'] = -50
+            result['reason'] = f"❌ ZigZag CONTRARIO ({last_pivot}, {last_structure})"
+        elif last_pivot in ['H', 'LH']:
+            result['aligned'] = True
+            result['score_adjustment'] = 15
+            result['reason'] = f"✅ ZigZag bajista ({last_pivot})"
+        elif last_pivot == 'LL': 
+             pass 
+        
+    elif direction == 'BULLISH':
+        # CRÍTICO: Detectar movimiento ACTUAL
+        current_movement = detect_current_movement(structure_data, current_price)
+        
+        # Caso 1: Precio CAYENDO = Corrección activa (Time Ladder gradation)
+        if current_movement == 'FALLING':
+            # Graduar penalización por intensidad de caída
+            prices = structure_data.get('prices', [])
+            if len(prices) &gt;= 5:
+                fall_strength = abs((prices[-1] - prices[-5]) / prices[-5])
+                
+                if fall_strength &gt; 0.01:  # Caída &gt; 1%
+                    result['score_adjustment'] = -40
+                    result['reason'] = "⚠️ Corrección FUERTE"
+                elif fall_strength &gt; 0.005:  # Caída &gt; 0.5%
+                    result['score_adjustment'] = -25
+                    result['reason'] = "⚠️ Corrección media"
+                else:  # Caída &lt; 0.5%
+                    result['score_adjustment'] = -15
+                    result['reason'] = "⚠️ Debilitamiento"
+            else:
+                result['score_adjustment'] = -40
+                result['reason'] = "⚠️ Corrección activa"
+            
+            result['aligned'] = False
+            return result
+        
+        # Caso 2: Precio SUBIENDO después de bajo (L)
+        elif current_movement == 'RISING' and last_pivot == 'L':
+            # REBOTE confirmado
+            result['aligned'] = True
+            result['score_adjustment'] = 20
+            result['reason'] = f"✅ REBOTE confirmado (L→🔼)"
+        
+        # Caso 3: Precio SUBIENDO en pullback (HL)
+        elif current_movement == 'RISING' and last_pivot == 'HL':
+            # Pullback alcista limpio
+            result['aligned'] = True
+            result['score_adjustment'] = 15
+            result['reason'] = f"✅ Pullback alcista (HL→🔼)"
+        
+        # Caso 4: Precio SUBIENDO en general
+        elif current_movement == 'RISING':
+            result['aligned'] = True
+            result['score_adjustment'] = 10
+            result['reason'] = f"✅ Continuación alcista"
+        
+        # Caso 5: Lateral
+        elif current_movement == 'SIDEWAYS':
+            result['score_adjustment'] = -10
+            result['reason'] = f"⚠️ Movimiento lateral"
+        
+        # Caso 6: Estructura contra-tendencia
+        elif 'BEARISH' in last_structure:
+            result['aligned'] = False
+            result['score_adjustment'] = -50
+            result['reason'] = f"❌ Estructura bajista"
+    
+    return result
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 77,558<br>
-    Generado: 2025-12-12 08:37:38
+    Total caracteres: 89,394<br>
+    Generado: 2025-12-12 08:44:02
   </div>
 </body>
 </html>
