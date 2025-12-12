@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-11 23:02:01</div>
+  <div class="meta">Última actualización: 2025-12-11 23:03:17</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -2476,11 +2476,199 @@ def calculate_atr(df, period=14):
             'atr_history': []
         }
 
+Modulo brain ejecutor entry
+
+"""
+🧠 HEMISFERIO IZQUIERDO - Entrada y Triggers
+TIME LADDER INTELLIGENCE SYSTEM
+Filosofía: Ver la película completa, no solo la foto
+"""
+
+from brain_intelligent import decide_intelligently
+from brain_think import sniper_checklist
+from brain_config import ARGENTINA_TZ
+from datetime import datetime
+from brain_watchlist import watchlist_manager
+from brain_analyzer import analyze_5m, analyze_15m
+
+def check_trigger_activated_intelligent(symbol, watchlist_data):
+    """
+    Sistema de decisión con Time Ladder completo
+    Delegado al módulo brain_intelligent.py (Single Source of Truth)
+    
+    Returns:
+        dict: {
+            'activated': bool,
+            'adx': float,
+            'momentum_age': int,
+            'volume_ratio': float
+        }
+    """
+    print(f"   🧠 TIME LADDER: Verificando trigger para {symbol}...")
+    
+    try:
+        # ==============================================================================
+        # 0. SNIPER MODE CHECK (WAITING_REBOTE)
+        # ==============================================================================
+        status = watchlist_data.get('status', 'MONITORING')
+        
+        if status == 'WAITING_REBOTE':
+            print(f"   🦅 SNIPER MODE: Verificando condiciones de rebote para {symbol}...")
+            
+            # 1. Análisis fresco rápido (solo lo necesario)
+            current_analysis = {
+                'analysis_5m': analyze_5m(symbol),
+                'analysis_15m': analyze_15m(symbol, strict=False)
+            }
+            
+            # FIX: Validar datos frescos
+            if not current_analysis['analysis_5m'] or not current_analysis['analysis_15m']:
+                print(f"   ⚠️ SNIPER: Failed to get fresh data for {symbol}")
+                return {
+                    'activated': False,
+                    'adx': 0,
+                    'momentum_age': 0,
+                    'volume_ratio': 0
+                }
+            
+            # 2. Verificar condiciones
+            rebote_check = watchlist_manager.check_rebote_conditions(symbol, current_analysis, watchlist_data)
+            
+            if not rebote_check['ready']:
+                print(f"   ⏳ SNIPER WAIT: {rebote_check['reason']}")
+                return {
+                    'activated': False,
+                    'adx': 0,
+                    'momentum_age': 0,
+                    'volume_ratio': 0
+                }
+            
+            print(f"   🎯 SNIPER READY: {rebote_check['reason']} -&gt; Procediendo a análisis completo")
+
+        
+        # ==============================================================================
+        # 1. DECISIÓN INTELIGENTE (Brain Intelligence) - PRIMERO para obtener patrón
+        # ==============================================================================
+        # Usar la inteligencia centralizada
+        decision = decide_intelligently(symbol)
+        detected_pattern = decision.get('pattern', None)
+        
+        # ==============================================================================
+        # 2. SNIPER CHECKLIST (Validación por capas) - CON PATRÓN DETECTADO
+        # ==============================================================================
+        # Extraer ladder para el sniper
+        ladder = decision.get('full_analysis', {}).get('ladder_data', {})
+        
+        # ==============================================================================
+        # 2. SNIPER CHECKLIST (Validación por capas) - CON PATRÓN DETECTADO
+        # ==============================================================================
+        direction = watchlist_data.get('direction', 'BULLISH')
+        sniper_result = sniper_checklist(symbol, direction, pattern_type=detected_pattern, ladder=ladder)
+        
+        if not sniper_result['ready']:
+            print(f"  🚫 SNIPER BLOCKED: {sniper_result['summary']}")
+            
+            # FIX: Safe access to nested dictionary
+            adx_layer = sniper_result.get('layers', {}).get('adx', {})
+            adx_data = adx_layer.get('data', {})
+            adx_val = adx_data.get('adx_current', 0)
+            
+            mom_layer = sniper_result.get('layers', {}).get('momentum', {})
+            mom_data = mom_layer.get('data', {})
+            mom_age = mom_data.get('consecutive_count', 0)
+            
+            return {
+                'activated': False,
+                'adx': adx_val,
+                'momentum_age': mom_age,
+                'volume_ratio': 0,
+                'sniper_score': sniper_result['total_score'],
+                'block_reason': sniper_result['summary']
+            }
+        
+        print(f"  ✅ SNIPER APPROVED: Score {sniper_result['total_score']}/100")
+        
+        # ==============================================================================
+        # 3. VERIFICAR SI LA DECISIÓN ES OPERAR
+        # ==============================================================================
+        
+        if decision['action'] == 'OPERAR':
+            print(f"🎯 TRIGGER ACTIVADO: {symbol}")
+            # FIX: Usar claves correctas de la nueva estructura
+            score = decision.get('score', 0)
+            reasons_str = ", ".join(decision.get('reasons', []))
+            
+            print(f"   Score: {score:.1f}/100 | Confianza: {decision['confidence']}")
+            print(f"   Razón: {reasons_str}")
+            
+            # Extraer datos del ladder para retornar
+            ladder = decision.get('full_analysis', {}).get('ladder_data', {})
+            
+            # Extraer ADX (prioritario de 15m)
+            adx_15m = ladder.get('15m', {}).get('adx', {})
+            adx_value = adx_15m.get('adx_current', 0) if isinstance(adx_15m, dict) else 0
+            
+            # Extraer momentum age
+            mom_15m = ladder.get('15m', {}).get('momentum', {})
+            momentum_age = mom_15m.get('consecutive_count', 0) if isinstance(mom_15m, dict) else 0
+            
+            # Extraer volume ratio (de 5m)
+            volume_5m = ladder.get('5m', {}).get('volume', {})
+            volume_ratio = volume_5m.get('ratio', 1.0) if isinstance(volume_5m, dict) else 1.0
+            
+            # ==============================================================================
+            # 3. VALIDACIÓN QUIRÚRGICA FINAL (5M)
+            # ==============================================================================
+            # Antes de confirmar, hacemos el chequeo fino de 5M
+            from brain_analyzer import validate_5m_entry_conditions
+            
+            # Determinar dirección basada en la decisión
+            direction = 'BULLISH' if 'LONG' in decision.get('trade_type', 'LONG') else 'BEARISH'
+            
+            validation = validate_5m_entry_conditions(symbol, direction)
+            
+            if not validation['ready']:
+                print(f"   ⚠️ 5M NOT READY: {validation['missing']}")
+                print(f"   ⏳ Esperando alineación fina (Score: {validation['score']}/100)")
+                return {
+                    'activated': False,
+                    'adx': 0,
+                    'momentum_age': 0,
+                    'volume_ratio': 0
+                }
+            
+            print(f"   ✅ 5M SURGICAL CHECK PASSED (Score: {validation['score']})")
+            # ==============================================================================
+
+            return {
+                'activated': True,
+                'adx': adx_value,
+                'momentum_age': momentum_age,
+                'volume_ratio': volume_ratio
+            }
+        
+        else:
+            return {
+                'activated': False,
+                'adx': 0,
+                'momentum_age': 0,
+                'volume_ratio': 0
+            }
+            
+    except Exception as e:
+        print(f"⚠️ Error en check_trigger_activated_intelligent: {e}")
+        return {
+            'activated': False,
+            'adx': 0,
+            'momentum_age': 0,
+            'volume_ratio': 0
+        }
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 88,261<br>
-    Generado: 2025-12-11 23:02:01
+    Total caracteres: 96,288<br>
+    Generado: 2025-12-11 23:03:17
   </div>
 </body>
 </html>
