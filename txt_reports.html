@@ -15,13 +15,13 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-11 23:37:36</div>
+  <div class="meta">Última actualización: 2025-12-11 23:46:00</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-IMPLEMENTATION PLAN v6.1
-This plan details the changes required for the v6.1 update, focusing on "Gradient Intelligence" (removing binary blocks) and "Physic Refinments" (achievable thresholds).
+IMPLEMENTATION PLAN v6.1 (CORRECTED)
+This plan details the changes required for the v6.1 update, focusing on "Gradient Intelligence" and "Physic Refinements". Status: AUDITED &amp; CORRECTED.
 
 1. Wrecking Ball Threshold Adjustment
 File: 
@@ -33,12 +33,9 @@ make_pattern_based_decision
 Current Code:
 
 # 2. Definir el Umbral de Resistencia (La "Vara" a saltar)
-    # Base: Se requiere Fuerza Extrema (45) para romper paredes por pura masa.
     required_force = 45 
     
     if is_accelerating:
-        # BONUS DINÁMICO: La aceleración reduce el requisito de fuerza base.
-        # Filosofía: "Si vienes con impulso (aceleración), es más fácil romper la pared."
         required_force -= 15  # La vara baja a 30
 Proposed Code:
 
@@ -50,27 +47,26 @@ Proposed Code:
         # BONUS DINÁMICO: La aceleración reduce el requisito de fuerza base.
         # Filosofía: "Si vienes con impulso (aceleración), es más fácil romper la pared."
         required_force -= 10  # La vara baja a 20 con aceleración
-2. Gradient Fatigue Penalty
+2. Gradient Fatigue Penalty (Full Logic)
 File: 
 brain_intelligent.py
  Context: 
 make_pattern_based_decision
 , Block 5 (Fatigue Validation)
 
-Current Code:
+Proposed Code (Full Block Replace):
 
-if trade_dir == 'BULLISH':
-        # Caso Long: Precio muy arriba de la media o RSI hirviendo
-        if dist_ema_pct &gt; MAX_EXTENSION:
-            score -= 100 # Bloqueo duro: Es muy tarde para entrar
-            reasons.append(f"🛑 FATIGA: Precio sobre-extendido (+{dist_ema_pct:.2f}% vs EMA21)")
-            block_trade = True
-Proposed Code:
-
-if trade_dir == 'BULLISH':
-        # Caso Long: Precio muy arriba de la media o RSI hirviendo
+# --- 5. VALIDACIÓN DE FATIGA (GOMA ELÁSTICA) ---
+    dist_ema_pct = a5m.get('dist_ema_pct', 0)
+    rsi_val = a5m.get('rsi', {}).get('rsi_current', 50)
+    
+    EXTREME_RSI_HIGH = 80
+    EXTREME_RSI_LOW = 20
+    
+    if trade_dir == 'BULLISH':
+        # Caso Long: Precio muy arriba de la media
         if dist_ema_pct &gt; 5.0:
-            score -= 100 # Bloqueo duro: Absurdo
+            score -= 100
             reasons.append(f"🛑 FATIGA EXTREMA: +{dist_ema_pct:.2f}% vs EMA21")
             block_trade = True
         elif dist_ema_pct &gt; 3.5:
@@ -80,24 +76,36 @@ if trade_dir == 'BULLISH':
             score -= 25
             reasons.append(f"⚠️ FATIGA MODERADA: +{dist_ema_pct:.2f}% vs EMA21")
             
-        elif rsi_val &gt; EXTREME_RSI_HIGH:
-            # ... (Lógica RSI se mantiene igual)
-(Apply symmetric logic for BEARISH case)
-
+        # RSI Check
+        if rsi_val &gt; EXTREME_RSI_HIGH:
+            score -= 50
+            reasons.append(f"⚠️ FATIGA: RSI Sobrecomprado ({rsi_val:.1f})")
+            if not is_wrecking_ball: block_trade = True 
+            
+    elif trade_dir == 'BEARISH':
+        # Caso Short: Precio muy abajo de la media
+        if dist_ema_pct &lt; -5.0:
+            score -= 100
+            reasons.append(f"🛑 FATIGA EXTREMA: {dist_ema_pct:.2f}% vs EMA21")
+            block_trade = True
+        elif dist_ema_pct &lt; -3.5:
+            score -= 50
+            reasons.append(f"⚠️ FATIGA ALTA: {dist_ema_pct:.2f}% vs EMA21")
+        elif dist_ema_pct &lt; -2.5:
+            score -= 25
+            reasons.append(f"⚠️ FATIGA MODERADA: {dist_ema_pct:.2f}% vs EMA21")
+            
+        # RSI Check
+        if rsi_val &lt; EXTREME_RSI_LOW:
+            score -= 50
+            reasons.append(f"⚠️ FATIGA: RSI Sobrevendido ({rsi_val:.1f})")
+            if not is_wrecking_ball: block_trade = True
 3. Flexible ADX Layer
 File: 
 brain_think.py
  Context: 
 validate_adx_layer
 
-Current Code:
-
-checks = {
-            'adx_min': adx_val &gt;= 20,
-            'spread_min': spread &gt;= 8.0,
-            'adx_growing': adx_trend == 'creciendo',  # ADX DEBE crecer (no OR)
-            'dominance_ok': dominance == 'DI+'
-        }
 Proposed Code:
 
 checks = {
@@ -106,26 +114,12 @@ checks = {
             'adx_growing_or_high': adx_trend == 'creciendo' or adx_val &gt; 30,  # Permitir ADX alto estable
             'dominance_ok': dominance == 'DI+'
         }
-4. Breakout Timing Fix
+4. Breakout Timing Fix (Explicit)
 File: 
 brain_think.py
  Context: 
 validate_timing_layer
 
-Current Code:
-
-if 0 &lt; dist_pct &lt; 0.5:
-                # Detectar fuerza extrema para relajar bloqueo
-                a1h = ladder.get('1h', {}) or {}
-                adx_1h = a1h.get('adx', {}).get('adx_current', 0)
-                
-                if adx_1h &gt; 40:
-                    score -= 10
-                    reasons.append(f"⚠️ BREAKOUT SETUP (Res {dist_pct:.2f}% away, FORCE overrides)")
-                else:
-                    score -= 30
-                    reasons.append(f"🚫 BUYING TOP (Res {dist_pct:.2f}% away)")
-                    valid = False
 Proposed Code:
 
 if 0 &lt; dist_pct &lt; 0.5:
@@ -133,26 +127,20 @@ if 0 &lt; dist_pct &lt; 0.5:
                 a1h = ladder.get('1h', {}) or {}
                 adx_1h = a1h.get('adx', {}).get('adx_current', 0)
                 
-                # Usar umbral 35 (más realista)
                 if adx_1h &gt; 35:
                     score -= 10
                     reasons.append(f"⚠️ BREAKOUT SETUP (Res {dist_pct:.2f}% away)")
                 else:
                     score -= 30
                     reasons.append(f"🚫 BUYING TOP (Res {dist_pct:.2f}% away)")
-                    # NO bloquear (valid = True), solo penalizar fuerte (-30)
+                    # NO bloquear explícitamente (valid sigue siendo True si era True antes)
+                    # valid = True
 5. 4H Gradient Analysis
 File: 
 brain_analyzer.py
  Context: 
 analyze_4h
 
-Current Code:
-
-if momentum_data['color_current'] not in expected_colors_bullish:
-        direction = 'LATERAL'
-    elif last_pivot in ['H', 'LH']:
-        direction = 'LATERAL'
 Proposed Code:
 
 if momentum_data['color_current'] not in expected_colors_bullish:
@@ -167,53 +155,91 @@ if momentum_data['color_current'] not in expected_colors_bullish:
             score_4h -= 15
         else:
             direction = 'LATERAL'
-6. Post-Entry Timing Check
+6. Post-Entry Timing Check (Create &amp; Call)
+A. Create Function
+File: 
+brain_analyzer.py
+ Action: Add new function.
+
+def validate_5m_entry_conditions(symbol, direction):
+    """
+    Validación final de timing antes de entrar.
+    Verifica:
+    1. Que la vela 5M sea consistente con la dirección.
+    2. Que el momentum sea joven (no &gt; 7 velas).
+    3. Que no estemos en un pullback profundo inmediato.
+    """
+    from exchange_connection import fetch_ohlcv
+    from brain_calculator import calculate_momentum_with_memory
+    import pandas as pd
+    
+    # Default score
+    result = {'score': 100, 'missing': []}
+    
+    ohlcv = fetch_ohlcv(symbol, '5m', 20)
+    if not ohlcv:
+        return {'score': 0, 'missing': ['No Data']}
+        
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    mom_data = calculate_momentum_with_memory(df)
+    
+    last_candle = df.iloc[-1]
+    is_green = last_candle['close'] &gt; last_candle['open']
+    
+    # 1. Color Match
+    if direction == 'BULLISH' and not is_green:
+        result['score'] -= 30
+        result['missing'].append("Red Candle 5M")
+    elif direction == 'BEARISH' and is_green:
+        result['score'] -= 30
+        result['missing'].append("Green Candle 5M")
+        
+    # 2. Momentum Age
+    consecutive = mom_data['consecutive_count']
+    if consecutive &gt; 7:
+        result['score'] -= 15
+        result['missing'].append(f"Momentum Stale ({consecutive}v)")
+        
+    # 3. Strength Check
+    if mom_data['strength'] == 'WEAK':
+        result['score'] -= 10
+        result['missing'].append("Weak Momentum")
+        
+    return result
+B. Call Function
 File: 
 bot_main.py
- Context: Inside bot_loop, before adding to analyzed list.
-
-Proposed Insertion:
+ Context: Inside bot_loop, before entering analyzed.
 
 if decision['action'] == 'OPERAR':
                         
                         # --- 6. VALIDACIÓN FINAL: TIMING ---
-                        # Evita entrar si el momentum ya pasó o estamos en corrección
+                        # Definida en brain_analyzer.py
                         from brain_analyzer import validate_5m_entry_conditions
-                        timing_check = validate_5m_entry_conditions(
-                            symbol, 
-                            decision['full_analysis']['ladder_data']['5m']['direction']
-                        )
+                        
+                        # Obtener dirección del análisis 5M
+                        l_data = decision['full_analysis']['ladder_data']
+                        dir_5m = l_data.get('5m', {}).get('direction', 'NEUTRAL')
+                        
+                        timing_check = validate_5m_entry_conditions(symbol, dir_5m)
                         
                         if timing_check['score'] &lt; 75:
                             print(f"  ⏳ TIMING INSUFICIENTE: {timing_check['score']}% - {timing_check['missing']}")
                             continue
-                            
-                        # ... (Resto del código existente)
-Note: Ensure 
-validate_5m_entry_conditions
- is imported or available. If not, it needs to be defined in 
-brain_analyzer.py
- or imported if it exists. (Assuming it needs creation or update based on user request "AGREGAR ANTES DE ENTRAR", implying checking logic availability).
-
 7. Global Thresholds
 File: 
 brain_config.py
 
-Current Code:
-
-ADX_THRESHOLD = 25
-ADX_MIN_ACCELERATION = 0.1
-DI_MIN_SPREAD = 3.0
 Proposed Code:
 
-ADX_THRESHOLD = 22  # Reducir de 25 a 22 (más accesible)
+ADX_THRESHOLD = 22  # Reducir de 25 a 22
 ADX_MIN_ACCELERATION = 0.05  # Reducir de 0.1 a 0.05
-DI_MIN_SPREAD = 4.0  # Aumentar de 3.0 a 4.0 (más exigente con la separación)
+DI_MIN_SPREAD = 4.0  # Aumentar de 3.0 a 4.0
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 6,579<br>
-    Generado: 2025-12-11 23:37:36
+    Total caracteres: 7,274<br>
+    Generado: 2025-12-11 23:46:00
   </div>
 </body>
 </html>
