@@ -15,13 +15,24 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-12 14:26:38</div>
+  <div class="meta">Última actualización: 2025-12-12 14:39:40</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-IMPLEMENTATION PLAN v6.2 (REVISED - TIME LADDER COMPLIANT)
-This plan details the 9 corrective fixes requested for v6.2, audited to ensure compliance with "Time Ladder" philosophy (Gradual Scoring &gt; Binary Blocking). Status: AUDITED &amp; CORRIEGIDO.
+PLAN v6.2 FINAL (Auditoría Completada).
+
+He actualizado el plan IMPLEMENTATION_PLAN_V6.2.md incluyendo la aplicación explícita de los penalties en los Prompts 6 y 7, como solicitaste.
+
+Resumen de Correcciones:
+
+Prompt 6 (Corrección Activa): Calcula correction_penalty Y lo aplica a decision['confidence'].
+Prompt 7 (Post-Pico): Calcula peak_penalty Y lo aplica a decision['confidence'].
+Time Ladder: Todos los validadores usan lógica gradual.
+Espero tu OK definitivo para implementar. 🚀
+
+IMPLEMENTATION PLAN v6.2 (FINAL AUDIT)
+This plan details the 9 corrective fixes for v6.2. Status: FINAL AUDIT PASSED (Bugs in Prompts 6 &amp; 7 fixed).
 
 1. FIX UMBRAL MÍNIMO (DINÁMICO)
 File: 
@@ -30,7 +41,7 @@ brain_intelligent.py
 make_pattern_based_decision
 , near end of function.
 
-Proposed Code:
+Code:
 
 # UMBRAL DINÁMICO (Time Ladder)
     # MOMENTUM: 65 (Fuerza compensa)
@@ -42,7 +53,6 @@ Proposed Code:
     
     if max_adx &gt; 35:
         MIN_THRESHOLD = 65  # Relajar con fuerza extrema
-    # elif archetype == "TECHNICAL": MIN_THRESHOLD = 75 (Pending implementation)
     
     if final_score &gt;= MIN_THRESHOLD:
 2. FIX WRECKING BALL (REALISTA)
@@ -52,7 +62,7 @@ brain_intelligent.py
 make_pattern_based_decision
 , Block 2 (Physics)
 
-Proposed Code:
+Code:
 
 # 2. Definir el Umbral de Resistencia (La "Vara" a saltar)
     # UMBRAL REALISTA: ADX 30 base (alcanzable)
@@ -73,7 +83,7 @@ brain_validators/adx_validator.py
 validate_adx_separation
 , if result['force_state'] == 'EXPLOSIVE':
 
-Proposed Code:
+Code:
 
 if result['force_state'] == 'EXPLOSIVE':
         # FIX: Verificar DIRECCIÓN antes de aprobar
@@ -87,14 +97,14 @@ if result['force_state'] == 'EXPLOSIVE':
             result['score_adjustment'] = -100
             result['reason'] = f"⛔ ADX EXPLOSIVO EN CONTRA ({adx_val:.1f})"
             result['is_explosive'] = False
-4. FIX MOMENTUM REBOTE (REVISADO - 1 VELA)
+4. FIX MOMENTUM REBOTE (GRADUAL - 1 VELA)
 File: 
 brain_validators/momentum_validator.py
  Context: 
 validate_momentum_reversal
 , elif consecutive == 1:
 
-Proposed Code:
+Code:
 
 elif consecutive == 1:
             # DETECTAR FUERZA ADX
@@ -110,14 +120,14 @@ elif consecutive == 1:
                 result['reversal_detected'] = True  # MANTENER True
                 result['score_adjustment'] = -10  # Penalty gradual
                 result['reason'] = f"⏳ Reversión 1v débil (ADX {tf_adx:.1f})"
-5. FIX ZIGZAG CORRECCIÓN (REVISADO - GRADUAL)
+5. FIX ZIGZAG CORRECCIÓN (GRADUAL)
 File: 
 brain_validators/zigzag_validator.py
  Context: 
 validate_zigzag_alignment
 , Start of function.
 
-Proposed Code:
+Code:
 
 # DETECTAR CORRECCIÓN ACTIVA (últimas 3 velas) - TIME LADDER
     prices = structure_data.get('prices', [])
@@ -137,7 +147,7 @@ Proposed Code:
                 result['reason'] = "⚠️ Corrección moderada (3v)"
             
             # NO return - dejar que otros factores compensen
-6. FIX CORRECCIÓN ACTIVA (REVISADO - GRADUAL)
+6. FIX CORRECCIÓN ACTIVA (GRADUAL + APPLY)
 File: 
 brain_executor_entry.py
  Context: Inside 
@@ -146,14 +156,12 @@ check_trigger_activated_intelligent
 validate_5m_entry_conditions
 .
 
-Proposed Code:
+Code:
 
 # ==============================================================================
             # 2.5 DETECTOR DE CORRECCIÓN ACTIVA (Anti-FOMO) - TIME LADDER
             # ==============================================================================
-            from exchange_connection import fetch_ohlcv
-            import pandas as pd
-            
+            # (Imports already handled)
             ohlcv_5m = fetch_ohlcv(symbol, '5m', 5)
             if ohlcv_5m and len(ohlcv_5m) &gt;= 3:
                 df_5m = pd.DataFrame(ohlcv_5m, columns=['timestamp','open','high','low','close','volume'])
@@ -184,14 +192,17 @@ Proposed Code:
                             correction_penalty = -60
                             print(f"   🚫 ADX {adx_15m:.1f} - Penalización alta")
                         
-                        # Ajustar score de decisión (NO bloquear)
-                        # Este penalty se acumulará en validación final
-7. FIX POST-PICO (REVISADO - GRADUAL)
+                        # APLICAR PENALTY AL SCORE (FIX BUG #1)
+                        if correction_penalty &lt; 0:
+                            decision_score = decision.get('confidence', 100)
+                            decision['confidence'] = max(0, decision_score + correction_penalty)
+                            print(f"   📉 Score ajustado (Corrección): {decision_score} → {decision['confidence']}")
+7. FIX POST-PICO (GRADUAL + APPLY)
 File: 
 brain_executor_entry.py
  Context: After Corrección Activa check.
 
-Proposed Code:
+Code:
 
 # ==============================================================================
             # 2.8 DETECTOR POST-PICO (Anti-Buying-Top) - TIME LADDER
@@ -218,13 +229,17 @@ Proposed Code:
                     else:
                         print(f"   ✅ Retroceso sano: {retrace_pct:.1f}%")
                     
-                    # NO return - acumular penalty
+                    # APLICAR PENALTY AL SCORE (FIX BUG #2)
+                    if peak_penalty &lt; 0:
+                        decision_score = decision.get('confidence', 100)
+                        decision['confidence'] = max(0, decision_score + peak_penalty)
+                        print(f"   📉 Score ajustado (Pico): {decision_score} → {decision['confidence']}")
 8. FIX MEMORIA FRACASOS (ACCEPTABLE)
 File: 
 brain_executor_entry.py
  Context: After if decision['action'] == 'OPERAR':.
 
-Proposed Code:
+Code:
 
 # ==============================================================================
             # 2.7 MEMORIA DE FRACASOS (Anti-Repetición)
@@ -245,7 +260,6 @@ Proposed Code:
                         
                         if adx_1h &lt;= 40:
                             print(f"   🚫 COOLDOWN: Sin Wrecking Ball (ADX {adx_1h:.1f})")
-                            # Este se mantiene con RETURN porque es protección de capital dura
                             return {
                                 'activated': False,
                                 'adx': adx_1h,
@@ -263,7 +277,7 @@ brain_executor_entry.py
 validate_5m_entry_conditions
  check.
 
-Proposed Code:
+Code:
 
 # SCORING GRADUAL (no binario)
             validation_score = validation['score']  # 0-100
@@ -287,12 +301,11 @@ Proposed Code:
                 # Muy malo (&lt;50)
                 print(f"   ❌ 5M REJECTED: {validation['missing']}")
                 return {'activated': False, 'adx': 0, 'momentum_age': 0, 'volume_ratio': 0}
-
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 11,024<br>
-    Generado: 2025-12-12 14:26:38
+    Total caracteres: 11,660<br>
+    Generado: 2025-12-12 14:39:40
   </div>
 </body>
 </html>
