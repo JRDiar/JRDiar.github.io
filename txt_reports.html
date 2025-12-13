@@ -15,64 +15,49 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-13 11:54:33</div>
+  <div class="meta">Última actualización: 2025-12-13 12:05:26</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-IMPLEMETATION PLAN v6.4.3: BRAIN GRID (FINAL SURGICAL FIX)
-Este plan incorpora los 5 BUGS CRÍTICOS del análisis v6.4.2, implementando la lógica exacta solicitada para el sistema de "Brain Grid".
+IMPLEMENTATION PLAN v6.4.4: BRAIN GRID (5 FIXES CRÍTICOS)
+Este plan corrige los 4 bugs detectados en v6.4.3 con 5 prompts quirúrgicos.
 
-Filosofía: Time Ladder, Caching Inteligente, Scoring Contextual y Salida Relativa.
+Filosofía: Time Ladder, Fuerza Primero, Casos Mutuamente Excluyentes.
 
-Propose Changes
+Orden de Aplicación
+PROMPT 2 → 
+brain_config.py
+ (Thresholds)
+PROMPT 1 → brain_grid.py (Lógica clara)
+PROMPT 3 → 
+brain_intelligent.py
+ (Integración fuerza)
+PROMPT 4 → 
+brain_executor.py
+ (Remover cache)
+PROMPT 5 → 
+brain_executor.py
+ (Ajustar salida)
 1. 
 brain_config.py
- (Constantes)
+ (PROMPT 2: Thresholds)
 [MODIFY] 
 brain_config.py
-Añadir sección BRAIN GRID al final del archivo.
+Añadir/modificar sección BRAIN GRID con thresholds aumentados.
 
-# [MODIFIED] Sección BRAIN GRID
+# BRAIN GRID v2
 GRID_LOOKBACK = 20
-GRID_COMPRESSION_BASE = 2.0
+GRID_COMPRESSION_BASE = 3.5  # Aumentado de 2.0
 GRID_COMPRESSION_MULTIPLIERS = {
-    'high_vol': 2.5,   
-    'medium_vol': 2.0, 
-    'low_vol': 1.5     
+    'high_vol': 4.0,    # Aumentado
+    'medium_vol': 3.5,  # Aumentado
+    'low_vol': 2.5      # Aumentado
 }
-2. 
-brain_analyzer.py
- (Inyección de Datos)
-[MODIFY] 
-brain_analyzer.py
-Modificar 
-analyze_coin_complete
- para inyectar el DataFrame de 5m en el diccionario ladder_analysis y evitar re-fetching.
-
-def analyze_coin_complete(symbol):
-    # ...
-    ohlcv_5m = fetch_ohlcv(symbol, '5m', 100) # Fetch manual aquí
-    if not ohlcv_5m: return None
-    df_5m = pd.DataFrame(ohlcv_5m, columns=['timestamp','open','high','low','close','volume'])
-    
-    # [FIX] Pasar df a analyze_5m NO ES NECESARIO si lo inyectamos después, 
-    # pero el plan dice "Inyectar DF".
-    
-    analysis = {
-        '4h': analyze_4h(symbol),
-        '1h': analyze_1h(symbol),
-        '15m': analyze_15m(symbol),
-        '5m': analyze_5m(symbol)
-    }
-    
-    # [FIX] INYECTAR DF
-    analysis['df_5m'] = df_5m 
-    return analysis
-3. brain_grid.py (Nuevo Módulo Core)
+2. brain_grid.py (PROMPT 1: Lógica Clara)
 [NEW] 
 brain_grid.py
-Crear el módulo con la clase MarketGridNavigator corregida (Scoring Contextual).
+Crear módulo con lógica _decide() corregida (casos mutuamente excluyentes).
 
 import pandas as pd
 import numpy as np
@@ -83,16 +68,13 @@ class MarketGridNavigator:
         if df_5m is None or len(df_5m) &lt; 30:
             return {'decision': 'BLOCK', 'reason': 'No Data', 'score': -100, 'grid_data': {}}
         
-        # 1. Grid &amp; Volatilidad
         grid = self._build_grid(df_5m)
         vol_class = self._classify_volatility(df_5m, grid['atr_current'])
         grid['vol_class'] = vol_class
         grid['threshold'] = GRID_COMPRESSION_BASE * GRID_COMPRESSION_MULTIPLIERS.get(vol_class, 1.0)
         
-        # 2. Puntero
         pointer = self._calc_pointer(df_5m, ladder)
         
-        # 3. Decisión (FIX #1)
         return self._decide(grid, pointer, df_5m)
     
     def _build_grid(self, df):
@@ -103,7 +85,6 @@ class MarketGridNavigator:
         width_atr = (ceiling - floor) / atr if atr &gt; 0 else 0
         return {'ceiling': ceiling, 'floor': floor, 'width_atr': width_atr, 'atr_current': atr}
     def _classify_volatility(self, df, atr_current):
-        # FIX Rolling Volatility
         closes = df['close'].tail(5)
         avg_price = closes.mean()
         avg_atr_pct = (atr_current / avg_price) * 100 if avg_price &gt; 0 else 0
@@ -119,134 +100,134 @@ class MarketGridNavigator:
         elif mom_color in ['red', 'maroon']: direction = "DOWN"
         return {'direction': direction, 'velocity': velocity}
     def _decide(self, grid, pointer, df):
-        # [FIX #1] Lógica Core corregida
+        """Decisión con casos mutuamente excluyentes"""
         score = 0
         reasons = []
         current_price = df['close'].iloc[-1]
         
-        # 1. Compresión
+        # 1. BLOQUEO: Compresión (LATERAL)
         if grid['width_atr'] &lt; grid['threshold']:
-            score -= 80
-            reasons.append(f"⛔ LATERAL ({grid['width_atr']:.1f} ATRs)")
+            return {
+                'decision': 'BLOCK',
+                'score': -100,
+                'reasons': [f"⛔ LATERAL ({grid['width_atr']:.1f} ATRs)"],
+                'grid_data': grid
+            }
         
-        # 2. Contexto Espacial
+        # 2. SCORING: Posición espacial
         denominator = (grid['ceiling'] - grid['floor'])
         if denominator == 0: denominator = 0.0001
         position = (current_price - grid['floor']) / denominator
         
-        if position &gt; 0.8 and pointer['direction'] == 'UP':  # Breakout techo
-            score += 20
-        elif position &lt; 0.2 and pointer['direction'] == 'DOWN':  # Breakdown piso
-            score += 20
-        elif position &gt; 0.5 and pointer['direction'] == 'DOWN':  # Rebote bajista
-            score -= 30
-            reasons.append("⚠️ Rebote contra techo (Contexto Bajista)")
-        elif position &lt; 0.5 and pointer['direction'] == 'UP':  # Rebote alcista
-            score -= 30
-            reasons.append("⚠️ Rebote contra piso (Contexto Alcista)")
+        # CASO A: Breakout/Breakdown (bordes + momentum alineado)
+        if position &gt; 0.85 and pointer['direction'] == 'UP':
+            score = 30
+            reasons.append("✅ Breakout techo")
+        elif position &lt; 0.15 and pointer['direction'] == 'DOWN':
+            score = 30
+            reasons.append("✅ Breakdown piso")
         
-        decision = "GO" if score &gt;= 20 else "BLOCK" if score &lt;= -60 else "WAIT"
+        # CASO B: Zona favorable (centro + momentum)
+        elif 0.3 &lt;= position &lt;= 0.7:
+            if pointer['direction'] in ['UP', 'DOWN']:
+                score = 15
+                reasons.append("✅ Zona neutral con momentum")
+            else:
+                score = 0
+        
+        # CASO C: Trading contra estructura
+        elif position &gt; 0.7 and pointer['direction'] == 'DOWN':
+            score = -40
+            reasons.append("⚠️ SHORT cerca techo")
+        elif position &lt; 0.3 and pointer['direction'] == 'UP':
+            score = -40
+            reasons.append("⚠️ LONG cerca piso")
+        
+        # CASO D: Otros
+        else:
+            score = 0
+            reasons.append("⚪ Posición neutra")
+        
+        decision = "GO" if score &gt;= 15 else "WAIT"
         return {'decision': decision, 'score': score, 'reasons': reasons, 'grid_data': grid}
 grid_navigator = MarketGridNavigator()
+3. 
+brain_intelligent.py
+ (PROMPT 3: Integración Fuerza)
+[MODIFY] 
+brain_intelligent.py
+Después de grid_navigator.navigate(), validar FUERZA antes de permitir "GO".
+
+# DESPUÉS de grid_navigator.navigate()
+grid_nav = grid_navigator.navigate(symbol, df_5m, ladder_analysis)
+# VALIDAR FUERZA PRIMERO
+if grid_nav['decision'] == 'GO':
+    # Extraer ADX 15m
+    adx_15m = ladder_analysis.get('15m', {}).get('adx', {}).get('adx_current', 0)
+    mom_15m = ladder_analysis.get('15m', {}).get('momentum', {}).get('color_current', 'neutral')
+    
+    # Determinar dirección del trade
+    trade_dir = force_dir  # O lógica que uses
+    
+    # BLOQUEO: Sin fuerza mínima
+    if adx_15m &lt; 22:
+        grid_nav['decision'] = 'BLOCK'
+        grid_nav['score'] = -50
+        grid_nav['reasons'].append(f"⛔ ADX débil ({adx_15m:.1f})")
+    
+    # BLOQUEO: Momentum contrario
+    elif trade_dir == 'BULLISH' and mom_15m not in ['green', 'lime']:
+        grid_nav['decision'] = 'BLOCK'
+        grid_nav['score'] = -50
+        grid_nav['reasons'].append(f"⛔ Momentum {mom_15m} vs BULLISH")
+    elif trade_dir == 'BEARISH' and mom_15m not in ['red', 'maroon']:
+        grid_nav['decision'] = 'BLOCK'
+        grid_nav['score'] = -50
+        grid_nav['reasons'].append(f"⛔ Momentum {mom_15m} vs BEARISH")
+ladder_analysis['grid'] = grid_nav
 4. 
-brain_intelligent.py
- (Fallback Real)
+brain_executor.py
+ (PROMPT 4: Remover Cache)
 [MODIFY] 
-brain_intelligent.py
-En 
-orchestrate_intelligence
-, implementar el fallback para df_5m.
+brain_executor.py
+Eliminar bloque de cache 15m. Usar ladder existente de trade_data.
 
-def orchestrate_intelligence(symbol):
-    # ... (código existente)
-    
-    # [FIX #2] FALLBACK REAL
-    df_5m = ladder_analysis.get('df_5m')
-    if df_5m is None or df_5m.empty:
-        try:
-           from exchange_connection import fetch_ohlcv
-           raw = fetch_ohlcv(symbol, '5m', 50)
-           if raw:
-               df_5m = pd.DataFrame(raw, columns=['timestamp','open','high','low','close','volume'])
-           else:
-               raise ValueError("No data")
-        except:
-            # Si falla incluso el fallback, no operar
-            return {'action': 'NO_OPERAR', 'confidence': 0, 'reason': 'Error fetching Grid data'}
-            
-    from brain_grid import grid_navigator
-    grid_nav = grid_navigator.navigate(symbol, df_5m, ladder_analysis)
-    ladder_analysis['grid'] = grid_nav 
-    
-    # ... (continuar flujo)
+# REMOVER TODO EL BLOQUE DE CACHE 15M
+# En vez de:
+# if 'last_15m_check' not in trade_data...
+# Hacer:
+ladder_monitor = {
+    '15m': trade_data.get('analysis_15m'),  # Ya existe de entrada
+    '5m': {'close': df['close'].values}  # Datos frescos 5m
+}
+nav = grid_navigator.navigate(symbol, df, ladder_monitor)
 5. 
-brain_think.py
- (Integración Directa)
-[MODIFY] 
-brain_think.py
-Integrated Grid Score en 
-validate_force_propagation
- (o función de validación principal equivalente).
-
-def validate_force_propagation(ladder, direction):
-    # ... (código existente de cálculo de score)
-    
-    # [FIX #3] INTEGRACIÓN DIRECTA GRID SCORE (Sin layer extra)
-    grid = ladder.get('grid', {})
-    grid_score = grid.get('score', 0)
-    
-    score += grid_score
-    if grid_score != 0:
-        reasons.append(f"Grid: {grid_score} ({grid.get('reasons', [''])[0]})")
-        
-    # Resto de validaciones...
-    return {'valid': True, 'score': score, 'reasons': reasons}
-6. 
 brain_executor.py
- (Smart Exit &amp; Cache)
+ (PROMPT 5: Ajustar Salida)
 [MODIFY] 
 brain_executor.py
-Implementar caché de 15m y detección de compresión relativa &gt; 50%.
+Cambiar threshold de compresión de 0.5 a 0.65, y duración mínima a 15 min.
 
-# ... inside monitor_active_trades loop ...
-                
-    # [FIX #4] CACHE 15M (5 mins)
-    now = datetime.now()
-    if 'last_15m_check' not in trade_data or (now - trade_data.get('last_15m_check', datetime.min)).total_seconds() &gt; 300:
-        try:
-            from brain_analyzer import analyze_15m
-            a15m = analyze_15m(symbol, strict=False)
-            trade_data['last_15m'] = a15m
-            trade_data['last_15m_check'] = now
-        except:
-            trade_data['last_15m'] = None
-    
-    a15m = trade_data.get('last_15m')
-    ladder_monitor = {'15m': a15m} if a15m else {}
-    
-    from brain_grid import grid_navigator
-    nav = grid_navigator.navigate(symbol, df, ladder_monitor)
-    
-    # [FIX #5] DETECCIÓN CAMBIO RELATIVO (&gt;50%)
-    width = nav['grid_data'].get('width_atr', 99)
-    
-    if 'entry_width_atr' not in trade_data:
-        trade_data['entry_width_atr'] = width
-    
-    # Evitar división por cero
-    entry_width = trade_data['entry_width_atr'] if trade_data['entry_width_atr'] &gt; 0 else 0.1
-    width_change = (entry_width - width) / entry_width
-    
-    # Criterio: Si se comprimió más del 50% de su estado inicial
-    if width_change &gt; 0.5 and duration_min &gt; 10:
-        print(f"🧱 GRID EXIT: Compresión masiva {width_change*100:.0f}% (De {entry_width:.1f} a {width:.1f})")
-        symbols_to_close.append((symbol, f"Grid comprimió {width_change*100:.0f}%"))
-        continue
+# Cambiar threshold de 0.5 a 0.65
+if width_change &gt; 0.65 and duration_min &gt; 15:  # Más conservador
+    print(f"🧱 GRID EXIT: Compresión extrema {width_change*100:.0f}%")
+    symbols_to_close.append((symbol, f"Grid comprimió {width_change*100:.0f}%"))
+Resumen de Cambios
+Archivo	Cambio
+brain_config.py
+Thresholds aumentados (3.5 ATRs base)
+brain_grid.py	Lógica _decide() con casos mutuamente excluyentes
+brain_intelligent.py
+Validación de FUERZA (ADX &gt;= 22, Momentum alineado)
+brain_executor.py
+Remover cache 15m, usar ladder existente
+brain_executor.py
+Threshold salida: 65% compresión, 15 min mínimo
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 8,156<br>
-    Generado: 2025-12-13 11:54:33
+    Total caracteres: 7,427<br>
+    Generado: 2025-12-13 12:05:26
   </div>
 </body>
 </html>
