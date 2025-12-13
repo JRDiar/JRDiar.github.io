@@ -15,25 +15,24 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-13 15:53:56</div>
+  <div class="meta">Última actualización: 2025-12-13 16:00:41</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-IMPLEMENTATION PLAN v6.4.7: BRAIN GRID (CORRECCIONES FINALES)
-Este plan incorpora los fixes ULTRA-ESPECÍFICOS solicitados. Se ejecutará paso a paso y validando cada cambio.
+IMPLEMENTATION PLAN v6.4.8: BRAIN GRID (ANÁLISIS PROFUNDO)
+Este plan incorpora los fixes detectados en la auditoría final v6.4.7. Se corregirán 4 Bugs Críticos y se añadirán 2 Mejoras.
 
 Filosofía: Time Ladder, Scoring Gradual (No Binario), Lógica Momentum Estricta.
 
 1. Crear brain_grid.py (NUEVO ARCHIVO)
 [NEW] 
 brain_grid.py
-Crear archivo en carpeta raíz con el siguiente contenido EXACTO:
+Crear archivo en carpeta raíz con el siguiente contenido EXACTO (Correcciones aplicadas: Multiplicador, Volatilidad 50 velas, Div Zero Robust):
 
-"""BRAIN GRID v6.4.7 - Navegación Espacial"""
+"""BRAIN GRID v6.4.8 - Navegación Espacial (CORREGIDO)"""
 import pandas as pd
-import numpy as np
-from brain_config import GRID_LOOKBACK, GRID_COMPRESSION_BASE, GRID_COMPRESSION_MULTIPLIERS
+from brain_config import GRID_LOOKBACK, GRID_COMPRESSION_MULTIPLIERS
 from brain_calculator import calculate_atr
 class MarketGridNavigator:
     def navigate(self, symbol, df_5m, ladder):
@@ -41,9 +40,10 @@ class MarketGridNavigator:
             return {'decision': 'WAIT', 'score': -100, 'reasons': ['No Data'], 'grid_data': {}}
         
         grid = self._build_grid(df_5m)
-        vol_class = self._classify_volatility(df_5m, grid['atr_current'])
+        vol_class = self._classify_volatility(df_5m) # FIX: Sin pasar atr
         grid['vol_class'] = vol_class
-        grid['threshold'] = GRID_COMPRESSION_BASE * GRID_COMPRESSION_MULTIPLIERS.get(vol_class, 1.0)
+        # FIX BUG #1: REEMPLAZAR, no multiplicar
+        grid['threshold'] = GRID_COMPRESSION_MULTIPLIERS.get(vol_class, 2.5)
         
         pointer = self._calc_pointer(df_5m, ladder)
         force = self._get_force(ladder)
@@ -58,19 +58,24 @@ class MarketGridNavigator:
         width_atr = (ceiling - floor) / atr if atr &gt; 0 else 0
         return {'ceiling': ceiling, 'floor': floor, 'width_atr': width_atr, 'atr_current': atr}
     
-    def _classify_volatility(self, df, atr_current):
-        closes = df['close'].tail(5)
-        avg_price = closes.mean()
-        avg_atr_pct = (atr_current / avg_price) * 100 if avg_price &gt; 0 else 0
-        if avg_atr_pct &gt; 1.0: return 'high_vol'
-        if avg_atr_pct &lt; 0.3: return 'low_vol'
+    def _classify_volatility(self, df):
+        # FIX MEJORA #1: Usar 50 velas
+        if len(df) &lt; 50:
+            return 'medium_vol'
+        
+        atr_data = calculate_atr(df, period=14)
+        atr_avg = atr_data['atr_current']
+        price_avg = df['close'].tail(50).mean()
+        atr_pct = (atr_avg / price_avg) * 100 if price_avg &gt; 0 else 0
+        
+        if atr_pct &gt; 2.0: return 'high_vol'
+        if atr_pct &lt; 0.8: return 'low_vol'
         return 'medium_vol'
     
     def _calc_pointer(self, df, ladder):
         closes = df['close'].values
         velocity = closes[-1] - closes[-3] if len(closes) &gt; 3 else 0
         
-        # SAFE ACCESS
         ladder_15m = ladder.get('15m') if ladder else None
         mom_data = ladder_15m.get('momentum', {}) if ladder_15m else {}
         mom_color = mom_data.get('color_current', 'neutral')
@@ -112,9 +117,12 @@ class MarketGridNavigator:
             score += 15
             reasons.append(f"💪 ADX {adx_val:.1f}")
         
-        # 3. POSITION
-        denominator = (grid['ceiling'] - grid['floor']) or 0.0001
-        position = (current_price - grid['floor']) / denominator
+        # 3. POSITION (FIX BUG #4: division por zero)
+        denominator = grid['ceiling'] - grid['floor']
+        if denominator &lt; 0.0001:
+            position = 0.5  # Neutral si flat
+        else:
+            position = (current_price - grid['floor']) / denominator
         
         # BREAKOUT UP
         if position &gt; 0.85 and pointer['direction'] == 'UP':
@@ -123,7 +131,6 @@ class MarketGridNavigator:
                 reasons.append("🚀 Breakout + Mom + ADX")
             else:
                 score += 10
-                reasons.append("⚠️ Breakout débil")
         
         # BREAKDOWN DOWN
         elif position &lt; 0.15 and pointer['direction'] == 'DOWN':
@@ -132,14 +139,13 @@ class MarketGridNavigator:
                 reasons.append("🚀 Breakdown + Mom + ADX")
             else:
                 score += 10
-                reasons.append("⚠️ Breakdown débil")
         
-        # NEUTRAL
+        # NEUTRAL ZONE
         elif 0.3 &lt;= position &lt;= 0.7:
             score += 25
             reasons.append("✅ Zona neutral")
         
-        # CONTRA
+        # CONTRA-TENDENCIA
         elif position &gt; 0.7 and pointer['direction'] == 'DOWN':
             score -= 50
             reasons.append("⚠️ SHORT cerca techo")
@@ -154,70 +160,73 @@ grid_navigator = MarketGridNavigator()
 brain_config.py
 [MODIFY] 
 brain_config.py
-Insertar constantes BRAIN GRID antes de la sección LOGGING.
+Insertar constantes BRAIN GRID (Thresholds ajustados).
 
 # ============================================================================
 # BRAIN GRID
 # ============================================================================
 GRID_LOOKBACK = 20
-GRID_COMPRESSION_BASE = 3.5
 GRID_COMPRESSION_MULTIPLIERS = {
-    'high_vol': 4.0,
-    'medium_vol': 3.5,
-    'low_vol': 2.5
+    'high_vol': 3.5,
+    'medium_vol': 2.5,
+    'low_vol': 1.8
 }
 3. Modificar 
 brain_intelligent.py
 [MODIFY] 
 brain_intelligent.py
-Insertar lógica de integración en 
-orchestrate_intelligence
- después del ladder_analysis inicial.
+Insertar lógica de integración segura (Fetch Fresh DF).
 
 # BRAIN GRID
     from brain_grid import grid_navigator
     from exchange_connection import fetch_ohlcv
     import pandas as pd
     
-    df_5m = ladder_analysis.get('5m', {}).get('df')
-    if df_5m is None:
-        ohlcv_5m = fetch_ohlcv(symbol, '5m', 50)
-        if ohlcv_5m:
-            df_5m = pd.DataFrame(ohlcv_5m, columns=['timestamp','open','high','low','close','volume'])
-    
-    if df_5m is not None:
+    # FIX BUG #2: Fetch Fresh DF
+    ohlcv_5m = fetch_ohlcv(symbol, '5m', 50)
+    if ohlcv_5m:
+        df_5m = pd.DataFrame(ohlcv_5m, columns=['timestamp','open','high','low','close','volume'])
         grid_nav = grid_navigator.navigate(symbol, df_5m, ladder_analysis)
         ladder_analysis['grid'] = grid_nav
     else:
-        ladder_analysis['grid'] = {'decision': 'WAIT', 'score': -100, 'reasons': ['No DF'], 'grid_data': {}}
+        ladder_analysis['grid'] = {'decision': 'WAIT', 'score': -100, 'reasons': ['No data'], 'grid_data': {}}
 4. Modificar 
 brain_executor.py
  (enter_trade)
 [MODIFY] 
 brain_executor.py
-Actualizar diccionario trade_data en enter_trade para guardar datos iniciales del Grid.
+Guardar Snapshot de 15m.
 
-trade_data = {
+# FIX BUG #3: Snapshot 15m entry
+        from brain_analyzer import analyze_15m
+        a15m_entry = analyze_15m(symbol, strict=False)
+        trade_data = {
             'symbol': symbol,
             'direction': direction,
-            'analysis_15m': watchlist_data.get('analysis_15m'),
+            'analysis_15m_snapshot': a15m_entry,
             'grid_width_initial': watchlist_data.get('grid', {}).get('grid_data', {}).get('width_atr', 999),
 5. Modificar 
 brain_executor.py
  (monitor_active_trades)
 [MODIFY] 
 brain_executor.py
-Insertar lógica de monitoreo de Grid después de actualizar el DF.
+Monitor con Re-fetch 15m y Grace Period aumentado.
 
 # GRID MONITOR
                 from brain_grid import grid_navigator
-                ladder_monitor = {'15m': trade_data.get('analysis_15m')}
+                from brain_analyzer import analyze_15m
+                
+                # FIX BUG #3: Re-fetch frescos
+                a15m_now = analyze_15m(symbol, strict=False)
+                ladder_monitor = {'15m': a15m_now} if a15m_now else {}
+                
                 nav = grid_navigator.navigate(symbol, df, ladder_monitor)
                 
                 prev_width = trade_data.get('grid_width_initial', 999)
                 current_width = nav['grid_data'].get('width_atr', 0)
                 
-                if prev_width &gt; 0 and prev_width &lt; 999 and duration_min &gt; 30:
+                # FIX MEJORA #2: Grace Period 45 min
+                if prev_width &gt; 0 and prev_width &lt; 999 and duration_min &gt; 45:
                     compression_ratio = current_width / prev_width
                     
                     if compression_ratio &lt; 0.35:
@@ -228,8 +237,8 @@ Insertar lógica de monitoreo de Grid después de actualizar el DF.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 7,812<br>
-    Generado: 2025-12-13 15:53:56
+    Total caracteres: 8,196<br>
+    Generado: 2025-12-13 16:00:41
   </div>
 </body>
 </html>
