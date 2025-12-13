@@ -15,534 +15,198 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-13 11:00:48</div>
+  <div class="meta">Última actualización: 2025-12-13 11:09:34</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-El chat se lleno, este chat es tu respuesta despues que te pase una propuesta de mejora para el bot.
+IMPLEMENTATION PLAN v6.4.1: BRAIN GRID (CORREGIDO)
+Este plan incorpora los 6 FIXES CRÍTICOS solicitados para eliminar lógica binaria, redundancias y mejorar la precisión quirúrgica.
 
-El chat se llenó, tengo un problema hace varias semanas vengo con lo mismo, ya tenes todo el bot en tu memoria, necesito que analices esta propuesta y la mejores, esta propuesta la vamos a implementar al bot. Link: https://jrdiar.github.io/txt_reports.html?v=20251213104149
+1. MODIFICACIÓN: 
+brain_config.py
+ (PROMPT D)
+Objetivo: Definir umbrales dinámicos de compresión según volatilidad.
 
-10:44 a. m.
+# [MODIFICAR] Sección BRAIN GRID
+GRID_LOOKBACK = 20
+GRID_COMPRESSION_BASE = 2.0
+GRID_COMPRESSION_MULTIPLIERS = {
+    'high_vol': 2.5,   # BTC, ETH, SOL (Requieren más aire)
+    'medium_vol': 2.0, # Majors estables
+    'low_vol': 1.5     # Shitcoins / Stable-like
+}
+2. NUEVO MÓDULO: brain_grid.py (PROMPT D - VOLATILITY AWARE)
+Objetivo: Implementar MarketGridNavigator con selección dinámica de threshold.
 
-1 paso
-
-
-Se obtuvo
-📋 Comunicación Claude - Bot Phase 3.5
-github.io
-
-
-Proceso de pensamiento
-20s
-
-El usuario me pide que analice una propuesta completa sobre "la malla" (grid system) para mejorar el bot. He leído el documento completo que contiene:
-
-La conversación donde el usuario explica el problema del bot (últimas semanas sin solución, trades mal ejecutados)
-Su propuesta de implementar un sistema de "malla" (grid) para dar visión dimensional al bot
-Una respuesta del asistente que implementó brain_grid.py con toda la lógica
-El usuario me dice que tengo todo el bot en memoria y que analice profundamente esta propuesta y la mejore.
-
-Voy a hacer un análisis exhaustivo de lo que propone y dar mejoras críticas:
-
-ANÁLISIS DE LA PROPUESTA:
-
-La propuesta del "grid system" es conceptualmente correcta - el bot necesita visión contextual espacial, no solo indicadores aislados. Los problemas identificados son reales:
-
-BARD - entró en lateralización
-ARCSOL - entró en rebote contrario
-ICNT - no volvió a entrar en caídas fuertes
-BUGS CRÍTICOS EN LA IMPLEMENTACIÓN:
-
-Bug #1: Fetch redundante en make_pattern_based_decision
-python
-raw_5m = fetch_ohlcv(symbol, '5m', 50) # MALO - ya se hizo antes
-Esto ralentiza el bot y es innecesario. El DF ya existe en el ladder.
-
-Bug #2: Lógica de tendencia muy simplista
-python
-slope = mid_line - prev_mid  # Solo compara 2 puntos
-Esto puede dar falsos positivos. Necesita regresión lineal real.
-
-Bug #3: No integra ADX/Momentum real
-El grid calcula su propia "fuerza" de manera desconectada, ignorando completamente los indicadores LazyBear ya existentes. Esta desconexión genera inconsistencias en la evaluación de momentum y tendencia.
-
-Bug #4: Threshold de compression arbitrario
-python
-GRID_COMPRESSION_TH = 1.5  # ¿Por qué 1.5%?
-El umbral de compresión carece de fundamentación técnica. No considera la volatilidad específica de cada activo, lo que puede llevar a señales incorrectas.
-
-Bug #5: Falta gestión de salida por grid No existe una estrategia definida de salida basada en la estructura del grid, lo que deja al bot sin mecanismos claros de protección y gestión de riesgo.
-Necesario evolucionar el sistema con mejoras críticas: incorporar indicadores dinámicos, calibrar umbrales con ATR, detectar rangos laterales con precisión, identificar formaciones de soporte/resistencia y desarrollar un sistema de scoring más sofisticado que el actual modelo binario.
-
-🔍 ANÁLISIS PROFUNDO - Propuesta "Grid System"
-Tu diagnóstico es CORRECTO: El bot está ciego contextualmente. La propuesta de "malla" es el cambio de paradigma necesario.
-
-❌ BUGS CRÍTICOS EN LA IMPLEMENTACIÓN
-BUG #1: Fetch Redundante (Performance)
-python
-raw_5m = fetch_ohlcv(symbol, '5m', 50) # Ya se hizo en analyze_5m
-Problema: Duplica requests, ralentiza bot.
-Solución: Pasar DF desde analyze_coin_complete().
-
-BUG #2: Detección Tendencia Simplista
-python
-slope = mid_line - prev_mid  # Solo 2 puntos
-if slope &gt; 0.0005: trend = "UP_TREND"
-Problema: Ruido. Una vela random puede cambiar la "tendencia".
-Solución: Regresión lineal real sobre mid_line últimos 10 puntos.
-
-BUG #3: Ignora ADX/Momentum Real
-El grid calcula su propia "fuerza" pero NO usa LazyBear Momentum (que ya funciona).
-
-BUG #4: Thresholds Arbitrarios
-python
-GRID_COMPRESSION_TH = 1.5  # ¿Por qué 1.5%?
-Problema: BTC late 3%, shitcoins 10%. Necesita normalización ATR.
-
-BUG #5: Salida No Implementada
-Solo menciona conceptualmente. Falta código en brain_executor.py.
-
-✅ PROPUESTA CORREGIDA (Quirúrgica)
-MÓDULO: brain_grid.py (CORREGIDO)
-python
-"""
-BRAIN GRID v6.1 - Sistema Navegación Espacial (CORREGIDO)
-"""
 import pandas as pd
 import numpy as np
-from brain_config import GRID_LOOKBACK, GRID_COMPRESSION_TH
-from brain_calculator import calculate_adx_with_memory, calculate_momentum_with_memory, calculate_atr
-
-class MarketGridNavigator:
-    def navigate(self, symbol, df_5m, ladder):
-        """
-        Navegación con DF pasado desde analyze_coin + ADX/Momentum real
-        """
-        if df_5m is None or len(df_5m) &lt; 30:
-            return {'decision': 'BLOCK', 'reason': 'Sin datos', 'confidence': 0}
-        
-        # 1. CONSTRUIR MALLA (Donchian + ATR normalizado)
-        grid = self._build_grid(df_5m)
-        
-        # 2. PUNTERO (Velocity + LazyBear Momentum)
-        pointer = self._calc_pointer(df_5m, ladder)
-        
-        # 3. FUERZA (ADX real del ladder)
-        force = self._get_force(ladder)
-        
-        # 4. DECISIÓN ESPACIAL
-        return self._decide(grid, pointer, force, df_5m)
-    
-    def _build_grid(self, df):
-        """Malla normalizada por ATR"""
-        lookback = GRID_LOOKBACK
-        
-        # Donchian Channel
-        ceiling = df['high'].rolling(lookback).max().iloc[-1]
-        floor = df['low'].rolling(lookback).min().iloc[-1]
-        mid = (ceiling + floor) / 2
-        
-        # ATR para normalizar
-        atr_data = calculate_atr(df, period=14)
-        atr = atr_data['atr_current']
-        
-        # Ancho normalizado (en ATRs, no %)
-        width_atr = (ceiling - floor) / atr if atr &gt; 0 else 0
-        
-        # Tendencia (Regresión lineal últimos 10 puntos)
-        mid_series = [(df['high'].rolling(lookback).max().iloc[i] + df['low'].rolling(lookback).min().iloc[i]) / 2 
-                      for i in range(-10, 0)]
-        
-        x = np.arange(10)
-        slope = np.polyfit(x, mid_series, 1)[0]
-        
-        trend = "FLAT"
-        if slope &gt; atr * 0.1: trend = "UP_TREND"
-        elif slope &lt; -atr * 0.1: trend = "DOWN_TREND"
-        
-        return {
-            'ceiling': ceiling,
-            'floor': floor,
-            'mid': mid,
-            'width_atr': width_atr,  # En ATRs
-            'trend': trend,
-            'atr': atr
-        }
-    
-    def _calc_pointer(self, df, ladder):
-        """Puntero con LazyBear Momentum"""
-        # Velocity (precio)
-        closes = df['close'].values
-        velocity = closes[-1] - closes[-3]
-        
-        # Momentum LazyBear (15m - más confiable)
-        mom_15m = ladder.get('15m', {}).get('momentum', {})
-        mom_color = mom_15m.get('color_current', 'neutral')
-        
-        direction = "NEUTRAL"
-        if mom_color in ['green', 'lime']:
-            direction = "UP"
-        elif mom_color in ['red', 'maroon']:
-            direction = "DOWN"
-        
-        return {
-            'direction': direction,
-            'velocity': velocity,
-            'mom_color': mom_color
-        }
-    
-    def _get_force(self, ladder):
-        """ADX real del ladder (15m)"""
-        adx_15m = ladder.get('15m', {}).get('adx', {})
-        return {
-            'adx': adx_15m.get('adx_current', 0),
-            'trend': adx_15m.get('adx_trend', 'estable')
-        }
-    
-    def _decide(self, grid, pointer, force, df):
-        """Decisión con scoring gradual"""
-        score = 0
-        reasons = []
-        
-        current_price = df['close'].iloc[-1]
-        
-        # 1. LATERALIZACIÓN (width &lt; 2 ATRs)
-        if grid['width_atr'] &lt; 2.0:
-            score -= 80
-            reasons.append(f"⛔ CAJA LATERAL ({grid['width_atr']:.1f} ATRs)")
-        
-        # 2. ALINEACIÓN MALLA + PUNTERO
-        if grid['trend'] == 'DOWN_TREND':
-            if pointer['direction'] == 'DOWN':
-                score += 40
-                reasons.append(f"✅ Malla BAJA + Puntero ROJO")
-                
-                # Bonus si rompe piso
-                if current_price &lt;= grid['floor'] * 1.005:
-                    score += 20
-                    reasons.append(f"🔨 Rompiendo piso")
-            else:
-                score -= 40
-                reasons.append(f"⚠️ Malla BAJA pero Puntero VERDE (rebote)")
-        
-        elif grid['trend'] == 'UP_TREND':
-            if pointer['direction'] == 'UP':
-                score += 40
-                reasons.append(f"✅ Malla SUBE + Puntero VERDE")
-                
-                if current_price &gt;= grid['ceiling'] * 0.995:
-                    score += 20
-                    reasons.append(f"🔨 Rompiendo techo")
-            else:
-                score -= 40
-                reasons.append(f"⚠️ Malla SUBE pero Puntero ROJO")
-        
-        # 3. FUERZA ADX
-        if force['adx'] &gt; 30:
-            score += 20
-            reasons.append(f"💪 ADX {force['adx']:.1f}")
-        elif force['adx'] &lt; 20:
-            score -= 20
-        
-        # 4. DECISION FINAL
-        if score &gt;= 60:
-            decision = "GO_LONG" if grid['trend'] == 'UP_TREND' else "GO_SHORT"
-        elif score &lt;= -60:
-            decision = "BLOCK"
-        else:
-            decision = "WAIT"
-        
-        return {
-            'decision': decision,
-            'score': score,
-            'reasons': reasons,
-            'grid_data': grid,
-            'confidence': max(0, score)
-        }
-
-grid_navigator = MarketGridNavigator()
-INTEGRACIÓN: analyze_coin_complete() (brain_analyzer.py)
-python
-# Pasar DF a grid
-analyzed_coins = self.analyze_all_coins()
-
-for symbol, analysis in analyzed_coins:
-    # Fetch DF 5m
-    ohlcv_5m = fetch_ohlcv(symbol, '5m', 50)
-    df_5m = pd.DataFrame(ohlcv_5m, columns=['timestamp','open','high','low','close','volume'])
-    
-    # NAVEGACIÓN GRID
-    nav = grid_navigator.navigate(symbol, df_5m, analysis)
-    
-    if nav['decision'] == 'BLOCK':
-        # Agregar a watchlist como BLOCKED
-        analysis['grid_blocked'] = True
-        analysis['grid_reason'] = nav['reasons']
-SALIDA POR GRID: brain_executor.py
-python
-# En monitor_active_trades()
-df_5m = pd.DataFrame(ohlcv_5m, columns=[...])
-
-nav = grid_navigator.navigate(symbol, df_5m, {'15m': analysis_15m})
-
-if nav['grid_data']['width_atr'] &lt; 2.0:
-    # Lateralizó después de entrar
-    symbols_to_close.append((symbol, "Grid Lateralizó"))
-📋 IMPLEMENTAR EN ORDEN:
-Crear brain_grid.py (versión corregida)
-Modificar analyze_coin_complete() (pasar DF)
-Integrar en brain_intelligent.py (consultar antes de decidir)
-Agregar salida en brain_executor.py
-
-Este es el plan que tenes que chequear si esta bien.
-
-IMPLEMENTATION PLAN v6.4: BRAIN GRID (SPATIAL NAVIGATION) - DETALLADO
-Este plan detalla la implementación EXHAUSTIVA del sistema de Navegación Espacial (Brain Grid) para detectar lateralización y alineación espacial.
-
-Filosofía Time Ladder:
-
-Entrada: La Grilla añade penalizaciones severas (-80) si detecta lateralización, efectivamente bloqueando la entrada pero a través de score negativo (soft block).
-Salida: La compresión extrema (width_atr &lt; 2.0) actúa como una "muerte térmica" del trade, forzando una salida por falta de espacio físico para operar.
-1. NUEVO MÓDULO: brain_grid.py
-Acción: Crear archivo nuevo en raíz. Código Completo:
-
-"""
-BRAIN GRID v6.1 - Sistema Navegación Espacial
-Detecta el "espacio físico" disponible para el trade (Malla Donchian Normalizada).
-"""
-import pandas as pd
-import numpy as np
-from brain_config import GRID_LOOKBACK, GRID_COMPRESSION_TH
+from brain_config import GRID_LOOKBACK, GRID_COMPRESSION_BASE, GRID_COMPRESSION_MULTIPLIERS
 from brain_calculator import calculate_atr
 class MarketGridNavigator:
     def navigate(self, symbol, df_5m, ladder):
-        """
-        Navegación espacial usando DF de 5m y datos del Ladder.
-        Retorna decisión basada en espacio disponible y dirección del puntero.
-        """
         if df_5m is None or len(df_5m) &lt; 30:
-            return {
-                'decision': 'BLOCK', 
-                'reason': 'Sin datos suficientes para Grid', 
-                'score': -100,
-                'grid_data': {}
-            }
+            return {'decision': 'BLOCK', 'reason': 'No Data', 'score': -100, 'grid_data': {}}
         
-        # 1. CONSTRUIR MALLA (Donchian + ATR normalizado)
+        # 1. Grid &amp; Volatilidad
         grid = self._build_grid(df_5m)
+        vol_class = self._classify_volatility(symbol, grid['atr_pct'])
+        grid['vol_class'] = vol_class
+        grid['threshold'] = GRID_COMPRESSION_BASE * GRID_COMPRESSION_MULTIPLIERS.get(vol_class, 1.0)
         
-        # 2. PUNTERO (Velocity + Momentum 15m)
+        # 2. Puntero &amp; Fuerza
         pointer = self._calc_pointer(df_5m, ladder)
-        
-        # 3. FUERZA (ADX real del ladder)
         force = self._get_force(ladder)
         
-        # 4. DECISIÓN ESPACIAL (Scoring)
         return self._decide(grid, pointer, force, df_5m)
     
     def _build_grid(self, df):
-        """Construye la malla espacial normalizada por volatilidad (ATR)"""
-        lookback = GRID_LOOKBACK
+        ceiling = df['high'].rolling(GRID_LOOKBACK).max().iloc[-1]
+        floor = df['low'].rolling(GRID_LOOKBACK).min().iloc[-1]
         
-        # Donchian Channel (Techo y Piso)
-        ceiling = df['high'].rolling(lookback).max().iloc[-1]
-        floor = df['low'].rolling(lookback).min().iloc[-1]
-        mid = (ceiling + floor) / 2
-        
-        # ATR para normalización espacial
         atr_data = calculate_atr(df, period=14)
         atr = atr_data.get('atr_current', 0)
+        close = df['close'].iloc[-1]
         
-        # Ancho normalizado (Cuántos ATRs caben en el canal)
         width_atr = (ceiling - floor) / atr if atr &gt; 0 else 0
+        atr_pct = (atr / close) * 100 if close &gt; 0 else 0
         
         return {
-            'ceiling': ceiling,
-            'floor': floor,
-            'mid': mid,
-            'width_atr': width_atr,  # Métrica clave de compresión
-            'atr': atr
+            'ceiling': ceiling, 'floor': floor, 
+            'width_atr': width_atr, 'atr': atr, 'atr_pct': atr_pct
         }
-    
+    def _classify_volatility(self, symbol, atr_pct):
+        # Clasificación simple basada en ATR % recent
+        if atr_pct &gt; 1.0: return 'high_vol'
+        if atr_pct &lt; 0.3: return 'low_vol'
+        return 'medium_vol'
     def _calc_pointer(self, df, ladder):
-        """Calcula la dirección del puntero (Intención inmediata)"""
-        # Velocity (precio)
+        # (Misma lógica v6.4: Velocity + Momentum 15m)
         closes = df['close'].values
         velocity = closes[-1] - closes[-3] if len(closes) &gt; 3 else 0
-        
-        # Momentum LazyBear (15m - más confiable y estable)
-        mom_15m = ladder.get('15m', {}).get('momentum', {})
-        mom_color = mom_15m.get('color_current', 'neutral')
+        mom_color = ladder.get('15m', {}).get('momentum', {}).get('color_current', 'neutral')
         
         direction = "NEUTRAL"
-        if mom_color in ['green', 'lime']:
-            direction = "UP"
-        elif mom_color in ['red', 'maroon']:
-            direction = "DOWN"
-        
-        return {
-            'direction': direction,
-            'velocity': velocity,
-            'mom_color': mom_color
-        }
-    
+        if mom_color in ['green', 'lime']: direction = "UP"
+        elif mom_color in ['red', 'maroon']: direction = "DOWN"
+            
+        return {'direction': direction, 'velocity': velocity}
     def _get_force(self, ladder):
-        """Extrae fuerza real del ladder (15m)"""
         adx_15m = ladder.get('15m', {}).get('adx', {})
-        return {
-            'adx': adx_15m.get('adx_current', 0),
-            'trend': adx_15m.get('adx_trend', 'estable')
-        }
-    
+        return {'adx': adx_15m.get('adx_current', 0)}
     def _decide(self, grid, pointer, force, df):
-        """Decisión basada en scoring espacial - SIN BINARIOS DUROS (Time Ladder)"""
         score = 0
         reasons = []
-        decision = "WAIT"
         
+        # 1. COMPRESIÓN DINÁMICA
+        if grid['width_atr'] &lt; grid['threshold']:
+            score -= 80 # Soft Block masivo
+            reasons.append(f"⛔ CAJA LATERAL: {grid['width_atr']:.1f} &lt; {grid['threshold']:.1f} ATRs")
+        
+        # 2. ALINEACIÓN PUNTERO
         current_price = df['close'].iloc[-1]
-        
-        # 1. LATERALIZACIÓN (Compresión Espacial)
-        # Si el ancho es menor al umbral, no hay espacio físico para operar con R:R decente.
-        if grid['width_atr'] &lt; GRID_COMPRESSION_TH:
-            score -= 80  # Penalización masiva (Soft Block)
-            reasons.append(f"⛔ CAJA LATERAL: Compresión Extrema ({grid['width_atr']:.1f} ATRs)")
-        
-        # 2. ALINEACIÓN PUNTERO (Dirección inmediata)
-        if pointer['direction'] == 'DOWN':
-            # Validar si estamos en la parte baja rompiendo
-            if current_price &lt;= grid['floor'] * 1.002: # Rompiendo piso
-                score += 20
-                reasons.append("🔨 Grid: Rompiendo Piso")
+        if pointer['direction'] == 'UP':
+            if current_price &gt;= grid['ceiling'] * 0.998:
+                score += 20; reasons.append("🔨 Grid: Rompiendo Techo")
             else:
-                 # Simplemente bajista
-                 score += 10
-                 
-        elif pointer['direction'] == 'UP':
-            # Validar si estamos en la parte alta rompiendo
-            if current_price &gt;= grid['ceiling'] * 0.998: # Rompiendo techo
-                score += 20
-                reasons.append("🔨 Grid: Rompiendo Techo")
+                score += 10
+        elif pointer['direction'] == 'DOWN':
+            if current_price &lt;= grid['floor'] * 1.002:
+                score += 20; reasons.append("🔨 Grid: Rompiendo Piso")
             else:
-                 # Simplemente alcista
-                 score += 10
-        
-        # 3. CONTRADICCIÓN ESPACIAL (Rebotes falsos)
-        # Si el precio sube pero el puntero es BAJISTA
-        if pointer['velocity'] &gt; 0 and pointer['direction'] == 'DOWN':
-             score -= 30
-             reasons.append("⚠️ Grid: Rebote contra tendencia (Puntero DOWN)")
-             
-        # Si el precio baja pero el puntero es ALCISTA
-        elif pointer['velocity'] &lt; 0 and pointer['direction'] == 'UP':
-             score -= 30
-             reasons.append("⚠️ Grid: Caída contra tendencia (Puntero UP)")
-        # 4. FUERZA ADX (Confirmación)
-        if force['adx'] &gt; 30:
-            score += 10
-            reasons.append(f"💪 Grid: ADX Soporta ({force['adx']:.1f})")
-        elif force['adx'] &lt; 20:
-             # Mercado débil reduce confianza espacial
-             score -= 10
-        
-        # 5. RESULTADO FINAL
-        # Mapear score a decisión
-        if score &lt;= -50:
-            decision = "BLOCK"
-        elif score &gt;= 30:
-            decision = "GO"
-        else:
-            decision = "WAIT"
+                score += 10
+                
+        # 3. CONTRADICCIÓN (Penalización)
+        if (pointer['velocity'] &gt; 0 and pointer['direction'] == 'DOWN') or \
+           (pointer['velocity'] &lt; 0 and pointer['direction'] == 'UP'):
+            score -= 30
+            reasons.append("⚠️ Grid: Contradicción Puntero/Velocidad")
+        # Decision
+        decision = "GO" if score &gt;= 30 else "BLOCK" if score &lt;= -50 else "WAIT"
         
         return {
-            'decision': decision,
-            'score': score,
-            'reasons': reasons,
-            'grid_data': grid,
-            'confidence': max(0, min(100, 50 + score)) # Base 50 +/- score
+            'decision': decision, 'score': score, 
+            'reasons': reasons, 'grid_data': grid
         }
 grid_navigator = MarketGridNavigator()
-2. MODIFICACIÓN: 
-brain_config.py
-Acción: Insertar constantes de Grid. (Líneas ~309)
-
-# ============================================================================
-# BRAIN GRID (SPATIAL NAVIGATION)
-# ============================================================================
-GRID_LOOKBACK = 20        # Velas para calcular techo/piso
-GRID_COMPRESSION_TH = 2.0 # Ancho mínimo en ATRs para considerar operativo
 3. MODIFICACIÓN: 
 brain_intelligent.py
- (Entrada)
-Acción: Integrar el Grid en 
-orchestrate_intelligence
- antes de tomar la decisión. Ubicación: Justo después de ladder_analysis (Línea ~52).
+ (ENTRADA)
+Objetivo: Fix Fetch Redundante (A) y Return Binario (B).
 
-# ...
-    ladder_analysis = {
-        '4h': analyze_4h(symbol),
-        '1h': analyze_1h(symbol),
-        '15m': analyze_15m(symbol, strict=False),
-        '5m': analyze_5m(symbol)
-    }
-    # [NUEVO] --- BRAIN GRID (NAVEGACIÓN ESPACIAL) ---
-    from brain_grid import grid_navigator
-    from exchange_connection import fetch_ohlcv
+# ... (Después de ladder_analysis)
     
-    # Necesitamos el DF de 5m crudo para la malla
-    ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
-    if ohlcv_grid:
-        df_grid = pd.DataFrame(ohlcv_grid, columns=['timestamp','open','high','low','close','volume'])
-        grid_nav = grid_navigator.navigate(symbol, df_grid, ladder_analysis)
-        
-        # Inyectar resultado en la data del ladder para 'brain_think'
-        ladder_analysis['grid'] = grid_nav
-        
-        # BLOQUEO CEREBRAL (Time Ladder: Score muy negativo = Bloqueo efectivo)
-        if grid_nav['decision'] == 'BLOCK':
-            print(f"🛑 GRID REJECT: {grid_nav['reasons'][0]}")
-            # Retorno temprano para ahorrar CPU
-            return {
-                'action': 'NO_OPERAR',
-                'confidence': 0,
-                'reason': f"Grid Block: {grid_nav['reasons'][0]}",
-                'full_analysis': {'ladder_data': ladder_analysis}
-            }
-    # ------------------------------------------------
+    # [FIX A] FETCH REDUNDANTE: Usar dato existente
+    df_5m = ladder_analysis.get('5m', {}).get('df')
+    if df_5m is None or df_5m.empty:
+        # Fallback de seguridad
+        from exchange_connection import fetch_ohlcv
+        raw = fetch_ohlcv(symbol, '5m', 50)
+        df_5m = pd.DataFrame(raw, columns=['timestamp','open','high','low','close','volume']) if raw else None
+    # [BRAIN GRID INTEGRATION]
+    from brain_grid import grid_navigator
+    grid_nav = grid_navigator.navigate(symbol, df_5m, ladder_analysis)
+    
+    # [FIX B] NO RETURN BINARIO: Inyectar score y dejar fluir
+    ladder_analysis['grid'] = grid_nav 
+    # El score negativo (-80) de grid_nav se sumará o procesará en brain_think
+    if grid_nav['decision'] == 'BLOCK':
+        print(f"🛑 GRID ALERT: {grid_nav['reasons'][0]}") 
+        # NOTA: No hacemos return, confiamos en que el score -80 mate el trade en sniper/decision final.
 4. MODIFICACIÓN: 
-brain_executor.py
- (Salida)
-Acción: Vigilar compresión durante trade activo en 
-monitor_active_trades
-. Ubicación: Dentro del loop de monitoreo, después de obtener 
-current_price
- (Línea ~438).
+brain_think.py
+ (SNIPER)
+Objetivo: Integrar Grid como Capa 5 en Sniper (PROMPT E).
 
-# ...
-                current_price = ohlcv_5m[-1][4]
-                df = pd.DataFrame(ohlcv_5m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+# Agregar función helper
+def validate_grid_layer(ladder):
+    grid = ladder.get('grid', {})
+    if 'decision' not in grid: return {'valid': True, 'score': 0, 'reason': 'Grid n/a'}
+    
+    if grid['decision'] == 'BLOCK':
+        # El grid ya calculó score -80
+        return {'valid': False, 'score': grid.get('score', -80), 'reason': grid['reasons'][0]}
+    
+    return {'valid': True, 'score': grid.get('score', 0), 'reason': 'Grid OK'}
+# En sniper_checklist (o función similar de validación final):
+def sniper_checklist(ladder):
+    # ... capas existentes ...
+    
+    # [CAPA 5] GRID SPATIAL
+    grid_check = validate_grid_layer(ladder)
+    if not grid_check['valid']:
+         return {'ready': False, 'reason': grid_check['reason']}
+         
+    # ...
+5. MODIFICACIÓN: 
+brain_executor.py
+ (SALIDA)
+Objetivo: Fix Stub (C) y Grace Period 45min (F).
+
+# ... (Dentro de monitor_active_trades)
                 
-                # [NUEVO] --- BRAIN GRID MONITOR (SALIDA POR COMPRESIÓN) ---
+                # [FIX C] STUB vs REAL: Fetch rápido de 15m para puntero fiable
+                from brain_analyzer import analyze_15m
+                a15m = analyze_15m(symbol, strict=False) # Snapshot rápido
+                ladder_monitor = {'15m': a15m} if a15m else {}
+                
                 from brain_grid import grid_navigator
-                # Necesitamos un ladder mínimo para el puntero (usamos data guardada o snapshot)
-                # Para salida, nos importa sobre todo la compresión (width_atr), que solo usa DF
-                ladder_stub = {'15m': {'momentum': {'color_current': trade_data.get('direction', 'NEUTRAL')}}} # Stub para que no falle
+                nav = grid_navigator.navigate(symbol, df, ladder_monitor)
                 
-                nav = grid_navigator.navigate(symbol, df, ladder_stub)
+                # [FIX F] GRACE PERIOD 45 MIN + THRESHOLD DINÁMICO
+                # nav['grid_data']['threshold'] ya viene calculado del grid con multipliers
+                threshold = nav['grid_data'].get('threshold', 2.0)
+                width = nav['grid_data'].get('width_atr', 99)
                 
-                # CRITERIO DE SALIDA: Mercado Muerto / Comprimido
-                if nav['grid_data'].get('width_atr', 99) &lt; 2.0 and duration_min &gt; 15:
-                    print(f"🧱 GRID EXIT: Mercado comprimido ({nav['grid_data']['width_atr']:.1f} ATRs)")
-                    symbols_to_close.append((symbol, f"Grid Lateralizó ({nav['grid_data']['width_atr']:.1f} ATRs)"))
+                if width &lt; threshold and duration_min &gt; 45:
+                    print(f"🧱 GRID EXIT: Compresión {width:.1f} &lt; {threshold:.1f} ATRs (Vol: {nav['grid_data'].get('vol_class')})")
+                    symbols_to_close.append((symbol, f"Grid Lateralizó ({width:.1f} ATRs)"))
                     continue
-                # ----------------------------------------------------------
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 20,054<br>
-    Generado: 2025-12-13 11:00:48
+    Total caracteres: 7,612<br>
+    Generado: 2025-12-13 11:09:34
   </div>
 </body>
 </html>
