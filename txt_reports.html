@@ -15,13 +15,13 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-13 12:05:26</div>
+  <div class="meta">Última actualización: 2025-12-13 12:17:29</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-IMPLEMENTATION PLAN v6.4.4: BRAIN GRID (5 FIXES CRÍTICOS)
-Este plan corrige los 4 bugs detectados en v6.4.3 con 5 prompts quirúrgicos.
+IMPLEMENTATION PLAN v6.4.5: BRAIN GRID (CORRECCIONES FINALES)
+Este plan corrige los 3 bugs detectados en v6.4.4.
 
 Filosofía: Time Ladder, Fuerza Primero, Casos Mutuamente Excluyentes.
 
@@ -30,12 +30,15 @@ PROMPT 2 →
 brain_config.py
  (Thresholds)
 PROMPT 1 → brain_grid.py (Lógica clara)
-PROMPT 3 → 
+PROMPT 3 REVISADO → 
 brain_intelligent.py
  (Integración fuerza)
-PROMPT 4 → 
+PROMPT 4A → 
 brain_executor.py
- (Remover cache)
+ (Guardar analysis_15m en enter_trade)
+PROMPT 4B → 
+brain_executor.py
+ (Usar ladder_monitor correcto en monitor)
 PROMPT 5 → 
 brain_executor.py
  (Ajustar salida)
@@ -44,21 +47,17 @@ brain_config.py
  (PROMPT 2: Thresholds)
 [MODIFY] 
 brain_config.py
-Añadir/modificar sección BRAIN GRID con thresholds aumentados.
-
 # BRAIN GRID v2
 GRID_LOOKBACK = 20
 GRID_COMPRESSION_BASE = 3.5  # Aumentado de 2.0
 GRID_COMPRESSION_MULTIPLIERS = {
-    'high_vol': 4.0,    # Aumentado
-    'medium_vol': 3.5,  # Aumentado
-    'low_vol': 2.5      # Aumentado
+    'high_vol': 4.0,
+    'medium_vol': 3.5,
+    'low_vol': 2.5
 }
 2. brain_grid.py (PROMPT 1: Lógica Clara)
 [NEW] 
 brain_grid.py
-Crear módulo con lógica _decide() corregida (casos mutuamente excluyentes).
-
 import pandas as pd
 import numpy as np
 from brain_config import GRID_LOOKBACK, GRID_COMPRESSION_BASE, GRID_COMPRESSION_MULTIPLIERS
@@ -153,21 +152,27 @@ class MarketGridNavigator:
 grid_navigator = MarketGridNavigator()
 3. 
 brain_intelligent.py
- (PROMPT 3: Integración Fuerza)
+ (PROMPT 3 REVISADO: Integración Fuerza)
 [MODIFY] 
 brain_intelligent.py
-Después de grid_navigator.navigate(), validar FUERZA antes de permitir "GO".
+IMPORTANT
+
+FIX BUG #1: force_dir ahora se deriva de patterns_result y 
+check_market_force()
+.
 
 # DESPUÉS de grid_navigator.navigate()
 grid_nav = grid_navigator.navigate(symbol, df_5m, ladder_analysis)
 # VALIDAR FUERZA PRIMERO
 if grid_nav['decision'] == 'GO':
-    # Extraer ADX 15m
+    # Extraer ADX y Momentum de 15m
     adx_15m = ladder_analysis.get('15m', {}).get('adx', {}).get('adx_current', 0)
     mom_15m = ladder_analysis.get('15m', {}).get('momentum', {}).get('color_current', 'neutral')
     
-    # Determinar dirección del trade
-    trade_dir = force_dir  # O lógica que uses
+    # Determinar dirección del trade (FIX: usar patterns_result y check_market_force)
+    pattern_dir = patterns_result.get('confidence', {}).get('direction', 'NEUTRAL')
+    force_detection = check_market_force(ladder_analysis)
+    trade_dir = pattern_dir if pattern_dir != 'NEUTRAL' else force_detection.get('direction', 'NEUTRAL')
     
     # BLOQUEO: Sin fuerza mínima
     if adx_15m &lt; 22:
@@ -185,29 +190,43 @@ if grid_nav['decision'] == 'GO':
         grid_nav['score'] = -50
         grid_nav['reasons'].append(f"⛔ Momentum {mom_15m} vs BEARISH")
 ladder_analysis['grid'] = grid_nav
-4. 
+4A. 
 brain_executor.py
- (PROMPT 4: Remover Cache)
+ (PROMPT 4A: Guardar analysis_15m en enter_trade)
 [MODIFY] 
 brain_executor.py
-Eliminar bloque de cache 15m. Usar ladder existente de trade_data.
+IMPORTANT
 
-# REMOVER TODO EL BLOQUE DE CACHE 15M
-# En vez de:
-# if 'last_15m_check' not in trade_data...
-# Hacer:
-ladder_monitor = {
-    '15m': trade_data.get('analysis_15m'),  # Ya existe de entrada
-    '5m': {'close': df['close'].values}  # Datos frescos 5m
+FIX BUG #2: Guardar analysis_15m al crear el trade para uso posterior.
+
+En enter_trade(), agregar al diccionario trade_data:
+
+trade_data = {
+    # ... campos existentes ...
+    'analysis_15m': watchlist_data.get('analysis_15m'),  # Guardar para monitor
 }
+4B. 
+brain_executor.py
+ (PROMPT 4B: Usar ladder_monitor correcto)
+[MODIFY] 
+brain_executor.py
+IMPORTANT
+
+FIX BUG #3: navigate() recibe df como segundo parámetro, no dentro de ladder.
+
+En monitor_active_trades():
+
+# Usar análisis guardado
+ladder_monitor = {
+    '15m': trade_data.get('analysis_15m'),
+}
+# navigate() recibe df directamente como segundo parámetro
 nav = grid_navigator.navigate(symbol, df, ladder_monitor)
 5. 
 brain_executor.py
  (PROMPT 5: Ajustar Salida)
 [MODIFY] 
 brain_executor.py
-Cambiar threshold de compresión de 0.5 a 0.65, y duración mínima a 15 min.
-
 # Cambiar threshold de 0.5 a 0.65
 if width_change &gt; 0.65 and duration_min &gt; 15:  # Más conservador
     print(f"🧱 GRID EXIT: Compresión extrema {width_change*100:.0f}%")
@@ -216,18 +235,21 @@ Resumen de Cambios
 Archivo	Cambio
 brain_config.py
 Thresholds aumentados (3.5 ATRs base)
-brain_grid.py	Lógica _decide() con casos mutuamente excluyentes
+brain_grid.py	Nuevo módulo con _decide() mutuamente excluyente
 brain_intelligent.py
-Validación de FUERZA (ADX &gt;= 22, Momentum alineado)
+Validación FUERZA con trade_dir derivado correctamente
 brain_executor.py
-Remover cache 15m, usar ladder existente
+Guardar analysis_15m en enter_trade()
 brain_executor.py
-Threshold salida: 65% compresión, 15 min mínimo
+Usar ladder_monitor correcto (df va aparte)
+brain_executor.py
+Salida: 65% compresión, 15 min mínimo
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 7,427<br>
-    Generado: 2025-12-13 12:05:26
+    Total caracteres: 7,922<br>
+    Generado: 2025-12-13 12:17:29
   </div>
 </body>
 </html>
