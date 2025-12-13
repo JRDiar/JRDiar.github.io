@@ -15,20 +15,25 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-13 11:22:57</div>
+  <div class="meta">Última actualización: 2025-12-13 11:54:33</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-IMPLEMENTATION PLAN v6.4.3: BRAIN GRID (FINAL SURGICAL FIX)
-Este plan incorpora los 5 BUGS CRÍTICOS del análisis v6.4.2, implementando la lógica exacta solicitada.
+IMPLEMETATION PLAN v6.4.3: BRAIN GRID (FINAL SURGICAL FIX)
+Este plan incorpora los 5 BUGS CRÍTICOS del análisis v6.4.2, implementando la lógica exacta solicitada para el sistema de "Brain Grid".
 
 Filosofía: Time Ladder, Caching Inteligente, Scoring Contextual y Salida Relativa.
 
-1. MODIFICACIÓN: 
+Propose Changes
+1. 
 brain_config.py
- (Igual a v6.4.2)
-# [MODIFICAR] Sección BRAIN GRID
+ (Constantes)
+[MODIFY] 
+brain_config.py
+Añadir sección BRAIN GRID al final del archivo.
+
+# [MODIFIED] Sección BRAIN GRID
 GRID_LOOKBACK = 20
 GRID_COMPRESSION_BASE = 2.0
 GRID_COMPRESSION_MULTIPLIERS = {
@@ -36,16 +41,23 @@ GRID_COMPRESSION_MULTIPLIERS = {
     'medium_vol': 2.0, 
     'low_vol': 1.5     
 }
-2. MODIFICACIÓN: 
+2. 
 brain_analyzer.py
- (Igual a v6.4.2)
-Objetivo: Inyectar DF para uso en Grid.
+ (Inyección de Datos)
+[MODIFY] 
+brain_analyzer.py
+Modificar 
+analyze_coin_complete
+ para inyectar el DataFrame de 5m en el diccionario ladder_analysis y evitar re-fetching.
 
 def analyze_coin_complete(symbol):
     # ...
-    ohlcv_5m = fetch_ohlcv(symbol, '5m', limit=100)
+    ohlcv_5m = fetch_ohlcv(symbol, '5m', 100) # Fetch manual aquí
     if not ohlcv_5m: return None
     df_5m = pd.DataFrame(ohlcv_5m, columns=['timestamp','open','high','low','close','volume'])
+    
+    # [FIX] Pasar df a analyze_5m NO ES NECESARIO si lo inyectamos después, 
+    # pero el plan dice "Inyectar DF".
     
     analysis = {
         '4h': analyze_4h(symbol),
@@ -57,8 +69,10 @@ def analyze_coin_complete(symbol):
     # [FIX] INYECTAR DF
     analysis['df_5m'] = df_5m 
     return analysis
-3. NUEVO MÓDULO: brain_grid.py (FIX #1 SCORING CONTEXTUAL)
-Objetivo: Lógica de _decide corregida para diferenciar Breakouts de Rebotes/Contradicciones.
+3. brain_grid.py (Nuevo Módulo Core)
+[NEW] 
+brain_grid.py
+Crear el módulo con la clase MarketGridNavigator corregida (Scoring Contextual).
 
 import pandas as pd
 import numpy as np
@@ -124,7 +138,7 @@ class MarketGridNavigator:
             score += 20
         elif position &lt; 0.2 and pointer['direction'] == 'DOWN':  # Breakdown piso
             score += 20
-        elif position &gt; 0.5 and pointer['direction'] == 'DOWN':  # Rebote bajista (Trend Following logic: avoid counter-trend bounces?)
+        elif position &gt; 0.5 and pointer['direction'] == 'DOWN':  # Rebote bajista
             score -= 30
             reasons.append("⚠️ Rebote contra techo (Contexto Bajista)")
         elif position &lt; 0.5 and pointer['direction'] == 'UP':  # Rebote alcista
@@ -134,14 +148,18 @@ class MarketGridNavigator:
         decision = "GO" if score &gt;= 20 else "BLOCK" if score &lt;= -60 else "WAIT"
         return {'decision': decision, 'score': score, 'reasons': reasons, 'grid_data': grid}
 grid_navigator = MarketGridNavigator()
-4. MODIFICACIÓN: 
+4. 
 brain_intelligent.py
- (FIX #2 FALLBACK REAL)
-Objetivo: Manejar ausencia de DF robustamente. Ubicación: 
+ (Fallback Real)
+[MODIFY] 
+brain_intelligent.py
+En 
 orchestrate_intelligence
-.
+, implementar el fallback para df_5m.
 
-# ...
+def orchestrate_intelligence(symbol):
+    # ... (código existente)
+    
     # [FIX #2] FALLBACK REAL
     df_5m = ladder_analysis.get('df_5m')
     if df_5m is None or df_5m.empty:
@@ -153,20 +171,25 @@ orchestrate_intelligence
            else:
                raise ValueError("No data")
         except:
+            # Si falla incluso el fallback, no operar
             return {'action': 'NO_OPERAR', 'confidence': 0, 'reason': 'Error fetching Grid data'}
+            
     from brain_grid import grid_navigator
     grid_nav = grid_navigator.navigate(symbol, df_5m, ladder_analysis)
     ladder_analysis['grid'] = grid_nav 
-    # ...
-5. MODIFICACIÓN: 
+    
+    # ... (continuar flujo)
+5. 
 brain_think.py
- (FIX #3 INTEGRACIÓN DIRECTA)
-Objetivo: Eliminar layer redundante, sumar score en 
+ (Integración Directa)
+[MODIFY] 
+brain_think.py
+Integrated Grid Score en 
 validate_force_propagation
-.
+ (o función de validación principal equivalente).
 
 def validate_force_propagation(ladder, direction):
-    # ... lógica existente de scores ...
+    # ... (código existente de cálculo de score)
     
     # [FIX #3] INTEGRACIÓN DIRECTA GRID SCORE (Sin layer extra)
     grid = ladder.get('grid', {})
@@ -178,50 +201,52 @@ def validate_force_propagation(ladder, direction):
         
     # Resto de validaciones...
     return {'valid': True, 'score': score, 'reasons': reasons}
-6. MODIFICACIÓN: 
+6. 
 brain_executor.py
- (FIX #4 &amp; #5)
-Objetivo: Cachear 15m y Detección Relativa.
+ (Smart Exit &amp; Cache)
+[MODIFY] 
+brain_executor.py
+Implementar caché de 15m y detección de compresión relativa &gt; 50%.
 
-# ... inside monitor loop ...
+# ... inside monitor_active_trades loop ...
                 
-                # [FIX #4] CACHE 15M (5 mins)
-                now = datetime.now() # Asegurar import datetime
-                if 'last_15m_check' not in trade_data or (now - trade_data.get('last_15m_check', datetime.min)).total_seconds() &gt; 300:
-                    try:
-                        from brain_analyzer import analyze_15m
-                        a15m = analyze_15m(symbol, strict=False)
-                        trade_data['last_15m'] = a15m
-                        trade_data['last_15m_check'] = now
-                    except:
-                        trade_data['last_15m'] = None
-                
-                a15m = trade_data.get('last_15m')
-                ladder_monitor = {'15m': a15m} if a15m else {}
-                
-                from brain_grid import grid_navigator
-                nav = grid_navigator.navigate(symbol, df, ladder_monitor)
-                
-                # [FIX #5] DETECCIÓN CAMBIO RELATIVO (&gt;50%)
-                width = nav['grid_data'].get('width_atr', 99)
-                
-                if 'entry_width_atr' not in trade_data:
-                    trade_data['entry_width_atr'] = width
-                
-                # Evitar división por cero
-                entry_width = trade_data['entry_width_atr'] if trade_data['entry_width_atr'] &gt; 0 else 0.1
-                width_change = (entry_width - width) / entry_width
-                
-                # Criterio: Si se comprimió más del 50% de su estado inicial
-                if width_change &gt; 0.5 and duration_min &gt; 10:
-                    print(f"🧱 GRID EXIT: Compresión masiva {width_change*100:.0f}% (De {entry_width:.1f} a {width:.1f})")
-                    symbols_to_close.append((symbol, f"Grid comprimió {width_change*100:.0f}%"))
-                    continue
+    # [FIX #4] CACHE 15M (5 mins)
+    now = datetime.now()
+    if 'last_15m_check' not in trade_data or (now - trade_data.get('last_15m_check', datetime.min)).total_seconds() &gt; 300:
+        try:
+            from brain_analyzer import analyze_15m
+            a15m = analyze_15m(symbol, strict=False)
+            trade_data['last_15m'] = a15m
+            trade_data['last_15m_check'] = now
+        except:
+            trade_data['last_15m'] = None
+    
+    a15m = trade_data.get('last_15m')
+    ladder_monitor = {'15m': a15m} if a15m else {}
+    
+    from brain_grid import grid_navigator
+    nav = grid_navigator.navigate(symbol, df, ladder_monitor)
+    
+    # [FIX #5] DETECCIÓN CAMBIO RELATIVO (&gt;50%)
+    width = nav['grid_data'].get('width_atr', 99)
+    
+    if 'entry_width_atr' not in trade_data:
+        trade_data['entry_width_atr'] = width
+    
+    # Evitar división por cero
+    entry_width = trade_data['entry_width_atr'] if trade_data['entry_width_atr'] &gt; 0 else 0.1
+    width_change = (entry_width - width) / entry_width
+    
+    # Criterio: Si se comprimió más del 50% de su estado inicial
+    if width_change &gt; 0.5 and duration_min &gt; 10:
+        print(f"🧱 GRID EXIT: Compresión masiva {width_change*100:.0f}% (De {entry_width:.1f} a {width:.1f})")
+        symbols_to_close.append((symbol, f"Grid comprimió {width_change*100:.0f}%"))
+        continue
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 8,057<br>
-    Generado: 2025-12-13 11:22:57
+    Total caracteres: 8,156<br>
+    Generado: 2025-12-13 11:54:33
   </div>
 </body>
 </html>
