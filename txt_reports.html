@@ -15,66 +15,138 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-14 00:29:47</div>
+  <div class="meta">Última actualización: 2025-12-14 00:37:59</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Como implemento los fix Opus:
+Corregi quirurigicamente por favor, sin errores, gracias.  BUG CRÍTICO DETECTADO:
+BUG DE SCOPE (Variable no accesible)
+📂 brain_intelligent.py línea ~315-320
+PROBLEMA:
+python# Línea 60-75 (dentro de orchestrate_intelligence)
+grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
+
+# Línea 315-320 (dentro de make_pattern_based_decision)
+if 'grid_result' in locals() and grid_result.get('score'):  # ❌ ERROR
+    final_score = score + grid_result['score']
+Por qué falla:
+
+grid_result se define en orchestrate_intelligence()
+Se intenta usar en make_pattern_based_decision()
+Son funciones SEPARADAS → grid_result NO existe en el scope
+
+Resultado:
+pythonNameError: name 'grid_result' is not defined
+
+🔧 SOLUCIÓN QUIRÚRGICA
+OPCIÓN A: Pasar grid_result como parámetro (Recomendada)
+1. Modificar llamada en orchestrate_intelligence (línea ~90):
+pythondecision = make_pattern_based_decision(
+    patterns_result, ladder_analysis, math_signals, 
+    symbol, current_price, recent_history, grid_result  # ✅ Agregar aquí
+)
+2. Modificar firma de make_pattern_based_decision (línea ~100):
+pythondef make_pattern_based_decision(patterns, ladder, signals, symbol, current_price, recent_history=None, grid_result=None):  # ✅ Agregar parámetro
+    """..."""
+3. Modificar uso de grid_result (línea ~315-320):
+python# Ajustar por GRID
+if grid_result and grid_result.get('score'):  # ✅ Simplificar validación
+    final_score = score + grid_result['score']
+    print(f"  📐 Grid ajuste: {grid_result['score']:+d} → Total: {final_score}")
+else:
+    final_score = score
+
+OPCIÓN B: Incluir en ladder (Alternativa)
+En orchestrate_intelligence (después de crear grid_result, línea ~75):
+pythongrid_result = grid.analyze(symbol, df_grid, ladder_analysis)
+ladder_analysis['grid_result'] = grid_result  # ✅ Agregar al ladder
+En make_pattern_based_decision (línea ~315):
+python# Ajustar por GRID
+grid_data = ladder.get('grid_result', {})
+if grid_data.get('score'):
+    final_score = score + grid_data['score']
+    print(f"  📐 Grid ajuste: {grid_data['score']:+d} → Total: {final_score}")
+else:
+    final_score = score
+```
+
+---
+
+## 📋 PROMPT CORRECTIVO PARA OPUS
+
+**Copia y pega esto en Antigravity Opus:**
+```
+FIX BUG DE SCOPE - brain_intelligent.py
+
+PROBLEMA: grid_result definido en orchestrate_intelligence() no es accesible en make_pattern_based_decision()
+
+SOLUCIÓN:
+
+1. MODIFICAR LÍNEA ~90 (llamada a función):
+   BUSCAR:
+   decision = make_pattern_based_decision(
+       patterns_result, ladder_analysis, math_signals, 
+       symbol, current_price, recent_history
+   )
+   
+   REEMPLAZAR:
+   decision = make_pattern_based_decision(
+       patterns_result, ladder_analysis, math_signals, 
+       symbol, current_price, recent_history, grid_result
+   )
+
+2. MODIFICAR LÍNEA ~100 (firma de función):
+   BUSCAR:
+   def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price, recent_history=None):
+   
+   REEMPLAZAR:
+   def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price, recent_history=None, grid_result=None):
+
+3. MODIFICAR LÍNEA ~315-320 (uso de grid_result):
+   BUSCAR:
+   if 'grid_result' in locals() and grid_result.get('score'):
+       final_score = score + grid_result['score']
+   
+   REEMPLAZAR:
+   if grid_result and grid_result.get('score'):
+       final_score = score + grid_result['score']
+
+✅ DESPUÉS DEL FIX
+Una vez aplicado, el código estará 100% funcional y el bot podrá usar el Grid correctamente.
+
+
+Thought for 4s
 
 Analyzed
-brain_intelligent.py#L140-200
+brain_intelligent.py#L70-100
 Analyzed
-brain_intelligent.py#L310-380
-Ahora veo las secciones de fatiga para el BUG #4:
-
+brain_intelligent.py#L120-150
 Analyzed
-brain_intelligent.py#L260-310
-Ahora tengo toda la información. Voy a aplicar los 4 fixes quirúrgicamente:
+brain_intelligent.py#L300-330
+Ahora aplico los 3 cambios quirúrgicos:
 
 Edited
 brain_intelligent.py
-+13
--37
-Edited
-brain_config.py
-+1
--1
-✅ 4 BUGS CRÍTICOS CORREGIDOS:
++3
+-3
+✅ BUG DE SCOPE CORREGIDO - 3 cambios quirúrgicos aplicados:
 
-Bug	Archivo	Cambio
-#1	
-brain_intelligent.py
-❌ ELIMINADO bloqueo binario de momentum (líneas 159-185 → 3 líneas)
-#2	
-brain_intelligent.py
-✅ MIN_THRESHOLD = 50 base (45 con ADX&gt;35, 60 sin fuerza)
-#3	
-brain_config.py
-✅ DI_MIN_SPREAD = 3.0 (de 4.0)
-#4	
-brain_intelligent.py
-❌ ELIMINADO block_trade = True en fatiga &gt;5% (solo -100 pts)
-Resumen de cambios:
-brain_intelligent.py
-:
+Línea	Cambio
+94-97	Agregado grid_result como parámetro en la llamada
+142	Agregado grid_result=None en la firma de la función
+302-303	Simplificado if grid_result and grid_result.get('score'):
+El código ahora fluye correctamente:
 
-Líneas 159-185: Removido bloque PROMPT 10 (bloqueo binario momentum)
-Líneas 245-248 y 265-268: Cambiado block_trade = True por comentario explicativo
-Líneas 321-330: Nueva lógica de umbral Time Ladder:
-python
-MIN_THRESHOLD = 50  # Base realista
-if max_adx &gt; 35: MIN_THRESHOLD = 45
-elif max_adx &gt; 25: MIN_THRESHOLD = 50
-else: MIN_THRESHOLD = 60
-brain_config.py
-:
+orchestrate_intelligence()
+    │
+    ├─► grid_result = grid.analyze(...)
+    │
+    └─► make_pattern_based_decision(..., grid_result)  ✅
+                │
+                └─► if grid_result and grid_result.get('score'):  ✅
 
-Línea 137: DI_MIN_SPREAD = 3.0
-
-
-
-Como quedó el modulo BRAIN INTELLIGENT con los fix
+Modulo completo y actualizado brain_intelligent.py
 
 """
 ================================================================================
@@ -171,7 +243,7 @@ def orchestrate_intelligence(symbol):
     
     decision = make_pattern_based_decision(
         patterns_result, ladder_analysis, math_signals, 
-        symbol, current_price, recent_history
+        symbol, current_price, recent_history, grid_result
     )
 
     # --- REPORTE Y SALIDA ---
@@ -217,7 +289,7 @@ def orchestrate_intelligence(symbol):
             'full_analysis': {'ladder_data': ladder_analysis}
         }
 
-def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price, recent_history=None):
+def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price, recent_history=None, grid_result=None):
     """
     Núcleo de Decisión v5.0 (Corregido)
     Integra: Física (Wrecking Ball), Estructura (ZigZag), Zonas (S/R), Memoria.
@@ -378,7 +450,7 @@ def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price
         reasons.append(f"Patrón: {patterns['best_pattern']['type']}")
 
     # Ajustar por GRID
-    if 'grid_result' in locals() and grid_result.get('score'):
+    if grid_result and grid_result.get('score'):
         final_score = score + grid_result['score']
         print(f"  📐 Grid ajuste: {grid_result['score']:+d} → Total: {final_score}")
     else:
@@ -545,327 +617,12 @@ def check_volume_confirmation(ladder):
     return True
 
 
-modulo brain config con fix
-
-"""
-BRAIN CONFIG - Bot Phase 4.0 - Trading Anticipatorio
-====================================================
-Archivo central de configuración con flags activar/desactivar features,
-parámetros ajustables, paths. Lee credenciales desde .env (seguridad).
-"""
-
-# ============================================================================
-# IMPORTS
-# ============================================================================
-import os
-import pytz
-from datetime import datetime
-from dotenv import load_dotenv
-
-# Cargar variables de entorno desde .env
-load_dotenv()
-
-# ============================================================================
-# ZONA HORARIA
-# ============================================================================
-ARGENTINA_TZ = pytz.timezone('America/Argentina/Buenos_Aires')
-
-# ============================================================================
-# EXCHANGE (MEXC) - Lee desde .env
-# ============================================================================
-MEXC_API_KEY = os.getenv("MEXC_API_KEY", "")
-MEXC_SECRET_KEY = os.getenv("MEXC_SECRET_KEY", "")
-EXCHANGE_NAME = "MEXC"
-DEFAULT_TYPE = "swap"  # Futuros
-RATE_LIMIT = 200
-ENABLE_RATE_LIMIT = True
-
-# ============================================================================
-# TELEGRAM - Lee desde .env
-# ============================================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-ENABLE_TELEGRAM = True
-
-# ============================================================================
-# GOOGLE SHEETS - Lee desde .env
-# ============================================================================
-GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "")
-GOOGLE_SPREADSHEET_ID = os.getenv("GOOGLE_SPREADSHEET_ID", "")
-ENABLE_SHEETS = True
-BATCH_WRITE = True  # Escribir en lotes (más rápido)
-
-# ============================================================================
-# TRADING BÁSICO
-# ============================================================================
-SIMULATE_LEVERAGE = 1  # Apalancamiento
-CAPITAL_INICIAL = 1000  # USD
-MAX_TRADES_SIMULTANEOUS = 3  # Máximo trades paralelos
-MIN_TRADE_DURATION_MIN = 5  # Mínimo duración trade
-
-# ============================================================================
-# COMISIONES (FEES)
-# ============================================================================
-TAKER_FEE_PCT = 0.06  # 0.06% por orden (Entry + Exit = 0.12%)
-MAKER_FEE_PCT = 0.02  # 0.02% por orden (Limit orders)
-
-# ============================================================================
-# FLAGS BRAIN (true/false para activar/desactivar)
-# ============================================================================
-# Pre-filtro
-ENABLE_WEEKLY_CANDLES_FILTER = True
-MIN_DAILY_CANDLES = 15  # Reducido de 30 para permitir monedas más nuevas
-
-# Análisis contextual
-ENABLE_ANALYSIS_1D = True
-ENABLE_ANALYSIS_4H = True
-ENABLE_ANALYSIS_1H = True
-ENABLE_ANALYSIS_15M = True
-ENABLE_ANALYSIS_5M = True
-
-# 🧠 MODO INTELIGENTE (100% Holístico vs Cascada Binaria)
-ENABLE_INTELLIGENT_MODE = True  # True: análisis paralelo multi-capa | False: cascada binaria
-
-# Análisis 1D
-ENABLE_1D_ANALYSIS = True
-
-# Componentes 4H (para debugging)
-ENABLE_4H_STRUCTURE = True
-ENABLE_4H_ZIGZAG = True
-ENABLE_VELOCITY_FILTER = True
-
-# Herramientas matemáticas
-ENABLE_VELOCITY_ACCELERATION = True
-ENABLE_CLUSTERING_SR = True  # Soportes/Resistencias
-ENABLE_VOLUME_PROFILE = True
-ENABLE_FIBONACCI = True
-ENABLE_DIVERGENCE_DETECTION = True
-
-# Gestión trade
-ENABLE_BREAKEVEN_PROTECTION = True
-ENABLE_TRAILING_STOP = True
-ENABLE_SMART_EXIT = True  # 5 señales
-ENABLE_REVERSAL_DETECTOR = False  # TEMPORALMENTE DESACTIVADO: Causa salidas prematuras
-
-# Breakeven Protection (v4.6.5: Ajustado para capturar más ganancias)
-BREAKEVEN_PROFIT_TRIGGER_PCT = 2.0  # Reducido de 3.0% a 2.0% - Se activa antes
-BREAKEVEN_BUFFER_PCT = 0.3  # Buffer de seguridad anti-whipsaw
-
-# Trailing Stop (v4.6.5: Más agresivo para capturar ganancias)
-TRAILING_STOP_DISTANCE_PCT = 0.8  # Reducido de 1.0% - Más cerca del precio
-
-# Persistencia
-ENABLE_WATCHLIST_JSON = True
-ENABLE_HISTORY_JSON = True
-
-# ============================================================================
-# PARÁMETROS WATCHLIST
-# ============================================================================
-MAX_WATCHLIST_SIZE = 20  # Máximo monedas monitoreadas
-MIN_SCORE_WATCHLIST = 55  # Balance óptimo con Smart Context Logic
-WATCHLIST_UPDATE_INTERVAL_SEC = 60  # Cada 1 min
-MIN_RR_RATIO = 1.5  # Mínimo Risk/Reward ratio
-MIN_TIEMPO_PROYECTADO_MIN = 10  # Mínimo tiempo proyectado para el trade (minutos)
-MAX_TIEMPO_PROYECTADO_MIN = 120  # Máximo tiempo proyectado para el trade (minutos)
-PRIORITY_SYMBOLS = []  # Símbolos que siempre se analizan
-
-# ============================================================================
-# BLACKLIST (Monedas prohibidas / Mala estructura)
-# ============================================================================
-BLACKLIST_SYMBOLS = [
-    'IKA/USDT:USDT',
-    # 'OTRA_MONEDA/USDT:USDT',  &lt;-- Agregar aquí futuras monedas malas
-]
-
-# ============================================================================
-# TRIGGER THRESHOLDS (verificados en 15M)
-# ============================================================================
-# ADX + Directional Indicators
-ADX_THRESHOLD = 22  # Reducir de 25 a 22 (más accesible)
-ADX_MIN_ACCELERATION = 0.05  # Reducir de 0.1 a 0.05
-DI_MIN_SPREAD = 3.0  # Balance óptimo (Time Ladder)
-BTC_ALIGNMENT_STRICT = False  # Si True, bloquea todo cuando BTC cae. Si False, solo bloquea scores bajos
-
-# Momentum
-MOMENTUM_CONSECUTIVE_CANDLES = 3  # Confirmación sólida (1H desarrollado)
-
-# Volumen
-VOLUME_RATIO_MIN = 1.3  # Reducido de 1.5 para aceptar volumen moderado
-
-# ============================================================================
-# PARÁMETROS SCORING (0-100)
-# ============================================================================
-# Bonos
-BONUS_STRUCTURE_SANA = 20
-BONUS_CONFLUENCE_4H = 20
-BONUS_CONFLUENCE_1D = 15
-BONUS_EMAS_CERCANAS = 10
-BONUS_EDAD_JOVEN = 15
-BONUS_NO_OBSTACULOS = 10
-
-# Penalizaciones
-PENALTY_EMAS_SEPARADAS = 10
-PENALTY_EDAD_MADURA = 10
-PENALTY_ESTRUCTURA_MALA = 20
-
-# ============================================================================
-# PARÁMETROS RISK/REWARD
-# ============================================================================
-STOP_LOSS_PERCENT = 2.0  # Stop loss aumentado a 2% (era 1.5%) - Optimización 3M
-MAX_SL_PERCENT = 2.0     # Límite DURO aumentado a 2% (era 1.5%) - Da más margen al ruido
-MIN_RR_RATIO = 2.0  # Mínimo 2:1
-OPTIMAL_RR_RATIO = 3.0  # Óptimo 3:1
-MAX_RISK_PERCENT = 2.0  # Máximo riesgo por trade aumentado a 2% (alineado con SL)
-
-# ============================================================================
-# PARÁMETROS TIMING
-# ============================================================================
-MIN_TIEMPO_PROYECTADO_MIN = 5
-MAX_TIEMPO_PROYECTADO_MIN = 60
-OPTIMAL_TIMING_MIN = 15  # Ideal 15-30 min
-OPTIMAL_TIMING_MAX = 30
-
-# ===== TIMING ÓPTIMO (NUEVO) =====
-ENABLE_PULLBACK_CHECK = True    # Penaliza si el precio está muy extendido (&gt;3.0 ATRs)
-ENABLE_BREAKOUT_CHECK = True    # Penaliza si hay resistencia inmediata (&lt;1.0%)
-ENABLE_HH_PENALTY = True        # Penaliza si estamos comprando el pico exacto (Buying Top)
-ENABLE_CLEAN_SPACE_BONUS = True # Premia si hay espacio libre (&gt;3%) hasta resistencia
-
-# ===== ESTRATEGIA FUERZA DE MERCADO (MARKET FORCE) =====
-ENABLE_MARKET_FORCE_MODE = True     # Activa prioridad a ADX+DI (Línea Negra + Verde)
-FORCE_ENTRY_MIN_ADX = 25            # Mínimo ADX para considerar "Fuerza"
-FORCE_ENTRY_MIN_ADX_VELOCITY = 0.1  # Velocidad mínima de subida del ADX
-SMART_EXIT_GRACE_PERIOD_MIN = 10    # Minutos de inmunidad al inicio del trade (evita salidas de 12s)
-
-# ===== MODO TRADING =====
-TRADING_MODE = 'CONSERVATIVE'   # 'CONSERVATIVE' (1.0x penalties), 'BALANCED' (0.8x), 'AGGRESSIVE' (0.6x)
-ENABLE_ADX_VISUAL = True        # Mostrar barra visual de ADX en reporte
-
-# ============================================================================
-# PARÁMETROS SALIDA INTELIGENTE
-# ============================================================================
-# Desaceleración (velas más chicas)
-DECELERATION_THRESHOLD = 0.7  # Rango &lt;70% promedio
-
-# Volumen bajando
-VOLUME_DECLINE_THRESHOLD = 0.6  # Vol &lt;60% promedio
-
-# Llegada zona crítica
-CRITICAL_ZONE_DISTANCE_PCT = 1.0  # &lt;1% de resistencia
-
-# Protección Buffett
-BUFFETT_EARLY_EXIT_TIME_MIN = 10
-BUFFETT_EARLY_EXIT_LOSS_PCT = 2.0
-
-# Breakeven
-BREAKEVEN_PROFIT_TRIGGER_PCT = 2.0  # +2% → stop a entrada
-
-# ============================================================================
-# PARÁMETROS CLUSTERING (Soportes/Resistencias)
-# ============================================================================
-SR_CANDLES_LOOKBACK = 200  # Velas a analizar
-SR_BIN_SIZE_PCT = 0.5  # Bins de 0.5%
-SR_MIN_TOUCHES = 3  # Mínimo toques para zona válida
-SR_STRONG_TOUCHES = 5  # 5+ toques = FUERTE
-
-# ============================================================================
-# PARÁMETROS VOLUME PROFILE
-# ============================================================================
-VP_CANDLES_LOOKBACK = 200
-VP_BIN_SIZE_PCT = 1.0  # Bins de 1%
-VP_TOP_POCS = 3  # Top 3 zonas mayor volumen
-
-# ============================================================================
-# PATHS
-# ============================================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-LOGS_DIR = os.path.join(BASE_DIR, "logs")
-
-# Crear directorios si no existen
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(LOGS_DIR, exist_ok=True)
-
-# Archivos JSON
-WATCHLIST_JSON = os.path.join(DATA_DIR, "brain_watchlist.json")
-HISTORY_JSON = os.path.join(DATA_DIR, "brain_history.json")
-PATTERNS_JSON = os.path.join(DATA_DIR, "brain_patterns.json")
-
-# Logs
-LOG_FILE = os.path.join(LOGS_DIR, f"brain_{datetime.now(ARGENTINA_TZ).strftime('%Y%m%d')}.log")
-
-# ============================================================================
-# HOJAS SHEET (nombres exactos)
-# ============================================================================
-SHEET_BRAIN_PRE_FILTRO = "BRAIN_PRE_FILTRO"
-SHEET_BRAIN_WATCHLIST = "BRAIN_WATCHLIST"
-SHEET_BRAIN_TRIGGERS = "BRAIN_TRIGGERS"
-SHEET_BRAIN_PROYECCIONES = "BRAIN_PROYECCIONES"
-SHEET_BRAIN_TRADES = "BRAIN_TRADES"
-SHEET_BRAIN_MONITOREO = "BRAIN_MONITOREO"
-SHEET_BRAIN_SALIDAS = "BRAIN_SALIDAS"
-SHEET_BRAIN_CONFIG_REMOTE = "BRAIN_CONFIG_REMOTE"
-SHEET_BRAIN_STATS = "BRAIN_STATS"
-
-# ============================================================================
-# MODO OPERACIÓN
-# ============================================================================
-MODE = "TEST"  # TEST o LIVE
-
-# ============================================================================
-# VALIDACIÓN
-# ============================================================================
-if __name__ == "__main__":
-    print("=" * 80)
-    print("BRAIN CONFIG - Validación")
-    print("=" * 80)
-    print(f"Zona horaria: {ARGENTINA_TZ}")
-    print(f"Exchange: {EXCHANGE_NAME}")
-    print(f"Modo: {MODE}")
-    print(f"Capital inicial: ${CAPITAL_INICIAL}")
-    print(f"Apalancamiento: {SIMULATE_LEVERAGE}x")
-    print(f"Max trades simultáneos: {MAX_TRADES_SIMULTANEOUS}")
-    print("-" * 80)
-    print(f"Data dir: {DATA_DIR}")
-    print(f"Logs dir: {LOGS_DIR}")
-    print(f"Watchlist JSON: {WATCHLIST_JSON}")
-    print(f"History JSON: {HISTORY_JSON}")
-    print(f"Log file: {LOG_FILE}")
-    print("-" * 80)
-    print("FLAGS BRAIN:")
-    print(f"  Pre-filtro weekly: {ENABLE_WEEKLY_CANDLES_FILTER}")
-    print(f"  Análisis 1D: {ENABLE_ANALYSIS_1D}")
-    print(f"  Análisis 4H: {ENABLE_ANALYSIS_4H}")
-
-# ============================================================================
-# LAZYBEAR MOMENTUM - Parámetros exactos del 3.5
-# ============================================================================
-BB_LENGTH = 20
-BB_MULT = 2.0
-KC_LENGTH = 20
-KC_MULT = 1.5
-USE_TRUE_RANGE = True
-
-# ============================================================================
-# PATTERN CONFIGURATION (NUEVO)
-# ============================================================================
-PATTERN_CONFIGS = {
-    'DOUBLE_BOTTOM': {'stop_mult': 1.5, 'target_mult': 3.0, 'win_rate': 0.75},
-    'FLAG': {'stop_mult': 2.0, 'target_mult': 2.5, 'win_rate': 0.70},
-    'TRIANGLE': {'stop_mult': 1.8, 'target_mult': 2.8, 'win_rate': 0.68},
-    'HCH': {'stop_mult': 1.5, 'target_mult': 4.0, 'win_rate': 0.80}
-}
-
-# ============================================================================
-# GRID NAVIGATION
-# ============================================================================
-ENABLE_GRID_FILTER = True  # Activar filtro de malla
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 31,563<br>
-    Generado: 2025-12-14 00:29:47
+    Total caracteres: 21,752<br>
+    Generado: 2025-12-14 00:37:59
   </div>
 </body>
 </html>
