@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-14 03:54:39</div>
+  <div class="meta">Última actualización: 2025-12-14 04:07:03</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -353,11 +353,1383 @@ brain_validators/	❌ NO USADOS	Código muerto, nadie los importa
 
 Los modulos que son validators que no estan conectados eran para granular esos indicadores para que sea mas facil de corregir
 Esa fue mi idea, no sabia que no estaba conectado a nada.
+
+Quiero que leas todo, quizas este duplicada la info
+
+Como esta implementada la malla? Tu propuesta de la "MALLA" (Grid/Mesh) es brillante y es exactamente el cambio de paradigma que necesitamos. Deja de ser una lista de reglas lineales (if ADX &gt; 25 then buy) y pasa a ser un Sistema de Navegación Espacial.
+
+Aquí está mi análisis profundo de tu propuesta y cómo vamos a transformar esa "visión humana" en código para salir de este bucle. Otra cosa, brain validators tambien tiene modulos asociados a estos indicadores, podrias analzarlo profundamente, explicame como es el tema del Grid? el modulo brain_grid.py en teoria iba a hacer que el bot no este más ciego, pero opero diferente a la tendencia, además veo que en la correción no aplico sobre ese modulo, eso hace que piense que no afecta nada en el bot. Gracias.
+
+
+Thought for 1s
+
+Excelente pregunta. Voy a analizar profundamente cómo está implementado 
+brain_grid.py
+ y los brain_validators para entender si realmente están afectando al bot:
+
+Analyzed
+brain_grid.py#L1-100
+Analyzed
+srotadilav_niarb\ytivargitnAredartniarB\odazitamotua gnidarT\leoJ\sresU\:c
+Searched
+brain_grid
+1 result
+Searched
+brain_validators
+16 results
+Interesante. Ahora voy a verificar dónde se usan los validators y cómo está integrado brain_grid:
+
+Searched
+from brain_validators
+0 results
+Searched
+import brain_validators
+0 results
+Analyzed
+brain_intelligent.py#L50-80
+Analyzed
+brain_grid.py#L100-200
+Analyzed
+brain_grid.py#L290-365
+Analyzed
+adx_validator.py#L1-93
+Analyzed
+momentum_validator.py#L1-76
+Ahora busco dónde se usan los validators:
+
+Searched
+validate_adx_separation
+3 results
+Searched
+validate_momentum_reversal
+5 results
+Searched
+grid_result
+0 results
+Searched
+grid_result
+10 results
+Ahora tengo toda la información. Te explico:
+
+🔍 ANÁLISIS PROFUNDO: BRAIN_GRID Y BRAIN_VALIDATORS
+1️⃣ ¿CÓMO ESTÁ IMPLEMENTADA LA MALLA (brain_grid.py)?
+brain_grid.py está SÍ integrado en el bot. Aquí está el flujo:
+
+orchestrate_intelligence() [línea 54-74]
+    │
+    ├─► grid.analyze(symbol, df_grid, ladder_analysis)
+    │       │
+    │       └─► Construye: Techo, Piso, Medio, Ancho en ATRs
+    │       └─► Calcula: Puntero (dirección + velocidad)
+    │       └─► Detecta: LATERAL, TENDENCIA_ALCISTA, TENDENCIA_BAJISTA
+    │       └─► Valida: Fuerza (ADX &gt;= 22)
+    │       └─► Retorna: status, score, razon
+    │
+    ├─► Si status == 'BLOQUEADO' → NO OPERAR (línea 66-72)
+    │
+    └─► El score del grid se suma al final_score (línea 320-322)
+Lo que hace brain_grid:
+
+Componente	Función
+_build_dimensions
+Calcula techo/piso de las últimas 20 velas
+_calculate_pointer
+Vector dirección basado en momentum 15M
+_detect_context
+Clasifica: LATERAL (&lt;2 ATR), TENDENCIA (&gt;3.5 ATR)
+_validate_force
+Verifica ADX &gt;= 22 y momentum maduro
+_calculate_final_score
+Score -100 a +100 según zona
+2️⃣ LOS BRAIN_VALIDATORS NO ESTÁN SIENDO USADOS ⚠️
+Los archivos existen pero NADIE LOS IMPORTA:
+
+bash
+grep "from brain_validators" → NO RESULTS
+grep "import brain_validators" → NO RESULTS
+Los validators tienen funciones muy útiles:
+
+validate_adx_separation()
+ - Clasifica ADX en rangos graduales
+validate_momentum_reversal()
+ - Detecta reversiones de momentum
+validate_zigzag_alignment()
+ - Valida estructura ZigZag
+PERO NO ESTÁN CONECTADOS AL FLUJO PRINCIPAL.
+
+🐛 EL PROBLEMA REAL
+brain_grid.py tiene estos problemas:
+Usa momentum de ladder['15m'] (línea 184-186) para el puntero
+PERO no valida que el momentum esté alineado con la dirección del trade
+Solo bloquea si status == 'BLOQUEADO' (lateral &lt; 2 ATRs)
+NO bloquea si el puntero (momentum) contradice la dirección
+El flujo actual:
+Grid dice: "TENDENCIA_ALCISTA" (slope positivo)
+Puntero dice: "ROJO" (momentum bajista)
+───────────────────────────────────────────
+Resultado: Grid retorna status='OPERABLE' con score positivo
+           ❌ El bot ENTRA aunque el momentum sea contrario
+🔧 SOLUCIÓN: INTEGRAR VALIDATORS + CORREGIR GRID
+El plan de corrección necesita TAMBIÉN incluir:
+
+FIX #5: Hacer que brain_grid valide momentum alineado
+En 
+brain_grid.py
+ función 
+_calculate_final_score
+ (línea 345+):
+
+python
+def _calculate_final_score(self, grid_dims, puntero, contexto, fuerza, df):
+    # ... código existente ...
+    
+    # NUEVO: Validar alineación puntero/contexto
+    if contexto['tipo'] == 'TENDENCIA_ALCISTA' and puntero['color'] != 'VERDE':
+        return {
+            'status': 'BLOQUEADO',
+            'contexto': 'MOMENTUM_CONTRARIO',
+            'score': -100,
+            'razon': f"⛔ Tendencia ALCISTA pero momentum {puntero['color']} - NO LONG",
+            'grid_data': grid_dims,
+            'puntero_data': puntero,
+            'zona_ideal': False
+        }
+    
+    if contexto['tipo'] == 'TENDENCIA_BAJISTA' and puntero['color'] != 'ROJO':
+        return {
+            'status': 'BLOQUEADO',
+            'contexto': 'MOMENTUM_CONTRARIO',
+            'score': -100,
+            'razon': f"⛔ Tendencia BAJISTA pero momentum {puntero['color']} - NO SHORT",
+            'grid_data': grid_dims,
+            'puntero_data': puntero,
+            'zona_ideal': False
+        }
+FIX #6: Integrar brain_validators
+En 
+brain_intelligent.py
+ (después de línea 156):
+
+python
+from brain_validators.adx_validator import validate_adx_separation
+from brain_validators.momentum_validator import validate_momentum_reversal
+# Validar ADX
+adx_result = validate_adx_separation(ladder, trade_dir, '15m')
+if adx_result['score_adjustment'] &lt;= -50:
+    return {'action': 'WAIT', 'confidence': 0, 'reasons': [adx_result['reason']]}
+# Validar Momentum
+mom_result = validate_momentum_reversal(ladder, trade_dir, '15m')
+if mom_result['score_adjustment'] &lt;= -20:
+    return {'action': 'WAIT', 'confidence': 0, 'reasons': [mom_result['reason']]}
+📋 RESUMEN
+Módulo	Estado Actual	Problema
+brain_grid.py	✅ INTEGRADO	❌ No bloquea momentum contrario
+brain_validators/	❌ NO USADOS	Código muerto, nadie los importa
+¿Quieres que actualice el plan de implementación con estos 2 fixes adicionales (#5 y #6)?
+
+Los modulos que son validators que no estan conectados eran para granular esos indicadores para que sea mas facil de corregir
+, esa fue mi idea, no sabia que no estaba conectado a nada. Mi idea de la malla era como una vision completa del bot, la implementación quedó a medias, es como una hoja cuadriculada que da todas las coordenas, deja que el bot sea miope y tenga una vision completa, se implementó a medias ese modulo, la idea es que en esas dimensiones tambien debia afectar el movimiento de todos los indicadores, el ojo del sniper, que te parece esa idea? unir todo? Creo que el bot va a ser mas robusto, cruzar esas capas entre modulos, vos que sabes el código interno, que opinas?
+
+
+Thought for 2s
+
+
+Tu idea es BRILLANTE y exactamente lo que el bot necesita. Déjame explicarte por qué y cómo lo veo:
+
+🎯 TU VISIÓN vs ESTADO ACTUAL
+Lo que querías (Visión Original):
+┌─────────────────────────────────────────────────────────────────┐
+│                    MALLA (GRID) - VISIÓN COMPLETA               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                    DIMENSIONES                           │   │
+│  │   Techo ─────────────────────────────────────────────   │   │
+│  │      │                                                   │   │
+│  │      │   ┌──────────────────────────────────────┐       │   │
+│  │      │   │  INDICADORES (Viven dentro de la malla)│     │   │
+│  │      │   │  • ADX (Fuerza del movimiento)         │     │   │
+│  │      │   │  • Momentum (Color del puntero)        │     │   │
+│  │      │   │  • ZigZag (Estructura dentro)          │     │   │
+│  │      │   │  • S/R (Paredes internas)              │     │   │
+│  │      │   └──────────────────────────────────────┘       │   │
+│  │      │                                                   │   │
+│  │   Piso ─────────────────────────────────────────────   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  📍 PUNTERO: Posición actual + Vector (hacia dónde va)          │
+│  🎯 DECISIÓN: Basada en COORDENADAS, no en reglas sueltas       │
+└─────────────────────────────────────────────────────────────────┘
+Lo que hay ahora (Implementación Incompleta):
+brain_intelligent.py
+    │
+    ├─► grid.analyze()  ← Solo detecta lateral y da score genérico
+    │       └─► NO usa los validators
+    │       └─► NO cruza con otros indicadores
+    │
+    ├─► check_market_force()  ← Función separada, duplica lógica
+    │
+    ├─► Validaciones manuales de ADX, Momentum, ZigZag...
+    │       └─► Código repetido
+    │       └─► No coordinado
+    │
+    └─► brain_validators/  ← CÓDIGO MUERTO, nadie los usa
+💡 MI OPINIÓN: UNIFICAR TODO EN LA MALLA
+Estoy 100% de acuerdo con tu visión. La malla debería ser el ÚNICO PUNTO DE VERDAD que:
+
+Define las DIMENSIONES (Techo, Piso, Ancho en ATRs)
+Posiciona el PUNTERO (Dónde está el precio + Hacia dónde va)
+INTEGRA todos los indicadores como capas dentro de la malla:
+Capa ADX: Fuerza del movimiento
+Capa Momentum: Color del puntero (dirección)
+Capa ZigZag: Estructura interna (HH, HL, LH, LL)
+Capa S/R: Paredes internas (zonas de rebote)
+DECIDE basándose en coordenadas espaciales, no en reglas if/else sueltas
+🏗️ PROPUESTA DE ARQUITECTURA UNIFICADA
+┌─────────────────────────────────┐
+                    │     BRAIN_GRID.PY v2.0          │
+                    │     "EL OJO DEL SNIPER"         │
+                    └───────────────┬─────────────────┘
+                                    │
+          ┌─────────────────────────┼─────────────────────────┐
+          │                         │                         │
+          ▼                         ▼                         ▼
+┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+│  DIMENSIONES    │      │    PUNTERO      │      │   VALIDATORS    │
+│  • Techo/Piso   │      │  • Posición X,Y │      │  (Capas Internas)│
+│  • Ancho ATRs   │      │  • Vector vel.  │      │  • ADX Layer    │
+│  • Slope        │      │  • Dirección    │      │  • Momentum Layer│
+└─────────────────┘      └─────────────────┘      │  • ZigZag Layer │
+                                                   │  • S/R Layer    │
+                                                   └─────────────────┘
+                                    │
+                                    ▼
+                    ┌─────────────────────────────────┐
+                    │       DECISIÓN ESPACIAL         │
+                    │  "¿En qué coordenada estamos?"  │
+                    │  "¿Hacia dónde apunta el vector?"│
+                    │  "¿Hay obstáculos (S/R) adelante?"│
+                    └─────────────────────────────────┘
+                                    │
+                                    ▼
+                    ┌─────────────────────────────────┐
+                    │         RESULTADO               │
+                    │  • OPERABLE / BLOQUEADO         │
+                    │  • Dirección: LONG/SHORT        │
+                    │  • Zona: Ideal/Peligrosa        │
+                    │  • Score: -100 a +100           │
+                    └─────────────────────────────────┘
+📋 PLAN DE UNIFICACIÓN
+Fase 1: Conectar Validators a Grid
+python
+# brain_grid.py
+from brain_validators.adx_validator import validate_adx_separation
+from brain_validators.momentum_validator import validate_momentum_reversal
+from brain_validators.zigzag_validator import validate_zigzag_alignment
+class MarketGrid:
+    def analyze(self, symbol, df_5m, ladder=None):
+        # 1. DIMENSIONES (ya existe)
+        grid_dims = self._build_dimensions(df_5m)
+        
+        # 2. PUNTERO (ya existe)
+        puntero = self._calculate_pointer(df_5m, ladder)
+        
+        # 3. CAPAS DE VALIDACIÓN (NUEVO - Integrar validators)
+        layers = self._analyze_layers(ladder, puntero['direccion'])
+        
+        # 4. DECISIÓN ESPACIAL (Mejorado)
+        resultado = self._spatial_decision(grid_dims, puntero, layers)
+        
+        return resultado
+    
+    def _analyze_layers(self, ladder, direction):
+        """Analiza todas las capas dentro de la malla"""
+        
+        # Capa ADX
+        adx_layer = validate_adx_separation(ladder, direction, '15m')
+        
+        # Capa Momentum
+        mom_layer = validate_momentum_reversal(ladder, direction, '15m')
+        
+        # Capa ZigZag
+        zz_layer = validate_zigzag_alignment(ladder, direction, '5m')
+        
+        return {
+            'adx': adx_layer,
+            'momentum': mom_layer,
+            'zigzag': zz_layer,
+            'all_aligned': self._check_alignment(adx_layer, mom_layer, zz_layer)
+        }
+Fase 2: Simplificar brain_intelligent.py
+python
+# brain_intelligent.py (SIMPLIFICADO)
+def orchestrate_intelligence(symbol):
+    # 1. ANÁLISIS MULTI-TIMEFRAME
+    ladder_analysis = {...}
+    
+    # 2. LA MALLA ES EL ÚNICO PUNTO DE DECISIÓN
+    grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
+    
+    # 3. SI GRID DICE NO → NO OPERAR
+    if grid_result['status'] == 'BLOQUEADO':
+        return {'action': 'NO_OPERAR', 'reason': grid_result['razon']}
+    
+    # 4. SI GRID DICE SÍ → ENTRAR
+    if grid_result['status'] == 'OPERABLE' and grid_result['score'] &gt;= 50:
+        return {'action': 'OPERAR', 'confidence': grid_result['score']}
+    
+    return {'action': 'NO_OPERAR', 'reason': 'Score insuficiente'}
+✅ BENEFICIOS DE UNIFICAR
+Antes (Fragmentado)	Después (Unificado)
+Código duplicado en 5+ lugares	Una sola fuente de verdad
+Validators sin usar	Validators integrados
+Reglas if/else dispersas	Decisión espacial coherente
+Difícil de debuguear	Log claro de cada capa
+Bot "miope"	Bot con "visión completa"
+🤔 ¿QUIERES QUE CREE UN PLAN COMPLETO?
+Puedo crear un plan de implementación para:
+
+Conectar los 3 validators a brain_grid.py
+Agregar validación de momentum alineado en el Grid
+Simplificar brain_intelligent.py para que solo consulte al Grid
+Eliminar código duplicado (check_market_force, validaciones manuales)
+¿Procedemos con esta arquitectura unificada?
+
+Si, por favor, dame todo el plan bien detallado, completo, codigo a modificar y codigo propuesto. Muchas gracias por tu ayuda.
+
+
+Thought for 5s
+
+Creating Unified Grid Architecture Plan
+Analizado brain_grid.py y brain_validators. Detectado que validators están desconectados y grid no valida momentum alineado.
+
+He creado el Plan de Implementación v7.0 - GRID UNIFICADO "El Ojo del Sniper".
+
+Resumen de cambios:
+Archivo	Acción
+brain_grid.py	+280 líneas (imports, _analyze_layers, analyze v2, scoring v2)
+brain_intelligent.py	-230 líneas (simplificado, delega al Grid)
+brain_validators/__init__.py	Exportar funciones
+Arquitectura Nueva:
+GRID (El Ojo del Sniper)
+                         │
+    ┌────────────────────┼────────────────────┐
+    │                    │                    │
+DIMENSIONES          PUNTERO              LAYERS
+ (Techo/Piso)     (Dirección)      (ADX/Mom/ZigZag)
+                         │
+                         ▼
+              DECISIÓN ÚNICA → OPERABLE/BLOQUEADO
+Bloqueos automáticos:
+⛔ Lateral (&lt; 2 ATRs)
+⛔ Momentum ROJO en contexto BULLISH
+⛔ Momentum VERDE en contexto BEARISH
+⛔ ADX invertido (DI+ &lt; DI- en LONG)
+⛔ ZigZag contrario
+
+Plan de Implementación v7.0 - GRID UNIFICADO "El Ojo del Sniper"
+Resumen Ejecutivo
+Unificar 
+brain_grid.py
+ como el ÚNICO punto de decisión del bot, integrando los brain_validators como capas internas de la malla.
+
+Arquitectura Propuesta
+┌─────────────────────────────────────────────────────────────────┐
+│                    BRAIN_GRID v2.0                              │
+│                  "EL OJO DEL SNIPER"                            │
+├─────────────────────────────────────────────────────────────────┤
+│  DIMENSIONES          │  PUNTERO           │  LAYERS            │
+│  • Techo/Piso         │  • Posición        │  • ADX Layer       │
+│  • Ancho ATRs         │  • Vector          │  • Momentum Layer  │
+│  • Slope              │  • Dirección       │  • ZigZag Layer    │
+├───────────────────────┴──────────────────┴─────────────────────┤
+│                      DECISIÓN ESPACIAL                          │
+│  → BLOQUEADO: Lateral, Momentum contrario, Zona peligrosa       │
+│  → OPERABLE: Todas las capas alineadas + score &gt;= 50            │
+│  → WAIT: Score insuficiente                                     │
+└─────────────────────────────────────────────────────────────────┘
+Archivos a Modificar
+#	Archivo	Acción
+1	brain_grid.py	MODIFICAR - Agregar _analyze_layers() + bloqueos
+2	brain_intelligent.py	MODIFICAR - Simplificar, delegar a Grid
+3	brain_validators/init.py	MODIFICAR - Exportar funciones
+FIX #1: Conectar Validators a brain_grid.py
+[MODIFY] 
+brain_grid.py
+Paso 1.1: Agregar imports (después de línea 20)
+Buscar:
+
+from datetime import datetime
+Agregar después:
+
+# Importar Validators (Capas internas de la malla)
+from brain_validators.adx_validator import validate_adx_separation
+from brain_validators.momentum_validator import validate_momentum_reversal
+from brain_validators.zigzag_validator import validate_zigzag_alignment
+Paso 1.2: Agregar método _analyze_layers() (después de línea 339)
+Buscar:
+
+# ========================================================================
+    # SCORING FINAL
+    # ========================================================================
+Agregar ANTES:
+
+# ========================================================================
+    # ANÁLISIS DE CAPAS (VALIDATORS INTEGRADOS)
+    # ========================================================================
+    
+    def _analyze_layers(self, ladder, direction, current_price):
+        """
+        Analiza todas las capas de validación dentro de la malla.
+        Integra los brain_validators como capas del Grid.
+        
+        Args:
+            ladder: Dict con análisis multi-timeframe
+            direction: 'BULLISH' o 'BEARISH'
+            current_price: Precio actual
+        
+        Returns:
+            dict: {
+                'adx': resultado validator ADX,
+                'momentum': resultado validator Momentum,
+                'zigzag': resultado validator ZigZag,
+                'all_aligned': bool,
+                'total_score': int,
+                'blocking_reason': str o None
+            }
+        """
+        # CAPA 1: ADX (Fuerza del movimiento)
+        adx_layer = validate_adx_separation(ladder, direction, '15m')
+        
+        # CAPA 2: MOMENTUM (Color del puntero)
+        mom_layer = validate_momentum_reversal(ladder, direction, '15m')
+        
+        # CAPA 3: ZIGZAG (Estructura interna)
+        zz_layer = validate_zigzag_alignment(ladder, direction, current_price)
+        
+        # CALCULAR SCORE TOTAL DE CAPAS
+        total_score = (
+            adx_layer['score_adjustment'] +
+            mom_layer['score_adjustment'] +
+            zz_layer['score_adjustment']
+        )
+        
+        # DETECTAR BLOQUEOS
+        blocking_reason = None
+        
+        # Bloqueo 1: ADX contrario (DI invertido)
+        if adx_layer['score_adjustment'] &lt;= -50:
+            blocking_reason = adx_layer['reason']
+        
+        # Bloqueo 2: Momentum contrario (CRÍTICO según estrategia Joel)
+        elif mom_layer['score_adjustment'] &lt;= -20 and mom_layer['momentum_color'] not in self._get_target_colors(direction):
+            blocking_reason = f"⛔ MOMENTUM CONTRARIO: {mom_layer['reason']}"
+        
+        # Bloqueo 3: Estructura ZigZag contraria
+        elif zz_layer['score_adjustment'] &lt;= -40 and not zz_layer['aligned']:
+            blocking_reason = zz_layer['reason']
+        
+        # VERIFICAR ALINEACIÓN TOTAL
+        all_aligned = (
+            adx_layer['score_adjustment'] &gt; 0 and
+            mom_layer['score_adjustment'] &gt;= 0 and
+            zz_layer.get('aligned', True)
+        )
+        
+        return {
+            'adx': adx_layer,
+            'momentum': mom_layer,
+            'zigzag': zz_layer,
+            'all_aligned': all_aligned,
+            'total_score': total_score,
+            'blocking_reason': blocking_reason
+        }
+    
+    def _get_target_colors(self, direction):
+        """Retorna colores de momentum válidos para la dirección"""
+        if direction == 'BULLISH':
+            return ['green', 'lime']
+        else:
+            return ['red', 'maroon']
+Paso 1.3: Modificar función analyze() para usar layers (línea 47-96)
+Buscar función analyze completa y reemplazar con:
+
+def analyze(self, symbol, df_5m, ladder=None):
+        """
+        Análisis completo de la malla v2.0 - VISIÓN UNIFICADA
+        
+        Args:
+            symbol: Símbolo (ej: 'BTC/USDT')
+            df_5m: DataFrame 5M con al menos 50 velas
+            ladder: Dict con análisis multi-timeframe (obligatorio para layers)
+        
+        Returns:
+            dict: {
+                'status': str,           # 'OPERABLE', 'BLOQUEADO', 'WAIT'
+                'direction': str,        # 'LONG', 'SHORT', 'NONE'
+                'contexto': str,         # Descripción del contexto
+                'score': int,            # -100 a +100
+                'razon': str,            # Explicación
+                'grid_data': dict,       # Datos técnicos
+                'puntero_data': dict,    # Datos del puntero
+                'layers_data': dict,     # Datos de cada capa
+                'zona_ideal': bool       # True si es zona perfecta
+            }
+        """
+        
+        if df_5m is None or len(df_5m) &lt; 30:
+            return self._return_error("Sin datos suficientes")
+        
+        # 1. CONSTRUIR DIMENSIONES DE LA MALLA
+        grid_dims = self._build_dimensions(df_5m)
+        
+        # 2. CALCULAR PUNTERO (Vector de precio)
+        puntero = self._calculate_pointer(df_5m, ladder)
+        
+        # 3. DETECTAR CONTEXTO (Tipo de mercado)
+        contexto = self._detect_context(grid_dims, puntero, df_5m)
+        
+        # 4. DETERMINAR DIRECCIÓN DEL TRADE
+        if contexto['tipo'] in ['TENDENCIA_ALCISTA', 'CORRECCION_ALCISTA']:
+            trade_direction = 'BULLISH'
+        elif contexto['tipo'] in ['TENDENCIA_BAJISTA', 'REBOTE_BAJISTA']:
+            trade_direction = 'BEARISH'
+        else:
+            trade_direction = 'NEUTRAL'
+        
+        # 5. ANALIZAR CAPAS (VALIDATORS INTEGRADOS) - NUEVO
+        current_price = df_5m['close'].iloc[-1]
+        if ladder and trade_direction != 'NEUTRAL':
+            layers = self._analyze_layers(ladder, trade_direction, current_price)
+        else:
+            layers = {
+                'adx': {'score_adjustment': 0},
+                'momentum': {'score_adjustment': 0},
+                'zigzag': {'score_adjustment': 0},
+                'all_aligned': False,
+                'total_score': 0,
+                'blocking_reason': None
+            }
+        
+        # 6. VALIDAR FUERZA (método existente)
+        fuerza = self._validate_force(ladder) if ladder else {'score': 0, 'tiene_fuerza': False, 'adx': 0}
+        
+        # 7. SCORING FINAL (modificado)
+        resultado = self._calculate_final_score_v2(
+            grid_dims, puntero, contexto, fuerza, layers, trade_direction
+        )
+        
+        # 8. Guardar estado
+        self.history[symbol] = {
+            'timestamp': datetime.now(),
+            'grid': grid_dims,
+            'puntero': puntero,
+            'contexto': contexto,
+            'layers': layers
+        }
+        
+        return resultado
+Paso 1.4: Agregar nueva función _calculate_final_score_v2() (después de _analyze_layers)
+Agregar antes de _return_error:
+
+def _calculate_final_score_v2(self, grid_dims, puntero, contexto, fuerza, layers, direction):
+        """
+        Calcula score final UNIFICADO con todas las capas
+        """
+        score = 0
+        razones = []
+        status = 'WAIT'
+        
+        # ============================================================
+        # BLOQUEOS ABSOLUTOS (Prioridad máxima)
+        # ============================================================
+        
+        # Bloqueo 1: LATERAL
+        if contexto['tipo'] == 'LATERAL':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'LATERALIZACIÓN',
+                'score': -100,
+                'razon': f"⛔ Malla cerrada ({contexto['ancho_atr']:.1f} ATRs). NO OPERAR.",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        # Bloqueo 2: CAPA BLOQUEANTE (Momentum contrario, ADX invertido, etc.)
+        if layers.get('blocking_reason'):
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'LAYERS_BLOCK',
+                'score': -100,
+                'razon': layers['blocking_reason'],
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        # Bloqueo 3: MOMENTUM CONTRARIO EXPLÍCITO (Estrategia Joel)
+        if direction == 'BULLISH' and puntero['color'] == 'ROJO':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'MOMENTUM_CONTRARIO',
+                'score': -100,
+                'razon': f"⛔ Tendencia ALCISTA pero momentum ROJO - NO LONG",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        if direction == 'BEARISH' and puntero['color'] == 'VERDE':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'MOMENTUM_CONTRARIO',
+                'score': -100,
+                'razon': f"⛔ Tendencia BAJISTA pero momentum VERDE - NO SHORT",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        # ============================================================
+        # SCORING GRADUAL
+        # ============================================================
+        
+        # 1. Score por ZONA
+        zona = contexto['zona']
+        if zona == 'IDEAL_LONG':
+            score += 40
+            razones.append("✅ Zona IDEAL para LONG")
+        elif zona == 'IDEAL_SHORT':
+            score += 40
+            razones.append("✅ Zona IDEAL para SHORT")
+        elif zona == 'ACEPTABLE_LONG':
+            score += 20
+            razones.append("⚠️ Zona aceptable LONG")
+        elif zona == 'ACEPTABLE_SHORT':
+            score += 20
+            razones.append("⚠️ Zona aceptable SHORT")
+        elif zona == 'TECHO':
+            score -= 50
+            razones.append("⚠️ Comprando TECHO")
+        elif zona == 'PISO':
+            score -= 50
+            razones.append("⚠️ Vendiendo PISO")
+        elif zona in ['ESPERAR_REBOTE', 'ESPERAR_CONTINUACION']:
+            score -= 30
+            razones.append(f"⏳ {zona}")
+        
+        # 2. Score por FUERZA (ADX)
+        score += fuerza['score']
+        if fuerza['tiene_fuerza']:
+            razones.append(f"💪 Fuerza confirmada (ADX {fuerza['adx']:.1f})")
+        else:
+            razones.append(f"⚠️ Sin fuerza (ADX {fuerza['adx']:.1f})")
+        
+        # 3. Score por CAPAS (VALIDATORS)
+        score += layers['total_score']
+        
+        # Agregar razones de cada capa
+        if layers['adx']['score_adjustment'] != 0:
+            razones.append(f"ADX: {layers['adx'].get('reason', 'OK')}")
+        if layers['momentum']['score_adjustment'] != 0:
+            razones.append(f"Mom: {layers['momentum'].get('reason', 'OK')}")
+        if layers['zigzag']['score_adjustment'] != 0:
+            razones.append(f"ZZ: {layers['zigzag'].get('reason', 'OK')}")
+        
+        # 4. Bonus por PUNTERO ALINEADO
+        if contexto['tipo'] == 'TENDENCIA_ALCISTA' and puntero['color'] == 'VERDE':
+            score += 15
+            razones.append("🟢 Puntero alineado")
+        elif contexto['tipo'] == 'TENDENCIA_BAJISTA' and puntero['color'] == 'ROJO':
+            score += 15
+            razones.append("🔴 Puntero alineado")
+        
+        # 5. Bonus por TODAS LAS CAPAS ALINEADAS
+        if layers['all_aligned']:
+            score += 20
+            razones.append("✨ TODAS las capas alineadas")
+        
+        # ============================================================
+        # DECISIÓN FINAL
+        # ============================================================
+        
+        if score &gt;= 50:
+            status = 'OPERABLE'
+            zona_ideal = zona in ['IDEAL_LONG', 'IDEAL_SHORT']
+        elif score &gt;= 20:
+            status = 'MARGINAL'
+            zona_ideal = False
+        else:
+            status = 'WAIT'
+            zona_ideal = False
+        
+        # Determinar dirección de salida
+        if status == 'OPERABLE':
+            out_direction = 'LONG' if direction == 'BULLISH' else 'SHORT'
+        else:
+            out_direction = 'NONE'
+        
+        return {
+            'status': status,
+            'direction': out_direction,
+            'contexto': contexto['tipo'],
+            'score': score,
+            'razon': " | ".join(razones),
+            'grid_data': grid_dims,
+            'puntero_data': puntero,
+            'layers_data': layers,
+            'zona_ideal': zona_ideal
+        }
+FIX #2: Simplificar brain_intelligent.py
+[MODIFY] 
+brain_intelligent.py
+Paso 2.1: Simplificar orchestrate_intelligence (líneas 28-140)
+Reemplazar la función completa orchestrate_intelligence con:
+
+def orchestrate_intelligence(symbol):
+    """
+    Orquesta la inteligencia cognitiva del bot v7.0 - GRID UNIFICADO
+    
+    Fases:
+    1. Percepción (Patrones + Time Ladder)
+    2. GRID ANALYSIS (El Ojo del Sniper - Punto único de decisión)
+    3. Memoria (Telemetría)
+    """
+    print(f"\n🧠 ORCHESTRATING INTELLIGENCE v7.0: {symbol}")
+    
+    # 1. PERCEPCIÓN
+    print("   Scanning patterns &amp; structure...")
+    patterns_result = pattern_engine.detect_all_patterns(symbol)
+    
+    if patterns_result['best_pattern']:
+        p = patterns_result['best_pattern']
+        print(f"   ✨ PATTERN FOUND: {p['type']} in {p['tf']} (Conf: {p['confidence']})")
+    
+    # TIME LADDER (Multi-timeframe analysis)
+    ladder_analysis = {
+        '4h': analyze_4h(symbol),
+        '1h': analyze_1h(symbol),
+        '15m': analyze_15m(symbol, strict=False),
+        '5m': analyze_5m(symbol)
+    }
+    
+    # 2. GRID ANALYSIS - EL OJO DEL SNIPER (Punto único de decisión)
+    from brain_grid import grid
+    from exchange_connection import fetch_ohlcv
+    
+    ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
+    if ohlcv_grid:
+        df_grid = pd.DataFrame(ohlcv_grid, columns=['timestamp','open','high','low','close','volume'])
+        grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
+        
+        # LOG DETALLADO
+        print(f"   🌐 GRID STATUS: {grid_result['status']}")
+        print(f"   📍 Contexto: {grid_result['contexto']}")
+        print(f"   🎯 Dirección: {grid_result.get('direction', 'N/A')}")
+        print(f"   📊 Score: {grid_result['score']}")
+        print(f"   💬 Razón: {grid_result['razon']}")
+        
+        # DECISIÓN BASADA EN GRID
+        if grid_result['status'] == 'BLOQUEADO':
+            _save_telemetry(symbol, 'NO_OPERAR', 0, ladder_analysis, [grid_result['razon']])
+            return {
+                'action': 'NO_OPERAR',
+                'confidence': 0,
+                'reason': grid_result['razon'],
+                'full_analysis': {'ladder_data': ladder_analysis, 'grid': grid_result}
+            }
+        
+        if grid_result['status'] == 'OPERABLE' and grid_result['score'] &gt;= 50:
+            # ENTRADA APROBADA POR GRID
+            reasons = [grid_result['razon']]
+            confidence = min(100, grid_result['score'])
+            
+            # Estrategia basada en dirección
+            strategy = _determine_strategy_from_grid(grid_result, patterns_result)
+            
+            _save_telemetry(symbol, 'OPERAR', confidence, ladder_analysis, reasons)
+            
+            return {
+                'action': 'OPERAR',
+                'trade_type': grid_result.get('direction', 'LONG'),
+                'confidence': confidence,
+                'pattern': patterns_result.get('best_pattern', {}).get('type', 'GRID'),
+                'reasons': reasons,
+                'full_analysis': {'ladder_data': ladder_analysis, 'grid': grid_result},
+                'position_size': strategy['position_size'],
+                'strategy': strategy
+            }
+        
+        # SCORE INSUFICIENTE
+        _save_telemetry(symbol, 'NO_OPERAR', grid_result['score'], ladder_analysis, [grid_result['razon']])
+        return {
+            'action': 'NO_OPERAR',
+            'confidence': grid_result['score'],
+            'reason': f"Score insuficiente ({grid_result['score']}/50): {grid_result['razon']}",
+            'full_analysis': {'ladder_data': ladder_analysis, 'grid': grid_result}
+        }
+    
+    else:
+        return {
+            'action': 'NO_OPERAR',
+            'confidence': 0,
+            'reason': "Sin datos OHLCV para Grid",
+            'full_analysis': {'ladder_data': ladder_analysis}
+        }
+def _save_telemetry(symbol, action, confidence, ladder, reasons):
+    """Helper para guardar telemetría"""
+    try:
+        telemetry_data = ladder.copy()
+        telemetry_data['decision_reasons'] = reasons
+        db_manager.insert_telemetry(symbol, action, confidence, telemetry_data)
+    except Exception as e:
+        print(f"⚠️ Telemetry error: {e}")
+def _determine_strategy_from_grid(grid_result, patterns):
+    """Determina estrategia basada en resultado del Grid"""
+    pattern_type = patterns.get('best_pattern', {}).get('type', 'STANDARD')
+    
+    # Valores Base
+    stop_mult = 2.0
+    target_mult = 2.0
+    position = 0.75
+    
+    # Ajuste por Patrón
+    if 'DOUBLE' in pattern_type or 'BOS' in pattern_type:
+        target_mult = 2.5
+        position = 0.5
+    elif 'FLAG' in pattern_type:
+        target_mult = 3.0
+        position = 1.0
+    
+    # Ajuste por calidad de Grid
+    if grid_result.get('zona_ideal'):
+        position = min(position + 0.25, 1.0)
+    
+    if grid_result['score'] &gt;= 80:
+        position = min(position + 0.25, 1.0)
+    
+    return {
+        'type': 'GRID',
+        'stop_multiplier': stop_mult,
+        'target_multiplier': target_mult,
+        'position_size': position
+    }
+Paso 2.2: Eliminar función make_pattern_based_decision (líneas 142-373)
+Esta función ya no es necesaria porque toda la lógica está en el Grid.
+
+Marcar como deprecada o eliminar:
+
+# DEPRECADO v7.0 - Toda la lógica está ahora en brain_grid.py
+# def make_pattern_based_decision(...):
+#     pass
+FIX #3: Actualizar init.py de validators
+[MODIFY] 
+brain_validators/
+init
+.py
+Reemplazar contenido con:
+
+"""
+Brain Validators - Capas de validación para el Grid
+Estos módulos son usados por brain_grid.py como capas internas de la malla.
+"""
+from .adx_validator import validate_adx_separation
+from .momentum_validator import validate_momentum_reversal
+from .zigzag_validator import validate_zigzag_alignment, detect_current_movement
+__all__ = [
+    'validate_adx_separation',
+    'validate_momentum_reversal', 
+    'validate_zigzag_alignment',
+    'detect_current_movement'
+]
+Resumen de Cambios
+Archivo	Líneas	Acción
+brain_grid.py	20	Agregar imports de validators
+brain_grid.py	340	Agregar _analyze_layers() (~70 líneas)
+brain_grid.py	47-96	Reemplazar analyze() (~60 líneas)
+brain_grid.py	345+	Agregar _calculate_final_score_v2() (~150 líneas)
+brain_intelligent.py	28-140	Reemplazar orchestrate_intelligence() (~80 líneas)
+brain_intelligent.py	142-373	Eliminar/Deprecar make_pattern_based_decision
+brain_validators/init.py	*	Exportar funciones
+Verification Plan
+Logs Esperados:
+🧠 ORCHESTRATING INTELLIGENCE v7.0: BTC/USDT
+   ✨ PATTERN FOUND: FLAG in 15m (Conf: 75)
+   🌐 GRID STATUS: OPERABLE
+   📍 Contexto: TENDENCIA_ALCISTA
+   🎯 Dirección: LONG
+   📊 Score: 85
+   💬 Razón: ✅ Zona IDEAL para LONG | 💪 Fuerza confirmada (ADX 32.5) | ✨ TODAS las capas alineadas
+Bloqueos Esperados:
+🌐 GRID STATUS: BLOQUEADO
+📍 Contexto: MOMENTUM_CONTRARIO
+💬 Razón: ⛔ Tendencia ALCISTA pero momentum ROJO - NO LONG
+Test Manual
+Ejecutar bot después de aplicar todos los cambios
+Verificar que logs muestren las capas (ADX, Momentum, ZigZag)
+Confirmar bloqueos cuando momentum no alinea
+Verificar que score incluya contribución de cada capa
+
+modulo completo brain_grid.py
+
+"""
+================================================================================
+BRAIN GRID v1.0 - SISTEMA DE NAVEGACIÓN ESPACIAL
+================================================================================
+Filosofía: Ver el mercado como un MAPA, no como números sueltos
+
+Responsabilidades:
+1. Construir la MALLA (dimensiones del campo de juego)
+2. Calcular el PUNTERO (dónde está el precio + hacia dónde va)
+3. Detectar CONTEXTOS (lateralización, tendencia, explosión)
+4. Validar ZONAS OPERABLES (setup según la imagen de Joel)
+
+Creado por: Claude Sonnet (Anthropic)
+Autor del concepto: Joel Rodríguez Diarte
+Fecha: 2025-12-13
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+# ============================================================================
+# CONFIGURACIÓN (Hardcoded - sin dependencias externas)
+# ============================================================================
+
+GRID_CONFIG = {
+    'lookback_velas': 20,           # Velas para definir techo/piso
+    'lateral_threshold_atr': 2.0,   # Ancho &lt; 2 ATRs = lateral
+    'tendencia_threshold_atr': 3.5, # Ancho &gt; 3.5 ATRs = tendencia fuerte
+    'puntero_sensibilidad': 3,      # Velas para calcular vector velocidad
+    'fuerza_min_adx': 22,           # ADX mínimo para considerar fuerza
+    'fuerza_fuerte_adx': 30,        # ADX para fuerza brutal
+}
+
+# ============================================================================
+# CLASE PRINCIPAL
+# ============================================================================
+
+class MarketGrid:
+    """
+    La Malla del Mercado - Navegación Espacial
+    """
+    
+    def __init__(self):
+        self.history = {}  # Cache de estados anteriores
+    
+    def analyze(self, symbol, df_5m, ladder=None):
+        """
+        Análisis completo de la malla
+        
+        Args:
+            symbol: Símbolo (ej: 'BTC/USDT')
+            df_5m: DataFrame 5M con al menos 50 velas
+            ladder: Dict con análisis multi-timeframe (opcional)
+        
+        Returns:
+            dict: {
+                'status': str,           # 'OPERABLE', 'LATERAL', 'WAIT'
+                'contexto': str,         # Descripción del contexto
+                'score': int,            # -100 a +100
+                'razon': str,            # Explicación
+                'grid_data': dict,       # Datos técnicos
+                'puntero_data': dict,    # Datos del puntero
+                'zona_ideal': bool       # True si es zona perfecta
+            }
+        """
+        
+        if df_5m is None or len(df_5m) &lt; 30:
+            return self._return_error("Sin datos suficientes")
+        
+        # 1. CONSTRUIR DIMENSIONES DE LA MALLA
+        grid_dims = self._build_dimensions(df_5m)
+        
+        # 2. CALCULAR PUNTERO (Vector de precio)
+        puntero = self._calculate_pointer(df_5m, ladder)
+        
+        # 3. DETECTAR CONTEXTO
+        contexto = self._detect_context(grid_dims, puntero, df_5m)
+        
+        # 4. VALIDAR FUERZA (si hay ladder)
+        fuerza = self._validate_force(ladder) if ladder else {'score': 0}
+        
+        # 5. SCORING FINAL
+        resultado = self._calculate_final_score(
+            grid_dims, puntero, contexto, fuerza, df_5m
+        )
+        
+        # 6. Guardar estado
+        self.history[symbol] = {
+            'timestamp': datetime.now(),
+            'grid': grid_dims,
+            'puntero': puntero,
+            'contexto': contexto
+        }
+        
+        return resultado
+    
+    # ========================================================================
+    # CONSTRUCCIÓN DE DIMENSIONES
+    # ========================================================================
+    
+    def _build_dimensions(self, df):
+        """
+        Construye las paredes de la malla (Techo, Piso, Ancho)
+        """
+        lookback = GRID_CONFIG['lookback_velas']
+        
+        # Highs y Lows rolling
+        highs = df['high'].rolling(lookback).max()
+        lows = df['low'].rolling(lookback).min()
+        
+        techo = highs.iloc[-1]
+        piso = lows.iloc[-1]
+        medio = (techo + piso) / 2
+        
+        # Ancho en % (método simple)
+        ancho_pct = ((techo - piso) / medio) * 100 if medio &gt; 0 else 0
+        
+        # Ancho en ATRs (método robusto)
+        atr_val = self._calculate_atr_simple(df)
+        ancho_atr = (techo - piso) / atr_val if atr_val &gt; 0 else 0
+        
+        # Slope (pendiente de la línea media)
+        medios = (df['high'].rolling(lookback).max() + df['low'].rolling(lookback).min()) / 2
+        if len(medios) &gt;= 5:
+            slope = medios.iloc[-1] - medios.iloc[-5]
+        else:
+            slope = 0
+        
+        return {
+            'techo': techo,
+            'piso': piso,
+            'medio': medio,
+            'ancho_pct': ancho_pct,
+            'ancho_atr': ancho_atr,
+            'atr': atr_val,
+            'slope': slope,
+            'lookback': lookback
+        }
+    
+    def _calculate_atr_simple(self, df, period=14):
+        """ATR simplificado (no necesita brain_calculator)"""
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(period).mean().iloc[-1]
+        
+        return atr if not pd.isna(atr) else 0.01
+    
+    # ========================================================================
+    # CÁLCULO DEL PUNTERO
+    # ========================================================================
+    
+    def _calculate_pointer(self, df, ladder):
+        """
+        Calcula el puntero (vector de velocidad + dirección)
+        """
+        sens = GRID_CONFIG['puntero_sensibilidad']
+        closes = df['close'].values
+        
+        # Vector precio (cambio en últimas N velas)
+        if len(closes) &gt; sens:
+            delta = closes[-1] - closes[-sens]
+            velocidad = delta / sens
+        else:
+            delta = 0
+            velocidad = 0
+        
+        # Dirección básica
+        if delta &gt; 0:
+            direccion_precio = 'UP'
+        elif delta &lt; 0:
+            direccion_precio = 'DOWN'
+        else:
+            direccion_precio = 'NEUTRAL'
+        
+        # Si hay ladder, usar momentum color
+        if ladder and '15m' in ladder:
+            mom_data = ladder['15m'].get('momentum', {})
+            mom_color = mom_data.get('color_current', 'neutral')
+            
+            if mom_color in ['green', 'lime']:
+                direccion_final = 'UP'
+                color = 'VERDE'
+            elif mom_color in ['red', 'maroon']:
+                direccion_final = 'DOWN'
+                color = 'ROJO'
+            else:
+                direccion_final = direccion_precio
+                color = 'GRIS'
+        else:
+            direccion_final = direccion_precio
+            color = 'GRIS'
+        
+        # Fuerza del movimiento (% de cambio)
+        fuerza_pct = abs(delta / closes[-1] * 100) if closes[-1] &gt; 0 else 0
+        
+        return {
+            'direccion': direccion_final,
+            'color': color,
+            'velocidad': velocidad,
+            'fuerza_pct': fuerza_pct,
+            'delta': delta
+        }
+    
+    # ========================================================================
+    # DETECCIÓN DE CONTEXTO
+    # ========================================================================
+    
+    def _detect_context(self, grid_dims, puntero, df):
+        """
+        Detecta el contexto del mercado:
+        - LATERAL: Caja cerrada
+        - TENDENCIA_ALCISTA: Malla subiendo
+        - TENDENCIA_BAJISTA: Malla bajendo
+        - EXPLOSION: Breakout violento
+        """
+        ancho_atr = grid_dims['ancho_atr']
+        slope = grid_dims['slope']
+        techo = grid_dims['techo']
+        piso = grid_dims['piso']
+        
+        current_price = df['close'].iloc[-1]
+        
+        # Posición relativa en la malla (0 = piso, 1 = techo)
+        denominator = techo - piso
+        if denominator &lt; 0.0001:
+            posicion = 0.5
+        else:
+            posicion = (current_price - piso) / denominator
+        
+        # CLASIFICACIÓN
+        contexto_tipo = 'UNKNOWN'
+        zona_operacion = 'NEUTRAL'
+        
+        # 1. LATERAL (Caja cerrada)
+        if ancho_atr &lt; GRID_CONFIG['lateral_threshold_atr']:
+            contexto_tipo = 'LATERAL'
+            zona_operacion = 'PROHIBIDA'
+        
+        # 2. TENDENCIA ALCISTA
+        elif slope &gt; 0 and puntero['direccion'] == 'UP':
+            contexto_tipo = 'TENDENCIA_ALCISTA'
+            
+            # Zona ideal: Precio en zona baja/media (0.2-0.6)
+            if 0.15 &lt; posicion &lt; 0.65:
+                zona_operacion = 'IDEAL_LONG'
+            elif posicion &gt; 0.85:
+                zona_operacion = 'TECHO'  # Peligro de comprar techo
+            else:
+                zona_operacion = 'ACEPTABLE_LONG'
+        
+        # 3. TENDENCIA BAJISTA
+        elif slope &lt; 0 and puntero['direccion'] == 'DOWN':
+            contexto_tipo = 'TENDENCIA_BAJISTA'
+            
+            # Zona ideal: Precio en zona alta/media (0.4-0.8)
+            if 0.35 &lt; posicion &lt; 0.85:
+                zona_operacion = 'IDEAL_SHORT'
+            elif posicion &lt; 0.15:
+                zona_operacion = 'PISO'  # Peligro de vender piso
+            else:
+                zona_operacion = 'ACEPTABLE_SHORT'
+        
+        # 4. CONFLICTO (Malla dice una cosa, puntero otra)
+        elif slope &gt; 0 and puntero['direccion'] == 'DOWN':
+            contexto_tipo = 'CORRECCION_ALCISTA'
+            zona_operacion = 'ESPERAR_REBOTE'
+        
+        elif slope &lt; 0 and puntero['direccion'] == 'UP':
+            contexto_tipo = 'REBOTE_BAJISTA'
+            zona_operacion = 'ESPERAR_CONTINUACION'
+        
+        else:
+            contexto_tipo = 'INDEFINIDO'
+            zona_operacion = 'NEUTRAL'
+        
+        return {
+            'tipo': contexto_tipo,
+            'zona': zona_operacion,
+            'posicion': posicion,
+            'ancho_atr': ancho_atr
+        }
+    
+    # ========================================================================
+    # VALIDACIÓN DE FUERZA
+    # ========================================================================
+    
+    def _validate_force(self, ladder):
+        """
+        Valida si hay FUERZA real (ADX + Momentum alineados)
+        """
+        if not ladder or '15m' not in ladder:
+            return {'tiene_fuerza': False, 'score': 0, 'adx': 0}
+        
+        adx_data = ladder['15m'].get('adx', {})
+        mom_data = ladder['15m'].get('momentum', {})
+        
+        adx_val = adx_data.get('adx_current', 0)
+        mom_color = mom_data.get('color_current', 'neutral')
+        mom_edad = mom_data.get('consecutive_count', 0)
+        
+        # Clasificar fuerza
+        tiene_fuerza = False
+        score_fuerza = 0
+        
+        if adx_val &gt;= GRID_CONFIG['fuerza_fuerte_adx']:
+            # Fuerza BRUTAL
+            if mom_edad &gt;= 3:
+                tiene_fuerza = True
+                score_fuerza = 40
+            else:
+                score_fuerza = 20
+        
+        elif adx_val &gt;= GRID_CONFIG['fuerza_min_adx']:
+            # Fuerza MODERADA
+            if mom_edad &gt;= 2:
+                tiene_fuerza = True
+                score_fuerza = 25
+            else:
+                score_fuerza = 10
+        
+        else:
+            # Sin fuerza
+            score_fuerza = -30
+        
+        return {
+            'tiene_fuerza': tiene_fuerza,
+            'score': score_fuerza,
+            'adx': adx_val,
+            'mom_color': mom_color,
+            'mom_edad': mom_edad
+        }
+    
+    # ========================================================================
+    # SCORING FINAL
+    # ========================================================================
+    
+    def _calculate_final_score(self, grid_dims, puntero, contexto, fuerza, df):
+        """
+        Calcula score final y decisión según la IMAGEN de Joel
+        """
+        score = 0
+        razones = []
+        status = 'WAIT'
+        
+        # 1. BLOQUEO POR LATERAL
+        if contexto['tipo'] == 'LATERAL':
+            return {
+                'status': 'BLOQUEADO',
+                'contexto': 'LATERALIZACIÓN',
+                'score': -100,
+                'razon': f"⛔ Malla cerrada ({contexto['ancho_atr']:.1f} ATRs). NO OPERAR.",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'zona_ideal': False
+            }
+        
+        # 2. SCORING POR ZONA
+        zona = contexto['zona']
+        
+        if zona == 'IDEAL_LONG':
+            score += 40
+            razones.append("✅ Zona IDEAL para LONG")
+        elif zona == 'IDEAL_SHORT':
+            score += 40
+            razones.append("✅ Zona IDEAL para SHORT")
+        elif zona == 'ACEPTABLE_LONG':
+            score += 20
+            razones.append("⚠️ Zona aceptable LONG")
+        elif zona == 'ACEPTABLE_SHORT':
+            score += 20
+            razones.append("⚠️ Zona aceptable SHORT")
+        elif zona == 'TECHO':
+            score -= 50
+            razones.append("⚠️ Comprando TECHO")
+        elif zona == 'PISO':
+            score -= 50
+            razones.append("⚠️ Vendiendo PISO")
+        elif zona == 'ESPERAR_REBOTE':
+            score -= 30
+            razones.append("⏳ Esperando rebote alcista")
+        elif zona == 'ESPERAR_CONTINUACION':
+            score -= 30
+            razones.append("⏳ Esperando continuación bajista")
+        
+        # 3. FUERZA (El motor que permite romper reglas)
+        score += fuerza['score']
+        if fuerza['tiene_fuerza']:
+            razones.append(f"💪 Fuerza confirmada (ADX {fuerza['adx']:.1f})")
+        else:
+            razones.append(f"⚠️ Sin fuerza (ADX {fuerza['adx']:.1f})")
+        
+        # 4. PUNTERO ALINEADO
+        if contexto['tipo'] == 'TENDENCIA_ALCISTA' and puntero['color'] == 'VERDE':
+            score += 15
+            razones.append("🟢 Puntero alineado (verde)")
+        elif contexto['tipo'] == 'TENDENCIA_BAJISTA' and puntero['color'] == 'ROJO':
+            score += 15
+            razones.append("🔴 Puntero alineado (rojo)")
+        
+        # 5. DECISIÓN FINAL
+        if score &gt;= 50:
+            status = 'OPERABLE'
+            zona_ideal = zona in ['IDEAL_LONG', 'IDEAL_SHORT']
+        elif score &gt;= 20:
+            status = 'MARGINAL'
+            zona_ideal = False
+        else:
+            status = 'WAIT'
+            zona_ideal = False
+        
+        return {
+            'status': status,
+            'contexto': contexto['tipo'],
+            'score': score,
+            'razon': " | ".join(razones),
+            'grid_data': grid_dims,
+            'puntero_data': puntero,
+            'zona_ideal': zona_ideal
+        }
+    
+    def _return_error(self, msg):
+        """Helper para retornar errores"""
+        return {
+            'status': 'ERROR',
+            'contexto': 'UNKNOWN',
+            'score': -100,
+            'razon': msg,
+            'grid_data': {},
+            'puntero_data': {},
+            'zona_ideal': False
+        }
+
+
+# ============================================================================
+# INSTANCIA GLOBAL
+# ============================================================================
+
+grid = MarketGrid()
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 11,348<br>
-    Generado: 2025-12-14 03:54:39
+    Total caracteres: 63,135<br>
+    Generado: 2025-12-14 04:07:03
   </div>
 </body>
 </html>
