@@ -15,143 +15,2093 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-14 14:47:06</div>
+  <div class="meta">Última actualización: 2025-12-14 14:56:05</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-# PROYECTO: BRAIN TELEMETRY AUDITOR - "LA CONSTITUCIÓN INMUTABLE"
+Modulo completo brian caculator
 
-**Fecha del Reporte:** 2025-12-14
-**Objetivo:** Crear el módulo `brain_telemetry_auditor.py` que actúe como una autoridad de validación blindada, conteniendo copias exactas de la lógica matemática actual (v8.0) para prevenir regresiones y errores de lógica en el futuro.
-
----
-
-## 🏛️ ESPECIFICACIONES TÉCNICAS PARA IMPLEMENTACIÓN
-
-A continuación se detallan los módulos y funciones exactas que deben ser clonados para construir el Auditor.
-
-### 1. FUENTE DE VERDAD: FÍSICA Y MATEMÁTICA
-**Archivo Origen:** `brain_calculator.py`
-**Instrucción:** Copiar LITERALMENTE (COPY-PASTE) las siguientes funciones y convertirlas en métodos privados (`_frozen_...`) dentro de la clase `BrainTelemetryAuditor`.
-
-#### A. `calculate_adx_with_memory`
-*   **Renombrar a:** `_frozen_adx`
-*   **Componentes Críticos a mantener:**
-    *   Cálculo manual de `True Range`, `+DM`, `-DM`.
-    *   **Wilder's Smoothing:** El ciclo `for` que suaviza los valores `(prev * (period-1) + current) / period`.
-    *   Cálculo final de `ADX` aplicando el mismo suavizado sobre `DX`.
-    *   Lógica de tendencias y separación `DI+/DI-`.
-
-#### B. `calculate_momentum_with_memory`
-*   **Renombrar a:** `_frozen_momentum`
-*   **Componentes Críticos a mantener:**
-    *   **LazyBear Squeeze Logic:** Cálculo de Bandas de Bollinger vs Keltner Channels.
-    *   **Regresión Lineal Manual:** El bloque de código que calcula `slope` y `y_mean` usando `np.sum` y `np.arange`.
-    *   **Lógica de Color:** La comparación `momentum &gt; prev_momentum` para asignar `lime`, `green`, `red`, `maroon`.
-
-#### C. `calculate_zigzag`
-*   **Renombrar a:** `_frozen_zigzag`
-*   **Componentes Críticos a mantener:**
-    *   El algoritmo de identificación de pivotes basado en `threshold_pct` (por defecto 5%).
-    *   La asignación de etiquetas estructurales: `HH` (Higher High), `HL` (Higher Low), `LH` (Lower High), `LL` (Lower Low).
-
-#### D. `calculate_volume_oscillator`
-*   **Renombrar a:** `_frozen_volume_osc`
-*   **Componentes Críticos a mantener:**
-    *   Cálculo de EMAs cortas y largas del volumen.
-    *   Fórmula porcentual `(short - long) / long * 100`.
-
----
-
-### 2. FUENTE DE VERDAD: GEOMETRÍA ESPACIAL
-**Archivo Origen:** `brain_grid.py`
-**Instrucción:** Copiar la lógica de construcción de dimensiones.
-
-#### A. `_build_dimensions` (Lógica interna)
-*   **Renombrar a:** `_frozen_grid_dims`
-*   **Lógica a clonar:**
-    *   `highs.rolling(20).max()` para Techo.
-    *   `lows.rolling(20).min()` para Piso.
-    *   `calculate_atr_simple` para el ancho.
-
----
-
-### 3. REGLAS DE JUICIO (Lógica de Validadores)
-**Origen:** Carpeta `brain_validators/`
-
-El Auditor debe implementar internamente las reglas de juicio que hoy están dispersas, para validar que el Grid las esté respetando.
-
-#### A. Reglas de ADX (`_audit_adx_rules`)
-Basado en `adx_validator.py`:
-*   **Escala de Fuerza:**
-    *   `&gt; 40`: EXPLOSIVE
-    *   `30 - 40`: STRONG
-    *   `25 - 30`: MODERATE
-    *   `20 - 25`: EMERGING
-    *   `&lt; 20`: CHOPPY / WEAK
-*   **Validación de Spread:** Verificar que `abs(DI+ - DI-) &gt; 5`.
-
-#### B. Reglas de Momentum (`_audit_momentum_rules`)
-Basado en `momentum_validator.py`:
-*   Verificar alineación de color con dirección propuesta.
-*   **Excepción de Fuerza:** Si `ADX &gt; 35`, permitir reversión de 1 sola vela. Si no, exigir 2+.
-
-#### C. Reglas de ZigZag (`_audit_zigzag_rules`)
-Basado en `zigzag_validator.py`:
-*   Verificar que la estructura `Last Pivot` apoye la dirección (ej: `LH` o `LL` para Short).
-*   Detectar corrección activa en las últimas 3-5 velas.
-
----
-
-### 4. NUEVA INTELIGENCIA: GEOMETRÍA DE MERCADO
-**Instrucción:** Implementar nueva lógica matemática en `_calculate_geometry`.
-
-*   **Inputs:** Datos del `_frozen_zigzag` y DataFrame.
-*   **Cálculos Requeridos:**
-    1.  **Magnitud del último Swing:** `% Cambio = abs(Precio_Fin - Precio_Inicio) / Precio_Inicio`.
-    2.  **Duración del Swing:** `Velas = Índice_Fin - Índice_Inicio`.
-    3.  **Velocidad:** `Magnitud / Duración`.
-    4.  **Inercia Masiva:** Si Magnitud &gt; 8% (configurable), activar bandera `massive_inertia`.
-
----
-
-### 5. INTERFAZ PÚBLICA DEL AUDITOR
-Mirodo principal que será llamado por el bot.
-
-```python
-def audit_decision(self, symbol, df_5m, grid_decision):
+def calculate_zigzag(df, percent=None, threshold_pct=None):
     """
-    1. Recalcula TODO usando _frozen_methods.
-    2. Compara valores (Frozen vs Grid).
-       - Si diferencia ADX &gt; 0.5 -&gt; ERROR CÁLCULO
-       - Si diferencia Momentum Color -&gt; ERROR CÁLCULO
-    3. Aplica Reglas de Juicio (_audit_rules).
-       - Si Grid dice OPERABLE pero Frozen ADX &lt; 20 -&gt; REJECT (Zona Muerta)
-    4. Verifica Geometría.
-       - Si Grid va Contra Inercia Masiva -&gt; WARNING/REJECT
+    Calcula los puntos ZigZag y la ESTRUCTURA DE MERCADO (HH, HL, LH, LL).
     
-    Returns: { 'status': 'APPROVED' | 'WARNING' | 'REJECT', ... }
+    Args:
+        percent/threshold_pct: Porcentaje mínimo de reversión.
+        
+    Returns:
+        dict: {
+            'pivots': list of indices,
+            'values': list of prices,
+            'pivot_types': list of strings (HH, HL, LH, LL, N/A),
+            'last_structure': str (Resumen, e.g., "HH -&gt; HL")
+        }
     """
-```
+    # Aceptar ambos nombres de parámetro
+    pct = threshold_pct if threshold_pct is not None else (percent if percent is not None else 5)
+    
+    if len(df) &lt; 2:
+        return {'pivots': [], 'values': [], 'pivot_types': [], 'last_structure': "N/A"}
+        
+    close = df['close'].values
+    pivots = [0]
+    values = [close[0]]
+    last_pivot = close[0]
+    direction = 0  # 0: indefinido, 1: arriba, -1: abajo
+    
+    # 1. Identificar Pivotes
+    for i in range(1, len(close)):
+        change = (close[i] - last_pivot) / last_pivot * 100
+        if direction == 0:
+            if abs(change) &gt;= pct:
+                direction = 1 if change &gt; 0 else -1
+                pivots.append(i)
+                values.append(close[i])
+                last_pivot = close[i]
+        else:
+            if (direction == 1 and close[i] &lt; last_pivot * (1 - pct/100)) or \
+               (direction == -1 and close[i] &gt; last_pivot * (1 + pct/100)):
+                direction *= -1
+                pivots.append(i)
+                values.append(close[i])
+                last_pivot = close[i]
 
----
+    # 2. Clasificar Estructura (HH, HL, LH, LL)
+    pivot_types = ["Start"] * len(values)
+    if len(values) &gt;= 2:
+        last_high = None
+        last_low = None
+        
+        # Determinar si el primer movimiento fue High o Low
+        # Si values[1] &gt; values[0], el 1 es un High
+        
+        for i in range(1, len(values)):
+            curr_val = values[i]
+            prev_val = values[i-1]
+            
+            is_high = False
+            is_low = False
+            
+            # En ZigZag, los puntos alternan.
+            # Si values[i] &gt; values[i-1], entonces 'i' es un pico (High)
+            # Si values[i] &lt; values[i-1], entonces 'i' es un valle (Low)
+            
+            if curr_val &gt; prev_val:
+                is_high = True
+            else:
+                is_low = True
+                
+            type_str = ""
+            if is_high:
+                if last_high is None: type_str = "H"
+                elif curr_val &gt; last_high: type_str = "HH" # Higher High
+                elif curr_val &lt; last_high: type_str = "LH" # Lower High
+                else: type_str = "DH" # Double High
+                last_high = curr_val
+            elif is_low:
+                if last_low is None: type_str = "L"
+                elif curr_val &gt; last_low: type_str = "HL" # Higher Low
+                elif curr_val &lt; last_low: type_str = "LL" # Lower Low
+                else: type_str = "DL" # Double Low
+                last_low = curr_val
+            
+            pivot_types[i] = type_str
 
-### 🚀 INSTRUCCIONES DE COPIADO
+    # 3. Resumen de última estructura
+    last_structure = "Indefinido"
+    if len(pivot_types) &gt;= 2:
+        # Tomar los últimos 2 tipos significativos
+        last_structure = f"{pivot_types[-2]} -&gt; {pivot_types[-1]}"
 
-Copia y pega este prompt para el desarrollador/IA encargado:
+    return {
+        'pivots': pivots, 
+        'values': values, 
+        'pivot_types': pivot_types, 
+        'last_structure': last_structure
+    }
+"""
+brain_calculator.py - Módulo de Análisis Técnico con Memoria Temporal
+======================================================================
 
-&gt; "Genera el archivo `brain_telemetry_auditor.py`.
-&gt; Debes incluir la clase `BrainTelemetryAuditor`.
-&gt; Dentro de ella, crea métodos privados `_frozen_adx`, `_frozen_momentum`, `_frozen_zigzag` copiando **EXACTAMENTE** el código de `brain_calculator.py` (v8.0) que te proveeré.
-&gt; Implementa el método `audit_decision` que ejecute estos métodos congelados y compare sus resultados con un diccionario `grid_decision` entrante.
-&gt; Añade la lógica de geometría para medir la magnitud y duración de los swings del ZigZag."
+FILOSOFÍA:
+Cada indicador retorna HISTORIA + TENDENCIA, no solo valor puntual.
+Bot inteligente que analiza EVOLUCIÓN temporal, no snapshots binarios.
+
+ESTRUCTURA:
+1. Indicadores con Memoria (ADX, DI+/DI-, Momentum, RSI, EMAs)
+2. Análisis de Patrones (HH/LL, Zig Zag)
+3. Zonas y Niveles (SR, Volume Profile, Fibonacci)
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from brain_config import BB_LENGTH, BB_MULT, KC_LENGTH, KC_MULT, USE_TRUE_RANGE
+
+
+# ================================================================================
+# FUNCIONES AUXILIARES
+# ================================================================================
+
+def calculate_linear_regression_slope(values):
+    """
+    Calcula pendiente de regresión lineal simple
+    
+    Args:
+        values: Lista de valores (últimas N velas)
+        
+    Returns:
+        float: Pendiente (slope)
+    """
+    n = len(values)
+    if n &lt; 2:
+        return 0.0
+    
+    x = np.arange(n)
+    y = np.array(values)
+    
+    # y = mx + b → m = (n*Σxy - Σx*Σy) / (n*Σx² - (Σx)²)
+    x_mean = np.mean(x)
+    y_mean = np.mean(y)
+    
+    numerator = np.sum((x - x_mean) * (y - y_mean))
+    denominator = np.sum((x - x_mean) ** 2)
+    
+    if denominator == 0:
+        return 0.0
+    
+    slope = numerator / denominator
+    return slope
+
+
+def classify_trend(slope, threshold=0.3):
+    """
+    Clasifica tendencia según pendiente
+    
+    Args:
+        slope: Pendiente calculada
+        threshold: Umbral para considerar creciendo/decreciendo
+        
+    Returns:
+        str: 'creciendo', 'decreciendo', 'estable'
+    """
+    if slope &gt; threshold:
+        return 'creciendo'
+    elif slope &lt; -threshold:
+        return 'decreciendo'
+    else:
+        return 'estable'
+
+
+def calculate_velocity(df, lookback=10):
+    """
+    Calcula velocidad de precio con memoria temporal
+    
+    Args:
+        df: DataFrame con columna 'close'
+        lookback: Velas a analizar
+        
+    Returns:
+        dict: {
+            'velocity_current': float (cambio precio por vela),
+            'velocity_history': [list últimos lookback],
+            'trend': 'acelerando'/'desacelerando'/'constante'
+        }
+    """
+    if len(df) &lt; lookback + 1:
+        return {
+            'velocity_current': 0.0,
+            'velocity_history': [],
+            'trend': 'constante'
+        }
+    
+    prices = df['close'].values
+    velocities = []
+    
+    # Calcular velocidad para cada par de velas
+    for i in range(len(prices) - lookback, len(prices)):
+        if i &gt; 0:
+            vel = prices[i] - prices[i-1]
+            velocities.append(vel)
+    
+    velocity_current = velocities[-1] if velocities else 0.0
+    
+    # Calcular tendencia (velocidad creciendo/decreciendo)
+    if len(velocities) &gt;= 3:
+        # Pendiente de las velocidades
+        x = list(range(len(velocities)))
+        y = velocities
+        n = len(x)
+        
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(x[i] * y[i] for i in range(n))
+        sum_x2 = sum(x[i] ** 2 for i in range(n))
+        
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
+        
+        if slope &gt; 0.0001:
+            trend = 'acelerando'
+        elif slope &lt; -0.0001:
+            trend = 'desacelerando'
+        else:
+            trend = 'constante'
+    else:
+        trend = 'constante'
+    
+    return {
+        'velocity_current': velocity_current,
+        'velocity_history': velocities,
+        'trend': trend
+    }
+
+
+def calculate_acceleration(df, lookback=5):
+    """
+    Calcula aceleración (cambio de velocidad) con memoria temporal
+    
+    Args:
+        df: DataFrame con columna 'close'
+        lookback: Velas a analizar
+        
+    Returns:
+        dict: {
+            'acceleration_current': float (cambio de velocidad),
+            'acceleration_history': [list],
+            'trend': 'aumentando'/'disminuyendo'/'constante'
+        }
+    """
+    if len(df) &lt; lookback + 2:
+        return {
+            'acceleration_current': 0.0,
+            'acceleration_history': [],
+            'trend': 'constante'
+        }
+    
+    # Primero calcular velocidades
+    velocity_data = calculate_velocity(df, lookback=lookback + 1)
+    velocities = velocity_data['velocity_history']
+    
+    if len(velocities) &lt; 2:
+        return {
+            'acceleration_current': 0.0,
+            'acceleration_history': [],
+            'trend': 'constante'
+        }
+    
+    # Calcular aceleración (cambio de velocidad)
+    accelerations = []
+    for i in range(1, len(velocities)):
+        accel = velocities[i] - velocities[i-1]
+        accelerations.append(accel)
+    
+    acceleration_current = accelerations[-1] if accelerations else 0.0
+    
+    # Calcular tendencia
+    if len(accelerations) &gt;= 3:
+        x = list(range(len(accelerations)))
+        y = accelerations
+        n = len(x)
+        
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(x[i] * y[i] for i in range(n))
+        sum_x2 = sum(x[i] ** 2 for i in range(n))
+        
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
+        
+        if slope &gt; 0.0001:
+            trend = 'aumentando'
+        elif slope &lt; -0.0001:
+            trend = 'disminuyendo'
+        else:
+            trend = 'constante'
+    else:
+        trend = 'constante'
+    
+    return {
+        'acceleration_current': acceleration_current,
+        'acceleration_history': accelerations,
+        'trend': trend
+    }
+
+
+# ================================================================================
+# SECCIÓN 1: INDICADORES BASE CON MEMORIA
+# ================================================================================
+
+def calculate_adx_with_memory(df, period=14, lookback=10):
+    """
+    ADX con Wilder's Smoothing EXACTO del Bot 3.5.
+    Retorna dict con valores actuales + memoria temporal.
+    """
+    df = df.copy()
+    n = len(df)
+    
+    if n &lt; period + 1:
+        return {
+            'adx_current': 0.0,
+            'adx_history': [],
+            'adx_trend': 'insuficiente',
+            'di_plus_current': 0.0,
+            'di_plus_history': [],
+            'di_plus_trend': 'insuficiente',
+            'di_minus_current': 0.0,
+            'di_minus_history': [],
+            'di_minus_trend': 'insuficiente',
+            'dominance': 'neutral',
+            'spread': 0.0
+        }
+    
+    high = df['high'].values
+    low = df['low'].values
+    close = df['close'].values
+    
+    # 1. Calcular True Range y Directional Movements
+    tr = np.zeros(n)
+    dm_plus = np.zeros(n)
+    dm_minus = np.zeros(n)
+    
+    for i in range(1, n):
+        prev_close = close[i-1]
+        prev_high = high[i-1]
+        prev_low = low[i-1]
+        
+        # True Range (máximo de 3 valores)
+        tr1 = high[i] - low[i]
+        tr2 = abs(high[i] - prev_close)
+        tr3 = abs(low[i] - prev_close)
+        tr[i] = max(tr1, tr2, tr3)
+        
+        # Directional Movement
+        move_up = high[i] - prev_high
+        move_down = prev_low - low[i]
+        
+        if move_up &gt; move_down and move_up &gt; 0:
+            dm_plus[i] = move_up
+        else:
+            dm_plus[i] = 0
+            
+        if move_down &gt; move_up and move_down &gt; 0:
+            dm_minus[i] = move_down
+        else:
+            dm_minus[i] = 0
+    
+    # 2. Wilder's Smoothing MANUAL
+    smoothed_tr = np.zeros(n)
+    smoothed_dm_plus = np.zeros(n)
+    smoothed_dm_minus = np.zeros(n)
+    
+    for i in range(n):
+        if i &lt; period:
+            if i == period - 1:
+                # Primera suavización: suma de los primeros 'period' valores
+                smoothed_tr[i] = tr[:i+1].sum()
+                smoothed_dm_plus[i] = dm_plus[:i+1].sum()
+                smoothed_dm_minus[i] = dm_minus[:i+1].sum()
+            else:
+                smoothed_tr[i] = np.nan
+                smoothed_dm_plus[i] = np.nan
+                smoothed_dm_minus[i] = np.nan
+        else:
+            # Wilder's smoothing: prev - (prev/period) + current
+            smoothed_tr[i] = smoothed_tr[i-1] - (smoothed_tr[i-1] / period) + tr[i]
+            smoothed_dm_plus[i] = smoothed_dm_plus[i-1] - (smoothed_dm_plus[i-1] / period) + dm_plus[i]
+            smoothed_dm_minus[i] = smoothed_dm_minus[i-1] - (smoothed_dm_minus[i-1] / period) + dm_minus[i]
+    
+    # 3. Calcular DI+ y DI- (con protección contra división por cero)
+    di_plus = np.zeros(n)
+    di_minus = np.zeros(n)
+    for i in range(n):
+        if smoothed_tr[i] != 0 and not np.isnan(smoothed_tr[i]):
+            di_plus[i] = (smoothed_dm_plus[i] / smoothed_tr[i]) * 100
+            di_minus[i] = (smoothed_dm_minus[i] / smoothed_tr[i]) * 100
+        else:
+            di_plus[i] = np.nan
+            di_minus[i] = np.nan
+    
+    # 4. Calcular DX y ADX
+    dx = np.zeros(n)
+    for i in range(n):
+        denominator = di_plus[i] + di_minus[i]
+        if denominator != 0 and not np.isnan(denominator):
+            dx[i] = np.abs(di_plus[i] - di_minus[i]) / denominator * 100
+        else:
+            dx[i] = np.nan
+    
+    # ADX es la media móvil simple de DX
+    adx = np.zeros(n)
+    for i in range(n):
+        if i &lt; period * 2 - 1:
+            adx[i] = np.nan
+        elif i == period * 2 - 1:
+            # Calcular media ignorando NaN
+            valid_dx = dx[period:i+1]
+            valid_dx = valid_dx[~np.isnan(valid_dx)]
+            if len(valid_dx) &gt; 0:
+                adx[i] = np.nanmean(valid_dx)
+            else:
+                adx[i] = np.nan
+        else:
+            # Continuar con Wilder's smoothing para ADX también
+            if not np.isnan(adx[i-1]) and not np.isnan(dx[i]):
+                adx[i] = (adx[i-1] * (period - 1) + dx[i]) / period
+            else:
+                adx[i] = np.nan
+    
+    # 5. Extraer historia y calcular tendencias
+    start_idx = max(0, n - lookback)
+    
+    adx_history = [float(x) for x in adx[start_idx:n] if not np.isnan(x)]
+    di_plus_history = [float(x) for x in di_plus[start_idx:n] if not np.isnan(x)]
+    di_minus_history = [float(x) for x in di_minus[start_idx:n] if not np.isnan(x)]
+    
+    adx_current = float(adx[-1]) if not np.isnan(adx[-1]) else 0.0
+    di_plus_current = float(di_plus[-1]) if not np.isnan(di_plus[-1]) else 0.0
+    di_minus_current = float(di_minus[-1]) if not np.isnan(di_minus[-1]) else 0.0
+    
+    # 6. Determinar tendencias
+    def get_trend(history):
+        if len(history) &lt; 3:
+            return 'insuficiente'
+        if history[-1] &gt; history[-2] &gt; history[-3]:
+            return 'creciendo'
+        elif history[-1] &lt; history[-2] &lt; history[-3]:
+            return 'decreciendo'
+        else:
+            return 'estable'
+    
+    adx_trend = get_trend(adx_history)
+    di_plus_trend = get_trend(di_plus_history)
+    di_minus_trend = get_trend(di_minus_history)
+    
+    # 7. Dominancia y spread
+    spread = abs(di_plus_current - di_minus_current)
+    
+    if di_plus_current &gt; di_minus_current + 5:
+        dominance = 'DI+'
+    elif di_minus_current &gt; di_plus_current + 5:
+        dominance = 'DI-'
+    else:
+        dominance = 'neutral'
+    
+    return {
+        'adx_current': adx_current,
+        'adx_history': adx_history,
+        'adx_trend': adx_trend,
+        'di_plus_current': di_plus_current,
+        'di_plus_prev': di_plus_history[-2] if len(di_plus_history) &gt;= 2 else di_plus_current,
+        'di_plus_history': di_plus_history,
+        'di_plus_trend': di_plus_trend,
+        'di_minus_current': di_minus_current,
+        'di_minus_prev': di_minus_history[-2] if len(di_minus_history) &gt;= 2 else di_minus_current,
+        'di_minus_history': di_minus_history,
+        'di_minus_trend': di_minus_trend,
+        'dominance': dominance,
+        'spread': spread
+    }
+
+def calculate_volume_oscillator(df, short=5, long=10):
+    """
+    Volume Oscillator del Bot 3.5.
+    Detecta aceleración/desaceleración de volumen.
+    """
+    try:
+        volume = df['volume']
+        
+        # EMAs corta y larga del volumen
+        short_ema = volume.ewm(span=short, adjust=False).mean()
+        long_ema = volume.ewm(span=long, adjust=False).mean()
+        
+        # Oscilador: diferencia porcentual
+        vol_osc = ((short_ema - long_ema) / long_ema) * 100
+        
+        # Clasificar tendencia del volumen
+        vol_trend = []
+        for val in vol_osc:
+            if np.isnan(val):
+                vol_trend.append('NEUTRAL')
+            elif val &lt; -10:
+                vol_trend.append('DECLINING')
+            elif val &gt; 10:
+                vol_trend.append('RISING')
+            else:
+                vol_trend.append('NEUTRAL')
+        
+        return {
+            'oscillator_current': float(vol_osc.iloc[-1]) if not pd.isna(vol_osc.iloc[-1]) else 0.0,
+            'oscillator_history': vol_osc.tail(10).tolist(),
+            'trend_current': vol_trend[-1],
+            'trend_history': vol_trend[-10:]
+        }
+    except Exception as e:
+        return {
+            'oscillator_current': 0.0,
+            'oscillator_history': [],
+            'trend_current': 'NEUTRAL',
+            'trend_history': []
+        }
+
+def calculate_momentum_with_memory(df, lookback=10):
+    """
+    LazyBear Momentum EXACTO del 3.5 con regresión lineal manual.
+    Devuelve color, historia, fuerza y valores de bandas.
+    Requiere columnas: 'high', 'low', 'close'
+    """
+    df = df.copy()
+    n = len(df)
+    
+    if n &lt; max(BB_LENGTH, KC_LENGTH) + 2:
+        return {
+            'color_current': 'neutral',
+            'color_history': [],
+            'consecutive_count': 0,
+            'strength': 'débil',
+            'value': 0.0,
+            'squeeze_active': False
+        }
+    
+    source = df['close']
+    high = df['high']
+    low = df['low']
+    
+    # 1. Bollinger Bands
+    basis = source.rolling(BB_LENGTH).mean()
+    dev = BB_MULT * source.rolling(BB_LENGTH).std()
+    upperBB = basis + dev
+    lowerBB = basis - dev
+    
+    # 2. Keltner Channels
+    ma = source.rolling(KC_LENGTH).mean()
+    
+    if USE_TRUE_RANGE:
+        prev_close = source.shift(1)
+        tr1 = high - low
+        tr2 = abs(high - prev_close)
+        tr3 = abs(low - prev_close)
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        range_ma = true_range.rolling(KC_LENGTH).mean()
+    else:
+        range_ma = (high - low).rolling(KC_LENGTH).mean()
+    
+    upperKC = ma + range_ma * KC_MULT
+    lowerKC = ma - range_ma * KC_MULT
+    
+    # 3. Squeeze Detection (NO bloquear, solo marcar)
+    sqzOn = (lowerBB &gt; lowerKC) &amp; (upperBB &lt; upperKC)
+    squeeze_active = bool(sqzOn.iloc[-1])
+    # NOTA: Continuar calculando momentum aunque haya squeeze
+    # El squeeze indica consolidación pero el momentum sigue siendo válido
+    
+    # 4. Regresión Lineal MANUAL (LazyBear exacto)
+    highest_high = high.rolling(KC_LENGTH).max()
+    lowest_low = low.rolling(KC_LENGTH).min()
+    avg_hl = (highest_high + lowest_low) / 2
+    sma_close = source.rolling(KC_LENGTH).mean()
+    avg_combined = (avg_hl + sma_close) / 2
+    
+    momentum_values = []
+    for i in range(len(df)):
+        if i &lt; KC_LENGTH - 1:
+            momentum_values.append(np.nan)
+        else:
+            start_idx = i - KC_LENGTH + 1
+            end_idx = i + 1
+            y_values = (source.iloc[start_idx:end_idx] - avg_combined.iloc[start_idx:end_idx]).values
+            x_values = np.arange(KC_LENGTH)
+            x_mean = np.mean(x_values)
+            y_mean = np.mean(y_values)
+            
+            numerator = np.sum((x_values - x_mean) * (y_values - y_mean))
+            denominator = np.sum((x_values - x_mean) ** 2)
+            
+            if denominator != 0:
+                slope = numerator / denominator
+                val = slope * (KC_LENGTH - 1 - x_mean) + y_mean
+                momentum_values.append(val)
+            else:
+                momentum_values.append(0)
+    
+    momentum = pd.Series(momentum_values)
+    prev_momentum = momentum.shift(1)
+    
+    # 5. Colores LazyBear (lime/green/red/maroon)
+    color_conditions = []
+    for i in range(len(momentum)):
+        if pd.isna(momentum.iloc[i]) or pd.isna(prev_momentum.iloc[i]):
+            color_conditions.append('neutral')
+        elif momentum.iloc[i] &gt; 0:
+            if momentum.iloc[i] &gt; prev_momentum.iloc[i]:
+                color_conditions.append('lime')
+            else:
+                color_conditions.append('green')
+        else:
+            if momentum.iloc[i] &lt; prev_momentum.iloc[i]:
+                color_conditions.append('red')
+            else:
+                color_conditions.append('maroon')
+    
+    # 6. Historia y fuerza
+    start_idx = max(0, n - lookback)
+    color_history = color_conditions[start_idx:n]
+    color_current = color_conditions[-1]
+    
+    consecutive_count = 1
+    for i in range(len(color_history) - 2, -1, -1):
+        if color_history[i] == color_current:
+            consecutive_count += 1
+        else:
+            break
+    
+    if consecutive_count &gt;= 5:
+        strength = 'fuerte'
+    elif consecutive_count &gt;= 3:
+        strength = 'moderada'
+    else:
+        strength = 'débil'
+    
+    return {
+        'color_current': color_current,
+        'color_prev': color_history[-2] if len(color_history) &gt;= 2 else 'neutral',
+        'color_history': color_history,
+        'consecutive_count': consecutive_count,
+        'strength': strength,
+        'value': float(momentum.iloc[-1]),
+        'squeeze_active': squeeze_active
+    }
+
+def calculate_rsi_with_memory(df, period=14, lookback=10):
+    """
+    Calcula RSI con memoria temporal (Wilder's Smoothing exacto).
+    Devuelve dict con valor actual, historia y tendencia.
+    """
+    close = df['close'].values
+    n = len(close)
+    if n &lt; period + 1:
+        return {
+            'rsi_current': 0.0,
+            'rsi_history': [],
+            'rsi_trend': 'insuficiente'
+        }
+    deltas = np.diff(close)
+    seed = deltas[:period]
+    up = seed[seed &gt;= 0].sum() / period
+    down = -seed[seed &lt; 0].sum() / period
+    rs = up / down if down != 0 else 0
+    rsi = np.zeros(n)
+    rsi[:period] = np.nan
+    rsi[period] = 100. - 100. / (1. + rs)
+    up_avg = up
+    down_avg = down
+    for i in range(period + 1, n):
+        delta = deltas[i - 1]
+        upval = max(delta, 0)
+        downval = -min(delta, 0)
+        up_avg = (up_avg * (period - 1) + upval) / period
+        down_avg = (down_avg * (period - 1) + downval) / period
+        rs = up_avg / down_avg if down_avg != 0 else 0
+        rsi[i] = 100. - 100. / (1. + rs)
+    start_idx = max(0, n - lookback)
+    rsi_history = [float(x) for x in rsi[start_idx:n] if not np.isnan(x)]
+    rsi_current = float(rsi[-1]) if not np.isnan(rsi[-1]) else 0.0
+    # Tendencia simple
+    if len(rsi_history) &gt;= 3:
+        if rsi_history[-1] &gt; rsi_history[-2] &gt; rsi_history[-3]:
+            trend = 'creciendo'
+        elif rsi_history[-1] &lt; rsi_history[-2] &lt; rsi_history[-3]:
+            trend = 'decreciendo'
+        else:
+            trend = 'estable'
+    else:
+        trend = 'insuficiente'
+    return {
+        'rsi_current': rsi_current,
+        'rsi_history': rsi_history,
+        'rsi_trend': trend
+    }
+
+def calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10):
+    """
+    Calcula EMAs múltiples y su alineación.
+    Devuelve dict con valores actuales, historia y alineación.
+    """
+    result = {}
+    n = len(df)
+    if n &lt; max(periods) + 1:
+        return {
+            'emas': {},
+            'emas_history': {},
+            'emas_aligned': False,
+            'classification': 'N/A'
+        }
+    close = df['close']
+    emas = {}
+    emas_history = {}
+    for period in periods:
+        ema = close.ewm(span=period, adjust=False).mean()
+        emas[period] = float(ema.iloc[-1])
+        emas_history[period] = ema.tail(lookback).tolist()
+    # Alineación: bullish si EMA corta &gt; EMA larga para todos
+    aligned = all(emas[periods[i]] &gt; emas[periods[i+1]] for i in range(len(periods)-1))
+    # Clasificación simple
+    if aligned:
+        classification = 'CERCANAS'
+    else:
+        classification = 'SEPARADAS'
+    return {
+        'emas': emas,
+        'emas_history': emas_history,
+        'emas_aligned': aligned,
+        'classification': classification
+    }
+
+def detect_price_structure(df, lookback=20, pivot_window=5):
+    """
+    Detecta estructura de precio: pivotes altos/bajos (HH/HL/LH/LL).
+    Retorna dict con listas de pivotes y estructura dominante.
+    """
+    highs = df['high'].values[-lookback:]
+    lows = df['low'].values[-lookback:]
+    closes = df['close'].values[-lookback:]
+    pivot_highs = []
+    pivot_lows = []
+
+    for i in range(pivot_window, len(highs) - pivot_window):
+        window = highs[i - pivot_window:i + pivot_window + 1]
+        if highs[i] == max(window):
+            pivot_highs.append(highs[i])
+        window = lows[i - pivot_window:i + pivot_window + 1]
+        if lows[i] == min(window):
+            pivot_lows.append(lows[i])
+
+    # Clasificación simple de estructura
+    structure = 'INDETERMINADO'
+    if len(pivot_highs) &gt;= 2 and len(pivot_lows) &gt;= 2:
+        if pivot_highs[-1] &gt; pivot_highs[-2] and pivot_lows[-1] &gt; pivot_lows[-2]:
+            structure = 'BULLISH'
+        elif pivot_highs[-1] &lt; pivot_highs[-2] and pivot_lows[-1] &lt; pivot_lows[-2]:
+            structure = 'BEARISH'
+        else:
+            structure = 'LATERAL'
+
+    return {
+        'pivot_highs': pivot_highs,
+        'pivot_lows': pivot_lows,
+        'structure': structure
+    }
+
+def detect_support_resistance_with_memory(df, lookback=50, num_clusters=5):
+    """
+    Detección de soportes y resistencias por clustering de precios.
+    Retorna dict con listas de resistencias y soportes ordenadas por cercanía.
+    """
+    closes = df['close'].values[-lookback:]
+    if len(closes) &lt; 10:
+        return {'resistances': [], 'supports': []}
+
+    # Clustering simple por bins de precio
+    min_price = min(closes)
+    max_price = max(closes)
+    bin_size = (max_price - min_price) / num_clusters if num_clusters &gt; 0 else 1
+    bins = [min_price + i * bin_size for i in range(num_clusters + 1)]
+    counts = [0] * num_clusters
+    levels = [[] for _ in range(num_clusters)]
+
+    for price in closes:
+        for i in range(num_clusters):
+            if bins[i] &lt;= price &lt; bins[i+1]:
+                counts[i] += 1
+                levels[i].append(price)
+                break
+
+    # Soportes: bins con más toques en la parte baja
+    # Resistencias: bins con más toques en la parte alta
+    supports = []
+    resistances = []
+    for i in range(num_clusters):
+        if counts[i] &gt;= 2:  # Al menos 2 toques para considerar nivel
+            avg_level = sum(levels[i]) / len(levels[i])
+            if avg_level &lt; (min_price + max_price) / 2:
+                supports.append(avg_level)
+            else:
+                resistances.append(avg_level)
+
+    # Ordenar por cercanía al precio actual
+    current_price = closes[-1]
+    supports = sorted(supports, key=lambda x: abs(current_price - x))
+    resistances = sorted(resistances, key=lambda x: abs(current_price - x))
+
+    return {
+        'resistances': resistances,
+        'supports': supports
+    }
+
+
+def calculate_time_to_target(current_price, target_price, velocity, 
+                             acceleration=0.0, candle_duration_min=5):
+    """
+    Proyecta tiempo estimado para alcanzar target
+    
+    Args:
+        current_price: Precio actual
+        target_price: Precio objetivo
+        velocity: Velocidad actual (precio/vela)
+        acceleration: Aceleración (cambio velocidad)
+        candle_duration_min: Duración vela (default 5min para 5M)
+    
+    Returns:
+        int: Minutos estimados para alcanzar target (0-120 max)
+    """
+    try:
+        if velocity == 0 or velocity is None:
+            return None
+        
+        distance = abs(target_price - current_price)
+        
+        # Si aceleración positiva, tiempo menor
+        if acceleration &gt; 0:
+            effective_velocity = velocity * (1 + acceleration / 100)
+        else:
+            effective_velocity = velocity
+        
+        if effective_velocity &lt;= 0:
+            return None
+        
+        # Velas estimadas
+        estimated_candles = distance / abs(effective_velocity) if effective_velocity != 0 else float('inf')
+        
+        # Convertir a minutos
+        time_minutes = estimated_candles * candle_duration_min
+        
+        # Limitar a máximo 120 minutos (2 horas)
+        return min(int(time_minutes), 120) if time_minutes &lt; float('inf') else None
+    
+    except Exception as e:
+        print(f"❌ Error calculate_time_to_target: {e}")
+        return None
+
+
+def calculate_volume_profile_with_memory(df, num_levels=10, lookback=50):
+    """
+    Calcula Volume Profile (Perfil de Volumen)
+    
+    Args:
+        df: DataFrame con columnas ['close', 'volume']
+        num_levels: Cantidad de niveles de precio
+        lookback: Velas a analizar
+    
+    Returns:
+        dict: {
+            'poc_current': float (price of control - máximo volumen),
+            'poc_history': [últimos values],
+            'high_volume_nodes': [precios con alto volumen],
+            'low_volume_nodes': [precios con bajo volumen]
+        }
+    """
+    try:
+        if len(df) &lt; lookback:
+            lookback = len(df)
+        
+        # Últimas N velas
+        subset = df.tail(lookback).copy()
+        
+        # Crear bins de precio
+        min_price = subset['close'].min()
+        max_price = subset['close'].max()
+        
+        if min_price == max_price:
+            return {
+                'poc_current': float(min_price),
+                'poc_history': [float(min_price)],
+                'high_volume_nodes': [float(min_price)],
+                'low_volume_nodes': []
+            }
+        
+        # Crear niveles
+        bins = np.linspace(min_price, max_price, num_levels)
+        
+        # Contar volumen en cada nivel
+        volume_per_level = {}
+        for i, price_level in enumerate(bins):
+            tolerance = (max_price - min_price) / num_levels / 2
+            # Velas que cerraron cerca de este nivel
+            mask = (subset['close'] &gt;= price_level - tolerance) &amp; \
+                   (subset['close'] &lt;= price_level + tolerance)
+            vol = subset.loc[mask, 'volume'].sum()
+            volume_per_level[price_level] = vol
+        
+        # Point of Control (mayor volumen)
+        poc = max(volume_per_level, key=volume_per_level.get)
+        max_volume = volume_per_level[poc]
+        min_volume = min(volume_per_level.values())
+        
+        # Nodos de alto/bajo volumen
+        high_volume_threshold = min_volume + (max_volume - min_volume) * 0.7
+        low_volume_threshold = min_volume + (max_volume - min_volume) * 0.3
+        
+        high_volume_nodes = [price for price, vol in volume_per_level.items() if vol &gt; high_volume_threshold]
+        low_volume_nodes = [price for price, vol in volume_per_level.items() if vol &lt; low_volume_threshold]
+        
+        return {
+            'poc_current': float(poc),
+            'poc_history': [float(poc)],
+            'high_volume_nodes': [float(p) for p in high_volume_nodes],
+            'low_volume_nodes': [float(p) for p in low_volume_nodes],
+            'profile_high': float(max(high_volume_nodes)) if high_volume_nodes else float(max_price),
+            'profile_low': float(min(high_volume_nodes)) if high_volume_nodes else float(min_price)
+        }
+    
+    except Exception as e:
+        print(f"❌ Error calculate_volume_profile_with_memory: {e}")
+        return {
+            'poc_current': 0.0,
+            'poc_history': [],
+            'high_volume_nodes': [],
+            'low_volume_nodes': [],
+            'profile_high': 0.0,
+            'profile_low': 0.0
+        }
+
+def calculate_bollinger_bands(df, period=20, std_dev=2):
+    """
+    Calcula Bandas de Bollinger.
+    Returns dict with upper, middle, lower bands.
+    """
+    try:
+        close = df['close']
+        middle = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+        upper = middle + (std * std_dev)
+        lower = middle - (std * std_dev)
+        
+        return {
+            'upper': upper.fillna(0).tolist(),
+            'middle': middle.fillna(0).tolist(),
+            'lower': lower.fillna(0).tolist()
+        }
+    except Exception as e:
+        print(f"❌ Error calculate_bollinger_bands: {e}")
+        return {'upper': [], 'middle': [], 'lower': []}
+
+
+def calculate_atr(df, period=14):
+    """
+    Calcula el Average True Range (ATR).
+    
+    Args:
+        df: DataFrame con columnas 'high', 'low', 'close'
+        period: Período para el ATR (default 14)
+        
+    Returns:
+        float: Valor actual del ATR
+    """
+    try:
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        # Calculate True Range
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        # Calculate ATR using rolling mean (Simple Moving Average of TR)
+        # Note: Wilder's smoothing is more standard for ATR, but SMA is often used too.
+        # Using Wilder's Smoothing to match standard TradingView ATR
+        atr = tr.ewm(alpha=1/period, adjust=False).mean()
+        
+        return {
+            'atr_current': float(atr.iloc[-1]) if not pd.isna(atr.iloc[-1]) else 0.0,
+            'atr_history': atr.tail(10).tolist()
+        }
+        
+    except Exception as e:
+        print(f"❌ Error calculate_atr: {e}")
+        return {
+            'atr_current': 0.0,
+            'atr_history': []
+        }
+
+Modulo completo brain grid
+
+"""
+================================================================================
+BRAIN GRID v2.0 - SISTEMA DE NAVEGACIÓN ESPACIAL UNIFICADO
+================================================================================
+Filosofía: Ver el mercado como un MAPA con CAPAS de validación integradas
+
+Responsabilidades:
+1. Construir la MALLA (dimensiones del campo de juego)
+2. Calcular el PUNTERO (dónde está el precio + hacia dónde va)
+3. Detectar CONTEXTOS (lateralización, tendencia, explosión)
+4. INTEGRAR VALIDATORS como capas internas (ADX, Momentum, ZigZag)
+5. Validar ZONAS OPERABLES con bloqueos duros
+
+Creado por: Claude Sonnet 4 (Anthropic)
+Autor del concepto: Joel Rodríguez Diarte
+Fecha: 2025-12-14
+Versión: 2.0 - GRID UNIFICADO "El Ojo del Sniper"
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+# ============================================================================
+# IMPORTS DE VALIDATORS (Capas internas de la malla)
+# ============================================================================
+try:
+    from brain_validators.adx_validator import validate_adx_separation
+    from brain_validators.momentum_validator import validate_momentum_reversal
+    from brain_validators.zigzag_validator import validate_zigzag_alignment
+    VALIDATORS_AVAILABLE = True
+    print("✅ Brain Validators cargados correctamente")
+except ImportError as e:
+    print(f⚠️ Brain Validators no disponibles: {e}")
+    print("   Grid funcionará con validación básica")
+    VALIDATORS_AVAILABLE = False
+
+# ============================================================================
+# CONFIGURACIÓN (Hardcoded - sin dependencias externas)
+# ============================================================================
+
+GRID_CONFIG = {
+    'lookback_velas': 20,           # Velas para definir techo/piso
+    'lateral_threshold_atr': 2.0,   # Ancho &lt; 2 ATRs = lateral
+    'tendencia_threshold_atr': 3.5, # Ancho &gt; 3.5 ATRs = tendencia fuerte
+    'puntero_sensibilidad': 3,      # Velas para calcular vector velocidad
+    'fuerza_min_adx': 22,           # ADX mínimo para considerar fuerza
+    'fuerza_fuerte_adx': 30,        # ADX para fuerza brutal
+    'correction_threshold': 2,      # 2+ velas contrarias = corrección activa
+    'techo_threshold': 0.85,        # Posición &gt; 0.85 = techo
+    'piso_threshold': 0.15,         # Posición &lt; 0.15 = piso
+}
+
+# ============================================================================
+# CLASE PRINCIPAL
+# ============================================================================
+
+class MarketGrid:
+    """
+    La Malla del Mercado - Navegación Espacial v2.0
+    """
+    
+    def __init__(self):
+        self.history = {}  # Cache de estados anteriores
+    
+    def analyze(self, symbol, df_5m, ladder=None):
+        """
+        Análisis completo de la malla v2.0 - CON VALIDATORS INTEGRADOS
+        
+        Args:
+            symbol: Símbolo (ej: 'BTC/USDT')
+            df_5m: DataFrame 5M con al menos 50 velas
+            ladder: Dict con análisis multi-timeframe (OBLIGATORIO para validators)
+        
+        Returns:
+            dict: {
+                'status': str,           # 'OPERABLE', 'BLOQUEADO', 'WAIT'
+                'direction': str,        # 'LONG', 'SHORT', 'NONE'
+                'contexto': str,         # Descripción del contexto
+                'score': int,            # -100 a +100
+                'razon': str,            # Explicación detallada
+                'grid_data': dict,       # Datos técnicos de la malla
+                'puntero_data': dict,    # Datos del puntero
+                'layers_data': dict,     # Datos de cada capa (validators)
+                'zona_ideal': bool       # True si es zona perfecta
+            }
+        """
+        
+        if df_5m is None or len(df_5m) &lt; 30:
+            return self._return_error("Sin datos suficientes")
+        
+        # 1. CONSTRUIR DIMENSIONES DE LA MALLA
+        grid_dims = self._build_dimensions(df_5m)
+        
+        # 2. CALCULAR PUNTERO (Vector de precio)
+        puntero = self._calculate_pointer(df_5m, ladder)
+        
+        # 3. DETECTAR CONTEXTO
+        contexto = self._detect_context(grid_dims, puntero, df_5m)
+        
+        # 4. DETERMINAR DIRECCIÓN DEL TRADE
+        if contexto['tipo'] in ['TENDENCIA_ALCISTA', 'CORRECCION_ALCISTA']:
+            trade_direction = 'BULLISH'
+        elif contexto['tipo'] in ['TENDENCIA_BAJISTA', 'REBOTE_BAJISTA']:
+            trade_direction = 'BEARISH'
+        else:
+            trade_direction = 'NEUTRAL'
+        
+        # 5. ANALIZAR CAPAS (VALIDATORS INTEGRADOS) - NUEVO v2.0
+        current_price = df_5m['close'].iloc[-1]
+        if ladder and trade_direction != 'NEUTRAL':
+            layers = self._analyze_layers(ladder, trade_direction, current_price)
+        else:
+            layers = {
+                'adx': {'score_adjustment': 0, 'reason': 'No ladder'},
+                'momentum': {'score_adjustment': 0, 'reason': 'No ladder'},
+                'zigzag': {'score_adjustment': 0, 'reason': 'No ladder'},
+                'all_aligned': False,
+                'total_score': 0,
+                'blocking_reason': None
+            }
+        
+        # 6. VALIDAR FUERZA (método existente)
+        fuerza = self._validate_force(ladder) if ladder else {
+            'score': 0, 
+            'tiene_fuerza': False, 
+            'adx': 0
+        }
+        
+        # 7. SCORING FINAL v2.0 (con bloqueos duros)
+        resultado = self._calculate_final_score_v2(
+            grid_dims, puntero, contexto, fuerza, layers, trade_direction, df_5m
+        )
+        
+        # 8. Guardar estado
+        self.history[symbol] = {
+            'timestamp': datetime.now(),
+            'grid': grid_dims,
+            'puntero': puntero,
+            'contexto': contexto,
+            'layers': layers
+        }
+        
+        return resultado
+    
+    # ========================================================================
+    # CONSTRUCCIÓN DE DIMENSIONES
+    # ========================================================================
+    
+    def _build_dimensions(self, df):
+        """
+        Construye las paredes de la malla (Techo, Piso, Ancho)
+        """
+        lookback = GRID_CONFIG['lookback_velas']
+        
+        # Highs y Lows rolling
+        highs = df['high'].rolling(lookback).max()
+        lows = df['low'].rolling(lookback).min()
+        
+        techo = highs.iloc[-1]
+        piso = lows.iloc[-1]
+        medio = (techo + piso) / 2
+        
+        # Ancho en % (método simple)
+        ancho_pct = ((techo - piso) / medio) * 100 if medio &gt; 0 else 0
+        
+        # Ancho en ATRs (método robusto)
+        atr_val = self._calculate_atr_simple(df)
+        ancho_atr = (techo - piso) / atr_val if atr_val &gt; 0 else 0
+        
+        # Slope (pendiente de la línea media)
+        medios = (df['high'].rolling(lookback).max() + df['low'].rolling(lookback).min()) / 2
+        if len(medios) &gt;= 5:
+            slope = medios.iloc[-1] - medios.iloc[-5]
+        else:
+            slope = 0
+        
+        return {
+            'techo': techo,
+            'piso': piso,
+            'medio': medio,
+            'ancho_pct': ancho_pct,
+            'ancho_atr': ancho_atr,
+            'atr': atr_val,
+            'slope': slope,
+            'lookback': lookback
+        }
+    
+    def _calculate_atr_simple(self, df, period=14):
+        """ATR simplificado (no necesita brain_calculator)"""
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(period).mean().iloc[-1]
+        
+        return atr if not pd.isna(atr) else 0.01
+    
+    # ========================================================================
+    # CÁLCULO DEL PUNTERO
+    # ========================================================================
+    
+    def _calculate_pointer(self, df, ladder):
+        """
+        Calcula el puntero (vector de velocidad + dirección)
+        """
+        sens = GRID_CONFIG['puntero_sensibilidad']
+        closes = df['close'].values
+        
+        # Vector precio (cambio en últimas N velas)
+        if len(closes) &gt; sens:
+            delta = closes[-1] - closes[-sens]
+            velocidad = delta / sens
+        else:
+            delta = 0
+            velocidad = 0
+        
+        # Dirección básica
+        if delta &gt; 0:
+            direccion_precio = 'UP'
+        elif delta &lt; 0:
+            direccion_precio = 'DOWN'
+        else:
+            direccion_precio = 'NEUTRAL'
+        
+        # Si hay ladder, usar momentum color
+        if ladder and '15m' in ladder:
+            mom_data = ladder['15m'].get('momentum', {})
+            mom_color = mom_data.get('color_current', 'neutral')
+            
+            if mom_color in ['green', 'lime']:
+                direccion_final = 'UP'
+                color = 'VERDE'
+            elif mom_color in ['red', 'maroon']:
+                direccion_final = 'DOWN'
+                color = 'ROJO'
+            else:
+                direccion_final = direccion_precio
+                color = 'GRIS'
+        else:
+            direccion_final = direccion_precio
+            color = 'GRIS'
+        
+        # Fuerza del movimiento (% de cambio)
+        fuerza_pct = abs(delta / closes[-1] * 100) if closes[-1] &gt; 0 else 0
+        
+        return {
+            'direccion': direccion_final,
+            'color': color,
+            'velocidad': velocidad,
+            'fuerza_pct': fuerza_pct,
+            'delta': delta
+        }
+    
+    # ========================================================================
+    # DETECCIÓN DE CONTEXTO
+    # ========================================================================
+    
+    def _detect_context(self, grid_dims, puntero, df):
+        """
+        Detecta el contexto del mercado:
+        - LATERAL: Caja cerrada
+        - TENDENCIA_ALCISTA: Malla subiendo
+        - TENDENCIA_BAJISTA: Malla bajando
+        - EXPLOSION: Breakout violento
+        """
+        ancho_atr = grid_dims['ancho_atr']
+        slope = grid_dims['slope']
+        techo = grid_dims['techo']
+        piso = grid_dims['piso']
+        
+        current_price = df['close'].iloc[-1]
+        
+        # Posición relativa en la malla (0 = piso, 1 = techo)
+        denominator = techo - piso
+        if denominator &lt; 0.0001:
+            posicion = 0.5
+        else:
+            posicion = (current_price - piso) / denominator
+        
+        # CLASIFICACIÓN
+        contexto_tipo = 'UNKNOWN'
+        zona_operacion = 'NEUTRAL'
+        
+        # 1. LATERAL (Caja cerrada)
+        if ancho_atr &lt; GRID_CONFIG['lateral_threshold_atr']:
+            contexto_tipo = 'LATERAL'
+            zona_operacion = 'PROHIBIDA'
+        
+        # 2. TENDENCIA ALCISTA
+        elif slope &gt; 0 and puntero['direccion'] == 'UP':
+            contexto_tipo = 'TENDENCIA_ALCISTA'
+            
+            # Zona ideal: Precio en zona baja/media (0.2-0.6)
+            if 0.15 &lt; posicion &lt; 0.65:
+                zona_operacion = 'IDEAL_LONG'
+            elif posicion &gt; GRID_CONFIG['techo_threshold']:
+                zona_operacion = 'TECHO'  # Peligro de comprar techo
+            else:
+                zona_operacion = 'ACEPTABLE_LONG'
+        
+        # 3. TENDENCIA BAJISTA
+        elif slope &lt; 0 and puntero['direccion'] == 'DOWN':
+            contexto_tipo = 'TENDENCIA_BAJISTA'
+            
+            # Zona ideal: Precio en zona alta/media (0.4-0.8)
+            if 0.35 &lt; posicion &lt; 0.85:
+                zona_operacion = 'IDEAL_SHORT'
+            elif posicion &lt; GRID_CONFIG['piso_threshold']:
+                zona_operacion = 'PISO'  # Peligro de vender piso
+            else:
+                zona_operacion = 'ACEPTABLE_SHORT'
+        
+        # 4. CONFLICTO (Malla dice una cosa, puntero otra)
+        elif slope &gt; 0 and puntero['direccion'] == 'DOWN':
+            contexto_tipo = 'CORRECCION_ALCISTA'
+            zona_operacion = 'ESPERAR_REBOTE'
+        
+        elif slope &lt; 0 and puntero['direccion'] == 'UP':
+            contexto_tipo = 'REBOTE_BAJISTA'
+            zona_operacion = 'ESPERAR_CONTINUACION'
+        
+        else:
+            contexto_tipo = 'INDEFINIDO'
+            zona_operacion = 'NEUTRAL'
+        
+        return {
+            'tipo': contexto_tipo,
+            'zona': zona_operacion,
+            'posicion': posicion,
+            'ancho_atr': ancho_atr
+        }
+    
+    # ========================================================================
+    # ANÁLISIS DE CAPAS (VALIDATORS INTEGRADOS) - NUEVO v2.0
+    # ========================================================================
+    
+    def _analyze_layers(self, ladder, direction, current_price):
+        """
+        Analiza todas las capas de validación dentro de la malla.
+        Integra los brain_validators como capas del Grid.
+        
+        Args:
+            ladder: Dict con análisis multi-timeframe
+            direction: 'BULLISH' o 'BEARISH'
+            current_price: Precio actual
+        
+        Returns:
+            dict: {
+                'adx': resultado validator ADX,
+                'momentum': resultado validator Momentum,
+                'zigzag': resultado validator ZigZag,
+                'all_aligned': bool,
+                'total_score': int,
+                'blocking_reason': str o None
+            }
+        """
+        if not VALIDATORS_AVAILABLE:
+            return {
+                'adx': {'score_adjustment': 0, 'reason': 'Validators not available'},
+                'momentum': {'score_adjustment': 0, 'reason': 'Validators not available'},
+                'zigzag': {'score_adjustment': 0, 'reason': 'Validators not available'},
+                'all_aligned': True,
+                'total_score': 0,
+                'blocking_reason': None
+            }
+        
+        # CAPA 1: ADX (Fuerza del movimiento)
+        adx_layer = validate_adx_separation(ladder, direction, '15m')
+        
+        # CAPA 2: MOMENTUM (Color del puntero)
+        mom_layer = validate_momentum_reversal(ladder, direction, '15m')
+        
+        # CAPA 3: ZIGZAG (Estructura interna)
+        zz_layer = validate_zigzag_alignment(ladder, direction, current_price)
+        
+        # CALCULAR SCORE TOTAL DE CAPAS
+        total_score = (
+            adx_layer['score_adjustment'] +
+            mom_layer['score_adjustment'] +
+            zz_layer['score_adjustment']
+        )
+        
+        # DETECTAR BLOQUEOS
+        blocking_reason = None
+        
+        # Bloqueo 1: ADX contrario (DI invertido)
+        if adx_layer['score_adjustment'] &lt;= -50:
+            blocking_reason = adx_layer['reason']
+        
+        # Bloqueo 2: Momentum contrario (CRÍTICO según estrategia Joel)
+        elif mom_layer['score_adjustment'] &lt;= -20:
+            target_colors = self._get_target_colors(direction)
+            if mom_layer['momentum_color'] not in target_colors:
+                blocking_reason = f"⛔ MOMENTUM CONTRARIO: {mom_layer['momentum_color']} (necesita {target_colors})"
+        
+        # Bloqueo 3: Estructura ZigZag contraria
+        elif zz_layer['score_adjustment'] &lt;= -40 and not zz_layer.get('aligned', True):
+            blocking_reason = zz_layer['reason']
+        
+        # VERIFICAR ALINEACIÓN TOTAL
+        all_aligned = (
+            adx_layer['score_adjustment'] &gt; 0 and
+            mom_layer['score_adjustment'] &gt;= 0 and
+            zz_layer.get('aligned', True)
+        )
+        
+        return {
+            'adx': adx_layer,
+            'momentum': mom_layer,
+            'zigzag': zz_layer,
+            'all_aligned': all_aligned,
+            'total_score': total_score,
+            'blocking_reason': blocking_reason
+        }
+    
+    def _get_target_colors(self, direction):
+        """Retorna colores de momentum válidos para la dirección"""
+        if direction == 'BULLISH':
+            return ['green', 'lime']
+        else:
+            return ['red', 'maroon']
+    
+    # ========================================================================
+    # VALIDACIÓN DE FUERZA
+    # ========================================================================
+    
+    def _validate_force(self, ladder):
+        """
+        Valida si hay FUERZA real (ADX + Momentum alineados)
+        """
+        if not ladder or '15m' not in ladder:
+            return {'tiene_fuerza': False, 'score': 0, 'adx': 0}
+        
+        adx_data = ladder['15m'].get('adx', {})
+        mom_data = ladder['15m'].get('momentum', {})
+        
+        adx_val = adx_data.get('adx_current', 0)
+        mom_color = mom_data.get('color_current', 'neutral')
+        mom_edad = mom_data.get('consecutive_count', 0)
+        
+        # Clasificar fuerza
+        tiene_fuerza = False
+        score_fuerza = 0
+        
+        if adx_val &gt;= GRID_CONFIG['fuerza_fuerte_adx']:
+            # Fuerza BRUTAL
+            if mom_edad &gt;= 3:
+                tiene_fuerza = True
+                score_fuerza = 40
+            else:
+                score_fuerza = 20
+        
+        elif adx_val &gt;= GRID_CONFIG['fuerza_min_adx']:
+            # Fuerza MODERADA
+            if mom_edad &gt;= 2:
+                tiene_fuerza = True
+                score_fuerza = 25
+            else:
+                score_fuerza = 10
+        
+        else:
+            # Sin fuerza
+            score_fuerza = -30
+        
+        return {
+            'tiene_fuerza': tiene_fuerza,
+            'score': score_fuerza,
+            'adx': adx_val,
+            'mom_color': mom_color,
+            'mom_edad': mom_edad
+        }
+    
+    # ========================================================================
+    # SCORING FINAL v2.0 - CON BLOQUEOS DUROS
+    # ========================================================================
+    
+    def _calculate_final_score_v2(self, grid_dims, puntero, contexto, fuerza, layers, direction, df):
+        """
+        Calcula score final UNIFICADO con todas las capas y bloqueos duros
+        """
+        score = 0
+        razones = []
+        status = 'WAIT'
+        
+        # ============================================================
+        # BLOQUEOS ABSOLUTOS (Prioridad máxima)
+        # ============================================================
+        
+        # Bloqueo 1: LATERAL
+        if contexto['tipo'] == 'LATERAL':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'LATERALIZACIÓN',
+                'score': -100,
+                'razon': f"⛔ Malla cerrada ({contexto['ancho_atr']:.1f} ATRs). NO OPERAR.",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        # Bloqueo 2: CAPA BLOQUEANTE (Momentum contrario, ADX invertido, etc.)
+        if layers.get('blocking_reason'):
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'LAYERS_BLOCK',
+                'score': -100,
+                'razon': layers['blocking_reason'],
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        # Bloqueo 3: MOMENTUM CONTRARIO EXPLÍCITO (Estrategia Joel)
+        if direction == 'BULLISH' and puntero['color'] == 'ROJO':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'MOMENTUM_CONTRARIO',
+                'score': -100,
+                'razon': f"⛔ Tendencia ALCISTA pero momentum ROJO - NO LONG",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        if direction == 'BEARISH' and puntero['color'] == 'VERDE':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'MOMENTUM_CONTRARIO',
+                'score': -100,
+                'razon': f"⛔ Tendencia BAJISTA pero momentum VERDE - NO SHORT",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        # Bloqueo 4: CORRECCIÓN ACTIVA (últimas 3 velas contra-tendencia)
+        closes = df['close'].values[-3:]
+        opens = df['open'].values[-3:]
+        
+        correction_threshold = GRID_CONFIG['correction_threshold']
+        
+        if direction == 'BULLISH':
+            red_count = sum(1 for c, o in zip(closes, opens) if c &lt; o)
+            if red_count &gt;= correction_threshold:
+                # Permitir SOLO con ADX &gt; 35 (fuerza extrema)
+                adx_val = fuerza.get('adx', 0)
+                if adx_val &lt;= 35:
+                    return {
+                        'status': 'BLOQUEADO',
+                        'direction': 'NONE',
+                        'contexto': 'CORRECCIÓN_ACTIVA',
+                        'score': -100,
+                        'razon': f"⛔ CORRECCIÓN ACTIVA: {red_count}/3 velas rojas (ADX {adx_val:.1f} &lt; 35)",
+                        'grid_data': grid_dims,
+                        'puntero_data': puntero,
+                        'layers_data': layers,
+                        'zona_ideal': False
+                    }
+                else:
+                    razones.append(f"⚡ OVERRIDE: Corrección con ADX {adx_val:.1f}")
+        
+        elif direction == 'BEARISH':
+            green_count = sum(1 for c, o in zip(closes, opens) if c &gt; o)
+            if green_count &gt;= correction_threshold:
+                adx_val = fuerza.get('adx', 0)
+                if adx_val &lt;= 35:
+                    return {
+                        'status': 'BLOQUEADO',
+                        'direction': 'NONE',
+                        'contexto': 'REBOTE_ACTIVO',
+                        'score': -100,
+                        'razon': f"⛔ REBOTE ACTIVO: {green_count}/3 velas verdes (ADX {adx_val:.1f} &lt; 35)",
+                        'grid_data': grid_dims,
+                        'puntero_data': puntero,
+                        'layers_data': layers,
+                        'zona_ideal': False
+                    }
+                else:
+                    razones.append(f"⚡ OVERRIDE: Rebote con ADX {adx_val:.1f}")
+        
+        # Bloqueo 5: ZONA TECHO/PISO (DURO)
+        zona = contexto['zona']
+        if zona == 'TECHO':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'BUYING_TOP',
+                'score': -100,
+                'razon': f"⛔ COMPRANDO TECHO (Posición: {contexto['posicion']:.2f})",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        if zona == 'PISO':
+            return {
+                'status': 'BLOQUEADO',
+                'direction': 'NONE',
+                'contexto': 'SELLING_FLOOR',
+                'score': -100,
+                'razon': f"⛔ VENDIENDO PISO (Posición: {contexto['posicion']:.2f})",
+                'grid_data': grid_dims,
+                'puntero_data': puntero,
+                'layers_data': layers,
+                'zona_ideal': False
+            }
+        
+        # ============================================================
+        # SCORING GRADUAL
+        # ============================================================
+        
+        # 1. Score por ZONA
+        if zona == 'IDEAL_LONG':
+            score += 40
+            razones.append("✅ Zona IDEAL para LONG")
+        elif zona == 'IDEAL_SHORT':
+            score += 40
+            razones.append("✅ Zona IDEAL para SHORT")
+        elif zona == 'ACEPTABLE_LONG':
+            score += 20
+            razones.append("⚠️ Zona aceptable LONG")
+        elif zona == 'ACEPTABLE_SHORT':
+            score += 20
+            razones.append("⚠️ Zona aceptable SHORT")
+        elif zona in ['ESPERAR_REBOTE', 'ESPERAR_CONTINUACION']:
+            score -= 30
+            razones.append(f"⏳ {zona}")
+        
+        # 2. Score por FUERZA (ADX)
+        score += fuerza['score']
+        if fuerza['tiene_fuerza']:
+            razones.append(f"💪 Fuerza confirmada (ADX {fuerza['adx']:.1f})")
+        else:
+            razones.append(f"⚠️ Sin fuerza (ADX {fuerza['adx']:.1f})")
+        
+        # 3. Score por CAPAS (VALIDATORS)
+        score += layers.get('total_score', 0)
+        
+        # Agregar razones de cada capa
+        if layers['adx']['score_adjustment'] != 0:
+            razones.append(f"ADX: {layers['adx'].get('reason', 'OK')}")
+        if layers['momentum']['score_adjustment'] != 0:
+            razones.append(f"Mom: {layers['momentum'].get('reason', 'OK')}")
+        if layers['zigzag']['score_adjustment'] != 0:
+            razones.append(f"ZZ: {layers['zigzag'].get('reason', 'OK')}")
+        
+        # 4. Bonus por PUNTERO ALINEADO
+        if contexto['tipo'] == 'TENDENCIA_ALCISTA' and puntero['color'] == 'VERDE':
+            score += 15
+            razones.append("🟢 Puntero alineado")
+        elif contexto['tipo'] == 'TENDENCIA_BAJISTA' and puntero['color'] == 'ROJO':
+            score += 15
+            razones.append("🔴 Puntero alineado")
+        
+        # 5. Bonus por TODAS LAS CAPAS ALINEADAS
+        if layers.get('all_aligned'):
+            score += 20
+            razones.append("✨ TODAS las capas alineadas")
+        
+        # ============================================================
+        # DECISIÓN FINAL
+        # ============================================================
+        
+        if score &gt;= 50:
+            status = 'OPERABLE'
+            zona_ideal = zona in ['IDEAL_LONG', 'IDEAL_SHORT']
+        elif score &gt;= 20:
+            status = 'MARGINAL'
+            zona_ideal = False
+        else:
+            status = 'WAIT'
+            zona_ideal = False
+        
+        # Determinar dirección de salida
+        if status == 'OPERABLE':
+            out_direction = 'LONG' if direction == 'BULLISH' else 'SHORT'
+        else:
+            out_direction = 'NONE'
+        
+        return {
+            'status': status,
+            'direction': out_direction,
+            'contexto': contexto['tipo'],
+            'score': score,
+            'razon': " | ".join(razones),
+            'grid_data': grid_dims,
+            'puntero_data': puntero,
+            'layers_data': layers,
+            'zona_ideal': zona_ideal
+        }
+    
+    def _return_error(self, msg):
+        """Helper para retornar errores"""
+        return {
+            'status': 'ERROR',
+            'direction': 'NONE',
+            'contexto': 'UNKNOWN',
+            'score': -100,
+            'razon': msg,
+            'grid_data': {},
+            'puntero_data': {},
+            'layers_data': {},
+            'zona_ideal': False
+        }
+
+
+# ============================================================================
+# INSTANCIA GLOBAL
+# ============================================================================
+
+grid = MarketGrid()
+
+completo adx validator
+
+"""
+ADX Validator - Validación de fuerza y separación
+Verifica ADX mínimo y separación DI+/DI-
+"""
+
+def validate_adx_separation(ladder, direction, timeframe='5m'):
+    """
+    Valida ADX usando RANGOS GRADUALES (Time Ladder).
+    
+    Filosofía:
+    - ADX &gt;40: FUERZA EXTREMA (bypass todo)
+    - ADX 30-40: FUERZA ALTA (bonus alto)
+    - ADX 25-30: FUERZA MODERADA (bonus medio)
+    - ADX 20-25: TENDENCIA EMERGENTE (bonus bajo)
+    - ADX &lt;20: SIN FUERZA (penalty)
+    """
+    result = {
+        'separated': False,
+        'score_adjustment': 0,
+        'reason': '',
+        'adx_value': 0,
+        'di_spread': 0,
+        'is_explosive': False,
+        'force_state': 'CHOPPY'
+    }
+    
+    tf_data = ladder.get(timeframe, {})
+    adx_data = tf_data.get('adx', {})
+    
+    adx_val = adx_data.get('adx_current', 0)
+    di_plus = adx_data.get('di_plus_current', 0)
+    di_minus = adx_data.get('di_minus_current', 0)
+    adx_trend = adx_data.get('adx_trend', 'estable')
+    
+    result['adx_value'] = adx_val
+    result['di_spread'] = abs(di_plus - di_minus)
+    
+    # 1. CLASIFICACIÓN POR RANGOS
+    if adx_val &gt;= 40:
+        result['force_state'] = 'EXPLOSIVE'
+        result['is_explosive'] = True
+        base_score = 50
+    elif adx_val &gt;= 30:
+        result['force_state'] = 'STRONG'
+        base_score = 35
+    elif adx_val &gt;= 25:
+        result['force_state'] = 'MODERATE'
+        base_score = 25
+    elif adx_val &gt;= 20:
+        result['force_state'] = 'EMERGING'
+        base_score = 15
+    else:
+        result['force_state'] = 'CHOPPY'
+        base_score = -30
+    
+    # 2. VALIDACIÓN DIRECCIONAL
+    if direction == 'BULLISH':
+        is_aligned = di_plus &gt; di_minus
+        spread_ok = di_plus &gt; di_minus + 5
+    else:
+        is_aligned = di_minus &gt; di_plus
+        spread_ok = di_minus &gt; di_plus + 5
+    
+    # 3. CÁLCULO FINAL
+    if not is_aligned:
+        # Dirección incorrecta = penalty duro
+        result['separated'] = False
+        result['score_adjustment'] = -100
+        result['reason'] = f"⛔ DI contrario (ADX {adx_val:.1f})"
+        result['is_explosive'] = False
+        return result
+    
+    # 4. BONUSES POR CALIDAD
+    final_score = base_score
+    
+    # Bonus separación
+    if spread_ok:
+        final_score += 10
+        result['separated'] = True
+        result['reason'] = f"✅ ADX {adx_val:.1f} ({result['force_state']}) + Spread OK"
+    else:
+        result['separated'] = False
+        final_score -= 5
+        result['reason'] = f"⚠️ ADX {adx_val:.1f} ({result['force_state']}) sin separación"
+    
+    # Bonus tendencia
+    if adx_trend == 'creciendo':
+        final_score += 5
+    
+    result['score_adjustment'] = final_score
+    return result
+
+completo momentum validator
+
+"""
+Momentum Validator - Detecta reversiones de momentum
+Crítico para identificar fin de corrección y comienzo de rebote
+"""
+
+def validate_momentum_reversal(ladder, direction, timeframe='5m', force_mode_active=False):
+    """
+    Detecta reversiones de momentum.
+    Args:
+        force_mode_active (bool): Si es True, acepta reversión de 1 sola vela.
+    """
+    result = {
+        'reversal_detected': False,
+        'score_adjustment': 0,
+        'reason': '',
+        'momentum_color': 'neutral',
+        'consecutive': 0
+    }
+    
+    tf_data = ladder.get(timeframe, {})
+    momentum = tf_data.get('momentum', {})
+    
+    if not momentum or 'color_current' not in momentum:
+        result['score_adjustment'] = -10
+        result['reason'] = "⚠️ Momentum no disponible"
+        return result
+    
+    color = momentum['color_current']
+    color_prev = momentum.get('color_prev', 'neutral')
+    consecutive = momentum.get('consecutive_count', 1)
+    
+    result['momentum_color'] = color
+    result['consecutive'] = consecutive
+    
+    # Definir colores objetivo
+    target_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
+    opposing_colors = ['red', 'maroon'] if direction == 'BULLISH' else ['green', 'lime']
+    
+    # LÓGICA DE VALIDACIÓN
+    if color in target_colors:
+        # CASO 1: Reversión Confirmada (Múltiples velas)
+        if consecutive &gt;= 3:
+            result['reversal_detected'] = True
+            result['score_adjustment'] = 30
+            result['reason'] = f"✅ Reversión MADURA ({consecutive}v+)"
+        
+        elif consecutive == 2:
+            result['reversal_detected'] = True
+            result['score_adjustment'] = 20
+            result['reason'] = f"✅ Reversión confirmada (2v)"
+            
+        # CASO 2: Reversión Temprana (1 vela)
+        elif consecutive == 1:
+            # DETECTAR FUERZA ADX
+            tf_adx = tf_data.get('adx', {}).get('adx_current', 0)
+            
+            if force_mode_active or tf_adx &gt; 35:
+                # FORCE OVERRIDE: Captura rebote inmediato
+                result['reversal_detected'] = True
+                result['score_adjustment'] = 25
+                result['reason'] = f"🚀 Reversión INMEDIATA (ADX {tf_adx:.1f})"
+            else:
+                # Sin fuerza: DETECTADO pero con score bajo (Time Ladder)
+                result['reversal_detected'] = True  # MANTENER True
+                result['score_adjustment'] = -10  # Penalty gradual
+                result['reason'] = f"⏳ Reversión 1v débil (ADX {tf_adx:.1f})"
+                
+    elif color in opposing_colors:
+        result['score_adjustment'] = -25
+        result['reason'] = f"❌ Momentum contrario activo ({consecutive}v)"
+    else:
+        result['score_adjustment'] = -10
+        result['reason'] = f"⚠️ Momentum neutral"
+        
+    return result
+
+completo zigzag validator
+
+"""
+ZigZag Validator - Validación de alineación estructural
+Verifica que la estructura ZigZag vaya en la dirección del trade
+"""
+
+def detect_current_movement(structure_data, current_price):
+    """
+    Detecta movimiento actual del precio (últimas 5 velas + current_price)
+    
+    Args:
+        structure_data: Dict con datos ZigZag incluyendo 'prices'
+        current_price: Precio actual para comparar con última vela
+    
+    Returns:
+        str: 'RISING', 'FALLING', or 'SIDEWAYS'
+    """
+    prices = structure_data.get('prices', [])
+    
+    if len(prices) &lt; 5:
+        return 'UNKNOWN'
+    
+    # Últimas 5 velas
+    recent = prices[-5:]
+    last_price = prices[-1]
+    
+    # Comparar current_price vs último precio cerrado
+    if current_price &lt; last_price * 0.998:  # -0.2% threshold
+        movement_now = 'FALLING'
+    elif current_price &gt; last_price * 1.002:  # +0.2% threshold
+        movement_now = 'RISING'
+    else:
+        movement_now = 'SIDEWAYS'
+    
+    # Confirmar con tendencia de 5 velas
+    rising_count = sum(1 for i in range(4) if recent[i+1] &gt; recent[i])
+    
+    if rising_count &gt;= 4 and movement_now in ['RISING', 'SIDEWAYS']:
+        return 'RISING'
+    elif rising_count &lt;= 1 and movement_now in ['FALLING', 'SIDEWAYS']:
+        return 'FALLING'
+    
+    return 'SIDEWAYS'
+
+
+def validate_zigzag_alignment(ladder, direction, current_price):
+    """
+    Valida alineación de ZigZag con dirección del trade
+    
+    Args:
+        ladder: Dict con análisis multi-timeframe
+        direction: 'BULLISH' o 'BEARISH'
+        current_price: Precio actual
+    
+    Returns:
+        dict: {
+            'aligned': bool,
+            'score_adjustment': int (-50 a +15),
+            'reason': str,
+            'pivot_type': str,
+            'structure': str
+        }
+    """
+    result = {
+        'aligned': True,
+        'score_adjustment': 0,
+        'reason': '',
+        'pivot_type': 'Unknown',
+        'structure': 'Unknown'
+    }
+    
+    # Extraer datos ZigZag de 5M
+    structure_data = ladder.get('5m', {}).get('zigzag', {})
+    pivot_types = structure_data.get('pivot_types', [])
+    last_pivot = pivot_types[-1] if pivot_types else None
+    last_structure = structure_data.get('last_structure', '')
+    
+    result['pivot_type'] = last_pivot or 'Unknown'
+    result['structure'] = last_structure
+    
+    if direction == 'BEARISH':
+        # SHORT necesita estructura bajista
+        if 'BULLISH' in last_structure or last_pivot in ['L', 'HL']:
+            result['aligned'] = False
+            result['score_adjustment'] = -50
+            result['reason'] = f"❌ ZigZag CONTRARIO ({last_pivot}, {last_structure})"
+        elif last_pivot in ['H', 'LH']:
+            result['aligned'] = True
+            result['score_adjustment'] = 15
+            result['reason'] = f"✅ ZigZag bajista ({last_pivot})"
+        elif last_pivot == 'LL': 
+             pass 
+        
+    elif direction == 'BULLISH':
+        # DETECTAR CORRECCIÓN ACTIVA (últimas 3 velas) - TIME LADDER
+        prices = structure_data.get('prices', [])
+        if len(prices) &gt;= 3:
+            last_3 = prices[-3:]
+            is_falling = all(last_3[i] &gt; last_3[i+1] for i in range(2))
+            
+            if is_falling and direction == 'BULLISH':
+                # PENALIZACIÓN GRADUAL (no rechazo total)
+                fall_strength = abs((last_3[0] - last_3[-1]) / last_3[0]) * 100
+                
+                if fall_strength &gt; 2.0:  # Caída fuerte
+                    result['score_adjustment'] = -50  # Penalización alta
+                    result['reason'] = "⚠️ CORRECCIÓN FUERTE (3v)"
+                else:  # Caída moderada
+                    result['score_adjustment'] = -30
+                    result['reason'] = "⚠️ Corrección moderada (3v)"
+                
+                # NO return - dejar que otros factores compensen
+        # CRÍTICO: Detectar movimiento ACTUAL
+        current_movement = detect_current_movement(structure_data, current_price)
+        
+        # Caso 1: Precio CAYENDO = Corrección activa (Time Ladder gradation)
+        if current_movement == 'FALLING':
+            # Graduar penalización por intensidad de caída
+            prices = structure_data.get('prices', [])
+            if len(prices) &gt;= 5:
+                fall_strength = abs((prices[-1] - prices[-5]) / prices[-5])
+                
+                if fall_strength &gt; 0.01:  # Caída &gt; 1%
+                    result['score_adjustment'] = -40
+                    result['reason'] = "⚠️ Corrección FUERTE"
+                elif fall_strength &gt; 0.005:  # Caída &gt; 0.5%
+                    result['score_adjustment'] = -25
+                    result['reason'] = "⚠️ Corrección media"
+                else:  # Caída &lt; 0.5%
+                    result['score_adjustment'] = -15
+                    result['reason'] = "⚠️ Debilitamiento"
+            else:
+                result['score_adjustment'] = -40
+                result['reason'] = "⚠️ Corrección activa"
+            
+            result['aligned'] = False
+            return result
+        
+        # Caso 2: Precio SUBIENDO después de bajo (L)
+        elif current_movement == 'RISING' and last_pivot == 'L':
+            # REBOTE confirmado
+            result['aligned'] = True
+            result['score_adjustment'] = 20
+            result['reason'] = f"✅ REBOTE confirmado (L→🔼)"
+        
+        # Caso 3: Precio SUBIENDO en pullback (HL)
+        elif current_movement == 'RISING' and last_pivot == 'HL':
+            # Pullback alcista limpio
+            result['aligned'] = True
+            result['score_adjustment'] = 15
+            result['reason'] = f"✅ Pullback alcista (HL→🔼)"
+        
+        # Caso 4: Precio SUBIENDO en general
+        elif current_movement == 'RISING':
+            result['aligned'] = True
+            result['score_adjustment'] = 10
+            result['reason'] = f"✅ Continuación alcista"
+        
+        # Caso 5: Lateral
+        elif current_movement == 'SIDEWAYS':
+            result['score_adjustment'] = -10
+            result['reason'] = f"⚠️ Movimiento lateral"
+        
+        # Caso 6: Estructura contra-tendencia
+        elif 'BEARISH' in last_structure:
+            result['aligned'] = False
+            result['score_adjustment'] = -50
+            result['reason'] = f"❌ Estructura bajista"
+    
+    return result
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,384<br>
-    Generado: 2025-12-14 14:47:06
+    Total caracteres: 72,472<br>
+    Generado: 2025-12-14 14:56:05
   </div>
 </body>
 </html>
