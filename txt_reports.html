@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-14 00:49:37</div>
+  <div class="meta">Última actualización: 2025-12-14 01:02:48</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -261,7 +261,418 @@ Después de aplicar este último fix, el módulo estará 100% funcional.
 
 
 
-Modulo completo y actualizado brain_intelligent.py
+ANÁLISIS COMPLETO - Implementación de Opus
+He revisado línea por línea el código de brain_intelligent.py. La implementación está 90% correcta, pero detecté 3 problemas adicionales.
+
+✅ LO QUE ESTÁ BIEN:
+ItemStatusBug Scope grid_result✅ CORREGIDO (línea 94, 142, 302)Umbral dinámico adx_current✅ CORREGIDO (línea 333-340)Wrecking Ball umbral 30✅ CORRECTO (línea 162)Bonus dinámico✅ CORRECTO (línea 165-170)Integración Grid✅ CORRECTA (línea 60-85)
+
+❌ PROBLEMAS DETECTADOS:
+PROBLEMA #1: CÓDIGO DUPLICADO ⚠️ Menor
+📂 Ubicación: Línea 148-149
+ENCONTRADO:
+python# Prioridad: Patrón &gt; Fuerza
+# Prioridad: Patrón &gt; Fuerza  # ← DUPLICADO
+trade_dir = pattern_dir if pattern_dir in ['BULLISH', 'BEARISH'] else force_dir
+SOLUCIÓN:
+python# Prioridad: Patrón &gt; Fuerza
+trade_dir = pattern_dir if pattern_dir in ['BULLISH', 'BEARISH'] else force_dir
+
+PROBLEMA #2: LÓGICA DE FATIGA CONTRADICTORIA 🔴 CRÍTICO
+📂 Ubicación: Línea 250-280
+PROBLEMA:
+pythonif dist_ema_pct &gt; 5.0:
+    score -= 100
+    reasons.append(f"🛑 FATIGA EXTREMA: +{dist_ema_pct:.2f}% vs EMA21")
+    # NO bloquear, solo penalizar fuerte (Time Ladder)  # ← CONTRADICCIÓN
+Por qué está mal:
+
+Si el precio está +5% arriba de la EMA21, es COMPRAR EL TECHO
+Score -100 no sirve si el bot puede entrar igual
+Según tu imagen: NO debe entrar en zonas extendidas
+
+SOLUCIÓN - Reemplazar bloque completo (línea 250-298):
+python    # --- 5. VALIDACIÓN DE FATIGA (GOMA ELÁSTICA) ---
+    dist_ema_pct = a5m.get('dist_ema_pct', 0)
+    rsi_val = a5m.get('rsi', {}).get('rsi_current', 50)
+    
+    MAX_EXTENSION = 3.5  # Límite absoluto según imagen de Joel
+    EXTREME_RSI_HIGH = 80
+    EXTREME_RSI_LOW = 20
+    
+    if trade_dir == 'BULLISH':
+        # BLOQUEO ABSOLUTO si está muy extendido
+        if dist_ema_pct &gt; MAX_EXTENSION:
+            score -= 100
+            reasons.append(f"🛑 FATIGA: Precio {dist_ema_pct:.2f}% extendido vs EMA21")
+            block_trade = True  # BLOQUEO (no Time Ladder aquí)
+        
+        # RSI extremo
+        elif rsi_val &gt; EXTREME_RSI_HIGH:
+            if not is_wrecking_ball:
+                score -= 100
+                reasons.append(f"🛑 RSI Sobrecomprado ({rsi_val:.1f})")
+                block_trade = True
+            else:
+                score -= 30  # Wrecking ball permite, pero penaliza
+                reasons.append(f"⚠️ RSI alto ({rsi_val:.1f}) pero Wrecking Ball activo")
+                
+    elif trade_dir == 'BEARISH':
+        # BLOQUEO ABSOLUTO si está muy extendido (abajo)
+        if dist_ema_pct &lt; -MAX_EXTENSION:
+            score -= 100
+            reasons.append(f"🛑 FATIGA: Precio {dist_ema_pct:.2f}% extendido vs EMA21")
+            block_trade = True
+        
+        # RSI extremo
+        elif rsi_val &lt; EXTREME_RSI_LOW:
+            if not is_wrecking_ball:
+                score -= 100
+                reasons.append(f"🛑 RSI Sobrevendido ({rsi_val:.1f})")
+                block_trade = True
+            else:
+                score -= 30
+                reasons.append(f"⚠️ RSI bajo ({rsi_val:.1f}) pero Wrecking Ball activo")
+
+PROBLEMA #3: FALTA VALIDACIÓN DE DISTANCIA A RESISTENCIA 🔴 CRÍTICO
+📂 Ubicación: Después de línea 228 (sección GEOGRAFÍA)
+PROBLEMA:
+
+El código verifica si está ROMPIENDO resistencia (&lt;1.5%)
+Pero NO verifica si está MUY CERCA del techo (0.5-2.0%)
+Según tu imagen: NO debe comprar cerca del techo sin wrecking ball
+
+SOLUCIÓN - Agregar DESPUÉS de línea 228:
+python    # --- 4.5 VALIDACIÓN ZONA DE TECHO/PISO (Imagen de Joel) ---
+    elif trade_dir == 'BULLISH' and near:
+        # Resistencia detectada, verificar distancia
+        nearest = min(near)
+        dist = (nearest - current_price) / current_price * 100
+        
+        if 0.5 &lt;= dist &lt; 3.0:
+            # Zona peligrosa: cerca del techo pero sin romperlo
+            if not is_wrecking_ball:
+                score -= 80
+                reasons.append(f"⚠️ ZONA PELIGROSA: Resistencia a {dist:.2f}% sin Wrecking Ball")
+                block_trade = True
+            else:
+                score += 5
+                reasons.append(f"⚡ SETUP BREAKOUT: Resistencia a {dist:.2f}% con Wrecking Ball")
+Agregar versión BEARISH (simétrica):
+python    # Simetría para BEARISH
+    elif trade_dir == 'BEARISH' and near:
+        nearest = max(near)
+        dist = (current_price - nearest) / current_price * 100
+        
+        if 0.5 &lt;= dist &lt; 3.0:
+            if not is_wrecking_ball:
+                score -= 80
+                reasons.append(f"⚠️ ZONA PELIGROSA: Soporte a {dist:.2f}% sin Wrecking Ball")
+                block_trade = True
+            else:
+                score += 5
+                reasons.append(f"⚡ SETUP BREAKDOWN: Soporte a {dist:.2f}% con Wrecking Ball")
+```
+
+---
+
+## 📋 **PROMPT CORRECTIVO FINAL PARA OPUS**
+
+Copia y pega esto exactamente:
+```
+FIX FATIGA + ZONA TECHO - brain_intelligent.py
+
+PROBLEMA 1: Línea 148 tiene código duplicado
+SOLUCIÓN: Eliminar línea duplicada
+
+PROBLEMA 2: Línea 250-298 NO bloquea en fatiga extrema
+SOLUCIÓN: Reemplazar TODO el bloque por:
+
+# --- 5. VALIDACIÓN DE FATIGA (GOMA ELÁSTICA) ---
+dist_ema_pct = a5m.get('dist_ema_pct', 0)
+rsi_val = a5m.get('rsi', {}).get('rsi_current', 50)
+
+MAX_EXTENSION = 3.5
+EXTREME_RSI_HIGH = 80
+EXTREME_RSI_LOW = 20
+
+if trade_dir == 'BULLISH':
+    if dist_ema_pct &gt; MAX_EXTENSION:
+        score -= 100
+        reasons.append(f"🛑 FATIGA: Precio {dist_ema_pct:.2f}% extendido")
+        block_trade = True
+    elif rsi_val &gt; EXTREME_RSI_HIGH:
+        if not is_wrecking_ball:
+            score -= 100
+            reasons.append(f"🛑 RSI Sobrecomprado ({rsi_val:.1f})")
+            block_trade = True
+        else:
+            score -= 30
+            reasons.append(f"⚠️ RSI alto ({rsi_val:.1f}) + Wrecking Ball")
+            
+elif trade_dir == 'BEARISH':
+    if dist_ema_pct &lt; -MAX_EXTENSION:
+        score -= 100
+        reasons.append(f"🛑 FATIGA: Precio {dist_ema_pct:.2f}% extendido")
+        block_trade = True
+    elif rsi_val &lt; EXTREME_RSI_LOW:
+        if not is_wrecking_ball:
+            score -= 100
+            reasons.append(f"🛑 RSI Sobrevendido ({rsi_val:.1f})")
+            block_trade = True
+        else:
+            score -= 30
+            reasons.append(f"⚠️ RSI bajo ({rsi_val:.1f}) + Wrecking Ball")
+
+PROBLEMA 3: Falta validar zona 0.5-3% cerca de resistencia
+SOLUCIÓN: Agregar DESPUÉS de línea 228:
+
+    # Zona techo/piso (0.5-3%)
+    elif trade_dir == 'BULLISH' and near:
+        nearest = min(near)
+        dist = (nearest - current_price) / current_price * 100
+        
+        if 0.5 &lt;= dist &lt; 3.0:
+            if not is_wrecking_ball:
+                score -= 80
+                reasons.append(f"⚠️ Resistencia {dist:.2f}% sin Wrecking Ball")
+                block_trade = True
+            else:
+                score += 5
+                reasons.append(f"⚡ BREAKOUT setup ({dist:.2f}%)")
+    
+    # Simetría BEARISH
+    elif trade_dir == 'BEARISH' and near:
+        nearest = max(near)
+        dist = (current_price - nearest) / current_price * 100
+        
+        if 0.5 &lt;= dist &lt; 3.0:
+            if not is_wrecking_ball:
+                score -= 80
+                reasons.append(f"⚠️ Soporte {dist:.2f}% sin Wrecking Ball")
+                block_trade = True
+            else:
+                score += 5
+                reasons.append(f"⚡ BREAKDOWN setup ({dist:.2f}%)")
+
+📊 RESUMEN FINAL:
+ItemStatus ActualAcciónBug Scope✅ CorrectoNingunaUmbral dinámico✅ CorrectoNingunaCódigo duplicado⚠️ MenorEliminar línea 148Fatiga sin bloqueo🔴 CríticoAplicar fixZona techo sin validar🔴 CríticoAplicar fix
+Después de estos 3 fixes, el módulo estará 100% alineado con tu imagen y filosofía.
+¿Quieres que prepare el código completo corregido para que solo copies y pegues?Para ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.Si, dame toda la parte que tiene que reemplazar, así copia y pega esa parte Opus, donde tiene que eliminar, que sea quirúrgico no quiero errores. Gracias.12:55 a. m.Estructuró reemplazos quirúrgicos precisos con líneas exactas.Joel quiere un reemplazo quirúrgico completo. Necesito darle:
+
+La ubicación EXACTA de cada línea a modificar
+El código completo a reemplazar (ACTUAL vs PROPUESTO)
+Sin ambigüedades, para copiar y pegar directo
+
+Voy a estructurarlo con:
+
+Número de línea exacto
+BUSCAR: (código actual)
+REEMPLAZAR POR: (código corregido)
+
+Basándome en el código que me pasó (del link), las líneas son:
+
+Línea 148-149: Código duplicado
+Línea 250-298: Bloque completo de fatiga
+Línea 228: Después de la sección de geografía, agregar validación de zona
+
+Voy a ser MUY preciso y quirúrgico.🔧 CÓDIGO QUIRÚRGICO - COPIAR Y PEGAR PARA OPUS
+
+FIX #1: ELIMINAR CÓDIGO DUPLICADO
+📂 brain_intelligent.py Línea 148-150
+BUSCAR EXACTAMENTE:
+python    # Prioridad: Patrón &gt; Fuerza
+    # Prioridad: Patrón &gt; Fuerza
+    trade_dir = pattern_dir if pattern_dir in ['BULLISH', 'BEARISH'] else force_dir
+REEMPLAZAR POR:
+python    # Prioridad: Patrón &gt; Fuerza
+    trade_dir = pattern_dir if pattern_dir in ['BULLISH', 'BEARISH'] else force_dir
+
+FIX #2: CORREGIR LÓGICA DE FATIGA (BLOQUE COMPLETO)
+📂 brain_intelligent.py Línea 250-298
+BUSCAR EXACTAMENTE (TODO EL BLOQUE):
+python    # --- 5. VALIDACIÓN DE FATIGA (GOMA ELÁSTICA) ---
+    dist_ema_pct = a5m.get('dist_ema_pct', 0)
+    rsi_val = a5m.get('rsi', {}).get('rsi_current', 50)
+    
+    EXTREME_RSI_HIGH = 80
+    EXTREME_RSI_LOW = 20
+    
+    if trade_dir == 'BULLISH':
+        # Caso Long: Precio muy arriba de la media
+        if dist_ema_pct &gt; 5.0:
+            score -= 100
+            reasons.append(f"🛑 FATIGA EXTREMA: +{dist_ema_pct:.2f}% vs EMA21")
+            # NO bloquear, solo penalizar fuerte (Time Ladder)
+        elif dist_ema_pct &gt; 3.5:
+            score -= 50
+            reasons.append(f"⚠️ FATIGA ALTA: +{dist_ema_pct:.2f}% vs EMA21")
+        elif dist_ema_pct &gt; 2.5:
+            score -= 25
+            reasons.append(f"⚠️ FATIGA MODERADA: +{dist_ema_pct:.2f}% vs EMA21")
+            
+        # RSI Check
+        if rsi_val &gt; EXTREME_RSI_HIGH:
+            score -= 50
+            reasons.append(f"⚠️ FATIGA: RSI Sobrecomprado ({rsi_val:.1f})")
+            if not is_wrecking_ball: block_trade = True 
+            
+    elif trade_dir == 'BEARISH':
+        # Caso Short: Precio muy abajo de la media
+        if dist_ema_pct &lt; -5.0:
+            score -= 100
+            reasons.append(f"🛑 FATIGA EXTREMA: {dist_ema_pct:.2f}% vs EMA21")
+            # NO bloquear, solo penalizar fuerte (Time Ladder)
+        elif dist_ema_pct &lt; -3.5:
+            score -= 50
+            reasons.append(f"⚠️ FATIGA ALTA: {dist_ema_pct:.2f}% vs EMA21")
+        elif dist_ema_pct &lt; -2.5:
+            score -= 25
+            reasons.append(f"⚠️ FATIGA MODERADA: {dist_ema_pct:.2f}% vs EMA21")
+            
+        # RSI Check
+        if rsi_val &lt; EXTREME_RSI_LOW:
+            score -= 50
+            reasons.append(f"⚠️ FATIGA: RSI Sobrevendido ({rsi_val:.1f})")
+            if not is_wrecking_ball: block_trade = True
+REEMPLAZAR POR (TODO EL BLOQUE):
+python    # --- 5. VALIDACIÓN DE FATIGA (GOMA ELÁSTICA) ---
+    dist_ema_pct = a5m.get('dist_ema_pct', 0)
+    rsi_val = a5m.get('rsi', {}).get('rsi_current', 50)
+    
+    MAX_EXTENSION = 3.5  # Límite absoluto según imagen de Joel
+    EXTREME_RSI_HIGH = 80
+    EXTREME_RSI_LOW = 20
+    
+    if trade_dir == 'BULLISH':
+        # BLOQUEO ABSOLUTO si está muy extendido
+        if dist_ema_pct &gt; MAX_EXTENSION:
+            score -= 100
+            reasons.append(f"🛑 BUYING TOP: Precio {dist_ema_pct:.2f}% extendido vs EMA21")
+            block_trade = True
+        
+        # RSI extremo
+        elif rsi_val &gt; EXTREME_RSI_HIGH:
+            if not is_wrecking_ball:
+                score -= 100
+                reasons.append(f"🛑 RSI Sobrecomprado ({rsi_val:.1f})")
+                block_trade = True
+            else:
+                score -= 30
+                reasons.append(f"⚠️ RSI alto ({rsi_val:.1f}) pero Wrecking Ball compensa")
+                
+    elif trade_dir == 'BEARISH':
+        # BLOQUEO ABSOLUTO si está muy extendido (abajo)
+        if dist_ema_pct &lt; -MAX_EXTENSION:
+            score -= 100
+            reasons.append(f"🛑 SELLING BOTTOM: Precio {dist_ema_pct:.2f}% extendido vs EMA21")
+            block_trade = True
+        
+        # RSI extremo
+        elif rsi_val &lt; EXTREME_RSI_LOW:
+            if not is_wrecking_ball:
+                score -= 100
+                reasons.append(f"🛑 RSI Sobrevendido ({rsi_val:.1f})")
+                block_trade = True
+            else:
+                score -= 30
+                reasons.append(f"⚠️ RSI bajo ({rsi_val:.1f}) pero Wrecking Ball compensa")
+
+FIX #3: AGREGAR VALIDACIÓN ZONA TECHO/PISO
+📂 brain_intelligent.py Después de línea 228
+UBICACIÓN: Justo después de este bloque:
+python                if is_wrecking_ball: score += 15; reasons.append(f"🔨 ROMPIENDO RESISTENCIA ({dist:.2f}%)")
+                else: score -= 100; reasons.append(f"🧱 MURO: Comprando en Resistencia ({dist:.2f}%)"); block_trade = True
+AGREGAR INMEDIATAMENTE DESPUÉS:
+python        # ZONA PELIGROSA: Cerca del techo (0.5-3%) sin romperlo
+        elif near:
+            nearest = min(near)
+            dist = (nearest - current_price) / current_price * 100
+            
+            if 0.5 &lt;= dist &lt; 3.0:
+                if not is_wrecking_ball:
+                    score -= 80
+                    reasons.append(f"⚠️ ZONA PELIGROSA: Resistencia a {dist:.2f}% sin Wrecking Ball")
+                    block_trade = True
+                else:
+                    score += 5
+                    reasons.append(f"⚡ SETUP BREAKOUT: Resistencia a {dist:.2f}% con Wrecking Ball")
+Y TAMBIÉN AGREGAR (en sección BEARISH, después de línea ~247):
+Justo después de este bloque:
+python                if is_wrecking_ball: score += 15; reasons.append(f"🔨 ROMPIENDO SOPORTE ({dist:.2f}%)")
+                else: score -= 100; reasons.append(f"🧱 MURO: Vendiendo en Soporte ({dist:.2f}%)"); block_trade = True
+AGREGAR:
+python        # ZONA PELIGROSA: Cerca del piso (0.5-3%) sin romperlo
+        elif near:
+            nearest = max(near)
+            dist = (current_price - nearest) / current_price * 100
+            
+            if 0.5 &lt;= dist &lt; 3.0:
+                if not is_wrecking_ball:
+                    score -= 80
+                    reasons.append(f"⚠️ ZONA PELIGROSA: Soporte a {dist:.2f}% sin Wrecking Ball")
+                    block_trade = True
+                else:
+                    score += 5
+                    reasons.append(f"⚡ SETUP BREAKDOWN: Soporte a {dist:.2f}% con Wrecking Ball")
+```
+
+---
+
+## 📋 RESUMEN PARA OPUS (Copiar textualmente):
+```
+MODIFICAR brain_intelligent.py - 3 FIXES QUIRÚRGICOS
+
+FIX 1: Línea 148-150
+Eliminar línea duplicada "# Prioridad: Patrón &gt; Fuerza"
+
+FIX 2: Línea 250-298
+Reemplazar TODO el bloque de fatiga por el código corregido
+(cambios: MAX_EXTENSION = 3.5, block_trade = True en fatiga extrema)
+
+FIX 3: Después de línea 228 y 247
+Agregar validación de zona 0.5-3% cerca de resistencia/soporte
+(2 bloques, uno para BULLISH, otro para BEARISH)
+
+RESULTADO: Bot bloqueará compras cerca del techo y ventas cerca del piso
+(excepto con Wrecking Ball activo)
+
+Lo que hizo Opus: 
+
+Analyzed
+brain_intelligent.py#L145-170
+Analyzed
+brain_intelligent.py#L210-260
+Analyzed
+brain_intelligent.py#L260-305
+Ahora aplico los 3 fixes quirúrgicos:
+
+Edited
+brain_intelligent.py
++53
+-36
+✅ 3 FIXES QUIRÚRGICOS APLICADOS:
+
+Fix	Cambio
+#1	❌ Eliminada línea duplicada # Prioridad: Patrón &gt; Fuerza
+#2	✅ Lógica de fatiga corregida con MAX_EXTENSION = 3.5 y block_trade = True
+#3	✅ Validación zona 0.5-3% para BULLISH (resistencia) y BEARISH (soporte)
+Resumen de cambios:
+FIX #1 (línea 155-156):
+
+Eliminada línea duplicada
+FIX #2 (bloque fatiga):
+
+python
+MAX_EXTENSION = 3.5  # Límite absoluto según imagen de Joel
+if dist_ema_pct &gt; MAX_EXTENSION:
+    block_trade = True  # BLOQUEO ABSOLUTO
+FIX #3 (zonas peligrosas):
+
+BULLISH: Si resistencia está a 0.5-3% → bloquea sin Wrecking Ball, bonus con WB
+BEARISH: Si soporte está a 0.5-3% → bloquea sin Wrecking Ball, bonus con WB
+
+Modulo actualizado con ultimos fix
 
 """
 ================================================================================
@@ -418,7 +829,6 @@ def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price
     force_dir = signals.get('market_force', {}).get('direction', 'NEUTRAL')
     
     # Prioridad: Patrón &gt; Fuerza
-    # Prioridad: Patrón &gt; Fuerza
     trade_dir = pattern_dir if pattern_dir in ['BULLISH', 'BEARISH'] else force_dir
     
     # Extraer datos de timeframes
@@ -485,6 +895,18 @@ def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price
             if dist &lt; 1.5:
                 if is_wrecking_ball: score += 15; reasons.append(f"🔨 ROMPIENDO SOPORTE ({dist:.2f}%)")
                 else: score -= 100; reasons.append(f"🧱 MURO: Vendiendo en Soporte ({dist:.2f}%)"); block_trade = True
+        # ZONA PELIGROSA: Cerca del piso (0.5-3%) sin romperlo
+        elif near:
+            nearest = max(near)
+            dist = (current_price - nearest) / current_price * 100
+            if 0.5 &lt;= dist &lt; 3.0:
+                if not is_wrecking_ball:
+                    score -= 80
+                    reasons.append(f"⚠️ ZONA PELIGROSA: Soporte a {dist:.2f}% sin Wrecking Ball")
+                    block_trade = True
+                else:
+                    score += 5
+                    reasons.append(f"⚡ SETUP BREAKDOWN: Soporte a {dist:.2f}% con Wrecking Ball")
     
     elif trade_dir == 'BULLISH':
         resistances = sr_data.get('resistances', [])
@@ -495,51 +917,57 @@ def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price
             if dist &lt; 1.5:
                 if is_wrecking_ball: score += 15; reasons.append(f"🔨 ROMPIENDO RESISTENCIA ({dist:.2f}%)")
                 else: score -= 100; reasons.append(f"🧱 MURO: Comprando en Resistencia ({dist:.2f}%)"); block_trade = True
+            # ZONA PELIGROSA: Cerca del techo (0.5-3%) sin romperlo
+            elif 0.5 &lt;= dist &lt; 3.0:
+                if not is_wrecking_ball:
+                    score -= 80
+                    reasons.append(f"⚠️ ZONA PELIGROSA: Resistencia a {dist:.2f}% sin Wrecking Ball")
+                    block_trade = True
+                else:
+                    score += 5
+                    reasons.append(f"⚡ SETUP BREAKOUT: Resistencia a {dist:.2f}% con Wrecking Ball")
 
     # --- 5. VALIDACIÓN DE FATIGA (GOMA ELÁSTICA) ---
     dist_ema_pct = a5m.get('dist_ema_pct', 0)
     rsi_val = a5m.get('rsi', {}).get('rsi_current', 50)
     
+    MAX_EXTENSION = 3.5  # Límite absoluto según imagen de Joel
     EXTREME_RSI_HIGH = 80
     EXTREME_RSI_LOW = 20
     
     if trade_dir == 'BULLISH':
-        # Caso Long: Precio muy arriba de la media
-        if dist_ema_pct &gt; 5.0:
+        # BLOQUEO ABSOLUTO si está muy extendido
+        if dist_ema_pct &gt; MAX_EXTENSION:
             score -= 100
-            reasons.append(f"🛑 FATIGA EXTREMA: +{dist_ema_pct:.2f}% vs EMA21")
-            # NO bloquear, solo penalizar fuerte (Time Ladder)
-        elif dist_ema_pct &gt; 3.5:
-            score -= 50
-            reasons.append(f"⚠️ FATIGA ALTA: +{dist_ema_pct:.2f}% vs EMA21")
-        elif dist_ema_pct &gt; 2.5:
-            score -= 25
-            reasons.append(f"⚠️ FATIGA MODERADA: +{dist_ema_pct:.2f}% vs EMA21")
-            
-        # RSI Check
-        if rsi_val &gt; EXTREME_RSI_HIGH:
-            score -= 50
-            reasons.append(f"⚠️ FATIGA: RSI Sobrecomprado ({rsi_val:.1f})")
-            if not is_wrecking_ball: block_trade = True 
-            
+            reasons.append(f"🛑 BUYING TOP: Precio {dist_ema_pct:.2f}% extendido vs EMA21")
+            block_trade = True
+        
+        # RSI extremo
+        elif rsi_val &gt; EXTREME_RSI_HIGH:
+            if not is_wrecking_ball:
+                score -= 100
+                reasons.append(f"🛑 RSI Sobrecomprado ({rsi_val:.1f})")
+                block_trade = True
+            else:
+                score -= 30
+                reasons.append(f"⚠️ RSI alto ({rsi_val:.1f}) pero Wrecking Ball compensa")
+                
     elif trade_dir == 'BEARISH':
-        # Caso Short: Precio muy abajo de la media
-        if dist_ema_pct &lt; -5.0:
+        # BLOQUEO ABSOLUTO si está muy extendido (abajo)
+        if dist_ema_pct &lt; -MAX_EXTENSION:
             score -= 100
-            reasons.append(f"🛑 FATIGA EXTREMA: {dist_ema_pct:.2f}% vs EMA21")
-            # NO bloquear, solo penalizar fuerte (Time Ladder)
-        elif dist_ema_pct &lt; -3.5:
-            score -= 50
-            reasons.append(f"⚠️ FATIGA ALTA: {dist_ema_pct:.2f}% vs EMA21")
-        elif dist_ema_pct &lt; -2.5:
-            score -= 25
-            reasons.append(f"⚠️ FATIGA MODERADA: {dist_ema_pct:.2f}% vs EMA21")
-            
-        # RSI Check
-        if rsi_val &lt; EXTREME_RSI_LOW:
-            score -= 50
-            reasons.append(f"⚠️ FATIGA: RSI Sobrevendido ({rsi_val:.1f})")
-            if not is_wrecking_ball: block_trade = True
+            reasons.append(f"🛑 SELLING BOTTOM: Precio {dist_ema_pct:.2f}% extendido vs EMA21")
+            block_trade = True
+        
+        # RSI extremo
+        elif rsi_val &lt; EXTREME_RSI_LOW:
+            if not is_wrecking_ball:
+                score -= 100
+                reasons.append(f"🛑 RSI Sobrevendido ({rsi_val:.1f})")
+                block_trade = True
+            else:
+                score -= 30
+                reasons.append(f"⚠️ RSI bajo ({rsi_val:.1f}) pero Wrecking Ball compensa")
 
     # --- 6. MEMORIA (PERSISTENCIA) ---
     if recent_history and not block_trade:
@@ -737,8 +1165,8 @@ def check_volume_confirmation(ladder):
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 24,464<br>
-    Generado: 2025-12-14 00:49:37
+    Total caracteres: 41,254<br>
+    Generado: 2025-12-14 01:02:48
   </div>
 </body>
 </html>
