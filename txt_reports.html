@@ -15,110 +15,173 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-15 02:42:01</div>
+  <div class="meta">Última actualización: 2025-12-15 13:22:00</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-PLAN CORREGIDO (v1.1)
+test_pattern_matcher.py modulo completo
 
-He actualizado el plan con tus correcciones quirúrgicas:
+"""
+Test Pattern Matcher contra telemetría histórica
+"""
+import sys
+import os
+import json
+import sqlite3
 
-Time Ladder Scoring (No binario):
-&gt;90%: Override Total (Status OPERABLE, Score 95).
-&gt;80%: Bonus Alto (+30 ptos).
-&gt;70%: Bonus Moderado (+15 ptos).
-&lt;70%: Sin efecto.
-Validación de Dirección:
-Si el ADN pide LONG y el Grid dice SHORT (o viceversa) → Similitud = 0%.
-Filtro de Antigüedad:
-ADNs con extracted_at &gt; 60 días son ignorados automáticamente.
-El archivo implementation_plan.md está actualizado. ¿Obtengo luz verde para implementar?
+# Añadir root project path para imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-PLAN DE IMPLEMENTACIÓN: BRAIN PATTERN MATCHER v1.1
-1. ARCHIVOS A CREAR
-brain_pattern_matcher.py (Módulo Nuevo)
-Responsable de cargar los "ADNs" históricos y compararlos con el setup actual en tiempo real.
-2. ARCHIVOS A MODIFICAR
-brain_intelligent.py
-Integración: Se insertará el matcher justo después del análisis del Grid y antes de la auditoría final.
-Lógica Time Ladder: Aplicación de bonificaciones o overrides graduales según el % de similitud (sin lógica binaria simple).
-3. ESTRUCTURA DEL MÓDULO (brain_pattern_matcher.py)
-Clase PatternMatcher
-init
-: Inicializa y carga la librería de ADNs desde strategies/dna/.
-load_dna_library(): Recorre la carpeta strategies/dna/*.json.
-Filtro de Antigüedad: Solo carga ADNs extraídos en los últimos 60 días.
-Si extracted_at &lt; hace 60 días -&gt; Ignorar.
-compare_setup(current_setup, dna_setup): El núcleo matemático.
-Validación de Dirección: Si la dirección del ADN (required_direction) es opuesta a la dirección del Grid actual -&gt; Retorna 0% inmediatamente.
-Compara métricas clave (ADX, Momentum, Swing) para cada timeframe.
-Retorna un % de similitud (0-100).
-find_best_match(symbol, current_setup):
-Itera sobre todos los ADNs cargados.
-Retorna el mejor match con su score y nombre de archivo.
-4. LÓGICA DE SIMILITUD (Weighted Time Ladder)
-Se utilizará un sistema de pesos para dar prioridad al timeframe principal (15M).
+from brain_pattern_matcher import pattern_matcher
+from brain_config import DATA_DIR
 
-Factor	Peso	Tolerancia de Match
-15M (Principal)	50%	ADX ±5, Mom Color exacto, Swing ±30%
-5M (Ejecución)	30%	ADX ±5, Mom Color exacto, Ancho Grid ±20%
-1H (Contexto)	20%	ADX ±5, Mom Color exacto
-Cálculo de Score:
+# Ruta a la base de datos de telemetría
+DB_PATH = os.path.join(DATA_DIR, 'brain_rechazos.db')
 
-Score Final = (Score_15m * 0.5) + (Score_5m * 0.3) + (Score_1h * 0.2)
-5. INTEGRACIÓN EN brain_intelligent.py
-Ubicación: Inmediatamente después de grid.analyze().
+def run_test():
+    if not os.path.exists(DB_PATH):
+        print(f"❌ Error: No se encuentra la base de datos en {DB_PATH}")
+        return
 
-# ... (Grid Analysis completado) ...
-   grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
-   
-   # ══════════════════════════════════════════════════════════
-   # PATTERN MATCHER: Buscar coincidencia con ADNs guardados
-   # ══════════════════════════════════════════════════════════
-   from brain_pattern_matcher import pattern_matcher
-   
-   # Construir setup actual normalizado
-   current_setup_data = {
-       '1h': ladder_analysis.get('1h', {}),
-       '15m': ladder_analysis.get('15m', {}),
-       '5m': ladder_analysis.get('5m', {}),
-       'grid': grid_result.get('grid_data', {})
-   }
-   
-   match_result = pattern_matcher.find_best_match(symbol, current_setup_data)
-   similarity = match_result['similarity']
-   
-   # LOGIC: TIME LADDER OVERRIDE (Gradual, no binario)
-   if similarity &gt; 90:
-       # OVERRIDE TOTAL (Match casi perfecto = Setup Probado)
-       if grid_result['status'] == 'BLOQUEADO':
-           grid_result['status'] = 'OPERABLE'
-           grid_result['score'] = 95
-           grid_result['razon'] = f"✨ OVERRIDE: Pattern Match {similarity:.1f}% ({match_result['dna_name']})"
-           print(f"🎯 PATTERN MATCH {similarity:.1f}%: OVERRIDE ACTIVADO")
-           
-   elif similarity &gt; 80:
-       # BONUS ALTO (Ayuda a pasar el umbral si estaba dudoso)
-       grid_result['score'] += 30
-       grid_result['razon'] += f" | Pattern Bonus++ {similarity:.0f}%"
-       
-   elif similarity &gt; 70:
-       # BONUS MODERADO
-       grid_result['score'] += 15
-       
-   # ... (Continúa hacia Auditoría) ...
-6. VALIDACIONES REQUERIDAS
-Directorio: Verificar existencia de strategies/dna/.
-Corrupción: try/except robusto al cargar JSONs.
-Empty Library: Si no hay ADNs válidos (o todos son viejos), el matcher retorna score 0.
-Dirección: ADN LONG no aplica a setup SHORT (y viceversa).
-ESTADO: Plan actualizado con correcciones ("Time Ladder" scoring + Filtros de seguridad). Esperando aprobación.
+    print(f"\n🧪 TESTING PATTERN MATCHER (desde DB)")
+    print(f"📂 Base de datos: {DB_PATH}")
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        
+        # Consultar últimos 50 registros con JSON válido
+        cursor = conn.execute("""
+            SELECT symbol, ladder_json, timestamp, decision 
+            FROM telemetry_ladder 
+            ORDER BY id DESC 
+            LIMIT 50
+        """)
+        rows = cursor.fetchall()
+        
+        print(f"📊 Registros analizados: {len(rows)}")
+        print("=" * 60)
+
+        matches = []
+
+        for row in rows:
+            symbol = row['symbol']
+            try:
+                ladder_data = json.loads(row['ladder_json'])
+            except json.JSONDecodeError:
+                continue
+
+            # Simular setup con datos históricos
+            # Nota: ladder_json a veces guarda estructura completa o por keys
+            # Intentamos reconstruir el setup esperado por el matcher
+            
+            current_setup = {
+                '1h': ladder_data.get('1h', {}),
+                '15m': ladder_data.get('15m', {}),
+                '5m': ladder_data.get('5m', {}),
+                'grid': ladder_data.get('grid', {}) # Si existe en el JSON
+            }
+            
+            # Si no hay datos de Grid en el JSON (versiones viejas), intentar inferir o saltar
+            if not current_setup['grid']:
+                # Intento de compatibilidad: buscar en 5m si hay datos de grid anidados
+                if 'grid_data' in ladder_data:
+                    current_setup['grid'] = ladder_data['grid_data']
+            
+            match = pattern_matcher.find_best_match(symbol, current_setup)
+            
+            if match['similarity'] &gt; 70:
+                matches.append({
+                    'symbol': symbol,
+                    'time': row['timestamp'],
+                    'similarity': match['similarity'],
+                    'dna': match['dna_name']
+                })
+                print(f"[OK] {symbol} [{row['timestamp']}]: {match['similarity']:.1f}% match con {match['dna_name']}")
+
+        # INYECCIÓN DE PRUEBA SINTÉTICA (Alineada con ADN BEAT/USDT Real)
+        # NOTA: El ADN de BEAT tiene Momentum=REVERSIÓN y ADX=MODERADO/FUERTE.
+        # Simulamos ese comportamiento exacto para probar el motor de comparación.
+        synthetic_match = {
+            '15m': {
+                'adx': {
+                    'adx_current': 22.0, 
+                    'adx_trend': 'estable',
+                    'behavior': 'MODERADO' # Match DNA
+                },
+                'momentum': {
+                    'color_current': 'lime', 
+                    'consecutive_count': 1, 
+                    'pattern': 'REVERSIÓN_RECIENTE' # Match DNA
+                },
+                'swing': {'size_pct': 0.8, 'direction': 'UP'}
+            },
+            '5m': {
+                'adx': {
+                    'adx_current': 32.0, 
+                    'adx_trend': 'estable',
+                    'behavior': 'FUERTE_ESTABLE' # Match DNA
+                },
+                'momentum': {
+                    'color_current': 'lime', 
+                    'consecutive_count': 2,
+                    'pattern': 'REVERSIÓN_RECIENTE'
+                },
+                'grid': {'ancho_pct': 26.0, 'direction': 'BULLISH'},
+                'swing': {'direction': 'UP'}
+            },
+            '1h': {
+                'adx': {'adx_current': 20.0, 'behavior': 'MODERADO'},
+                'momentum': {'color_current': 'lime', 'pattern': 'REVERSIÓN_RECIENTE'},
+                'swing': {'direction': 'UP'}
+            },
+            'grid': {'direction': 'BULLISH', 'ancho_pct': 26.0}
+        }
+        
+        # Test unitario aislado
+        print("\n[TEST] TEST SINTÉTICO (Validación de Lógica):")
+        match_synth = pattern_matcher.find_best_match("SYNTHETIC_TEST", synthetic_match)
+        if match_synth['similarity'] &gt; 80:
+             print(f"[OK] LÓGICA CONFIRMADA: Setup sintético logró {match_synth['similarity']:.1f}% match con {match_synth['dna_name']}")
+        else:
+             print(f"[FAIL] FALLO SINTÉTICO: Score bajo ({match_synth['similarity']:.1f}%)")
+             
+        # También probamos el "Fallback" (sin behaviors explícitos)
+        synthetic_match_fallback = {
+            '15m': {
+                'adx': {'adx_current': 24.0, 'adx_trend': 'creciendo'}, # Should detect 'EMERGIENDO'
+                'momentum': {'color_current': 'lime', 'consecutive_count': 5},
+                'swing': {'direction': 'UP'}
+            },
+            '5m': {
+                'adx': {'adx_current': 24.0},
+                'momentum': {'color_current': 'lime'},
+                'grid': {'direction': 'BULLISH'}
+            },
+            '1h': {'adx': {'adx_current': 24.0}, 'momentum': {'color_current': 'lime'}},
+            'grid': {'direction': 'BULLISH'}
+        }
+        print("\n[TEST] TEST SINTÉTICO 2 (Fallback Logic):")
+        match_fallback = pattern_matcher.find_best_match("SYNTHETIC_FALLBACK", synthetic_match_fallback)
+        print(f"   Score Fallback: {match_fallback['similarity']:.1f}%")
+
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"[ERROR] Error durante el test: {e}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+if __name__ == "__main__":
+    run_test()
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,178<br>
-    Generado: 2025-12-15 02:42:01
+    Total caracteres: 5,962<br>
+    Generado: 2025-12-15 13:22:00
   </div>
 </body>
 </html>
