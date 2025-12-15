@@ -15,81 +15,44 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-15 02:34:22</div>
+  <div class="meta">Última actualización: 2025-12-15 02:42:01</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
- PLAN DE IMPLEMENTACIÓN ---
+PLAN CORREGIDO (v1.1)
 
-ARCHIVOS A CREAR:
-brain_pattern_matcher.py (módulo nuevo)
-ARCHIVOS A MODIFICAR:
-brain_intelligent.py (integración del matcher)
-ESTRUCTURA DEL MÓDULO: brain_pattern_matcher.py contendrá:
-Clase PatternMatcher
-Método load_dna_library() → carga todos los JSONs
-Método compare_setup() → calcula similitud (0-100%)
-Método find_best_match() → busca el ADN más parecido
-LÓGICA DE SIMILITUD (Time Ladder): Comparar cada timeframe (1h, 15m, 5m):
-ADX: ±5 puntos = match
-Momentum: mismo color = match
-Swing: ±30% del original = match
-Grid: ±20% ancho = match
-Score final = promedio ponderado:
-15M: 50% (timeframe principal)
-5M: 30% (entrada)
-1H: 20% (contexto)
-INTEGRACIÓN EN BRAIN_INTELLIGENT: UBICACIÓN: Después de grid.analyze(), ANTES de decisión final CÓDIGO PROPUESTO:
-python
-grid_result = grid.analyze(symbol, df_5m, ladder_analysis)
-   
-   # ══════════════════════════════════════════════════════════
-   # PATTERN MATCHER: Buscar coincidencia con ADNs guardados
-   # ══════════════════════════════════════════════════════════
-   from brain_pattern_matcher import pattern_matcher
-   
-   match_result = pattern_matcher.find_best_match(
-       symbol=symbol,
-       current_setup={
-           '1h': ladder_analysis.get('1h', {}),
-           '15m': ladder_analysis.get('15m', {}),
-           '5m': ladder_analysis.get('5m', {}),
-           'grid': grid_result.get('grid_data', {})
-       }
-   )
-   
-   # Si hay match fuerte (&gt;85%), OVERRIDE bloqueos
-   if match_result['similarity'] &gt; 85:
-       print(f"🎯 PATTERN MATCH: {match_result['similarity']:.1f}% similar a {match_result['dna_file']}")
-       
-       # Forzar aprobación aunque Grid haya bloqueado
-       if grid_result['status'] == 'BLOQUEADO':
-           grid_result['status'] = 'OPERABLE'
-           grid_result['score'] = 85
-           grid_result['razon'] = f"✨ OVERRIDE: Pattern Match {match_result['similarity']:.1f}%"
-VALIDACIONES REQUERIDAS:
-Verificar que strategies/dna/ existe
-Manejar JSONs corruptos sin crashear
-Si no hay ADNs, continuar sin match (score = 0)
-Logging de cada comparación
---- FIN DEL PLAN ---
+He actualizado el plan con tus correcciones quirúrgicas:
 
-PLAN DE IMPLEMENTACIÓN: BRAIN PATTERN MATCHER v1.0
+Time Ladder Scoring (No binario):
+&gt;90%: Override Total (Status OPERABLE, Score 95).
+&gt;80%: Bonus Alto (+30 ptos).
+&gt;70%: Bonus Moderado (+15 ptos).
+&lt;70%: Sin efecto.
+Validación de Dirección:
+Si el ADN pide LONG y el Grid dice SHORT (o viceversa) → Similitud = 0%.
+Filtro de Antigüedad:
+ADNs con extracted_at &gt; 60 días son ignorados automáticamente.
+El archivo implementation_plan.md está actualizado. ¿Obtengo luz verde para implementar?
+
+PLAN DE IMPLEMENTACIÓN: BRAIN PATTERN MATCHER v1.1
 1. ARCHIVOS A CREAR
 brain_pattern_matcher.py (Módulo Nuevo)
 Responsable de cargar los "ADNs" históricos y compararlos con el setup actual en tiempo real.
 2. ARCHIVOS A MODIFICAR
 brain_intelligent.py
 Integración: Se insertará el matcher justo después del análisis del Grid y antes de la auditoría final.
-Lógica Override: Si el matcher encuentra una similitud &gt; 85%, se forzará el status a OPERABLE incluso si el Grid lo bloqueó (útil para setups de alta fuerza que rompen reglas estándar).
+Lógica Time Ladder: Aplicación de bonificaciones o overrides graduales según el % de similitud (sin lógica binaria simple).
 3. ESTRUCTURA DEL MÓDULO (brain_pattern_matcher.py)
 Clase PatternMatcher
 init
 : Inicializa y carga la librería de ADNs desde strategies/dna/.
-load_dna_library(): Recorre la carpeta strategies/dna/*.json y carga los patrones en memoria. Muestra cuántos patrones válidos se cargaron.
+load_dna_library(): Recorre la carpeta strategies/dna/*.json.
+Filtro de Antigüedad: Solo carga ADNs extraídos en los últimos 60 días.
+Si extracted_at &lt; hace 60 días -&gt; Ignorar.
 compare_setup(current_setup, dna_setup): El núcleo matemático.
-Compara métricas clave (ADX, Momentum, Swing) para cada timeframe (1H, 15M, 5M).
+Validación de Dirección: Si la dirección del ADN (required_direction) es opuesta a la dirección del Grid actual -&gt; Retorna 0% inmediatamente.
+Compara métricas clave (ADX, Momentum, Swing) para cada timeframe.
 Retorna un % de similitud (0-100).
 find_best_match(symbol, current_setup):
 Itera sobre todos los ADNs cargados.
@@ -103,7 +66,6 @@ Factor	Peso	Tolerancia de Match
 1H (Contexto)	20%	ADX ±5, Mom Color exacto
 Cálculo de Score:
 
-Se calcula un sub-score (0-100) para cada timeframe basado en cuántos parámetros coinciden.
 Score Final = (Score_15m * 0.5) + (Score_5m * 0.3) + (Score_1h * 0.2)
 5. INTEGRACIÓN EN brain_intelligent.py
 Ubicación: Inmediatamente después de grid.analyze().
@@ -125,30 +87,38 @@ Ubicación: Inmediatamente después de grid.analyze().
    }
    
    match_result = pattern_matcher.find_best_match(symbol, current_setup_data)
+   similarity = match_result['similarity']
    
-   # LOGIC: OVERRIDE POR SIMILITUD EXTREMA
-   if match_result['similarity'] &gt; 85:
-       print(f"🎯 PATTERN MATCH: {match_result['similarity']:.1f}% similar a {match_result['dna_file']}")
-       
-       # Si el Grid estaba bloqueado (falso negativo), lo desbloqueamos
+   # LOGIC: TIME LADDER OVERRIDE (Gradual, no binario)
+   if similarity &gt; 90:
+       # OVERRIDE TOTAL (Match casi perfecto = Setup Probado)
        if grid_result['status'] == 'BLOQUEADO':
            grid_result['status'] = 'OPERABLE'
-           grid_result['score'] = max(grid_result['score'], 85) # Asegurar score alto
-           grid_result['razon'] = f"✨ OVERRIDE: Pattern Match {match_result['similarity']:.1f}% ({match_result['dna_name']})"
-           # Nota: El Auditor todavía tiene la última palabra después de esto.
-   
+           grid_result['score'] = 95
+           grid_result['razon'] = f"✨ OVERRIDE: Pattern Match {similarity:.1f}% ({match_result['dna_name']})"
+           print(f"🎯 PATTERN MATCH {similarity:.1f}%: OVERRIDE ACTIVADO")
+           
+   elif similarity &gt; 80:
+       # BONUS ALTO (Ayuda a pasar el umbral si estaba dudoso)
+       grid_result['score'] += 30
+       grid_result['razon'] += f" | Pattern Bonus++ {similarity:.0f}%"
+       
+   elif similarity &gt; 70:
+       # BONUS MODERADO
+       grid_result['score'] += 15
+       
    # ... (Continúa hacia Auditoría) ...
 6. VALIDACIONES REQUERIDAS
-Directorio: Verificar existencia de strategies/dna/. Si no existe, crear o advertir.
-Corrupción: try/except al cargar JSONs para evitar crashes por archivos dañados.
-Empty Library: Si no hay ADNs, el matcher debe retornar score 0 silenciosamente.
-Logging: Imprimir detalles del match solo si es relevante (&gt;50%) para no ensuciar la consola.
-ESTADO: Esperando aprobación para proceder a FASE 2 (Implementación).
+Directorio: Verificar existencia de strategies/dna/.
+Corrupción: try/except robusto al cargar JSONs.
+Empty Library: Si no hay ADNs válidos (o todos son viejos), el matcher retorna score 0.
+Dirección: ADN LONG no aplica a setup SHORT (y viceversa).
+ESTADO: Plan actualizado con correcciones ("Time Ladder" scoring + Filtros de seguridad). Esperando aprobación.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,656<br>
-    Generado: 2025-12-15 02:34:22
+    Total caracteres: 4,178<br>
+    Generado: 2025-12-15 02:42:01
   </div>
 </body>
 </html>
