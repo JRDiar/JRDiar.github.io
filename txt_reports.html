@@ -15,14 +15,14 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-15 19:55:42</div>
+  <div class="meta">Última actualización: 2025-12-15 20:03:48</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Plan de Implementación: Modo Sniper Agresivo (v8.1.1) - FIX Crítico
+Plan de Implementación: Modo Sniper Agresivo (v8.1.1) - FIX CRÍTICO &amp; QUIRÚRGICO
 Objetivo
-Implementar el "Modo Sniper" con validación de Auditor y lógica graduada (no binaria) para optimizar la velocidad de entrada sin sacrificar seguridad.
+Implementar el "Modo Sniper" con validación de Auditor y lógica graduada, corrigiendo errores de variables y contexto identificados.
 
 Archivos Afectados
 brain_config.py
@@ -35,79 +35,103 @@ Agregar flags con niveles de precisión.
 
 # ===== MODO SNIPER (v8.1) =====
 SNIPER_MODE = True              # Activar modo disparo rápido
-SNIPER_THRESHOLD_PERFECT = 95   # Disparo INMEDIATO
-SNIPER_THRESHOLD_HIGH = 90      # Prioridad Alta (Dispara si no hay algo mejor rápido)
+SNIPER_THRESHOLD_PERFECT = 95   # Disparo INMEDIATO (Nivel 1)
+SNIPER_THRESHOLD_HIGH = 90      # Prioridad Alta (Nivel 2)
 2. 
 brain_intelligent.py
-Exponer explícitamente pattern_match_data y audit_data en el nivel superior del diccionario de retorno para facilitar el acceso en 
-bot_main.py
-.
+Exponer explícitamente pattern_match_data y audit_data en el retorno.
 
 # En orchestrate_intelligence...
-# ... (Lógica existente) ...
-# Al retornar (tanto para casos OPERAR como NO_OPERAR safe return):
+# ...
+    match_result = pattern_matcher.find_best_match(symbol, current_setup_data)
+# ...
+# Retorno final:
 return {
     'action': ...,
-    'confidence': ...,
-    # EXPONER DATOS CLAVE
     'pattern_match_data': match_result if 'match_result' in locals() else None,
     'audit_data': audit_result if 'audit_result' in locals() else {'final_action': 'BLOCK'},
-    # ...
+    # ... resto
 }
 3. 
 bot_main.py
-Implementar el bucle con lógica graduada y validación de auditor.
+ - CORRECCIÓN DE BUGS DE VARIABLES
+Ubicación: Dentro de 
+analyze_all_coins
+. Variables Nuevas: priority_targets = [] (antes del loop).
 
-Variables nuevas fuera del bucle: priority_targets = []
+Código ACTUAL (Contexto):
 
-Código a insertar dentro del bucle for symbol in self.filtered_symbols:
+for i, symbol in enumerate(self.filtered_symbols): # ✅ BUG 2: Usar enumerate explícito
+            # ... (análisis) ...
+            if decision['action'] == 'OPERAR':
+                # ...
+                # Se crea analysis_compatible AQUÍ
+                analysis_compatible = { ... } 
+                
+                analyzed.append((symbol, analysis_compatible))
+                # ...
+Código PROPUESTO (Inserción): Se insertará inmediatamente después de que analysis_compatible sea creado y añadido a analyzed.
 
-# ... después de obtener decision ...
-    
-    # === LOGICA SNIPER (v8.1) ===
-    import brain_config as cfg
-    
-    if cfg.SNIPER_MODE and decision['action'] == 'OPERAR':
-        
-        # 1. Extraer datos críticos
-        similarity = 0
-        if decision.get('pattern_match_data'):
-            similarity = decision['pattern_match_data'].get('similarity', 0)
-            
-        audit_status = decision.get('audit_data', {}).get('final_action', 'BLOCK')
-        
-        # 2. NIVEL 1: MAGIA PURA (&gt;= 95%) + AUDITOR OK
-        if similarity &gt;= cfg.SNIPER_THRESHOLD_PERFECT and audit_status == 'ALLOW':
-            print(f"\n🔥 SNIPER: {symbol} MATCH PERFECTO {similarity:.1f}% + AUDITOR ✅ - EJECUTANDO YA")
-            # Forzar este único resultado como el elegido
-            analyzed = [(symbol, analysis_compatible)] 
-            break
-            
-        # 3. NIVEL 2: EXCELENTE (&gt;= 90%) + AUDITOR OK
-        elif similarity &gt;= cfg.SNIPER_THRESHOLD_HIGH and audit_status == 'ALLOW':
-            print(f"⚡ SNIPER: {symbol} Match Excelente {similarity:.1f}% - Agregado a Prioridad")
-            priority_targets.append((symbol, analysis_compatible, similarity))
-            
-            # Si ya revisamos el 20% del mercado y tenemos un target excelente, no perdamos tiempo
-            if len(self.filtered_symbols) &gt; 10 and (i / len(self.filtered_symbols)) &gt; 0.20:
-                print(f"⏩ SNIPER: 20% analizado y objetivo excelente encontrado. Disparando.")
-                # Ordenar por similitud y tomar el mejor
-                priority_targets.sort(key=lambda x: x[2], reverse=True)
-                best_target = priority_targets[0]
-                analyzed = [(best_target[0], best_target[1])]
-                break
-    # ... fin del bucle ...
-Validación
-Auditor Block: Si similitud es 99% pero Auditor dice BLOCK, NO debe disparar (debe seguir analizando).
-Perfect Match: Si similitud &gt;= 95% y Auditor ALLOW, debe hacer 
-break
- inmediato.
-High Match: Si similitud &gt;= 90%, lo guarda. Si al llegar al 20% del progreso hay alguno, dispara.
+# ... (código existente: creación de analysis_compatible y append) ...
+                        analyzed.append((symbol, analysis_compatible))
+                        viable_count += 1
+                        
+                        # === LOGICA SNIPER (v8.1) ===
+                        import brain_config as cfg
+                        
+                        if cfg.SNIPER_MODE:
+                            # 1. Extraer datos
+                            similarity = 0
+                            if decision.get('pattern_match_data'):
+                                similarity = decision['pattern_match_data'].get('similarity', 0)
+                            
+                            audit_status = decision.get('audit_data', {}).get('final_action', 'BLOCK')
+                            
+                            # 2. VALIDACIÓN DE AUDITOR (Corrección 1)
+                            if audit_status == 'ALLOW':
+                                
+                                # NIVEL 1: MATCH PERFECTO (&gt;= 95%)
+                                if similarity &gt;= cfg.SNIPER_THRESHOLD_PERFECT:
+                                    print(f"\n🔥 SNIPER: {symbol} MATCH PERFECTO {similarity:.1f}% + AUDITOR ✅ - EJECUTANDO YA")
+                                    # ✅ BUG 1 CORREGIDO: Usamos analysis_compatible que YA FUE DEFINIDO arriba
+                                    analyzed = [(symbol, analysis_compatible)]
+                                    break
+                                
+                                # NIVEL 2: MATCH EXCELENTE (&gt;= 90%)
+                                elif similarity &gt;= cfg.SNIPER_THRESHOLD_HIGH:
+                                    print(f"⚡ SNIPER: {symbol} Match Excelente {similarity:.1f}% - Agregado a Prioridad")
+                                    priority_targets.append((symbol, analysis_compatible, similarity))
+                                    
+                                    # Chequeo de progreso (20%)
+                                    # ✅ BUG 2 CORREGIDO: 'i' existe gracias a enumerate
+                                    if len(self.filtered_symbols) &gt; 10 and (i / len(self.filtered_symbols)) &gt; 0.20:
+                                        print(f"⏩ SNIPER: 20% analizado y objetivo excelente encontrado. Disparando.")
+                                        priority_targets.sort(key=lambda x: x[2], reverse=True)
+                                        best = priority_targets[0]
+                                        analyzed = [(best[0], best[1])]
+                                        break
+                        # ============================
+Validación Final
+Variable analysis_compatible: Se usa dentro del bloque 
+if
+, después de su definición.
+Variable i: Se garantiza usando enumerate en el bucle principal.
+Auditor: Se dispara SOLO si audit_status == 'ALLOW'.
+Ejecución
+Aplicar cambios a 
+brain_config.py
+.
+Aplicar cambios a 
+brain_intelligent.py
+.
+Aplicar cambios a 
+bot_main.py
+ asegurando la indentación correcta dentro del bloque if decision['action'] == 'OPERAR'.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3,442<br>
-    Generado: 2025-12-15 19:55:42
+    Total caracteres: 4,798<br>
+    Generado: 2025-12-15 20:03:48
   </div>
 </body>
 </html>
