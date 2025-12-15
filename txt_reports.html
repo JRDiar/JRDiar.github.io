@@ -15,709 +15,126 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-15 14:11:04</div>
+  <div class="meta">Última actualización: 2025-12-15 19:49:48</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-test_pattern_matcher.py modulo completo
+He creado el plan de implementación para el Modo Sniper Agresivo (v8.1).
 
-"""
-Test Pattern Matcher contra telemetría histórica
-"""
-import sys
-import os
-import json
-import sqlite3
+📄 Plan de Ataque:
 
-# Añadir root project path para imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+Activación: Nuevo switch SNIPER_MODE = True y umbral SNIPER_THRESHOLD = 90 en 
+brain_config.py
+.
+Inteligencia: 
+brain_intelligent.py
+ ahora reportará la similitud exacta del patrón (ej: 92.5%) hacia fuera.
+Ejecución: En 
+bot_main.py
+, si el bot detecta un setup con similitud &gt; 90% (o configuración elegida), hará un break INMEDIATO del bucle de análisis.
+No seguirá analizando las 400 monedas restantes.
+Pasará directo a la fase de ejecución para operar esa moneda.
+¿Deseas que proceda con la implementación? 🎯
 
-from brain_pattern_matcher import pattern_matcher
-from brain_config import DATA_DIR
+El plan
 
-# Ruta a la base de datos de telemetría
-DB_PATH = os.path.join(DATA_DIR, 'brain_rechazos.db')
+Plan de Implementación: Modo Sniper Agresivo (v8.1)
+Objetivo
+Implementar el "Modo Sniper Agresivo" para permitir que el bot dispare inmediatamente al encontrar un patrón de alta calidad (&gt;90% de similitud), deteniendo el análisis del resto del mercado. Esto optimiza la velocidad de entrada en setups "perfectos".
 
-def run_test():
-    if not os.path.exists(DB_PATH):
-        print(f"❌ Error: No se encuentra la base de datos en {DB_PATH}")
-        return
+Archivos Afectados
+brain_config.py
+brain_intelligent.py
+bot_main.py
+Análisis de Cambios
+1. 
+brain_config.py
+Agregar flags de configuración para el modo Sniper.
 
-    print(f"\n🧪 TESTING PATTERN MATCHER (desde DB)")
-    print(f"📂 Base de datos: {DB_PATH}")
-    
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+# ===== MODO SNIPER (NUEVO) =====
+SNIPER_MODE = True              # Si True, dispara al primer match perfecto sin esperar
+SNIPER_THRESHOLD = 90           # Similitud mínima para activar disparo inmediato
+SNIPER_WAIT_TIME = 5            # (Opcional) Tiempo de espera si se quisiera implementar híbrido
+2. 
+brain_intelligent.py
+Exponer los datos del "Pattern Match" en el diccionario de retorno de 
+decide_intelligently
+ para que 
+bot_main.py
+ pueda leer la similitud exacta.
+
+Actual: El similarity se usa internamente para modificar el grid_result, pero no se retorna explícitamente en el primer nivel del diccionario 
+decision
+.
+Cambio: Agregar pattern_match_data al return.
+# Dentro de orchestrate_intelligence...
+match_data_export = None # Default
+# ... bloque de pattern matching ...
+    match_result = pattern_matcher.find_best_match(symbol, current_setup_data)
+    match_data_export = match_result # Guardar para exportar
+# ...
+# En el return final (para casos OPERAR y NO_OPERAR):
+return {
+    'action': ...,
+    'pattern_match_data': match_data_export, # &lt;--- NUEVO CAMPO
+    # ... resto de campos
+}
+3. 
+bot_main.py
+Implementar la lógica de interrupción del bucle principal.
+
+Ubicación: Dentro del bucle for symbol in self.filtered_symbols: en 
+analyze_all_coins
+.
+Lógica:
+Después de obtener 
+decision
+.
+Verificar si SNIPER_MODE es True.
+Verificar si decision['action'] == 'OPERAR'.
+Verificar si decision.get('pattern_match_data', {}).get('similarity', 0) &gt;= SNIPER_THRESHOLD.
+Si todo es sí: Imprimir alerta Sniper y hacer 
+break
+ del bucle for.
+# En analyze_all_coins loop...
+    if ENABLE_INTELLIGENT_MODE:
+        decision = decide_intelligently(symbol)
         
-        # Consultar últimos 50 registros con JSON válido
-        cursor = conn.execute("""
-            SELECT symbol, ladder_json, timestamp, decision 
-            FROM telemetry_ladder 
-            ORDER BY id DESC 
-            LIMIT 50
-        """)
-        rows = cursor.fetchall()
+        # ... lógica existente de append a analyzed ...
         
-        print(f"📊 Registros analizados: {len(rows)}")
-        print("=" * 60)
-
-        matches = []
-
-        for row in rows:
-            symbol = row['symbol']
-            try:
-                ladder_data = json.loads(row['ladder_json'])
-            except json.JSONDecodeError:
-                continue
-
-            # Simular setup con datos históricos
-            # Nota: ladder_json a veces guarda estructura completa o por keys
-            # Intentamos reconstruir el setup esperado por el matcher
-            
-            current_setup = {
-                '1h': ladder_data.get('1h', {}),
-                '15m': ladder_data.get('15m', {}),
-                '5m': ladder_data.get('5m', {}),
-                'grid': ladder_data.get('grid', {}) # Si existe en el JSON
-            }
-            
-            # Si no hay datos de Grid en el JSON (versiones viejas), intentar inferir o saltar
-            if not current_setup['grid']:
-                # Intento de compatibilidad: buscar en 5m si hay datos de grid anidados
-                if 'grid_data' in ladder_data:
-                    current_setup['grid'] = ladder_data['grid_data']
-            
-            match = pattern_matcher.find_best_match(symbol, current_setup)
-            
-            if match['similarity'] &gt; 70:
-                matches.append({
-                    'symbol': symbol,
-                    'time': row['timestamp'],
-                    'similarity': match['similarity'],
-                    'dna': match['dna_name']
-                })
-                print(f"[OK] {symbol} [{row['timestamp']}]: {match['similarity']:.1f}% match con {match['dna_name']}")
-
-        # INYECCIÓN DE PRUEBA SINTÉTICA (Alineada con ADN BEAT/USDT Real)
-        # NOTA: El ADN de BEAT tiene Momentum=REVERSIÓN y ADX=MODERADO/FUERTE.
-        # Simulamos ese comportamiento exacto para probar el motor de comparación.
-        synthetic_match = {
-            '15m': {
-                'adx': {
-                    'adx_current': 22.0, 
-                    'adx_trend': 'estable',
-                    'behavior': 'MODERADO' # Match DNA
-                },
-                'momentum': {
-                    'color_current': 'lime', 
-                    'consecutive_count': 1, 
-                    'pattern': 'REVERSIÓN_RECIENTE' # Match DNA
-                },
-                'swing': {'size_pct': 0.8, 'direction': 'UP'}
-            },
-            '5m': {
-                'adx': {
-                    'adx_current': 32.0, 
-                    'adx_trend': 'estable',
-                    'behavior': 'FUERTE_ESTABLE' # Match DNA
-                },
-                'momentum': {
-                    'color_current': 'lime', 
-                    'consecutive_count': 2,
-                    'pattern': 'REVERSIÓN_RECIENTE'
-                },
-                'grid': {'ancho_pct': 26.0, 'direction': 'BULLISH'},
-                'swing': {'direction': 'UP'}
-            },
-            '1h': {
-                'adx': {'adx_current': 20.0, 'behavior': 'MODERADO'},
-                'momentum': {'color_current': 'lime', 'pattern': 'REVERSIÓN_RECIENTE'},
-                'swing': {'direction': 'UP'}
-            },
-            'grid': {'direction': 'BULLISH', 'ancho_pct': 26.0}
-        }
+        # === LOGICA SNIPER ===
+        from brain_config import SNIPER_MODE, SNIPER_THRESHOLD
         
-        # Test unitario aislado
-        print("\n[TEST] TEST SINTÉTICO (Validación de Lógica):")
-        match_synth = pattern_matcher.find_best_match("SYNTHETIC_TEST", synthetic_match)
-        if match_synth['similarity'] &gt; 80:
-             print(f"[OK] LÓGICA CONFIRMADA: Setup sintético logró {match_synth['similarity']:.1f}% match con {match_synth['dna_name']}")
-        else:
-             print(f"[FAIL] FALLO SINTÉTICO: Score bajo ({match_synth['similarity']:.1f}%)")
-             
-        # También probamos el "Fallback" (sin behaviors explícitos)
-        synthetic_match_fallback = {
-            '15m': {
-                'adx': {'adx_current': 24.0, 'adx_trend': 'creciendo'}, # Should detect 'EMERGIENDO'
-                'momentum': {'color_current': 'lime', 'consecutive_count': 5},
-                'swing': {'direction': 'UP'}
-            },
-            '5m': {
-                'adx': {'adx_current': 24.0},
-                'momentum': {'color_current': 'lime'},
-                'grid': {'direction': 'BULLISH'}
-            },
-            '1h': {'adx': {'adx_current': 24.0}, 'momentum': {'color_current': 'lime'}},
-            'grid': {'direction': 'BULLISH'}
-        }
-        print("\n[TEST] TEST SINTÉTICO 2 (Fallback Logic):")
-        match_fallback = pattern_matcher.find_best_match("SYNTHETIC_FALLBACK", synthetic_match_fallback)
-        print(f"   Score Fallback: {match_fallback['similarity']:.1f}%")
-
-        print("=" * 60)
-        
-    except Exception as e:
-        print(f"[ERROR] Error durante el test: {e}")
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-if __name__ == "__main__":
-    run_test()
-
- EXTRACTOR DE ADN - Modo Interactivo
-============================================================
-
-📊 Símbolo (ej: LUNC/USDT): BEAT/USDT
-📅 Fecha/Hora INICIO (YYYY-MM-DD HH:MM): 2025-12-14 21:25
-📅 Fecha/Hora FIN (YYYY-MM-DD HH:MM): 2025-12-14 22:15
-
-🚀 Iniciando extracción...
-
-
-🧬 ════════════════════════════════════════════════════════
-   EXTRACCIÓN DE ADN - BEAT/USDT
-   📅 Rango: 2025-12-14 21:25 → 2025-12-14 22:15
-════════════════════════════════════════════════════════
-
-
-📡 Timeframe: 1h
-   ──────────────────────────────────────────────────
-      Descargando 210 velas de 1h...
-   🔬 Calculando indicadores...
-   📊 Velas en ventana: 1
-   ✅ ADX: 27.5→27.5 (max 27.5)
-   ✅ Momentum: green (100% consistencia)
-   ✅ Swing: UP 7.01%
-
-📡 Timeframe: 15m
-   ──────────────────────────────────────────────────
-      Descargando 213 velas de 15m...
-   🔬 Calculando indicadores...
-   📊 Velas en ventana: 4
-   ✅ ADX: 26.8→26.8 (max 26.8)
-   ✅ Momentum: lime (100% consistencia)
-   ✅ Swing: UP 0.83%
-
-📡 Timeframe: 5m
-   ──────────────────────────────────────────────────
-      Descargando 220 velas de 5m...
-   🔬 Calculando indicadores...
-   ⚠️ No hay velas en el rango exacto
-
-🌐 Estructura de Grid (5M)
-   ──────────────────────────────────────────────────
-
-🎯 Generando reglas de trigger...
-   ✅ ADX mínimo 15M: 26.8
-   ✅ Momentum requerido: lime
-   ✅ Swing mínimo: 0.58%
-
-✅ ════════════════════════════════════════════════════════
-   ADN EXTRAÍDO EXITOSAMENTE
-   📁 Archivo: dna_BEATUSDT_20251214_2125.json
-   📍 Ruta: c:\Users\Joel\Trading automatizado\BraintraderAntigravity\strategies\dna\dna_BEATUSDT_20251214_2125.json
-════════════════════════════════════════════════════════
-
-
-✅ ADN extraído exitosamente
-📁 Revisa la carpeta strategies/dna/
-
-🧪 TESTING PATTERN MATCHER (desde DB)
-📂 Base de datos: c:\Users\Joel\Trading automatizado\BraintraderAntigravity\data\brain_rechazos.db
-📊 Registros analizados: 50
-============================================================
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COW/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_MODERADO (red) → 0pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts
-   [1h] ADX: MODERADO vs DEBIL → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (lime) → 20pts
-   TOTAL: 39.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COTI/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 65.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COS/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_MODERADO (red) → 0pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 3.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CORL/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs MODERADO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 11.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COOKIE/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (green) → 20pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 33.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COOK/USDT:USDT)
-   [15m] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (green) → 20pts
-   [5m] ADX: DEBIL vs EXPLOSIVO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (green) → 0pts
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (lime) → 20pts
-   TOTAL: 25.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COMP/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 23.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COMMON/USDT:USDT)
-   [15m] ADX: MODERADO vs FUERTE_ESTABLE → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs EXPLOSIVO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (green) → 40pts
-   TOTAL: 43.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(COINBASE/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs EMERGIENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (red) → 0pts 
-   TOTAL: 15.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CLOUD/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (red) → 0pts 
-   [5m] ADX: DEBIL vs EMERGIENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 3.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CLO/USDT:USDT)
-   [15m] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   [5m] ADX: DEBIL vs EXPLOSIVO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (red) → 0pts 
-   TOTAL: 11.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CLANKER/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs FUERTE_ESTABLE → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 15.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CKB/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_MODERADO (red) → 0pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 35.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CHZ/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs FUERTE_ESTABLE → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (green) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 53.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CHR/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (red) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 15.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CHILLGUY/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs MODERADO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 61.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CHESS/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (green) → 40pts
-   TOTAL: 35.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CHEEMS/USDT:USDT)
-   [15m] ADX: MODERADO vs EMERGIENDO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs MODERADO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   [1h] ADX: MODERADO vs DEBIL → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 3.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CGPT/USDT:USDT)
-   [15m] ADX: MODERADO vs FUERTE_ESTABLE → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 23.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CFX/USDT:USDT)
-   [15m] ADX: MODERADO vs DECAYENDO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (lime) → 20pts
-   TOTAL: 35.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CETUS/USDT:USDT)
-   [15m] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (lime) → 20pts
-   TOTAL: 27.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CELR/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 23.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CATI/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_MODERADO (lime) → 35pts
-   [5m] ADX: DEBIL vs EXPLOSIVO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 50.5%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CAT/USDT:USDT)
-   [15m] ADX: MODERADO vs FUERTE_ESTABLE → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 31.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CARV/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (green) → 20pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 25.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CAMP/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_MODERADO (red) → 0pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs DEBIL → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (red) → 0pts 
-   TOTAL: 15.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(CAKE/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (green) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 3.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BULLA/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (lime) → 20pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   [1h] ADX: MODERADO vs EMERGIENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 25.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BTC/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (lime) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (lime) → 20pts
-   TOTAL: 57.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BSV/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (lime) → 20pts
-   TOTAL: 19.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BSU/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (lime) → 40pts
-   [5m] ADX: DEBIL vs EXPLOSIVO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (green) → 0pts
-   [1h] ADX: MODERADO vs EMERGIENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (maroon) → 0pts
-   TOTAL: 53.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BROCCOLIF3B/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (red) → 0pts
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 43.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BROCCOLI/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (red) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (lime) → 20pts
-   TOTAL: 19.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BOS/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (green) → 20pts
-   [5m] ADX: DEBIL vs MODERADO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (green) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (lime) → 20pts
-   TOTAL: 17.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BOME/USDT:USDT)
-   [15m] ADX: MODERADO vs DECAYENDO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (lime) → 20pts
-   TOTAL: 27.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BOBBSC/USDT:USDT)
-   [15m] ADX: MODERADO vs EMERGIENDO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs EXPLOSIVO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (lime) → 20pts
-   TOTAL: 7.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BOBA/USDT:USDT)
-   [15m] ADX: MODERADO vs DECAYENDO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_MODERADO (maroon) → 0pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (green) → 0pts
-   [1h] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   TOTAL: 15.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BNT/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_MODERADO (lime) → 20pts
-   TOTAL: 57.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BNB/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (lime) → 0pts
-   [1h] ADX: MODERADO vs DEBIL → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 23.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BMT/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (red) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 65.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BLUR/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 53.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BLESS/USDT:USDT)
-   [15m] ADX: MODERADO vs EMERGIENDO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (lime) → 20pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (green) → 40pts
-   TOTAL: 45.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BLAST/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (red) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 15.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BIGTIME/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (red) → 0pts 
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 15.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BIANRENSHENG/USDT:USDT)
-   [15m] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (lime) → 20pts
-   TOTAL: 35.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BEL/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_FUERTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 61.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BEAT/USDT:USDT)
-   [15m] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (lime) → 40pts
-   [5m] ADX: DEBIL vs FUERTE_ESTABLE → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (green) → 0pts
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (lime) → 20pts
-   TOTAL: 35.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BEAMX/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (green) → 40pts
-   [5m] ADX: DEBIL vs DECAYENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (red) → 0pts  
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 53.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BDX/USDT:USDT)
-   [15m] ADX: MODERADO vs DEBIL → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_MODERADO (maroon) → 0pts
-   [5m] ADX: DEBIL vs EMERGIENDO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs EXPLOSIVO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 11.0%
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(BCH/USDT:USDT)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (maroon) → 0pts
-   [5m] ADX: DEBIL vs DEBIL → 40pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs CONSISTENTE_MODERADO (lime) → 0pts
-   [1h] ADX: MODERADO vs DECAYENDO → 0pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs CONSISTENTE_FUERTE (maroon) → 0pts
-   TOTAL: 35.0%
-
-[TEST] TEST SINTÉTICO (Validación de Lógica):
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(SYNTHETIC_TEST)
-   [15m] ADX: MODERADO vs MODERADO → 40pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs REVERSIÓN_RECIENTE (lime) → 20pts
-   [5m] ADX: DEBIL vs FUERTE_ESTABLE → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 53.0%
-[FAIL] FALLO SINTÉTICO: Score bajo (53.0%)
-
-[TEST] TEST SINTÉTICO 2 (Fallback Logic):
-
-🔍 Comparando: DNA(BEAT/USDT) vs Actual(SYNTHETIC_FALLBACK)
-   [15m] ADX: MODERADO vs EMERGIENDO → 0pts
-   [15m] MOM: CONSISTENTE_FUERTE (lime) vs CONSISTENTE_FUERTE (lime) → 40pts
-   [5m] ADX: DEBIL vs MODERADO → 0pts
-   [5m] MOM: REVERSIÓN_RECIENTE (None) vs REVERSIÓN_RECIENTE (lime) → 0pts 
-   [1h] ADX: MODERADO vs MODERADO → 40pts
-   [1h] MOM: REVERSIÓN_RECIENTE (green) vs REVERSIÓN_RECIENTE (lime) → 40pts
-   TOTAL: 43.0%
-   Score Fallback: 43.0% 
+        if SNIPER_MODE and decision['action'] == 'OPERAR':
+            similarity = 0
+            if decision.get('pattern_match_data'):
+                similarity = decision['pattern_match_data'].get('similarity', 0)
+            
+            if similarity &gt;= SNIPER_THRESHOLD:
+                print(f"\n🎯 SNIPER MODE ACTIVADO: {symbol} (Match {similarity:.1f}%) - DETENIENDO ESCANEO")
+                print(f"   🚀 Prioridad Absoluta: Ejecutar Trade Inmediatamente")
+                break # &lt;--- SALIDA ANTICIPADA DEL BUCLE
+Validación
+Configuración: Activar SNIPER_MODE = True.
+Ejecución: Correr el bot.
+Resultado Esperado: Si encuentra una moneda con &gt;90% match, debe dejar de analizar las siguientes y pasar inmediatamente a la fase de ejecución/watchlist (donde el trade manager tomará la moneda).
+Pasos de Ejecución
+Modificar 
+brain_config.py
+.
+Modificar 
+brain_intelligent.py
+ para exponer datos.
+Modificar 
+bot_main.py
+ con el break.
+Verificar sintaxis.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 30,206<br>
-    Generado: 2025-12-15 14:11:04
+    Total caracteres: 3,892<br>
+    Generado: 2025-12-15 19:49:48
   </div>
 </body>
 </html>
