@@ -15,14 +15,14 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-15 20:09:58</div>
+  <div class="meta">Última actualización: 2025-12-15 20:22:40</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Plan de Implementación: Modo Sniper Agresivo (v8.1.1) - VERSIÓN FINAL QUIRÚRGICA
+Plan de Implementación: Modo Sniper Agresivo (v8.1.1) - ORDEN LÓGICO PERFECTO
 Objetivo
-Implementar el "Modo Sniper" con validación de Auditor y lógica graduada, corrigiendo bugs de loop y ajustando la agresividad del disparo.
+Implementar el "Modo Sniper" con validación de Auditor PREVIA a la inclusión en la lista de analizados, asegurando que solo setups aprobados entren al sistema, y aplicando lógica de disparo graduado.
 
 Archivos Afectados
 brain_config.py
@@ -31,17 +31,12 @@ bot_main.py
 Análisis de Cambios
 1. 
 brain_config.py
-Agregar flags con niveles de precisión.
-
 # ===== MODO SNIPER (v8.1) =====
-SNIPER_MODE = True              # Activar modo disparo rápido
-SNIPER_THRESHOLD_PERFECT = 95   # Nivel 1: Disparo INMEDIATO
-SNIPER_THRESHOLD_HIGH = 90      # Nivel 2: Prioridad Alta
+SNIPER_MODE = True              
+SNIPER_THRESHOLD_PERFECT = 95   
+SNIPER_THRESHOLD_HIGH = 90
 2. 
 brain_intelligent.py
-Exponer explícitamente pattern_match_data y audit_data en el retorno.
-
-# En orchestrate_intelligence...
 return {
     'action': ...,
     'pattern_match_data': match_result if 'match_result' in locals() else None,
@@ -50,78 +45,70 @@ return {
 }
 3. 
 bot_main.py
- - REFACTORIZACIÓN BUCLE PRINCIPAL
-Acción 1: Refactorizar Loop para enumerate
+ - LÓGICA REORDENADA
+Variables: priority_targets = [] buffer_target_count = max(3, int(len(self.filtered_symbols) * 0.03))
 
-CÓDIGO ACTUAL:
+Código a Insertar (Dentro del loop else de Intelligent Mode):
 
-for i, symbol in enumerate(self.filtered_symbols): # (Ya estaba enumerate en línea 156, confirmación visual)
-           # pero si no estaba, lo aseguramos:
-        # for symbol in self.filtered_symbols:  &lt;-- REEMPLAZAR ESTO
-CÓDIGO PROPUESTO:
-
-priority_targets = []  # NUEVA VARIABLE
-        for i, symbol in enumerate(self.filtered_symbols):
-             # ... resto del código ...
-Acción 2: Inserción de Lógica Sniper
-
-Ubicación: Inmediatamente después de la línea analyzed.append((symbol, analysis_compatible)) dentro del bloque if decision['action'] == 'OPERAR':.
-
-LÓGICA OPCIÓN B (Agresiva con Buffer Corto 5%):
-
-# ... (código existente: creación de analysis_compatible y append) ...
+# ... después de obtener 'decision' ...
+                        import brain_config as cfg
+                        # === 1. VALIDACIÓN SNIPER PREVIA (Corrección Ajuste 1) ===
+                        if cfg.SNIPER_MODE:
+                            audit_data = decision.get('audit_data')
+                            
+                            # Si no hay auditoría o auditoría falló -&gt; SALTAR
+                            if not audit_data:
+                                continue
+                            
+                            if audit_data.get('final_action') != 'ALLOW':
+                                # print(f"   ⚠️ Auditor rechazó {symbol} (Status: {audit_data.get('status')})")
+                                continue 
+                        # ... (código existente: creación de analysis_compatible) ...
+                        # === 2. AGREGAR A LISTA VIABLE (Solo si pasó validación) ===
                         analyzed.append((symbol, analysis_compatible))
                         viable_count += 1
                         
-                        # === LOGICA SNIPER (v8.1) ===
-                        import brain_config as cfg
-                        
+                        # === 3. LÓGICA SNIPER SCORING (Ya validado) ===
                         if cfg.SNIPER_MODE:
-                            # 1. Extraer datos
+                            # Extraer score
                             similarity = 0
                             if decision.get('pattern_match_data'):
                                 similarity = decision['pattern_match_data'].get('similarity', 0)
                             
-                            audit_status = decision.get('audit_data', {}).get('final_action', 'BLOCK')
+                            # NIVEL 1: MATCH PERFECTO (&gt;= 95%) -&gt; DISPARO INMEDIATO
+                            if similarity &gt;= cfg.SNIPER_THRESHOLD_PERFECT:
+                                print(f"\n🔥 SNIPER: {symbol} MATCH PERFECTO {similarity:.1f}% + AUDITOR ✅ - EJECUTANDO YA")
+                                analyzed = [(symbol, analysis_compatible)]
+                                break
                             
-                            # 2. VALIDACIÓN DE AUDITOR
-                            if audit_status == 'ALLOW':
+                            # NIVEL 2: MATCH EXCELENTE (&gt;= 90%) -&gt; Acumular y Disparar por Cantidad
+                            elif similarity &gt;= cfg.SNIPER_THRESHOLD_HIGH:
+                                print(f"⚡ SNIPER: {symbol} Match Excelente {similarity:.1f}% - Agregado a Prioridad")
+                                priority_targets.append((symbol, analysis_compatible, similarity))
                                 
-                                # NIVEL 1: MATCH PERFECTO (&gt;= 95%) -&gt; DISPARO INMEDIATO
-                                if similarity &gt;= cfg.SNIPER_THRESHOLD_PERFECT:
-                                    print(f"\n🔥 SNIPER: {symbol} MATCH PERFECTO {similarity:.1f}% + AUDITOR ✅ - EJECUTANDO YA")
-                                    # Forzar este único resultado
-                                    analyzed = [(symbol, analysis_compatible)]
-                                    break
-                                
-                                # NIVEL 2: MATCH EXCELENTE (&gt;= 90%) -&gt; Buffer Corto (5%)
-                                elif similarity &gt;= cfg.SNIPER_THRESHOLD_HIGH:
-                                    print(f"⚡ SNIPER: {symbol} Match Excelente {similarity:.1f}% - Agregado a Prioridad")
-                                    priority_targets.append((symbol, analysis_compatible, similarity))
+                                # Buffer lleno?
+                                if len(priority_targets) &gt;= buffer_target_count:
+                                    print(f"⏩ SNIPER: Buffer lleno ({len(priority_targets)} candidatos). Disparando mejor opción.")
                                     
-                                    # Buffer corto: Si analizamos 5% del mercado y ya tenemos algo excelente, DISPARAR.
-                                    progress_pct = i / len(self.filtered_symbols)
-                                    if len(self.filtered_symbols) &gt; 10 and progress_pct &gt; 0.05:
-                                        print(f"⏩ SNIPER: Buffer 5% cumplido ({progress_pct*100:.1f}%) con objetivo excelente. Disparando.")
+                                    if not priority_targets:
+                                        continue
                                         
-                                        # Seleccionar el mejor de la lista de prioridad
-                                        priority_targets.sort(key=lambda x: x[2], reverse=True)
-                                        best = priority_targets[0]
-                                        
-                                        analyzed = [(best[0], best[1])]
-                                        break
+                                    priority_targets.sort(key=lambda x: x[2], reverse=True)
+                                    best = priority_targets[0]
+                                    
+                                    analyzed = [(best[0], best[1])]
+                                    break
                         # ============================
 Validación Final Checklist
-Scope analysis_compatible: Inserción ocurre DESPUÉS de su definición en línea ~223. ✅
-Loop enumerate: Verificado que variable i esté disponible. ✅
-Variable priority_targets: Definida antes del loop. ✅
-Auditor Check: Obligatorio. ✅
-Lógica Nivel 2: Buffer reducido al 5% (compromiso ideal entre velocidad y calidad). ✅
+Orden de Validación: continue (salto) ocurre ANTES de analyzed.append. Si el auditor rechaza, la moneda NO entra a la watchlist. ✅
+Safety: Solo monedas ALLOW llegan a ser procesadas por el resto del bot. ✅
+Buffer: Retenido max(3, 3%). ✅
+Fallback: Retenido. ✅
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,844<br>
-    Generado: 2025-12-15 20:09:58
+    Total caracteres: 4,355<br>
+    Generado: 2025-12-15 20:22:40
   </div>
 </body>
 </html>
