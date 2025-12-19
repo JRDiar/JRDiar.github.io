@@ -15,389 +15,330 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-19 02:35:39</div>
+  <div class="meta">Última actualización: 2025-12-19 20:25:40</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-FASE 3: NECESITO TU APROBACIÓN
-He preparado la integración completa en brain_intelligent.py con:
+Grid Diagonal Trendlines - Implementation Plan
+Objetivo
+Implementar trendlines diagonales usando regresión lineal sobre pivots del ZigZag para:
 
-LÓGICA DE BLOQUEO GRADUADO (TIME LADDER):
+Medir posición del precio en el canal (0-100%)
+Detectar calidad del canal (R²)
+Penalizar monedas choppy y entradas cerca de techos
+1️⃣ RESPUESTAS A LAS 5 PREGUNTAS
+Pregunta 1: ¿Ya existe funcionalidad similar en brain_grid.py actual?
+RESPUESTA: SÍ, PARCIALMENTE
 
-if lateral_penalty == 0:
-    → Procede normal
-elif lateral_penalty &lt; 50:
-    → Penaliza score (-penalty puntos)
-elif lateral_penalty &gt;= 50:
-    → BLOQUEA (lateral severo confirmado)
+El 
+brain_grid.py
+ actual (líneas 102-139) ya calcula:
 
-FASE 3: CÓDIGO COMPLETO - 
-brain_intelligent.py
-📍 ARCHIVO: 
-brain_intelligent.py
-🎯 FUNCIÓN: 
-orchestrate_intelligence()
- - Integración Lateral Detection
-❌ CÓDIGO ACTUAL (Líneas 28-140):
-python
-def orchestrate_intelligence(symbol):
+techo: High máximo de últimas 20 velas (rolling max)
+piso: Low mínimo de últimas 20 velas (rolling min)
+posicion: Posición relativa del precio en el canal (0-1)
+ancho_atr: Ancho del canal en ATRs
+PROBLEMA: Estas paredes son HORIZONTALES (basadas en max/min simple). SOLUCIÓN: Agregar paredes DIAGONALES usando regresión lineal de pivots.
+
+Pregunta 2: ¿brain_zigzag_tti.py retorna pivots separados (highs/lows)?
+RESPUESTA: SÍ, pero NO separados
+
+El módulo retorna:
+
+return {
+    'pivots': [list de valores alternados],      # ✅ Existe
+    'pivot_indices': [list de índices],          # ✅ Existe
+    'pivot_types': ['L', 'H', 'HL', 'HH', ...],  # ✅ Existe
+    ...
+}
+PROBLEMA: Los pivots vienen mezclados (alternando high/low). SOLUCIÓN: Agregar campos nuevos high_pivots y low_pivots separados.
+
+Pregunta 3: ¿Qué librería para regresión lineal?
+RESPUESTA: numpy.polyfit (ya instalado)
+
+import numpy as np
+# Ya está en brain_grid.py línea 19
+# Regresión lineal simple:
+coeffs = np.polyfit(x, y, 1)  # Retorna [slope, intercept]
+predicted = np.polyval(coeffs, x)  # Valores predichos
+r_squared = 1 - (np.sum((y - predicted)**2) / np.sum((y - y.mean())**2))
+Ventajas:
+
+Ya instalado (numpy)
+Rápido (&lt;10ms)
+No requiere dependencias adicionales
+Pregunta 4: ¿Nuevo módulo o ampliar brain_grid.py?
+RESPUESTA: AMPLIAR brain_grid.py
+
+Razón:
+
+Grid ya tiene la lógica de navegación espacial
+Las trendlines diagonales son una extensión natural de las paredes horizontales
+Evita fragmentación de módulos
+Mantiene cohesión conceptual (todo lo relacionado a "malla" en un lugar)
+Plan: Agregar método _build_diagonal_trendlines() a la clase 
+MarketGrid
+.
+
+Pregunta 5: ¿Riesgo de romper código existente?
+RESPUESTA: BAJO
+
+Cambios seguros:
+
+Agregar campos NUEVOS al return dict (no modificar existentes)
+Agregar método NUEVO a la clase (no modificar existentes)
+Agregar penalties al score (se suman/restan)
+Cambios mínimos en ZigZag:
+
+Agregar campos high_pivots y low_pivots al return
+Testing requerido: Verificar que scoring no cambie para monedas actuales.
+
+2️⃣ ARQUITECTURA PROPUESTA
+┌─────────────────────────────────────────────────────────────┐
+│                    brain_analyzer.py                         │
+│                    analyze_15m()                             │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ Llama
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    brain_grid.py                             │
+│                    MarketGrid.analyze()                      │
+│                                                               │
+│  ACTUAL:                    NUEVO:                           │
+│  ├─ _build_dimensions()     ├─ _build_diagonal_trendlines() │
+│  ├─ _calculate_pointer()    ├─ _calculate_channel_position()│
+│  ├─ _detect_context()       ├─ _calculate_channel_quality() │
+│  └─ _calculate_final_score()└─ Penalties TIME LADDER         │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ Usa pivots de
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 brain_zigzag_tti.py                          │
+│                                                               │
+│  NUEVO RETORNO:                                              │
+│  ├─ high_pivots: [(idx, value), ...]                        │
+│  ├─ low_pivots: [(idx, value), ...]                         │
+│  └─ pivots_per_candle: float                                │
+└─────────────────────────────────────────────────────────────┘
+3️⃣ PROPOSED CHANGES
+A. brain_zigzag_tti.py - Agregar pivots separados
+Ubicación: Método 
+calculate_zigzag()
+, líneas 79-87
+
+# NUEVO: Separar highs y lows para regresión
+high_pivots = []
+low_pivots = []
+for i, ptype in enumerate(pivot_types):
+    if ptype in ['H', 'HH', 'LH']:
+        high_pivots.append((pivot_indices[i], pivots[i]))
+    elif ptype in ['L', 'HL', 'LL']:
+        low_pivots.append((pivot_indices[i], pivots[i]))
+# Agregar al return:
+return {
+    ...existing fields...
+    'high_pivots': high_pivots,              # NUEVO
+    'low_pivots': low_pivots,                # NUEVO
+    'pivots_per_candle': len(pivots) / len(df) if len(df) &gt; 0 else 0,  # NUEVO
+}
+B. brain_grid.py - Agregar trendlines diagonales
+Ubicación: Nuevo método después de 
+_build_dimensions()
+ (línea 139)
+
+def _build_diagonal_trendlines(self, df, zigzag_data):
     """
-    Orquesta la inteligencia cognitiva del bot.
-    Fases:
-    1. Percepción (Patrones + Time Ladder)
-    2. Validación Matemática (Fuerza)
-    3. Memoria (Telemetría)
-    4. Decisión (Wrecking Ball + Estructura)
+    Construye trendlines diagonales usando regresión lineal de pivots.
+    
+    Returns:
+        dict: {
+            'upper_trendline': (slope, intercept),
+            'lower_trendline': (slope, intercept),
+            'upper_r2': float,  # Calidad de la línea superior
+            'lower_r2': float,  # Calidad de la línea inferior
+            'channel_width': float,  # Ancho actual del canal
+            'price_position_pct': float,  # 0-100% posición en canal
+        }
     """
-    print(f"\n🧠 ORCHESTRATING INTELLIGENCE: {symbol}")
+    high_pivots = zigzag_data.get('high_pivots', [])
+    low_pivots = zigzag_data.get('low_pivots', [])
     
-    # 1. PERCEPCIÓN
-    print("   Scanning patterns &amp; structure...")
-    patterns_result = pattern_engine.detect_all_patterns(symbol)
+    # Necesitamos mínimo 3 pivots de cada tipo
+    if len(high_pivots) &lt; 2 or len(low_pivots) &lt; 2:
+        return self._default_trendlines()
     
-    if patterns_result and patterns_result.get('best_pattern'):
-        p = patterns_result['best_pattern']
-        print(f"   ✨ PATTERN FOUND: {p['type']} in {p['tf']} (Conf: {p['confidence']})")
+    # Regresión lineal para HIGHs
+    x_high = np.array([p[0] for p in high_pivots])
+    y_high = np.array([p[1] for p in high_pivots])
+    upper_coeffs = np.polyfit(x_high, y_high, 1)
+    upper_predicted = np.polyval(upper_coeffs, x_high)
+    upper_r2 = self._calculate_r2(y_high, upper_predicted)
     
-    ladder_analysis = {
-        '4h': analyze_4h(symbol),
-        '1h': analyze_1h(symbol),
-        '15m': analyze_15m(symbol, strict=False),  # ❌ No usa datos granulares
-        '5m': analyze_5m(symbol)
-    }
+    # Regresión lineal para LOWs
+    x_low = np.array([p[0] for p in low_pivots])
+    y_low = np.array([p[1] for p in low_pivots])
+    lower_coeffs = np.polyfit(x_low, y_low, 1)
+    lower_predicted = np.polyval(lower_coeffs, x_low)
+    lower_r2 = self._calculate_r2(y_low, lower_predicted)
     
-    # GRID ANALYSIS
-    from brain_grid import grid
-    from exchange_connection import fetch_ohlcv
-    import pandas as pd
+    # Calcular posición actual del precio en canal
+    current_idx = len(df) - 1
+    current_price = df['close'].iloc[-1]
     
-    ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
-    if ohlcv_grid:
-        df_grid = pd.DataFrame(ohlcv_grid, columns=['timestamp','open','high','low','close','volume'])
-        grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
-        print(f"   🌐 GRID: {grid_result['status']} | {grid_result['razon']}")
-        
-        # BLOQUEO ABSOLUTO si lateral
-        if grid_result['status'] == 'BLOQUEADO':
-            return {
-                'action': 'NO_OPERAR',
-                'confidence': 0,
-                'reason': grid_result['razon'],
-                'full_analysis': {'ladder_data': ladder_analysis}
-            }
+    upper_at_current = np.polyval(upper_coeffs, current_idx)
+    lower_at_current = np.polyval(lower_coeffs, current_idx)
+    channel_width = upper_at_current - lower_at_current
+    
+    if channel_width &gt; 0:
+        price_position_pct = ((current_price - lower_at_current) / channel_width) * 100
     else:
-        grid_result = {'score': 0}
+        price_position_pct = 50  # Default si canal colapsado
     
-    # 2. VALIDACIÓN MATEMÁTICA
-    math_signals = {
-        'market_force': check_market_force(ladder_analysis),
-        'adx_val': ladder_analysis.get('15m', {}).get('adx', {}).get('adx_current', 0)
+    return {
+        'upper_trendline': tuple(upper_coeffs),
+        'lower_trendline': tuple(lower_coeffs),
+        'upper_r2': upper_r2,
+        'lower_r2': lower_r2,
+        'avg_r2': (upper_r2 + lower_r2) / 2,
+        'channel_width': channel_width,
+        'channel_width_pct': (channel_width / current_price * 100) if current_price &gt; 0 else 0,
+        'price_position_pct': max(0, min(100, price_position_pct)),  # Clamp 0-100
+        'upper_at_current': upper_at_current,
+        'lower_at_current': lower_at_current,
     }
-    
-    # 3. MEMORIA (TELEMETRÍA)
-    recent_history = []
-    try:
-        # Recuperar decisiones de los últimos 30 mins
-        recent_history = db_manager.get_recent_telemetry(symbol, minutes=30)
-    except Exception as e:
-        print(f"⚠️ Memory access failed: {e}")
-    # 4. DECISIÓN COGNITIVA
-    # Extraer datos necesarios
-    current_price = ladder_analysis.get('5m', {}).get('current_price', 0)
-    
-    decision = make_pattern_based_decision(
-        patterns_result, ladder_analysis, math_signals, 
-        symbol, current_price, recent_history, grid_result
-    )
-    # --- REPORTE Y SALIDA ---
-    print(f"\n🔍 REPORTE INTELIGENTE: {symbol}")
-    print(f"   - Acción: {decision['action']} (Conf: {decision['confidence']})")
-    if decision['reasons']:
-        print(f"   - Razones: {decision['reasons'][0]}")  # Mostrar solo la principal
-        if len(decision['reasons']) &gt; 1:
-            print(f"     ...y {len(decision['reasons'])-1} más.")
-    # Guardar Telemetría
-    try:
-        telemetry_data = ladder_analysis.copy()
-        telemetry_data['decision_reasons'] = decision['reasons']
-        
-        db_manager.insert_telemetry(
-            symbol, 
-            'OPERAR' if decision['action'] == 'ENTER' else 'NO_OPERAR',
-            decision['confidence'],
-            telemetry_data
-        )
-    except Exception as e:
-        print(f"⚠️ Telemetry error: {e}")
-    # Formatear retorno para bot_main
-    if decision['action'] == 'ENTER':
-        return {
-            'action': 'OPERAR',
-            'trade_type': decision['strategy']['type'],
-            'confidence': decision['confidence'],
-            'pattern': decision.get('pattern'),
-            'reasons': decision['reasons'],
-            'full_analysis': {'ladder_data': ladder_analysis, 'patterns': patterns_result},
-            'position_size': decision['strategy']['position_size'],
-            'strategy': decision['strategy']
-        }
-    else:
-        return {
-            'action': 'NO_OPERAR',
-            'confidence': decision['confidence'],
-            'reason': f"Wait: {decision['reasons'][0] if decision['reasons'] else 'Low score'}",
-            'full_analysis': {'ladder_data': ladder_analysis}
-        }
-✅ CÓDIGO PROPOSED (Líneas 28-175, +35 líneas nuevas):
-python
-def orchestrate_intelligence(symbol):
-    """
-    Orquesta la inteligencia cognitiva del bot.
-    Fases:
-    1. Percepción (Patrones + Time Ladder)
-    2. Validación Matemática (Fuerza)
-    3. &gt;&gt;&gt; NUEVO: Detección Granular de Lateralización
-    4. Memoria (Telemetría)
-    5. Decisión (Wrecking Ball + Estructura)
-    """
-    print(f"\n🧠 ORCHESTRATING INTELLIGENCE: {symbol}")
-    
-    # 1. PERCEPCIÓN
-    print("   Scanning patterns &amp; structure...")
-    patterns_result = pattern_engine.detect_all_patterns(symbol)
-    
-    if patterns_result and patterns_result.get('best_pattern'):
-        p = patterns_result['best_pattern']
-        print(f"   ✨ PATTERN FOUND: {p['type']} in {p['tf']} (Conf: {p['confidence']})")
-    
-    ladder_analysis = {
-        '4h': analyze_4h(symbol),
-        '1h': analyze_1h(symbol),
-        '15m': analyze_15m(symbol, strict=False),  # ✅ Ahora incluye datos granulares
-        '5m': analyze_5m(symbol)
+def _calculate_r2(self, y_actual, y_predicted):
+    """Calcula R² (coeficiente de determinación)"""
+    ss_res = np.sum((y_actual - y_predicted) ** 2)
+    ss_tot = np.sum((y_actual - np.mean(y_actual)) ** 2)
+    if ss_tot == 0:
+        return 0.0
+    return max(0.0, 1 - (ss_res / ss_tot))
+def _default_trendlines(self):
+    """Retorno por defecto si no hay suficientes datos"""
+    return {
+        'upper_trendline': (0, 0),
+        'lower_trendline': (0, 0),
+        'upper_r2': 0.0,
+        'lower_r2': 0.0,
+        'avg_r2': 0.0,
+        'channel_width': 0.0,
+        'channel_width_pct': 0.0,
+        'price_position_pct': 50.0,
+        'upper_at_current': 0.0,
+        'lower_at_current': 0.0,
+        'valid': False
     }
-    
-    # &gt;&gt;&gt; NUEVO: 2. DETECCIÓN GRANULAR DE LATERALIZACIÓN
-    a15m = ladder_analysis.get('15m', {})
-    lateral_penalty = a15m.get('lateral_penalty', 0)
-    lateral_reasons = a15m.get('lateral_reasons', [])
-    
-    # TIME LADDER: Penalty graduada, NO bloqueo binario
-    if lateral_penalty &gt; 0:
-        print(f"   ⚠️  LATERAL DETECTADO: Penalty -{lateral_penalty}")
-        for reason in lateral_reasons:
-            print(f"       - {reason}")
-    
-    # &gt;&gt;&gt; NUEVO: BLOQUEO GRADUADO por lateralización severa
-    # Si penalty &gt;= 50, es lateral SEVERO (múltiples indicadores confirman)
-    if lateral_penalty &gt;= 50:
-        print(f"   🚫 BLOQUEANDO: Lateralización severa (penalty {lateral_penalty} &gt;= 50)")
-        return {
-            'action': 'NO_OPERAR',
-            'confidence': 0,
-            'reason': f"Lateral severo: {', '.join(lateral_reasons)}",
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                'lateral_penalty': lateral_penalty,
-                'lateral_reasons': lateral_reasons
-            }
-        }
-    
-    # GRID ANALYSIS
-    from brain_grid import grid
-    from exchange_connection import fetch_ohlcv
-    import pandas as pd
-    
-    ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
-    if ohlcv_grid:
-        df_grid = pd.DataFrame(ohlcv_grid, columns=['timestamp','open','high','low','close','volume'])
-        grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
-        print(f"   🌐 GRID: {grid_result['status']} | {grid_result['razon']}")
-        
-        # BLOQUEO ABSOLUTO si lateral
-        if grid_result['status'] == 'BLOQUEADO':
-            return {
-                'action': 'NO_OPERAR',
-                'confidence': 0,
-                'reason': grid_result['razon'],
-                'full_analysis': {'ladder_data': ladder_analysis}
-            }
-    else:
-        grid_result = {'score': 0}
-    
-    # 3. VALIDACIÓN MATEMÁTICA
-    math_signals = {
-        'market_force': check_market_force(ladder_analysis),
-        'adx_val': ladder_analysis.get('15m', {}).get('adx', {}).get('adx_current', 0),
-        # &gt;&gt;&gt; NUEVO: Agregar penalty lateral a signals
-        'lateral_penalty': lateral_penalty
-    }
-    
-    # 4. MEMORIA (TELEMETRÍA)
-    recent_history = []
-    try:
-        # Recuperar decisiones de los últimos 30 mins
-        recent_history = db_manager.get_recent_telemetry(symbol, minutes=30)
-    except Exception as e:
-        print(f"⚠️ Memory access failed: {e}")
-    # 5. DECISIÓN COGNITIVA
-    # Extraer datos necesarios
-    current_price = ladder_analysis.get('5m', {}).get('current_price', 0)
-    
-    decision = make_pattern_based_decision(
-        patterns_result, ladder_analysis, math_signals, 
-        symbol, current_price, recent_history, grid_result
-    )
-    # --- REPORTE Y SALIDA ---
-    print(f"\n🔍 REPORTE INTELIGENTE: {symbol}")
-    print(f"   - Acción: {decision['action']} (Conf: {decision['confidence']})")
-    if decision['reasons']:
-        print(f"   - Razones: {decision['reasons'][0]}")  # Mostrar solo la principal
-        if len(decision['reasons']) &gt; 1:
-            print(f"     ...y {len(decision['reasons'])-1} más.")
-    
-    # &gt;&gt;&gt; NUEVO: Mostrar penalty lateral en reporte si existe
-    if lateral_penalty &gt; 0:
-        print(f"   - Penalty Lateral: -{lateral_penalty} ({len(lateral_reasons)} razones)")
-    # Guardar Telemetría
-    try:
-        telemetry_data = ladder_analysis.copy()
-        telemetry_data['decision_reasons'] = decision['reasons']
-        # &gt;&gt;&gt; NUEVO: Agregar lateralización a telemetría
-        telemetry_data['lateral_penalty'] = lateral_penalty
-        telemetry_data['lateral_reasons'] = lateral_reasons
-        
-        db_manager.insert_telemetry(
-            symbol, 
-            'OPERAR' if decision['action'] == 'ENTER' else 'NO_OPERAR',
-            decision['confidence'],
-            telemetry_data
-        )
-    except Exception as e:
-        print(f"⚠️ Telemetry error: {e}")
-    # Formatear retorno para bot_main
-    if decision['action'] == 'ENTER':
-        return {
-            'action': 'OPERAR',
-            'trade_type': decision['strategy']['type'],
-            'confidence': decision['confidence'],
-            'pattern': decision.get('pattern'),
-            'reasons': decision['reasons'],
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                'patterns': patterns_result,
-                # &gt;&gt;&gt; NUEVO: Agregar datos laterales al full_analysis
-                'lateral_penalty': lateral_penalty,
-                'lateral_reasons': lateral_reasons
-            },
-            'position_size': decision['strategy']['position_size'],
-            'strategy': decision['strategy']
-        }
-    else:
-        return {
-            'action': 'NO_OPERAR',
-            'confidence': decision['confidence'],
-            'reason': f"Wait: {decision['reasons'][0] if decision['reasons'] else 'Low score'}",
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                # &gt;&gt;&gt; NUEVO: Agregar datos laterales también en NO_OPERAR
-                'lateral_penalty': lateral_penalty,
-                'lateral_reasons': lateral_reasons
-            }
-        }
-3️⃣ EXPLICACIÓN DETALLADA DE CAMBIOS
-Línea	Tipo	Descripción
-34	MODIFICADO	Docstring: Agregado "3. &gt;&gt;&gt; NUEVO: Detección Granular de Lateralización"
-50-53	NUEVO	Extracción de lateral_penalty y lateral_reasons de 
-analyze_15m()
-55-59	NUEVO	Logging de lateralización detectada (TIME LADDER)
-61-73	NUEVO	BLOQUEO GRADUADO: Si lateral_penalty &gt;= 50, bloquea con mensaje descriptivo
-96-99	MODIFICADO	Agregado 'lateral_penalty': lateral_penalty a math_signals
-121-123	NUEVO	Logging de penalty lateral en reporte final
-129-131	NUEVO	Almacenar lateral_penalty y lateral_reasons en telemetría para forensic analysis
-151-155	NUEVO	Agregar datos laterales a full_analysis en retorno OPERAR
-163-166	NUEVO	Agregar datos laterales a full_analysis en retorno NO_OPERAR
-📊 RESUMEN DE CAMBIOS:
-Líneas agregadas: 35
-Líneas modificadas: 4
-Total líneas ACTUAL: 113
-Total líneas PROPOSED: 148
+C. Penalties TIME LADDER
+Agregar a 
+_calculate_final_score()
+ (después de línea 398):
 
-Cambios críticos:
+# === DIAGONAL TRENDLINES PENALTIES (TIME LADDER) ===
+diagonal = diagonal_data  # Pasado como parámetro
+# 1. CERCA DEL TECHO (comprando alto)
+position_pct = diagonal.get('price_position_pct', 50)
+if position_pct &gt; 85:
+    score -= 30
+    razones.append(f"⚠️ Comprando TECHO diagonal ({position_pct:.0f}%)")
+elif position_pct &gt; 70:
+    score -= 15
+    razones.append(f"⚡ Alto en canal ({position_pct:.0f}%)")
+# 2. CERCA DEL PISO (ideal para comprar)
+elif position_pct &lt; 20:
+    score += 25
+    razones.append(f"✅ Cerca SOPORTE diagonal ({position_pct:.0f}%)")
+elif position_pct &lt; 40:
+    score += 10
+    razones.append(f"👍 Zona favorable ({position_pct:.0f}%)")
+# 3. CANAL MAL FORMADO (choppy)
+avg_r2 = diagonal.get('avg_r2', 1.0)
+if avg_r2 &lt; 0.5:
+    score -= 50
+    razones.append(f"❌ Moneda CHOPPY (R²={avg_r2:.2f})")
+elif avg_r2 &lt; 0.7:
+    score -= 25
+    razones.append(f"⚠️ Canal poco confiable (R²={avg_r2:.2f})")
+# 4. DEMASIADOS PIVOTS (irregular)
+pivots_per_candle = zigzag_data.get('pivots_per_candle', 0)
+if pivots_per_candle &gt; 0.15:
+    score -= 30
+    razones.append(f"❌ ZigZag caótico ({pivots_per_candle:.2%} pivots/vela)")
+4️⃣ VERIFICACIÓN
+Test Automatizado
+cd "c:\Users\Joel\Trading automatizado\BraintraderAntigravity"
+python test_diagonal_grid.py
+Métricas a Validar
+Escenario	position_pct	R²	Penalty/Bonus
+BTC cerca techo	&gt;85%	&gt;0.8	-30
+Moneda choppy (BAY)	any	&lt;0.5	-50
+Entrada ideal soporte	&lt;20%	&gt;0.7	+25
+5️⃣ CASOS DE USO
+CASO 1: BTC cerca del techo
+Precio: $62,500
+Canal: $58,000 (inf) - $63,000 (sup)
+Posición: 90% del canal
+R²: 0.85 (buen canal)
+→ Penalty: -30 (cerca techo)
+→ Resultado: WAIT
+CASO 2: Moneda choppy (BAY)
+ZigZag: 10 pivots en 50 velas (0.20 pivots/vela)
+R²: 0.3 (mal formado)
+→ Penalty: -50 (choppy) + -30 (caótico) = -80
+→ Resultado: REJECT
+CASO 3: Entrada ideal cerca soporte
+Precio: $58,200
+Canal: $58,000 (inf) - $63,000 (sup)
+Posición: 4% del canal
+R²: 0.88 (excelente)
+→ Bonus: +25 (cerca soporte)
+→ Resultado: ENTER (si otros criterios OK)
+User Review Required
+IMPORTANT
 
-Extracción lateral data (+4 líneas): Lee lateral_penalty y lateral_reasons de 15M analysis
-Logging lateral (+5 líneas): Muestra penalty y razones
-Bloqueo graduado (+13 líneas): Bloquea si penalty &gt;= 50 (TIME LADDER, no binario)
-Integración signals (+1 línea): Agrega penalty a math_signals
-Reporte (+3 líneas): Muestra penalty en reporte
-Telemetría (+3 líneas): Guarda datos laterales
-Full analysis (+6 líneas): Incluye datos laterales en retorno
-🎯 LÓGICA DE BLOQUEO GRADUADO:
-python
-# TIME LADDER Philosophy:
-if lateral_penalty == 0:
-    # NO lateral → Procede normal
-elif lateral_penalty &lt; 50:
-    # LATERAL MODERADO → Penaliza score pero permite continuar
-    # Ejemplo: penalty 35 = -35 al score final
-elif lateral_penalty &gt;= 50:
-    # LATERAL SEVERO → BLOQUEA (múltiples indicadores confirmados)
-    # Ejemplo: ADX bajo (-15) + DI superpuestos (-20) + Mom débil (-15) = 50
-    return NO_OPERAR
-Casos ejemplo:
+Antes de implementar, necesito tu aprobación sobre:
 
-GIGGLE/USDT: penalty ~70 (ADX bajo + DI superpuestos + Mom flato + Squeeze) → BLOQUEADO ✅
-Coin con solo ADX bajo: penalty 15 → PERMITE (score reducido) ✅
-Coin con ADX bajo + DI superpuestos: penalty 35 → PERMITE (score muy reducido) ✅
-🚨 PREGUNTAS ANTES DE APROBAR:
-Joel, confirma:
+¿Los valores de penalties/bonus son correctos? (-30/-50/+25)
+¿Los thresholds de R² son apropiados? (&lt;0.5 choppy, &lt;0.7 poco confiable)
+¿El threshold de pivots_per_candle (&gt;0.15) es correcto?
 
-¿El threshold de bloqueo (penalty &gt;= 50) es correcto?
-Alternativa: ¿Prefieres 45 o 60?
-¿El logging es suficiente o agregar más detalles?
-¿Los nombres de campos en full_analysis son claros?
-⏸️ ESPERANDO TU APROBACIÓN ANTES DE IMPLEMENTAR FASE 3
+ANÁLISIS COMPLETADO - Grid Diagonal Trendlines
+Respuestas a las 5 Preguntas:
+¿Funcionalidad similar existe? → SÍ, Grid actual usa paredes HORIZONTALES. Agregaremos DIAGONALES.
+¿ZigZag retorna pivots separados? → NO separados actualmente. Agregaremos high_pivots y low_pivots.
+¿Librería para regresión? → numpy.polyfit (ya instalado, rápido).
+¿Nuevo módulo o ampliar? → AMPLIAR brain_grid.py (cohesión conceptual).
+¿Riesgo de romper código? → BAJO (solo campos nuevos).
+Plan de Implementación:
+Cambios en brain_zigzag_tti.py:
+
+Agregar high_pivots, low_pivots, pivots_per_candle
+Cambios en brain_grid.py:
+
+Nuevo método _build_diagonal_trendlines()
+Nuevo método _calculate_r2()
+Penalties TIME LADDER para posición en canal y calidad
+Penalties propuestos:
+
+Condición	Penalty/Bonus
+Precio &gt; 85% canal	-30
+Precio &gt; 70% canal	-15
+Precio &lt; 20% canal	+25
+Precio &lt; 40% canal	+10
+R² &lt; 0.5 (choppy)	-50
+R² &lt; 0.7 (poco confiable)	-25
+Pivots/vela &gt; 0.15	-30
+🚨 PREGUNTAS ANTES DE IMPLEMENTAR:
+¿Los valores de penalties/bonus son correctos?
+¿Los thresholds de R² son apropiados?
+¿El threshold de pivots_per_candle (&gt;0.15) es correcto?
 
 
-3
-Awaiting user approval for Phase 3 integration
-
-FASE 3: NECESITO TU APROBACIÓN
-He preparado la integración completa en brain_intelligent.py con:
-
-LÓGICA DE BLOQUEO GRADUADO (TIME LADDER):
-
-python
-if lateral_penalty == 0:
-    → Procede normal
-elif lateral_penalty &lt; 50:
-    → Penaliza score (-penalty puntos)
-elif lateral_penalty &gt;= 50:
-    → BLOQUEA (lateral severo confirmado)
-CAMBIOS PRINCIPALES:
-
-Extrae lateral_penalty y lateral_reasons del análisis 15M
-Bloquea si penalty &gt;= 50 (múltiples indicadores confirman lateral)
-Agrega penalty a math_signals para decisión
-Logging detallado de lateralización
-Guarda datos en telemetría para forensic analysis
-Incluye datos laterales en full_analysis
-EJEMPLO GIGGLE/USDT:
-
-Penalty: 70 (ADX bajo + DI superpuestos + Mom débil + Squeeze)
-→ BLOQUEADO ✅
-3 PREGUNTAS CRÍTICAS:
-
-¿Threshold 50 es correcto? (o prefieres 45/60?)
-¿Logging suficiente? (o agregar más detalles?)
-¿Nombres de campos claros? (lateral_penalty, lateral_reasons)
-Si apruebas, implemento Fase 3 y procedemos a testing (Fase 4).
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 14,184<br>
-    Generado: 2025-12-19 02:35:39
+    Total caracteres: 11,510<br>
+    Generado: 2025-12-19 20:25:40
   </div>
 </body>
 </html>
