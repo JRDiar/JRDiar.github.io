@@ -15,478 +15,389 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-19 02:23:45</div>
+  <div class="meta">Última actualización: 2025-12-19 02:35:39</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Tienes razón, Joel. Disculpa, fui demasiado resumido. Ahora muestro el código COMPLETO ACTUAL vs PROPOSED.
+FASE 3: NECESITO TU APROBACIÓN
+He preparado la integración completa en brain_intelligent.py con:
 
-🔍 FASE 2: CÓDIGO COMPLETO - 
-brain_analyzer.py
-1️⃣ SECCIÓN IMPORTS
-❌ ACTUAL (Líneas 1-26):
+LÓGICA DE BLOQUEO GRADUADO (TIME LADDER):
 
+if lateral_penalty == 0:
+    → Procede normal
+elif lateral_penalty &lt; 50:
+    → Penaliza score (-penalty puntos)
+elif lateral_penalty &gt;= 50:
+    → BLOQUEA (lateral severo confirmado)
+
+FASE 3: CÓDIGO COMPLETO - 
+brain_intelligent.py
+📍 ARCHIVO: 
+brain_intelligent.py
+🎯 FUNCIÓN: 
+orchestrate_intelligence()
+ - Integración Lateral Detection
+❌ CÓDIGO ACTUAL (Líneas 28-140):
 python
-"""
-================================================================================
-BRAIN ANALYZER - Análisis Multi-Timeframe Contextual Acumulativo
-================================================================================
-"""
-import pandas as pd
-from datetime import datetime
-from brain_calculator import (
-    calculate_adx_with_memory,
-    calculate_momentum_with_memory,
-    calculate_velocity,
-    calculate_acceleration,
-    calculate_rsi_with_memory,
-    calculate_emas_with_memory,
-    detect_support_resistance_with_memory,
-    detect_price_structure,
-    calculate_zigzag,
-    calculate_volume_profile_with_memory,
-    calculate_bollinger_bands,
-    calculate_atr
-)
-from exchange_connection import fetch_ohlcv
-from brain_config import *
-from brain_deep_analyzer import deep_analysis_complete
-from sheets_manager import sheets_manager
-from database_manager import db_manager
-✅ PROPOSED (Líneas 1-29):
-
-python
-"""
-================================================================================
-BRAIN ANALYZER - Análisis Multi-Timeframe Contextual Acumulativo
-================================================================================
-"""
-import pandas as pd
-from datetime import datetime
-from brain_calculator import (
-    calculate_adx_with_memory,
-    calculate_momentum_with_memory,
-    calculate_velocity,
-    calculate_acceleration,
-    calculate_rsi_with_memory,
-    calculate_emas_with_memory,
-    detect_support_resistance_with_memory,
-    detect_price_structure,
-    calculate_zigzag,
-    calculate_volume_profile_with_memory,
-    calculate_bollinger_bands,
-    calculate_atr
-)
-# &gt;&gt;&gt; NUEVO: Imports granulares para detección de lateralización
-from brain_adx_granular import analyze_adx_granular
-from brain_momentum_granular import analyze_momentum_granular
-from brain_zigzag_tti import analyze_zigzag_tti
-from exchange_connection import fetch_ohlcv
-from brain_config import *
-from brain_deep_analyzer import deep_analysis_complete
-from sheets_manager import sheets_manager
-from database_manager import db_manager
-📝 CAMBIOS EN IMPORTS:
-
-Línea 22: Se agregó from brain_adx_granular import analyze_adx_granular
-Línea 23: Se agregó from brain_momentum_granular import analyze_momentum_granular
-Línea 24: Se agregó from brain_zigzag_tti import analyze_zigzag_tti
-2️⃣ MÉTODO analyze_15m() COMPLETO
-❌ ACTUAL (Líneas 372-521 - 150 líneas):
-
-python
-def analyze_15m(symbol, strict=None):
-    """15M: Timing de entrada - Ahora con FUZZY SCORING"""
-    # Auto-detectar modo si no se especifica
-    if strict is None:
-        strict = not ENABLE_INTELLIGENT_MODE  # Intelligent mode = No estricto
+def orchestrate_intelligence(symbol):
+    """
+    Orquesta la inteligencia cognitiva del bot.
+    Fases:
+    1. Percepción (Patrones + Time Ladder)
+    2. Validación Matemática (Fuerza)
+    3. Memoria (Telemetría)
+    4. Decisión (Wrecking Ball + Estructura)
+    """
+    print(f"\n🧠 ORCHESTRATING INTELLIGENCE: {symbol}")
     
-    ohlcv = fetch_ohlcv(symbol, '15m', 100)
-    if not ohlcv or len(ohlcv) &lt; 50:
-        return None
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    current_price = float(df['close'].iloc[-1])
+    # 1. PERCEPCIÓN
+    print("   Scanning patterns &amp; structure...")
+    patterns_result = pattern_engine.detect_all_patterns(symbol)
     
-    # --- ANTI-PUMP MEJORADO (Más inteligente) ---
-    vol_avg = df['volume'].iloc[:-1].mean()
-    last_vol = df['volume'].iloc[-1]
-    last_candle_pct = abs((df['close'].iloc[-1] - df['open'].iloc[-1]) / df['open'].iloc[-1]) * 100
+    if patterns_result and patterns_result.get('best_pattern'):
+        p = patterns_result['best_pattern']
+        print(f"   ✨ PATTERN FOUND: {p['type']} in {p['tf']} (Conf: {p['confidence']})")
     
-    # Anti-Pump con PENALIZACIONES (Time Ladder), NO bloqueo
-    pump_penalty = 0
-    if last_vol &gt; vol_avg * 25 and last_candle_pct &gt; 30:
-        # Pump extremo: penalización -50
-        pump_penalty = 50
-        print(f"⚠️ PUMP EXTREMO: Vol {last_vol/vol_avg:.1f}x, Vela {last_candle_pct:.1f}% → Penalty -50")
-    elif last_vol &gt; vol_avg * 15 and last_candle_pct &gt; 20:
-        # Pump moderado: penalización -30
-        pump_penalty = 30
-        print(f"⚠️ Pump moderado: Vol {last_vol/vol_avg:.1f}x, Vela {last_candle_pct:.1f}% → Penalty -30")
-    # -----------------------------------------------
-    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
-    momentum_data = calculate_momentum_with_memory(df, lookback=10)
-    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
-    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50], lookback=10)
-    
-    # Determinar dirección con validación de momentum (Bug #28 Fix + ULTIMA Fix)
-    di_direction = 'LATERAL'
-    if adx_data['dominance'] == 'DI+':
-        di_direction = 'BULLISH'
-    elif adx_data['dominance'] == 'DI-':
-        di_direction = 'BEARISH'
-    
-    # Validar con momentum
-    if di_direction == 'BULLISH':
-        if momentum_data['color_current'] in ['green', 'lime']:
-            direction = 'BULLISH'
-        else:
-            direction = 'LATERAL'
-    elif di_direction == 'BEARISH':
-        if momentum_data['color_current'] in ['red', 'maroon']:
-            direction = 'BEARISH'
-        else:
-            direction = 'LATERAL'
-    else:
-        direction = 'LATERAL'
-    
-    expected_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
-    
-    # ===== FUZZY SCORING (Siempre calcular) =====
-    score_15m = -pump_penalty
-    
-    # MODO ESTRICTO: Penalización en lugar de bloqueo (Time Ladder)
-    if strict:
-        violation_count = 0
-        if adx_data['adx_current'] &lt; 17:
-             score_15m -= 20
-             violation_count += 1
-        if abs(adx_data['spread']) &lt; 2.0:
-             score_15m -= 20
-             violation_count += 1
-        if momentum_data['color_current'] not in expected_colors:
-             score_15m -= 30
-             violation_count += 1
-        
-        if violation_count &gt; 0:
-            print(f"⚠️ Strict Mode Violations: {violation_count} - Penalizing score")
-    # Continuar con cálculo normal...
-    
-    # ADX: Gradiente (no binario)
-    adx_current = adx_data['adx_current']
-    if adx_current &gt;= 25:
-        score_15m += 15
-    elif adx_current &gt;= 20:
-        score_15m += 10
-    elif adx_current &gt;= 17:
-        score_15m += 5
-    elif adx_current &gt;= 14:
-        score_15m += 2
-    # Si ADX &lt; 14, no suma pero no rechaza
-    
-    # Spread DI: Claridad direccional
-    spread = abs(adx_data['spread'])
-    if spread &gt;= 7:
-        score_15m += 10
-    elif spread &gt;= 4:
-        score_15m += 7
-    elif spread &gt;= 2:
-        score_15m += 4
-    elif spread &gt;= 1:
-        score_15m += 2
-    
-    # Momentum alineado
-    if momentum_data['color_current'] in expected_colors:
-        score_15m += 8
-        if momentum_data['consecutive_count'] &gt;= 3:
-            score_15m += 5
-        elif momentum_data['consecutive_count'] &gt;= 2:
-            score_15m += 3
-    
-    # RSI razonable
-    rsi = rsi_data['rsi_current']
-    if rsi and 40 &lt;= rsi &lt;= 70:
-        score_15m += 5
-    elif rsi and 30 &lt;= rsi &lt;= 80:
-        score_15m += 2
-    
-    # EMAs alineadas
-    if emas_data.get('emas_aligned', False):
-        score_15m += 5
-    
-    # Tendencia ADX
-    if adx_data['adx_trend'] == 'creciendo':
-        score_15m += 3
-    
-    # ===== DETERMINAR STRENGTH =====
-    if adx_current &gt;= 25 and spread &gt;= 5:
-        strength = 'STRONG'
-    elif adx_current &gt;= 20 and spread &gt;= 3:
-        strength = 'MODERATE'
-    elif adx_current &gt;= 17:
-        strength = 'WEAK'
-    else:
-        strength = 'VERY_WEAK'
-    
-    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
-    
-    return {
-        'direction': direction,
-        'strength': strength,
-        'score_15m': score_15m,
-        'current_price': current_price,
-        'adx': adx_data,
-        'momentum': momentum_data,
-        'rsi': rsi_data,
-        'emas': emas_data,
-        'context': f"15M {direction} {strength} - Score {score_15m}",
-        'timestamp': datetime.now().isoformat()
+    ladder_analysis = {
+        '4h': analyze_4h(symbol),
+        '1h': analyze_1h(symbol),
+        '15m': analyze_15m(symbol, strict=False),  # ❌ No usa datos granulares
+        '5m': analyze_5m(symbol)
     }
-✅ PROPOSED (Líneas 372-583 - 212 líneas, +62 líneas nuevas):
-
+    
+    # GRID ANALYSIS
+    from brain_grid import grid
+    from exchange_connection import fetch_ohlcv
+    import pandas as pd
+    
+    ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
+    if ohlcv_grid:
+        df_grid = pd.DataFrame(ohlcv_grid, columns=['timestamp','open','high','low','close','volume'])
+        grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
+        print(f"   🌐 GRID: {grid_result['status']} | {grid_result['razon']}")
+        
+        # BLOQUEO ABSOLUTO si lateral
+        if grid_result['status'] == 'BLOQUEADO':
+            return {
+                'action': 'NO_OPERAR',
+                'confidence': 0,
+                'reason': grid_result['razon'],
+                'full_analysis': {'ladder_data': ladder_analysis}
+            }
+    else:
+        grid_result = {'score': 0}
+    
+    # 2. VALIDACIÓN MATEMÁTICA
+    math_signals = {
+        'market_force': check_market_force(ladder_analysis),
+        'adx_val': ladder_analysis.get('15m', {}).get('adx', {}).get('adx_current', 0)
+    }
+    
+    # 3. MEMORIA (TELEMETRÍA)
+    recent_history = []
+    try:
+        # Recuperar decisiones de los últimos 30 mins
+        recent_history = db_manager.get_recent_telemetry(symbol, minutes=30)
+    except Exception as e:
+        print(f"⚠️ Memory access failed: {e}")
+    # 4. DECISIÓN COGNITIVA
+    # Extraer datos necesarios
+    current_price = ladder_analysis.get('5m', {}).get('current_price', 0)
+    
+    decision = make_pattern_based_decision(
+        patterns_result, ladder_analysis, math_signals, 
+        symbol, current_price, recent_history, grid_result
+    )
+    # --- REPORTE Y SALIDA ---
+    print(f"\n🔍 REPORTE INTELIGENTE: {symbol}")
+    print(f"   - Acción: {decision['action']} (Conf: {decision['confidence']})")
+    if decision['reasons']:
+        print(f"   - Razones: {decision['reasons'][0]}")  # Mostrar solo la principal
+        if len(decision['reasons']) &gt; 1:
+            print(f"     ...y {len(decision['reasons'])-1} más.")
+    # Guardar Telemetría
+    try:
+        telemetry_data = ladder_analysis.copy()
+        telemetry_data['decision_reasons'] = decision['reasons']
+        
+        db_manager.insert_telemetry(
+            symbol, 
+            'OPERAR' if decision['action'] == 'ENTER' else 'NO_OPERAR',
+            decision['confidence'],
+            telemetry_data
+        )
+    except Exception as e:
+        print(f"⚠️ Telemetry error: {e}")
+    # Formatear retorno para bot_main
+    if decision['action'] == 'ENTER':
+        return {
+            'action': 'OPERAR',
+            'trade_type': decision['strategy']['type'],
+            'confidence': decision['confidence'],
+            'pattern': decision.get('pattern'),
+            'reasons': decision['reasons'],
+            'full_analysis': {'ladder_data': ladder_analysis, 'patterns': patterns_result},
+            'position_size': decision['strategy']['position_size'],
+            'strategy': decision['strategy']
+        }
+    else:
+        return {
+            'action': 'NO_OPERAR',
+            'confidence': decision['confidence'],
+            'reason': f"Wait: {decision['reasons'][0] if decision['reasons'] else 'Low score'}",
+            'full_analysis': {'ladder_data': ladder_analysis}
+        }
+✅ CÓDIGO PROPOSED (Líneas 28-175, +35 líneas nuevas):
 python
-def analyze_15m(symbol, strict=None):
-    """15M: Timing de entrada - CON DETECCIÓN GRANULAR DE LATERALIZACIÓN"""
-    # Auto-detectar modo si no se especifica
-    if strict is None:
-        strict = not ENABLE_INTELLIGENT_MODE  # Intelligent mode = No estricto
+def orchestrate_intelligence(symbol):
+    """
+    Orquesta la inteligencia cognitiva del bot.
+    Fases:
+    1. Percepción (Patrones + Time Ladder)
+    2. Validación Matemática (Fuerza)
+    3. &gt;&gt;&gt; NUEVO: Detección Granular de Lateralización
+    4. Memoria (Telemetría)
+    5. Decisión (Wrecking Ball + Estructura)
+    """
+    print(f"\n🧠 ORCHESTRATING INTELLIGENCE: {symbol}")
     
-    ohlcv = fetch_ohlcv(symbol, '15m', 100)
-    if not ohlcv or len(ohlcv) &lt; 50:
-        return None
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    current_price = float(df['close'].iloc[-1])
+    # 1. PERCEPCIÓN
+    print("   Scanning patterns &amp; structure...")
+    patterns_result = pattern_engine.detect_all_patterns(symbol)
     
-    # --- ANTI-PUMP MEJORADO (Más inteligente) ---
-    vol_avg = df['volume'].iloc[:-1].mean()
-    last_vol = df['volume'].iloc[-1]
-    last_candle_pct = abs((df['close'].iloc[-1] - df['open'].iloc[-1]) / df['open'].iloc[-1]) * 100
+    if patterns_result and patterns_result.get('best_pattern'):
+        p = patterns_result['best_pattern']
+        print(f"   ✨ PATTERN FOUND: {p['type']} in {p['tf']} (Conf: {p['confidence']})")
     
-    # Anti-Pump con PENALIZACIONES (Time Ladder), NO bloqueo
-    pump_penalty = 0
-    if last_vol &gt; vol_avg * 25 and last_candle_pct &gt; 30:
-        # Pump extremo: penalización -50
-        pump_penalty = 50
-        print(f"⚠️ PUMP EXTREMO: Vol {last_vol/vol_avg:.1f}x, Vela {last_candle_pct:.1f}% → Penalty -50")
-    elif last_vol &gt; vol_avg * 15 and last_candle_pct &gt; 20:
-        # Pump moderado: penalización -30
-        pump_penalty = 30
-        print(f"⚠️ Pump moderado: Vol {last_vol/vol_avg:.1f}x, Vela {last_candle_pct:.1f}% → Penalty -30")
-    # -----------------------------------------------
-    # &gt;&gt;&gt; NUEVO: Análisis granular (reemplaza monolíticos para detección lateral)
-    adx_granular = analyze_adx_granular(df, period=14)
-    momentum_granular = analyze_momentum_granular(df)
-    zigzag_granular = analyze_zigzag_tti(df, threshold=5.0)
+    ladder_analysis = {
+        '4h': analyze_4h(symbol),
+        '1h': analyze_1h(symbol),
+        '15m': analyze_15m(symbol, strict=False),  # ✅ Ahora incluye datos granulares
+        '5m': analyze_5m(symbol)
+    }
     
-    # &gt;&gt;&gt; LEGACY: Mantener análisis monolítico (compatibilidad hacia atrás)
-    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
-    momentum_data = calculate_momentum_with_memory(df, lookback=10)
-    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
-    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50], lookback=10)
+    # &gt;&gt;&gt; NUEVO: 2. DETECCIÓN GRANULAR DE LATERALIZACIÓN
+    a15m = ladder_analysis.get('15m', {})
+    lateral_penalty = a15m.get('lateral_penalty', 0)
+    lateral_reasons = a15m.get('lateral_reasons', [])
     
-    # &gt;&gt;&gt; NUEVO: DETECCIÓN DE LATERALIZACIÓN GRANULAR (TIME LADDER)
-    lateral_penalty = 0
-    lateral_reasons = []
-    
-    # --- 1. ADX Granular: Detectar lateralización por componentes ---
-    if adx_granular['state']['is_lateral']:
-        for reason in adx_granular['state']['lateral_reasons']:
-            if 'ADX bajo' in reason:
-                lateral_penalty += 15
-                lateral_reasons.append(f"ADX: {reason}")
-            elif 'superpuestos' in reason:
-                # MÁS GRAVE: DI+/DI- juntos = mercado indeciso
-                lateral_penalty += 20
-                lateral_reasons.append(f"DI: {reason}")
-            elif 'cayendo' in reason:
-                lateral_penalty += 10
-                lateral_reasons.append(f"Tendencia: {reason}")
-    
-    # --- 2. Momentum Granular: Detectar momentum flat/indeciso ---
-    if momentum_granular['combined']['is_flat']:
-        for reason in momentum_granular['combined']['flat_reasons']:
-            if 'Momentum débil' in reason:
-                lateral_penalty += 15
-                lateral_reasons.append(f"Mom: {reason}")
-            elif 'Squeeze prolongado' in reason:
-                lateral_penalty += 10
-                lateral_reasons.append(f"Squeeze: {reason}")
-    
-    # --- 3. ZigZag Granular: Detectar estructura lateral (HH/LL mezclados) ---
-    if zigzag_granular['current_trend'] == 'LATERAL':
-        lateral_penalty += 15
-        lateral_reasons.append(f"Estructura: {zigzag_granular['structure']}")
-    
-    # &gt;&gt;&gt; NUEVO: Logging si lateralización detectada
+    # TIME LADDER: Penalty graduada, NO bloqueo binario
     if lateral_penalty &gt; 0:
-        print(f"⚠️  LATERALIZACIÓN | {symbol} | Penalty: -{lateral_penalty} | Razones: {', '.join(lateral_reasons)}")
+        print(f"   ⚠️  LATERAL DETECTADO: Penalty -{lateral_penalty}")
+        for reason in lateral_reasons:
+            print(f"       - {reason}")
     
-    # Determinar dirección con validación de momentum (Bug #28 Fix + ULTIMA Fix)
-    di_direction = 'LATERAL'
-    if adx_data['dominance'] == 'DI+':
-        di_direction = 'BULLISH'
-    elif adx_data['dominance'] == 'DI-':
-        di_direction = 'BEARISH'
+    # &gt;&gt;&gt; NUEVO: BLOQUEO GRADUADO por lateralización severa
+    # Si penalty &gt;= 50, es lateral SEVERO (múltiples indicadores confirman)
+    if lateral_penalty &gt;= 50:
+        print(f"   🚫 BLOQUEANDO: Lateralización severa (penalty {lateral_penalty} &gt;= 50)")
+        return {
+            'action': 'NO_OPERAR',
+            'confidence': 0,
+            'reason': f"Lateral severo: {', '.join(lateral_reasons)}",
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'lateral_penalty': lateral_penalty,
+                'lateral_reasons': lateral_reasons
+            }
+        }
     
-    # Validar con momentum
-    if di_direction == 'BULLISH':
-        if momentum_data['color_current'] in ['green', 'lime']:
-            direction = 'BULLISH'
-        else:
-            direction = 'LATERAL'
-    elif di_direction == 'BEARISH':
-        if momentum_data['color_current'] in ['red', 'maroon']:
-            direction = 'BEARISH'
-        else:
-            direction = 'LATERAL'
-    else:
-        direction = 'LATERAL'
+    # GRID ANALYSIS
+    from brain_grid import grid
+    from exchange_connection import fetch_ohlcv
+    import pandas as pd
     
-    expected_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
-    
-    # ===== FUZZY SCORING (Siempre calcular) =====
-    # &gt;&gt;&gt; MODIFICADO: Ahora incluye penalty lateral
-    score_15m = -pump_penalty - lateral_penalty
-    
-    # MODO ESTRICTO: Penalización en lugar de bloqueo (Time Ladder)
-    if strict:
-        violation_count = 0
-        if adx_data['adx_current'] &lt; 17:
-             score_15m -= 20
-             violation_count += 1
-        if abs(adx_data['spread']) &lt; 2.0:
-             score_15m -= 20
-             violation_count += 1
-        if momentum_data['color_current'] not in expected_colors:
-             score_15m -= 30
-             violation_count += 1
+    ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
+    if ohlcv_grid:
+        df_grid = pd.DataFrame(ohlcv_grid, columns=['timestamp','open','high','low','close','volume'])
+        grid_result = grid.analyze(symbol, df_grid, ladder_analysis)
+        print(f"   🌐 GRID: {grid_result['status']} | {grid_result['razon']}")
         
-        if violation_count &gt; 0:
-            print(f"⚠️ Strict Mode Violations: {violation_count} - Penalizing score")
-    # Continuar con cálculo normal...
-    
-    # ADX: Gradiente (no binario)
-    adx_current = adx_data['adx_current']
-    if adx_current &gt;= 25:
-        score_15m += 15
-    elif adx_current &gt;= 20:
-        score_15m += 10
-    elif adx_current &gt;= 17:
-        score_15m += 5
-    elif adx_current &gt;= 14:
-        score_15m += 2
-    # Si ADX &lt; 14, no suma pero no rechaza
-    
-    # Spread DI: Claridad direccional
-    spread = abs(adx_data['spread'])
-    if spread &gt;= 7:
-        score_15m += 10
-    elif spread &gt;= 4:
-        score_15m += 7
-    elif spread &gt;= 2:
-        score_15m += 4
-    elif spread &gt;= 1:
-        score_15m += 2
-    
-    # Momentum alineado
-    if momentum_data['color_current'] in expected_colors:
-        score_15m += 8
-        if momentum_data['consecutive_count'] &gt;= 3:
-            score_15m += 5
-        elif momentum_data['consecutive_count'] &gt;= 2:
-            score_15m += 3
-    
-    # RSI razonable
-    rsi = rsi_data['rsi_current']
-    if rsi and 40 &lt;= rsi &lt;= 70:
-        score_15m += 5
-    elif rsi and 30 &lt;= rsi &lt;= 80:
-        score_15m += 2
-    
-    # EMAs alineadas
-    if emas_data.get('emas_aligned', False):
-        score_15m += 5
-    
-    # Tendencia ADX
-    if adx_data['adx_trend'] == 'creciendo':
-        score_15m += 3
-    
-    # ===== DETERMINAR STRENGTH =====
-    if adx_current &gt;= 25 and spread &gt;= 5:
-        strength = 'STRONG'
-    elif adx_current &gt;= 20 and spread &gt;= 3:
-        strength = 'MODERATE'
-    elif adx_current &gt;= 17:
-        strength = 'WEAK'
+        # BLOQUEO ABSOLUTO si lateral
+        if grid_result['status'] == 'BLOQUEADO':
+            return {
+                'action': 'NO_OPERAR',
+                'confidence': 0,
+                'reason': grid_result['razon'],
+                'full_analysis': {'ladder_data': ladder_analysis}
+            }
     else:
-        strength = 'VERY_WEAK'
+        grid_result = {'score': 0}
     
-    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
-    
-    # &gt;&gt;&gt; MODIFICADO: Return dict con nuevos campos granulares
-    return {
-        'direction': direction,
-        'strength': strength,
-        'score_15m': score_15m,
-        'current_price': current_price,
-        # Legacy (compatibilidad)
-        'adx': adx_data,
-        'momentum': momentum_data,
-        'rsi': rsi_data,
-        'emas': emas_data,
-        # &gt;&gt;&gt; NUEVO: Campos granulares
-        'adx_granular': adx_granular,
-        'momentum_granular': momentum_granular,
-        'zigzag_granular': zigzag_granular,
-        'lateral_penalty': lateral_penalty,
-        'lateral_reasons': lateral_reasons,
-        'context': f"15M {direction} {strength} - Score {score_15m}",
-        'timestamp': datetime.now().isoformat()
+    # 3. VALIDACIÓN MATEMÁTICA
+    math_signals = {
+        'market_force': check_market_force(ladder_analysis),
+        'adx_val': ladder_analysis.get('15m', {}).get('adx', {}).get('adx_current', 0),
+        # &gt;&gt;&gt; NUEVO: Agregar penalty lateral a signals
+        'lateral_penalty': lateral_penalty
     }
+    
+    # 4. MEMORIA (TELEMETRÍA)
+    recent_history = []
+    try:
+        # Recuperar decisiones de los últimos 30 mins
+        recent_history = db_manager.get_recent_telemetry(symbol, minutes=30)
+    except Exception as e:
+        print(f"⚠️ Memory access failed: {e}")
+    # 5. DECISIÓN COGNITIVA
+    # Extraer datos necesarios
+    current_price = ladder_analysis.get('5m', {}).get('current_price', 0)
+    
+    decision = make_pattern_based_decision(
+        patterns_result, ladder_analysis, math_signals, 
+        symbol, current_price, recent_history, grid_result
+    )
+    # --- REPORTE Y SALIDA ---
+    print(f"\n🔍 REPORTE INTELIGENTE: {symbol}")
+    print(f"   - Acción: {decision['action']} (Conf: {decision['confidence']})")
+    if decision['reasons']:
+        print(f"   - Razones: {decision['reasons'][0]}")  # Mostrar solo la principal
+        if len(decision['reasons']) &gt; 1:
+            print(f"     ...y {len(decision['reasons'])-1} más.")
+    
+    # &gt;&gt;&gt; NUEVO: Mostrar penalty lateral en reporte si existe
+    if lateral_penalty &gt; 0:
+        print(f"   - Penalty Lateral: -{lateral_penalty} ({len(lateral_reasons)} razones)")
+    # Guardar Telemetría
+    try:
+        telemetry_data = ladder_analysis.copy()
+        telemetry_data['decision_reasons'] = decision['reasons']
+        # &gt;&gt;&gt; NUEVO: Agregar lateralización a telemetría
+        telemetry_data['lateral_penalty'] = lateral_penalty
+        telemetry_data['lateral_reasons'] = lateral_reasons
+        
+        db_manager.insert_telemetry(
+            symbol, 
+            'OPERAR' if decision['action'] == 'ENTER' else 'NO_OPERAR',
+            decision['confidence'],
+            telemetry_data
+        )
+    except Exception as e:
+        print(f"⚠️ Telemetry error: {e}")
+    # Formatear retorno para bot_main
+    if decision['action'] == 'ENTER':
+        return {
+            'action': 'OPERAR',
+            'trade_type': decision['strategy']['type'],
+            'confidence': decision['confidence'],
+            'pattern': decision.get('pattern'),
+            'reasons': decision['reasons'],
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'patterns': patterns_result,
+                # &gt;&gt;&gt; NUEVO: Agregar datos laterales al full_analysis
+                'lateral_penalty': lateral_penalty,
+                'lateral_reasons': lateral_reasons
+            },
+            'position_size': decision['strategy']['position_size'],
+            'strategy': decision['strategy']
+        }
+    else:
+        return {
+            'action': 'NO_OPERAR',
+            'confidence': decision['confidence'],
+            'reason': f"Wait: {decision['reasons'][0] if decision['reasons'] else 'Low score'}",
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                # &gt;&gt;&gt; NUEVO: Agregar datos laterales también en NO_OPERAR
+                'lateral_penalty': lateral_penalty,
+                'lateral_reasons': lateral_reasons
+            }
+        }
 3️⃣ EXPLICACIÓN DETALLADA DE CAMBIOS
 Línea	Tipo	Descripción
-22-24	NUEVO	Agregados imports: 
-analyze_adx_granular
-, 
-analyze_momentum_granular
-, 
-analyze_zigzag_tti
-373	MODIFICADO	Docstring cambiado a "CON DETECCIÓN GRANULAR DE LATERALIZACIÓN"
-403-405	NUEVO	Llamadas a análisis granular (ADX, Momentum, ZigZag)
-407-409	COMENTARIO	Comentario &gt;&gt;&gt; LEGACY para indicar compatibilidad
-411-413	NUEVO	Inicialización de lateral_penalty y lateral_reasons
-415-428	NUEVO	Bloque 1: Análisis ADX granular para lateral (-15/-20/-10 penalties)
-430-438	NUEVO	Bloque 2: Análisis Momentum granular para flat (-15/-10 penalties)
-440-443	NUEVO	Bloque 3: Análisis ZigZag granular para estructura lateral (-15 penalty)
-445-447	NUEVO	Logging de lateralización detectada
-471	MODIFICADO	score_15m = -pump_penalty - lateral_penalty (agregado -lateral_penalty)
-571-577	NUEVO	Campos granulares en return dict: 
-adx_granular
-, 
-momentum_granular
-, zigzag_granular, lateral_penalty, lateral_reasons
+34	MODIFICADO	Docstring: Agregado "3. &gt;&gt;&gt; NUEVO: Detección Granular de Lateralización"
+50-53	NUEVO	Extracción de lateral_penalty y lateral_reasons de 
+analyze_15m()
+55-59	NUEVO	Logging de lateralización detectada (TIME LADDER)
+61-73	NUEVO	BLOQUEO GRADUADO: Si lateral_penalty &gt;= 50, bloquea con mensaje descriptivo
+96-99	MODIFICADO	Agregado 'lateral_penalty': lateral_penalty a math_signals
+121-123	NUEVO	Logging de penalty lateral en reporte final
+129-131	NUEVO	Almacenar lateral_penalty y lateral_reasons en telemetría para forensic analysis
+151-155	NUEVO	Agregar datos laterales a full_analysis en retorno OPERAR
+163-166	NUEVO	Agregar datos laterales a full_analysis en retorno NO_OPERAR
 📊 RESUMEN DE CAMBIOS:
-Líneas agregadas: 62
-Líneas modificadas: 3
-Total líneas ACTUAL: 150
-Total líneas PROPOSED: 212
+Líneas agregadas: 35
+Líneas modificadas: 4
+Total líneas ACTUAL: 113
+Total líneas PROPOSED: 148
 
 Cambios críticos:
 
-Imports (+3 líneas): Módulos granulares
-Análisis granular (+3 líneas): Cálculos separados
-Detección lateral (+37 líneas): Penalties TIME LADDER
-Score modificado (1 línea): Incluye lateral_penalty
-Return dict (+5 campos): Nuevos campos granulares
-✅ AHORA SÍ, RESPONDE TUS 3 PREGUNTAS:
-1. ¿Los valores de penalties son correctos o ajustar? 2. ¿Agregar más logging para debug? 3. ¿Los nombres de campos nuevos son claros?
+Extracción lateral data (+4 líneas): Lee lateral_penalty y lateral_reasons de 15M analysis
+Logging lateral (+5 líneas): Muestra penalty y razones
+Bloqueo graduado (+13 líneas): Bloquea si penalty &gt;= 50 (TIME LADDER, no binario)
+Integración signals (+1 línea): Agrega penalty a math_signals
+Reporte (+3 líneas): Muestra penalty en reporte
+Telemetría (+3 líneas): Guarda datos laterales
+Full analysis (+6 líneas): Incluye datos laterales en retorno
+🎯 LÓGICA DE BLOQUEO GRADUADO:
+python
+# TIME LADDER Philosophy:
+if lateral_penalty == 0:
+    # NO lateral → Procede normal
+elif lateral_penalty &lt; 50:
+    # LATERAL MODERADO → Penaliza score pero permite continuar
+    # Ejemplo: penalty 35 = -35 al score final
+elif lateral_penalty &gt;= 50:
+    # LATERAL SEVERO → BLOQUEA (múltiples indicadores confirmados)
+    # Ejemplo: ADX bajo (-15) + DI superpuestos (-20) + Mom débil (-15) = 50
+    return NO_OPERAR
+Casos ejemplo:
 
-⏸️ ESPERANDO TU APROBACIÓN CON EL CÓDIGO COMPLETO VISIBLE
+GIGGLE/USDT: penalty ~70 (ADX bajo + DI superpuestos + Mom flato + Squeeze) → BLOQUEADO ✅
+Coin con solo ADX bajo: penalty 15 → PERMITE (score reducido) ✅
+Coin con ADX bajo + DI superpuestos: penalty 35 → PERMITE (score muy reducido) ✅
+🚨 PREGUNTAS ANTES DE APROBAR:
+Joel, confirma:
+
+¿El threshold de bloqueo (penalty &gt;= 50) es correcto?
+Alternativa: ¿Prefieres 45 o 60?
+¿El logging es suficiente o agregar más detalles?
+¿Los nombres de campos en full_analysis son claros?
+⏸️ ESPERANDO TU APROBACIÓN ANTES DE IMPLEMENTAR FASE 3
+
+
+3
+Awaiting user approval for Phase 3 integration
+
+FASE 3: NECESITO TU APROBACIÓN
+He preparado la integración completa en brain_intelligent.py con:
+
+LÓGICA DE BLOQUEO GRADUADO (TIME LADDER):
+
+python
+if lateral_penalty == 0:
+    → Procede normal
+elif lateral_penalty &lt; 50:
+    → Penaliza score (-penalty puntos)
+elif lateral_penalty &gt;= 50:
+    → BLOQUEA (lateral severo confirmado)
+CAMBIOS PRINCIPALES:
+
+Extrae lateral_penalty y lateral_reasons del análisis 15M
+Bloquea si penalty &gt;= 50 (múltiples indicadores confirman lateral)
+Agrega penalty a math_signals para decisión
+Logging detallado de lateralización
+Guarda datos en telemetría para forensic analysis
+Incluye datos laterales en full_analysis
+EJEMPLO GIGGLE/USDT:
+
+Penalty: 70 (ADX bajo + DI superpuestos + Mom débil + Squeeze)
+→ BLOQUEADO ✅
+3 PREGUNTAS CRÍTICAS:
+
+¿Threshold 50 es correcto? (o prefieres 45/60?)
+¿Logging suficiente? (o agregar más detalles?)
+¿Nombres de campos claros? (lateral_penalty, lateral_reasons)
+Si apruebas, implemento Fase 3 y procedemos a testing (Fase 4).
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 17,060<br>
-    Generado: 2025-12-19 02:23:45
+    Total caracteres: 14,184<br>
+    Generado: 2025-12-19 02:35:39
   </div>
 </body>
 </html>
