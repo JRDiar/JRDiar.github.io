@@ -15,330 +15,246 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-19 20:25:40</div>
+  <div class="meta">Última actualización: 2025-12-19 20:54:00</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Grid Diagonal Trendlines - Implementation Plan
-Objetivo
-Implementar trendlines diagonales usando regresión lineal sobre pivots del ZigZag para:
+Reforzar Validación de Fuerza ADX + Momentum
+🚨 PROBLEMA IDENTIFICADO
+El bot entra en trades SIN FUERZA porque:
 
-Medir posición del precio en el canal (0-100%)
-Detectar calidad del canal (R²)
-Penalizar monedas choppy y entradas cerca de techos
-1️⃣ RESPUESTAS A LAS 5 PREGUNTAS
-Pregunta 1: ¿Ya existe funcionalidad similar en brain_grid.py actual?
-RESPUESTA: SÍ, PARCIALMENTE
+ADX bajo recibe bonuses pequeños (+2/+5) en lugar de penalties
+Momentum débil no se penaliza severamente
+Las penalties solo aplican en modo strict=True
+1️⃣ DIAGNÓSTICO ACTUAL
+Thresholds ADX (líneas 502-511)
+# ACTUAL: Solo bonuses, CERO penalties
+adx_current = adx_data['adx_current']
+if adx_current &gt;= 25:
+    score_15m += 15    # OK
+elif adx_current &gt;= 20:
+    score_15m += 10    # ⚠️ Debería ser penalty
+elif adx_current &gt;= 17:
+    score_15m += 5     # ⚠️ Debería ser penalty severa
+elif adx_current &gt;= 14:
+    score_15m += 2     # ⚠️ Debería ser penalty muy severa
+# Si ADX &lt; 14, no suma pero NO RESTA ❌
+PROBLEMA: ADX=15 recibe +5 en lugar de penalty.
 
-El 
-brain_grid.py
- actual (líneas 102-139) ya calcula:
+Thresholds Spread (líneas 514-522)
+# ACTUAL: Solo bonuses
+spread = abs(adx_data['spread'])
+if spread &gt;= 7:
+    score_15m += 10    # OK
+elif spread &gt;= 4:
+    score_15m += 7     # ⚠️ Debería ser menor
+elif spread &gt;= 2:
+    score_15m += 4     # ⚠️ Debería ser penalty
+elif spread &gt;= 1:
+    score_15m += 2     # ⚠️ Debería ser penalty severa
+# Si spread &lt; 1, no suma pero NO RESTA ❌
+PROBLEMA: Spread=2 recibe +4 en lugar de penalty.
 
-techo: High máximo de últimas 20 velas (rolling max)
-piso: Low mínimo de últimas 20 velas (rolling min)
-posicion: Posición relativa del precio en el canal (0-1)
-ancho_atr: Ancho del canal en ATRs
-PROBLEMA: Estas paredes son HORIZONTALES (basadas en max/min simple). SOLUCIÓN: Agregar paredes DIAGONALES usando regresión lineal de pivots.
+Thresholds Momentum (líneas 524-530)
+# ACTUAL: Solo bonuses
+if momentum_data['color_current'] in expected_colors:
+    score_15m += 8
+    if momentum_data['consecutive_count'] &gt;= 3:
+        score_15m += 5
+    elif momentum_data['consecutive_count'] &gt;= 2:
+        score_15m += 3
+# Si momentum no alineado: NO RESTA ❌
+PROBLEMA: Momentum plano no recibe penalty.
 
-Pregunta 2: ¿brain_zigzag_tti.py retorna pivots separados (highs/lows)?
-RESPUESTA: SÍ, pero NO separados
-
-El módulo retorna:
-
-return {
-    'pivots': [list de valores alternados],      # ✅ Existe
-    'pivot_indices': [list de índices],          # ✅ Existe
-    'pivot_types': ['L', 'H', 'HL', 'HH', ...],  # ✅ Existe
-    ...
-}
-PROBLEMA: Los pivots vienen mezclados (alternando high/low). SOLUCIÓN: Agregar campos nuevos high_pivots y low_pivots separados.
-
-Pregunta 3: ¿Qué librería para regresión lineal?
-RESPUESTA: numpy.polyfit (ya instalado)
-
-import numpy as np
-# Ya está en brain_grid.py línea 19
-# Regresión lineal simple:
-coeffs = np.polyfit(x, y, 1)  # Retorna [slope, intercept]
-predicted = np.polyval(coeffs, x)  # Valores predichos
-r_squared = 1 - (np.sum((y - predicted)**2) / np.sum((y - y.mean())**2))
-Ventajas:
-
-Ya instalado (numpy)
-Rápido (&lt;10ms)
-No requiere dependencias adicionales
-Pregunta 4: ¿Nuevo módulo o ampliar brain_grid.py?
-RESPUESTA: AMPLIAR brain_grid.py
-
-Razón:
-
-Grid ya tiene la lógica de navegación espacial
-Las trendlines diagonales son una extensión natural de las paredes horizontales
-Evita fragmentación de módulos
-Mantiene cohesión conceptual (todo lo relacionado a "malla" en un lugar)
-Plan: Agregar método _build_diagonal_trendlines() a la clase 
-MarketGrid
-.
-
-Pregunta 5: ¿Riesgo de romper código existente?
-RESPUESTA: BAJO
-
-Cambios seguros:
-
-Agregar campos NUEVOS al return dict (no modificar existentes)
-Agregar método NUEVO a la clase (no modificar existentes)
-Agregar penalties al score (se suman/restan)
-Cambios mínimos en ZigZag:
-
-Agregar campos high_pivots y low_pivots al return
-Testing requerido: Verificar que scoring no cambie para monedas actuales.
-
-2️⃣ ARQUITECTURA PROPUESTA
-┌─────────────────────────────────────────────────────────────┐
-│                    brain_analyzer.py                         │
-│                    analyze_15m()                             │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ Llama
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    brain_grid.py                             │
-│                    MarketGrid.analyze()                      │
-│                                                               │
-│  ACTUAL:                    NUEVO:                           │
-│  ├─ _build_dimensions()     ├─ _build_diagonal_trendlines() │
-│  ├─ _calculate_pointer()    ├─ _calculate_channel_position()│
-│  ├─ _detect_context()       ├─ _calculate_channel_quality() │
-│  └─ _calculate_final_score()└─ Penalties TIME LADDER         │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ Usa pivots de
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 brain_zigzag_tti.py                          │
-│                                                               │
-│  NUEVO RETORNO:                                              │
-│  ├─ high_pivots: [(idx, value), ...]                        │
-│  ├─ low_pivots: [(idx, value), ...]                         │
-│  └─ pivots_per_candle: float                                │
-└─────────────────────────────────────────────────────────────┘
+2️⃣ RESPUESTAS A LAS 5 PREGUNTAS
+Thresholds actuales de ADX: 25/20/17/14 (todos bonuses)
+Penalties actuales por ADX bajo: Solo en strict mode: ADX&lt;17 = -20
+Validación actual de Momentum: Solo bonuses (+8/+5/+3), sin penalties
+¿Valida ADX+Momentum juntos?: NO, son independientes
+¿Riesgo de penalties muy severas?: Sí, calibrar cuidadosamente
 3️⃣ PROPOSED CHANGES
-A. brain_zigzag_tti.py - Agregar pivots separados
-Ubicación: Método 
-calculate_zigzag()
-, líneas 79-87
-
-# NUEVO: Separar highs y lows para regresión
-high_pivots = []
-low_pivots = []
-for i, ptype in enumerate(pivot_types):
-    if ptype in ['H', 'HH', 'LH']:
-        high_pivots.append((pivot_indices[i], pivots[i]))
-    elif ptype in ['L', 'HL', 'LL']:
-        low_pivots.append((pivot_indices[i], pivots[i]))
-# Agregar al return:
-return {
-    ...existing fields...
-    'high_pivots': high_pivots,              # NUEVO
-    'low_pivots': low_pivots,                # NUEVO
-    'pivots_per_candle': len(pivots) / len(df) if len(df) &gt; 0 else 0,  # NUEVO
-}
-B. brain_grid.py - Agregar trendlines diagonales
-Ubicación: Nuevo método después de 
-_build_dimensions()
- (línea 139)
-
-def _build_diagonal_trendlines(self, df, zigzag_data):
-    """
-    Construye trendlines diagonales usando regresión lineal de pivots.
-    
-    Returns:
-        dict: {
-            'upper_trendline': (slope, intercept),
-            'lower_trendline': (slope, intercept),
-            'upper_r2': float,  # Calidad de la línea superior
-            'lower_r2': float,  # Calidad de la línea inferior
-            'channel_width': float,  # Ancho actual del canal
-            'price_position_pct': float,  # 0-100% posición en canal
-        }
-    """
-    high_pivots = zigzag_data.get('high_pivots', [])
-    low_pivots = zigzag_data.get('low_pivots', [])
-    
-    # Necesitamos mínimo 3 pivots de cada tipo
-    if len(high_pivots) &lt; 2 or len(low_pivots) &lt; 2:
-        return self._default_trendlines()
-    
-    # Regresión lineal para HIGHs
-    x_high = np.array([p[0] for p in high_pivots])
-    y_high = np.array([p[1] for p in high_pivots])
-    upper_coeffs = np.polyfit(x_high, y_high, 1)
-    upper_predicted = np.polyval(upper_coeffs, x_high)
-    upper_r2 = self._calculate_r2(y_high, upper_predicted)
-    
-    # Regresión lineal para LOWs
-    x_low = np.array([p[0] for p in low_pivots])
-    y_low = np.array([p[1] for p in low_pivots])
-    lower_coeffs = np.polyfit(x_low, y_low, 1)
-    lower_predicted = np.polyval(lower_coeffs, x_low)
-    lower_r2 = self._calculate_r2(y_low, lower_predicted)
-    
-    # Calcular posición actual del precio en canal
-    current_idx = len(df) - 1
-    current_price = df['close'].iloc[-1]
-    
-    upper_at_current = np.polyval(upper_coeffs, current_idx)
-    lower_at_current = np.polyval(lower_coeffs, current_idx)
-    channel_width = upper_at_current - lower_at_current
-    
-    if channel_width &gt; 0:
-        price_position_pct = ((current_price - lower_at_current) / channel_width) * 100
+A) ADX con Penalties Reforzadas
+# PROPOSED: Penalties graduadas TIME LADDER
+adx_current = adx_data['adx_current']
+if adx_current &gt;= 30:
+    score_15m += 20    # Fuerza FUERTE
+elif adx_current &gt;= 25:
+    score_15m += 10    # Fuerza moderada
+elif adx_current &gt;= 22:
+    score_15m += 0     # Neutral (sin bonus ni penalty)
+elif adx_current &gt;= 20:
+    score_15m -= 15    # Fuerza débil → PENALTY
+elif adx_current &gt;= 17:
+    score_15m -= 30    # Fuerza muy débil → PENALTY SEVERA
+else:  # ADX &lt; 17
+    score_15m -= 45    # Sin fuerza → PENALTY CRÍTICA
+B) Spread con Penalties Reforzadas
+# PROPOSED: Penalties graduadas
+spread = abs(adx_data['spread'])
+if spread &gt;= 10:
+    score_15m += 15    # Claridad ALTA
+elif spread &gt;= 7:
+    score_15m += 10    # Claridad buena
+elif spread &gt;= 5:
+    score_15m += 5     # Claridad moderada
+elif spread &gt;= 3:
+    score_15m -= 10    # Confuso → PENALTY
+elif spread &gt;= 2:
+    score_15m -= 20    # Muy confuso → PENALTY SEVERA
+else:  # spread &lt; 2
+    score_15m -= 35    # Indecisión total → PENALTY CRÍTICA
+C) Momentum con Penalties Reforzadas
+# PROPOSED: Penalties y bonuses balanceados
+mom_color = momentum_data['color_current']
+mom_count = momentum_data['consecutive_count']
+if mom_color in expected_colors:
+    # Momentum alineado
+    if mom_count &gt;= 5:
+        score_15m += 20  # Momentum FUERTE
+    elif mom_count &gt;= 3:
+        score_15m += 12  # Momentum bueno
+    elif mom_count &gt;= 2:
+        score_15m += 6   # Momentum moderado
     else:
-        price_position_pct = 50  # Default si canal colapsado
-    
-    return {
-        'upper_trendline': tuple(upper_coeffs),
-        'lower_trendline': tuple(lower_coeffs),
-        'upper_r2': upper_r2,
-        'lower_r2': lower_r2,
-        'avg_r2': (upper_r2 + lower_r2) / 2,
-        'channel_width': channel_width,
-        'channel_width_pct': (channel_width / current_price * 100) if current_price &gt; 0 else 0,
-        'price_position_pct': max(0, min(100, price_position_pct)),  # Clamp 0-100
-        'upper_at_current': upper_at_current,
-        'lower_at_current': lower_at_current,
-    }
-def _calculate_r2(self, y_actual, y_predicted):
-    """Calcula R² (coeficiente de determinación)"""
-    ss_res = np.sum((y_actual - y_predicted) ** 2)
-    ss_tot = np.sum((y_actual - np.mean(y_actual)) ** 2)
-    if ss_tot == 0:
-        return 0.0
-    return max(0.0, 1 - (ss_res / ss_tot))
-def _default_trendlines(self):
-    """Retorno por defecto si no hay suficientes datos"""
-    return {
-        'upper_trendline': (0, 0),
-        'lower_trendline': (0, 0),
-        'upper_r2': 0.0,
-        'lower_r2': 0.0,
-        'avg_r2': 0.0,
-        'channel_width': 0.0,
-        'channel_width_pct': 0.0,
-        'price_position_pct': 50.0,
-        'upper_at_current': 0.0,
-        'lower_at_current': 0.0,
-        'valid': False
-    }
-C. Penalties TIME LADDER
-Agregar a 
-_calculate_final_score()
- (después de línea 398):
+        score_15m += 2   # Momentum inicial
+else:
+    # Momentum NO alineado
+    if mom_color in ['gray', 'black', 'neutral']:
+        score_15m -= 25  # Momentum PLANO → PENALTY
+    else:
+        score_15m -= 40  # Momentum OPUESTO → PENALTY CRÍTICA
+D) Validación Cruzada ADX + Momentum (NUEVO)
+# NUEVO: Validación cruzada (ambos débiles = filtro fuerte)
+if adx_current &lt; 20 and mom_count &lt; 2:
+    score_15m -= 30
+    # Razón: "Sin fuerza confirmada (ADX + Momentum bajos)"
+# NUEVO: Bonus si ambos fuertes
+if adx_current &gt;= 25 and mom_count &gt;= 4:
+    score_15m += 15
+    # Razón: "Fuerza confirmada (ADX + Momentum altos)"
+4️⃣ CASOS DE USO
+CASO 1: Moneda SIN FUERZA (ADX=15, Momentum=1v)
+ANTES:
 
-# === DIAGONAL TRENDLINES PENALTIES (TIME LADDER) ===
-diagonal = diagonal_data  # Pasado como parámetro
-# 1. CERCA DEL TECHO (comprando alto)
-position_pct = diagonal.get('price_position_pct', 50)
-if position_pct &gt; 85:
-    score -= 30
-    razones.append(f"⚠️ Comprando TECHO diagonal ({position_pct:.0f}%)")
-elif position_pct &gt; 70:
-    score -= 15
-    razones.append(f"⚡ Alto en canal ({position_pct:.0f}%)")
-# 2. CERCA DEL PISO (ideal para comprar)
-elif position_pct &lt; 20:
-    score += 25
-    razones.append(f"✅ Cerca SOPORTE diagonal ({position_pct:.0f}%)")
-elif position_pct &lt; 40:
-    score += 10
-    razones.append(f"👍 Zona favorable ({position_pct:.0f}%)")
-# 3. CANAL MAL FORMADO (choppy)
-avg_r2 = diagonal.get('avg_r2', 1.0)
-if avg_r2 &lt; 0.5:
-    score -= 50
-    razones.append(f"❌ Moneda CHOPPY (R²={avg_r2:.2f})")
-elif avg_r2 &lt; 0.7:
-    score -= 25
-    razones.append(f"⚠️ Canal poco confiable (R²={avg_r2:.2f})")
-# 4. DEMASIADOS PIVOTS (irregular)
-pivots_per_candle = zigzag_data.get('pivots_per_candle', 0)
-if pivots_per_candle &gt; 0.15:
-    score -= 30
-    razones.append(f"❌ ZigZag caótico ({pivots_per_candle:.2%} pivots/vela)")
-4️⃣ VERIFICACIÓN
-Test Automatizado
-cd "c:\Users\Joel\Trading automatizado\BraintraderAntigravity"
-python test_diagonal_grid.py
-Métricas a Validar
-Escenario	position_pct	R²	Penalty/Bonus
-BTC cerca techo	&gt;85%	&gt;0.8	-30
-Moneda choppy (BAY)	any	&lt;0.5	-50
-Entrada ideal soporte	&lt;20%	&gt;0.7	+25
-5️⃣ CASOS DE USO
-CASO 1: BTC cerca del techo
-Precio: $62,500
-Canal: $58,000 (inf) - $63,000 (sup)
-Posición: 90% del canal
-R²: 0.85 (buen canal)
-→ Penalty: -30 (cerca techo)
-→ Resultado: WAIT
-CASO 2: Moneda choppy (BAY)
-ZigZag: 10 pivots en 50 velas (0.20 pivots/vela)
-R²: 0.3 (mal formado)
-→ Penalty: -50 (choppy) + -30 (caótico) = -80
-→ Resultado: REJECT
-CASO 3: Entrada ideal cerca soporte
-Precio: $58,200
-Canal: $58,000 (inf) - $63,000 (sup)
-Posición: 4% del canal
-R²: 0.88 (excelente)
-→ Bonus: +25 (cerca soporte)
-→ Resultado: ENTER (si otros criterios OK)
+ADX 15: +5 (bonus)
+Spread 3: +7 (bonus)
+Momentum débil: +8 (bonus)
+Grid 20%: +35 (bonus)
+Lateral penalty: 0
+Score: 0 + 5 + 7 + 8 + 35 = 55 → ENTER ❌
+DESPUÉS:
+
+ADX 15: -45 (penalty crítica)
+Spread 3: -10 (penalty)
+Momentum débil (1v): -25 (penalty plano)
+Validación cruzada: -30 (ambos débiles)
+Grid 20%: +35 (bonus)
+Lateral penalty: -40 (si aplica)
+Score: 0 - 45 - 10 - 25 - 30 + 35 = -75 → REJECT ✅
+CASO 2: Moneda CON FUERZA (ADX=32, Momentum=5v)
+ANTES:
+
+ADX 32: +15
+Spread 8: +10
+Momentum 5v: +13
+Grid 20%: +35
+Score: 73 → ENTER ✅
+DESPUÉS:
+
+ADX 32: +20
+Spread 8: +10
+Momentum 5v: +20
+Validación cruzada: +15 (bonus)
+Grid 20%: +35
+Score: 100 → ENTER ✅ (confirmado)
+CASO 3: Fuerza Moderada (ADX=22, Momentum=2v)
+ANTES:
+
+ADX 22: +10
+Spread 5: +7
+Momentum 2v: +11
+Grid 40%: +10
+Score: 38 → MARGINAL
+DESPUÉS:
+
+ADX 22: +0 (neutral)
+Spread 5: +5
+Momentum 2v: +6
+Grid 40%: +10
+Score: 21 → WAIT (más estricto)
+5️⃣ RESUMEN DE CAMBIOS
+Condición	ACTUAL	PROPOSED	Cambio
+ADX &gt;= 30	+15	+20	+5
+ADX &gt;= 25	+15	+10	-5
+ADX &gt;= 22	+10	0	-10
+ADX &gt;= 20	+10	-15	-25
+ADX &gt;= 17	+5	-30	-35
+ADX &lt; 17	+2	-45	-47
+Spread &gt;= 10	+10	+15	+5
+Spread &gt;= 7	+10	+10	0
+Spread &gt;= 5	+7	+5	-2
+Spread &gt;= 3	+7	-10	-17
+Spread &gt;= 2	+4	-20	-24
+Spread &lt; 2	+2	-35	-37
+Momentum 5v+	+13	+20	+7
+Momentum 3-4v	+11	+12	+1
+Momentum 2v	+11	+6	-5
+Momentum plano	+8	-25	-33
+Momentum opuesto	0	-40	-40
+ADX+Mom débiles	0	-30	-30
+ADX+Mom fuertes	0	+15	+15
 User Review Required
 IMPORTANT
 
-Antes de implementar, necesito tu aprobación sobre:
+Las penalties propuestas son significativamente más severas:
 
-¿Los valores de penalties/bonus son correctos? (-30/-50/+25)
-¿Los thresholds de R² son apropiados? (&lt;0.5 choppy, &lt;0.7 poco confiable)
-¿El threshold de pivots_per_candle (&gt;0.15) es correcto?
+ADX &lt; 17 cambia de +5 a -45 (diferencia de 50 puntos)
+Momentum plano cambia de +8 a -25 (diferencia de 33 puntos)
+Preguntas para Joel:
 
-ANÁLISIS COMPLETADO - Grid Diagonal Trendlines
-Respuestas a las 5 Preguntas:
-¿Funcionalidad similar existe? → SÍ, Grid actual usa paredes HORIZONTALES. Agregaremos DIAGONALES.
-¿ZigZag retorna pivots separados? → NO separados actualmente. Agregaremos high_pivots y low_pivots.
-¿Librería para regresión? → numpy.polyfit (ya instalado, rápido).
-¿Nuevo módulo o ampliar? → AMPLIAR brain_grid.py (cohesión conceptual).
-¿Riesgo de romper código? → BAJO (solo campos nuevos).
-Plan de Implementación:
-Cambios en brain_zigzag_tti.py:
+¿Las penalties de -45/-30 para ADX bajo son correctas?
+¿La validación cruzada (-30 adicional) es apropiada?
+¿Quieres ajustar algún valor antes de implementar?
 
-Agregar high_pivots, low_pivots, pivots_per_candle
-Cambios en brain_grid.py:
+DIAGNÓSTICO COMPLETADO
+Problema Identificado:
+El código actual SOLO da BONUSES, nunca PENALTIES para fuerza débil.
 
-Nuevo método _build_diagonal_trendlines()
-Nuevo método _calculate_r2()
-Penalties TIME LADDER para posición en canal y calidad
-Penalties propuestos:
+Código ACTUAL (analyze_15m):
+Condición	Valor
+ADX &gt;= 25	+15
+ADX &gt;= 20	+10
+ADX &gt;= 17	+5
+ADX &gt;= 14	+2
+ADX &lt; 14	0 (no resta)
+Spread &gt;= 7	+10
+Spread &gt;= 4	+7
+Spread &lt; 2	+2 (no resta)
+Momentum plano	+8 (no resta)
+Resultado: ADX=15 con Momentum plano → Score POSITIVO → ENTER ❌
 
-Condición	Penalty/Bonus
-Precio &gt; 85% canal	-30
-Precio &gt; 70% canal	-15
-Precio &lt; 20% canal	+25
-Precio &lt; 40% canal	+10
-R² &lt; 0.5 (choppy)	-50
-R² &lt; 0.7 (poco confiable)	-25
-Pivots/vela &gt; 0.15	-30
-🚨 PREGUNTAS ANTES DE IMPLEMENTAR:
-¿Los valores de penalties/bonus son correctos?
-¿Los thresholds de R² son apropiados?
-¿El threshold de pivots_per_candle (&gt;0.15) es correcto?
+Código PROPOSED:
+Condición	ANTES	DESPUÉS
+ADX &lt; 17	+5	-45
+ADX 17-20	+5	-30
+ADX 20-22	+10	-15
+Spread &lt; 2	+2	-35
+Spread 2-3	+4	-20
+Momentum plano	+8	-25
+Momentum opuesto	0	-40
+ADX+Mom ambos débiles	0	-30 (extra)
+Resultado: ADX=15 + Mom plano → Score -75 → REJECT ✅
 
-
+🚨 PREGUNTAS CRÍTICAS:
+¿Las penalties de -45/-30 para ADX bajo son correctas?
+¿La validación cruzada (-30 adicional) es apropiada?
+¿Prefieres valores menos severos? (ej: -30/-20 en lugar de -45/-30)
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 11,510<br>
-    Generado: 2025-12-19 20:25:40
+    Total caracteres: 6,726<br>
+    Generado: 2025-12-19 20:54:00
   </div>
 </body>
 </html>
