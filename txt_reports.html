@@ -15,175 +15,17 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-19 23:46:37</div>
+  <div class="meta">Última actualización: 2025-12-20 00:00:46</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-PLAN DE IMPLEMENTACIÓN - Contexto Macro + Alineación TF
-3 Cambios Propuestos:
-1. ADX Trend (creciendo/decreciendo):
-
-Condición	ANTES	DESPUÉS
-ADX 30+ creciendo	+20	+25
-ADX 30+ decreciendo	+20	-15
-ADX 25+ creciendo	+10	+15
-ADX 25+ decreciendo	+10	-10
-2. Contexto Macro:
-
-Condición	Penalty
-SHORT después rally +50% (50v)	-50
-SHORT después subida +20% (20v)	-30
-LONG después caída -15% (50v)	+20
-3. Alineación Timeframes:
-
-Condición	Penalty
-SHORT contra 4H alcista	-40
-SHORT contra 1H alcista	-25
-LONG contra 4H bajista	-40
-LONG contra 1H bajista	-25
-Simulación DMC:
-ANTES: Score 100 - 15 = 85 → ENTER ❌
-DESPUÉS: Score 100 - 15 - 50 - 40 = -5 → REJECT ✅
-Preguntas:
-¿Penalties macro (50/30) correctas?
-¿Penalties alineación (40/25) correctas?
-¿Modifico analyze_15m() para recibir contexto 4H/1H?
-
-
-Contexto Macro + Alineación Timeframes
-Problemas Reportados
-DMC: SHORT en rally alcista (+50%) → Score 100 → Pérdida
-AAVE: ADX alto DECRECIENDO (fuerza muriendo)
-AGLD: ADX 17.5, Score 97.5 (sin fuerza)
-1️⃣ ADX TREND - Creciendo vs Decreciendo
-ACTUAL (líneas 507-520):
-if FORCE_VALIDATION_MODE == 'STRICT':
-    if adx_current &gt;= 30:
-        score_15m += 20   # Fuerza FUERTE
-    elif adx_current &gt;= 25:
-        score_15m += 10   # Fuerza buena
-    # ... etc (NO valida si CRECIENDO o DECRECIENDO)
-PROPOSED:
-adx_trend = adx_data['adx_trend']  # Ya existe: 'creciendo'/'decreciendo'
-if FORCE_VALIDATION_MODE == 'STRICT':
-    if adx_current &gt;= 30:
-        if adx_trend == 'creciendo':
-            score_15m += 25  # Fuerza FUERTE + CRECIENDO ✅
-        else:
-            score_15m -= 15  # Fuerza alta pero MURIENDO ❌
-    elif adx_current &gt;= 25:
-        if adx_trend == 'creciendo':
-            score_15m += 15
-        else:
-            score_15m -= 10
-    elif adx_current &gt;= 22:
-        if adx_trend == 'creciendo':
-            score_15m += 5
-        else:
-            score_15m -= 5
-    elif adx_current &gt;= 20:
-        score_15m -= 15
-    elif adx_current &gt;= 17:
-        score_15m -= 30
-    else:
-        score_15m -= 45
-2️⃣ CONTEXTO MACRO (20-50 velas)
-ACTUAL:
-No existe.
-
-PROPOSED (después de línea 417):
-# === CONTEXTO MACRO: Movimiento previo 20-50 velas ===
-precio_actual = float(df['close'].iloc[-1])
-precio_hace_20 = float(df['close'].iloc[-20])
-precio_hace_50 = float(df['close'].iloc[-50]) if len(df) &gt;= 50 else precio_hace_20
-cambio_20v = ((precio_actual - precio_hace_20) / precio_hace_20) * 100
-cambio_50v = ((precio_actual - precio_hace_50) / precio_hace_50) * 100
-macro_penalty = 0
-# Penalty: SHORT después de rally alcista
-if direction == 'BEARISH':
-    if cambio_50v &gt; 20:
-        macro_penalty += 50
-        print(f"      ⚠️ SHORT después rally +{cambio_50v:.1f}% macro - TRAMPA")
-    elif cambio_20v &gt; 10:
-        macro_penalty += 30
-        print(f"      ⚠️ SHORT después subida +{cambio_20v:.1f}% - Riesgoso")
-# Bonus: LONG después de caída (posible rebote)
-if direction == 'BULLISH':
-    if cambio_50v &lt; -15:
-        macro_penalty -= 20  # Bonus (penalty negativa)
-        print(f"      ✅ LONG después caída {cambio_50v:.1f}% - Rebote")
-3️⃣ VALIDACIÓN TIMEFRAMES SUPERIORES
-ACTUAL:
-analyze_15m()
- NO recibe contexto de 4H/1H.
-
-PROPOSED:
-Agregar parámetros y validación:
-
-def analyze_15m(symbol, strict=None, context_4h=None, context_1h=None):
-    # ... código existente ...
-    
-    # === VALIDACIÓN ALINEACIÓN TIMEFRAMES ===
-    tf_penalty = 0
-    direction_4h = context_4h.get('direction', 'NEUTRAL') if context_4h else 'NEUTRAL'
-    direction_1h = context_1h.get('direction', 'NEUTRAL') if context_1h else 'NEUTRAL'
-    
-    if direction == 'BEARISH':
-        if direction_4h == 'BULLISH':
-            tf_penalty += 40
-            print(f"      ⚠️ SHORT contra 4H alcista")
-        elif direction_1h == 'BULLISH':
-            tf_penalty += 25
-    
-    if direction == 'BULLISH':
-        if direction_4h == 'BEARISH':
-            tf_penalty += 40
-            print(f"      ⚠️ LONG contra 4H bajista")
-        elif direction_1h == 'BEARISH':
-            tf_penalty += 25
-    
-    # Aplicar penalty al score
-    score_15m -= tf_penalty
-4️⃣ RESUMEN PENALTIES
-Condición	Penalty
-ADX &gt;= 30 + CRECIENDO	+25
-ADX &gt;= 30 + DECRECIENDO	-15
-ADX &gt;= 25 + CRECIENDO	+15
-ADX &gt;= 25 + DECRECIENDO	-10
-SHORT después rally +50%	-50
-SHORT después subida +20%	-30
-LONG después caída -15%	+20
-SHORT contra 4H alcista	-40
-SHORT contra 1H alcista	-25
-5️⃣ SIMULACIÓN DMC
-ANTES:
-
-Direction: BEARISH
-ADX: 20.5 → penalty -15
-Macro: +50% → 0 (no existía)
-Alineación: 4H bullish → 0 (no existía)
-Score: 100 - 15 = 85 → ENTER ❌
-DESPUÉS:
-
-Direction: BEARISH
-ADX: 20.5 → penalty -15
-Macro: +50% → penalty -50
-Alineación: 4H BULLISH → penalty -40
-Score: 100 - 15 - 50 - 40 = -5 → REJECT ✅
-User Review Required
-IMPORTANT
-
-¿Los valores de penalties para macro (50/30) son correctos?
-¿La validación de alineación (40/25) es apropiada?
-¿Quieres que también modifique la firma de 
-analyze_15m()
- para recibir contexto 4H/1H?
+asd
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,897<br>
-    Generado: 2025-12-19 23:46:37
+    Total caracteres: 3<br>
+    Generado: 2025-12-20 00:00:46
   </div>
 </body>
 </html>
