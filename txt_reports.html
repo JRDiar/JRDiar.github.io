@@ -15,271 +15,175 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-19 22:00:57</div>
+  <div class="meta">Última actualización: 2025-12-19 23:46:37</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
+PLAN DE IMPLEMENTACIÓN - Contexto Macro + Alineación TF
+3 Cambios Propuestos:
+1. ADX Trend (creciendo/decreciendo):
+
+Condición	ANTES	DESPUÉS
+ADX 30+ creciendo	+20	+25
+ADX 30+ decreciendo	+20	-15
+ADX 25+ creciendo	+10	+15
+ADX 25+ decreciendo	+10	-10
+2. Contexto Macro:
+
+Condición	Penalty
+SHORT después rally +50% (50v)	-50
+SHORT después subida +20% (20v)	-30
+LONG después caída -15% (50v)	+20
+3. Alineación Timeframes:
+
+Condición	Penalty
+SHORT contra 4H alcista	-40
+SHORT contra 1H alcista	-25
+LONG contra 4H bajista	-40
+LONG contra 1H bajista	-25
+Simulación DMC:
+ANTES: Score 100 - 15 = 85 → ENTER ❌
+DESPUÉS: Score 100 - 15 - 50 - 40 = -5 → REJECT ✅
+Preguntas:
+¿Penalties macro (50/30) correctas?
+¿Penalties alineación (40/25) correctas?
+¿Modifico analyze_15m() para recibir contexto 4H/1H?
 
 
-Thought for 1s
-
-Claro Joel, te muestro todo el código implementado. El modo STRICT ya está activo:
-
-Analyzed
-brain_config.py#L75-90
-Analyzed
-brain_analyzer.py#L500-600
-📋 CÓDIGO IMPLEMENTADO - Force Validation con FLAGS
-1️⃣ brain_config.py (Líneas 80-84)
-python
-# ===== FORCE VALIDATION MODE (TIME LADDER) =====
-# Controla severidad de penalties por ADX/Momentum débiles
-# STRICT: Penalties severas (filtro agresivo, rechaza fuerza débil)
-# MODERATE: Penalties suavizadas (más permisivo, 30% menos severo)
-FORCE_VALIDATION_MODE = 'STRICT'  # Opciones: 'STRICT', 'MODERATE'
-2️⃣ brain_analyzer.py - analyze_15m() (Líneas 501-601)
-python
-# ===== FORCE VALIDATION - TIME LADDER con FLAG =====
-# &gt;&gt;&gt; MODIFICADO: Penalties controladas por FORCE_VALIDATION_MODE
-# ADX: Gradiente con PENALTIES según MODE
-adx_current = adx_data['adx_current']
+Contexto Macro + Alineación Timeframes
+Problemas Reportados
+DMC: SHORT en rally alcista (+50%) → Score 100 → Pérdida
+AAVE: ADX alto DECRECIENDO (fuerza muriendo)
+AGLD: ADX 17.5, Score 97.5 (sin fuerza)
+1️⃣ ADX TREND - Creciendo vs Decreciendo
+ACTUAL (líneas 507-520):
 if FORCE_VALIDATION_MODE == 'STRICT':
-    # STRICT: Penalties severas (filtro agresivo)
     if adx_current &gt;= 30:
         score_15m += 20   # Fuerza FUERTE
     elif adx_current &gt;= 25:
         score_15m += 10   # Fuerza buena
-    elif adx_current &gt;= 22:
-        score_15m += 0    # Neutral
-    elif adx_current &gt;= 20:
-        score_15m -= 15   # Fuerza débil → PENALTY
-    elif adx_current &gt;= 17:
-        score_15m -= 30   # Fuerza muy débil → PENALTY SEVERA
-    else:  # ADX &lt; 17
-        score_15m -= 45   # Sin fuerza → PENALTY CRÍTICA
-else:  # MODERATE
-    # MODERATE: Penalties suavizadas (30% menos severas)
+    # ... etc (NO valida si CRECIENDO o DECRECIENDO)
+PROPOSED:
+adx_trend = adx_data['adx_trend']  # Ya existe: 'creciendo'/'decreciendo'
+if FORCE_VALIDATION_MODE == 'STRICT':
     if adx_current &gt;= 30:
-        score_15m += 20
+        if adx_trend == 'creciendo':
+            score_15m += 25  # Fuerza FUERTE + CRECIENDO ✅
+        else:
+            score_15m -= 15  # Fuerza alta pero MURIENDO ❌
     elif adx_current &gt;= 25:
-        score_15m += 10
+        if adx_trend == 'creciendo':
+            score_15m += 15
+        else:
+            score_15m -= 10
     elif adx_current &gt;= 22:
-        score_15m += 0
+        if adx_trend == 'creciendo':
+            score_15m += 5
+        else:
+            score_15m -= 5
     elif adx_current &gt;= 20:
-        score_15m -= 10
-    elif adx_current &gt;= 17:
-        score_15m -= 20
-    else:  # ADX &lt; 17
-        score_15m -= 30
-# Spread DI: Claridad direccional con PENALTIES según MODE
-spread = abs(adx_data['spread'])
-if FORCE_VALIDATION_MODE == 'STRICT':
-    # STRICT: Penalties severas
-    if spread &gt;= 10:
-        score_15m += 15
-    elif spread &gt;= 7:
-        score_15m += 10
-    elif spread &gt;= 5:
-        score_15m += 5
-    elif spread &gt;= 3:
-        score_15m -= 10
-    elif spread &gt;= 2:
-        score_15m -= 20
-    else:  # spread &lt; 2
-        score_15m -= 35
-else:  # MODERATE
-    # MODERATE: Penalties suavizadas
-    if spread &gt;= 10:
-        score_15m += 15
-    elif spread &gt;= 7:
-        score_15m += 10
-    elif spread &gt;= 5:
-        score_15m += 5
-    elif spread &gt;= 3:
-        score_15m -= 8
-    elif spread &gt;= 2:
         score_15m -= 15
-    else:  # spread &lt; 2
-        score_15m -= 25
-# Momentum: Alineado vs Opuesto con PENALTIES
-mom_color = momentum_data['color_current']
-mom_count = momentum_data['consecutive_count']
-if mom_color in expected_colors:
-    # Momentum ALINEADO con dirección
-    if mom_count &gt;= 5:
-        score_15m += 20  # Momentum FUERTE
-    elif mom_count &gt;= 3:
-        score_15m += 12  # Momentum bueno
-    elif mom_count &gt;= 2:
-        score_15m += 6   # Momentum moderado
+    elif adx_current &gt;= 17:
+        score_15m -= 30
     else:
-        score_15m += 2   # Momentum inicial
-else:
-    # Momentum OPUESTO a dirección esperada
-    if FORCE_VALIDATION_MODE == 'STRICT':
-        score_15m -= 40  # STRICT: penalty severa
-    else:
-        score_15m -= 30  # MODERATE: penalty suavizada
-# VALIDACIÓN CRUZADA ADX + Momentum
-if FORCE_VALIDATION_MODE == 'STRICT':
-    # STRICT: penalties/bonus severos
-    if adx_current &lt; 20 and mom_count &lt; 2:
-        score_15m -= 30   # Sin fuerza confirmada
-    elif adx_current &gt;= 25 and mom_count &gt;= 4:
-        score_15m += 15   # Fuerza confirmada
-else:  # MODERATE
-    # MODERATE: penalties/bonus suavizados
-    if adx_current &lt; 20 and mom_count &lt; 2:
-        score_15m -= 20
-    elif adx_current &gt;= 25 and mom_count &gt;= 4:
-        score_15m += 15
-✅ Estado Actual:
-FORCE_VALIDATION_MODE = 'STRICT' ← Activo
-Penalties severas aplicándose
-📊 Tabla Resumen STRICT:
-Condición	Penalty/Bonus
-ADX &lt; 17	-45
-ADX 17-20	-30
-ADX 20-22	-15
-Spread &lt; 2	-35
-Spread 2-3	-20
-Mom opuesto	-40
-ADX+Mom débiles	-30
+        score_15m -= 45
+2️⃣ CONTEXTO MACRO (20-50 velas)
+ACTUAL:
+No existe.
 
+PROPOSED (después de línea 417):
+# === CONTEXTO MACRO: Movimiento previo 20-50 velas ===
+precio_actual = float(df['close'].iloc[-1])
+precio_hace_20 = float(df['close'].iloc[-20])
+precio_hace_50 = float(df['close'].iloc[-50]) if len(df) &gt;= 50 else precio_hace_20
+cambio_20v = ((precio_actual - precio_hace_20) / precio_hace_20) * 100
+cambio_50v = ((precio_actual - precio_hace_50) / precio_hace_50) * 100
+macro_penalty = 0
+# Penalty: SHORT después de rally alcista
+if direction == 'BEARISH':
+    if cambio_50v &gt; 20:
+        macro_penalty += 50
+        print(f"      ⚠️ SHORT después rally +{cambio_50v:.1f}% macro - TRAMPA")
+    elif cambio_20v &gt; 10:
+        macro_penalty += 30
+        print(f"      ⚠️ SHORT después subida +{cambio_20v:.1f}% - Riesgoso")
+# Bonus: LONG después de caída (posible rebote)
+if direction == 'BULLISH':
+    if cambio_50v &lt; -15:
+        macro_penalty -= 20  # Bonus (penalty negativa)
+        print(f"      ✅ LONG después caída {cambio_50v:.1f}% - Rebote")
+3️⃣ VALIDACIÓN TIMEFRAMES SUPERIORES
+ACTUAL:
+analyze_15m()
+ NO recibe contexto de 4H/1H.
 
+PROPOSED:
+Agregar parámetros y validación:
 
-❌ Error fetch_multiple_tickers: mexc {"success":false,"code":510,"message":"Requests are too frequent, please try again later"}
-❌ Error fetch_current_price AAVE/USDT:USDT: mexc {"success":false,"code":510,"message":"Requests are too frequent, please try again later"}
+def analyze_15m(symbol, strict=None, context_4h=None, context_1h=None):
+    # ... código existente ...
+    
+    # === VALIDACIÓN ALINEACIÓN TIMEFRAMES ===
+    tf_penalty = 0
+    direction_4h = context_4h.get('direction', 'NEUTRAL') if context_4h else 'NEUTRAL'
+    direction_1h = context_1h.get('direction', 'NEUTRAL') if context_1h else 'NEUTRAL'
+    
+    if direction == 'BEARISH':
+        if direction_4h == 'BULLISH':
+            tf_penalty += 40
+            print(f"      ⚠️ SHORT contra 4H alcista")
+        elif direction_1h == 'BULLISH':
+            tf_penalty += 25
+    
+    if direction == 'BULLISH':
+        if direction_4h == 'BEARISH':
+            tf_penalty += 40
+            print(f"      ⚠️ LONG contra 4H bajista")
+        elif direction_1h == 'BEARISH':
+            tf_penalty += 25
+    
+    # Aplicar penalty al score
+    score_15m -= tf_penalty
+4️⃣ RESUMEN PENALTIES
+Condición	Penalty
+ADX &gt;= 30 + CRECIENDO	+25
+ADX &gt;= 30 + DECRECIENDO	-15
+ADX &gt;= 25 + CRECIENDO	+15
+ADX &gt;= 25 + DECRECIENDO	-10
+SHORT después rally +50%	-50
+SHORT después subida +20%	-30
+LONG después caída -15%	+20
+SHORT contra 4H alcista	-40
+SHORT contra 1H alcista	-25
+5️⃣ SIMULACIÓN DMC
+ANTES:
 
-Veo el problema Joel. Es un error de rate limiting de MEXC (demasiadas peticiones). Déjame buscar el código relevante:
+Direction: BEARISH
+ADX: 20.5 → penalty -15
+Macro: +50% → 0 (no existía)
+Alineación: 4H bullish → 0 (no existía)
+Score: 100 - 15 = 85 → ENTER ❌
+DESPUÉS:
 
-Searched
-fetch_multiple_tickers
-4 results
-Searched
-fetch_current_price
-9 results
-Analyzed
-exchange_connection.py#L1-208
-Ahora veo el problema. MEXC está rechazando las peticiones por rate limit. El problema es que 
-fetch_multiple_tickers
- y las llamadas de monitoreo son demasiado frecuentes. Aquí está el diagnóstico:
+Direction: BEARISH
+ADX: 20.5 → penalty -15
+Macro: +50% → penalty -50
+Alineación: 4H BULLISH → penalty -40
+Score: 100 - 15 - 50 - 40 = -5 → REJECT ✅
+User Review Required
+IMPORTANT
 
-📋 CÓDIGO ACTUAL vs PROPUESTO
-PROBLEMA:
-MEXC tiene un rate limit estricto (Code 510). Las funciones 
-fetch_current_price
- y 
-fetch_multiple_tickers
- no tienen delay ni retry con backoff.
-
-ARCHIVO: 
-exchange_connection.py
-ACTUAL (líneas 129-145):
-
-python
-def fetch_current_price(symbol):
-    """
-    Obtiene precio actual (ticker) de forma ligera
-    """
-    try:
-        ticker = exchange.fetch_ticker(symbol)
-        return float(ticker['last'])
-    except Exception as e:
-        print(f"❌ Error fetch_current_price {symbol}: {e}")
-        return None
-PROPUESTO:
-
-python
-import time
-def fetch_current_price(symbol, max_retries=3):
-    """
-    Obtiene precio actual (ticker) con retry y backoff
-    """
-    for attempt in range(max_retries):
-        try:
-            ticker = exchange.fetch_ticker(symbol)
-            return float(ticker['last'])
-        except Exception as e:
-            if '510' in str(e) or 'too frequent' in str(e).lower():
-                # Rate limit - esperar y reintentar
-                wait_time = (attempt + 1) * 2  # 2, 4, 6 segundos
-                print(f"⏳ Rate limit, esperando {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                print(f"❌ Error fetch_current_price {symbol}: {e}")
-                return None
-    return None
-ACTUAL (líneas 148-171):
-
-python
-def fetch_multiple_tickers(symbols):
-    """
-    Obtiene precios actuales para múltiples símbolos en UN solo request.
-    """
-    try:
-        tickers = exchange.fetch_tickers(symbols)
-        
-        results = {}
-        for symbol, ticker in tickers.items():
-            results[symbol] = float(ticker['last'])
-            
-        return results
-    except Exception as e:
-        print(f"❌ Error fetch_multiple_tickers: {e}")
-        return {}
-PROPUESTO:
-
-python
-def fetch_multiple_tickers(symbols, max_retries=3):
-    """
-    Obtiene precios actuales para múltiples símbolos con retry
-    """
-    for attempt in range(max_retries):
-        try:
-            tickers = exchange.fetch_tickers(symbols)
-            
-            results = {}
-            for symbol, ticker in tickers.items():
-                results[symbol] = float(ticker['last'])
-                
-            return results
-        except Exception as e:
-            if '510' in str(e) or 'too frequent' in str(e).lower():
-                # Rate limit - esperar y reintentar
-                wait_time = (attempt + 1) * 2  # 2, 4, 6 segundos
-                print(f"⏳ Rate limit fetch_tickers, esperando {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                print(f"❌ Error fetch_multiple_tickers: {e}")
-                return {}
-    return {}
-CAMBIO ADICIONAL en brain_config.py (Aumentar rate limit):
-ACTUAL (línea 31):
-
-python
-RATE_LIMIT = 200
-PROPUESTO:
-
-python
-RATE_LIMIT = 500  # Aumentar a 500ms entre requests
-RESUMEN:
-Cambio	Archivo	Línea
-Agregar import time	exchange_connection.py	6
-Retry + backoff en 
-fetch_current_price
-exchange_connection.py	129-145
-Retry + backoff en 
-fetch_multiple_tickers
-exchange_connection.py	148-171
-Aumentar RATE_LIMIT a 500	brain_config.py	31
-¿Implemento estos cambios?
+¿Los valores de penalties para macro (50/30) son correctos?
+¿La validación de alineación (40/25) es apropiada?
+¿Quieres que también modifique la firma de 
+analyze_15m()
+ para recibir contexto 4H/1H?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 7,788<br>
-    Generado: 2025-12-19 22:00:57
+    Total caracteres: 4,897<br>
+    Generado: 2025-12-19 23:46:37
   </div>
 </body>
 </html>
