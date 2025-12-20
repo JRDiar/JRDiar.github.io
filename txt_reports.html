@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-19 21:55:51</div>
+  <div class="meta">Última actualización: 2025-12-19 22:00:57</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -146,11 +146,140 @@ Spread &lt; 2	-35
 Spread 2-3	-20
 Mom opuesto	-40
 ADX+Mom débiles	-30
+
+
+
+❌ Error fetch_multiple_tickers: mexc {"success":false,"code":510,"message":"Requests are too frequent, please try again later"}
+❌ Error fetch_current_price AAVE/USDT:USDT: mexc {"success":false,"code":510,"message":"Requests are too frequent, please try again later"}
+
+Veo el problema Joel. Es un error de rate limiting de MEXC (demasiadas peticiones). Déjame buscar el código relevante:
+
+Searched
+fetch_multiple_tickers
+4 results
+Searched
+fetch_current_price
+9 results
+Analyzed
+exchange_connection.py#L1-208
+Ahora veo el problema. MEXC está rechazando las peticiones por rate limit. El problema es que 
+fetch_multiple_tickers
+ y las llamadas de monitoreo son demasiado frecuentes. Aquí está el diagnóstico:
+
+📋 CÓDIGO ACTUAL vs PROPUESTO
+PROBLEMA:
+MEXC tiene un rate limit estricto (Code 510). Las funciones 
+fetch_current_price
+ y 
+fetch_multiple_tickers
+ no tienen delay ni retry con backoff.
+
+ARCHIVO: 
+exchange_connection.py
+ACTUAL (líneas 129-145):
+
+python
+def fetch_current_price(symbol):
+    """
+    Obtiene precio actual (ticker) de forma ligera
+    """
+    try:
+        ticker = exchange.fetch_ticker(symbol)
+        return float(ticker['last'])
+    except Exception as e:
+        print(f"❌ Error fetch_current_price {symbol}: {e}")
+        return None
+PROPUESTO:
+
+python
+import time
+def fetch_current_price(symbol, max_retries=3):
+    """
+    Obtiene precio actual (ticker) con retry y backoff
+    """
+    for attempt in range(max_retries):
+        try:
+            ticker = exchange.fetch_ticker(symbol)
+            return float(ticker['last'])
+        except Exception as e:
+            if '510' in str(e) or 'too frequent' in str(e).lower():
+                # Rate limit - esperar y reintentar
+                wait_time = (attempt + 1) * 2  # 2, 4, 6 segundos
+                print(f"⏳ Rate limit, esperando {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                print(f"❌ Error fetch_current_price {symbol}: {e}")
+                return None
+    return None
+ACTUAL (líneas 148-171):
+
+python
+def fetch_multiple_tickers(symbols):
+    """
+    Obtiene precios actuales para múltiples símbolos en UN solo request.
+    """
+    try:
+        tickers = exchange.fetch_tickers(symbols)
+        
+        results = {}
+        for symbol, ticker in tickers.items():
+            results[symbol] = float(ticker['last'])
+            
+        return results
+    except Exception as e:
+        print(f"❌ Error fetch_multiple_tickers: {e}")
+        return {}
+PROPUESTO:
+
+python
+def fetch_multiple_tickers(symbols, max_retries=3):
+    """
+    Obtiene precios actuales para múltiples símbolos con retry
+    """
+    for attempt in range(max_retries):
+        try:
+            tickers = exchange.fetch_tickers(symbols)
+            
+            results = {}
+            for symbol, ticker in tickers.items():
+                results[symbol] = float(ticker['last'])
+                
+            return results
+        except Exception as e:
+            if '510' in str(e) or 'too frequent' in str(e).lower():
+                # Rate limit - esperar y reintentar
+                wait_time = (attempt + 1) * 2  # 2, 4, 6 segundos
+                print(f"⏳ Rate limit fetch_tickers, esperando {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                print(f"❌ Error fetch_multiple_tickers: {e}")
+                return {}
+    return {}
+CAMBIO ADICIONAL en brain_config.py (Aumentar rate limit):
+ACTUAL (línea 31):
+
+python
+RATE_LIMIT = 200
+PROPUESTO:
+
+python
+RATE_LIMIT = 500  # Aumentar a 500ms entre requests
+RESUMEN:
+Cambio	Archivo	Línea
+Agregar import time	exchange_connection.py	6
+Retry + backoff en 
+fetch_current_price
+exchange_connection.py	129-145
+Retry + backoff en 
+fetch_multiple_tickers
+exchange_connection.py	148-171
+Aumentar RATE_LIMIT a 500	brain_config.py	31
+¿Implemento estos cambios?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3,930<br>
-    Generado: 2025-12-19 21:55:51
+    Total caracteres: 7,788<br>
+    Generado: 2025-12-19 22:00:57
   </div>
 </body>
 </html>
