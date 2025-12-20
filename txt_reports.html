@@ -15,671 +15,346 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-20 00:48:40</div>
+  <div class="meta">Última actualización: 2025-12-20 12:18:49</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-PLAN COMPLETO - Diagnóstico + Arquitectura
-PARTE 1: DIAGNÓSTICO
-A) ¿Por qué entró con ADX decreciendo?
 
-Penalty actual: solo -15 (insuficiente)
-Otros bonuses compensan → Score positivo → ENTRA ❌
-B) ¿Por qué Breakeven NO activó?
+Creating Manual Analyzer Tool
+Created 
+tools/manual_analyzer.py
+ with step-by-step coin analysis: shows ADX, Momentum, all penalties/bonuses, price velocity, grid diagonal, and compares estimated vs real score.
 
-Trigger actual: 2.0%
-Trades nunca llegaron a +2% → Breakeven NUNCA activó
-C) ¿Por qué Trailing Stop NO protegió?
+Files Edited
+manual_analyzer.py
+Progress Updates
+1
+Creating tools/manual_analyzer.py module
 
-Trigger actual: 1.5%
-ALEO no llegó a +1.5% → Trailing NUNCA activó
-PARTE 2: CORRECCIONES URGENTES
-Cambio	ACTUAL	PROPOSED
-BE trigger	2.0%	1.0%
-Trailing trigger	1.5%	0.7%
-Trailing tolerance	0.5%	1.0%
-LATE phase penalty	-15	-60
-PARTE 3: NUEVOS MÓDULOS
-brain_adx_plus.py      # DI+ granular
-brain_adx_minus.py     # DI- granular
-brain_adx_force.py     # ADX lifecycle
-brain_trend_birth.py   # EARLY/MID/LATE detection
-PARTE 4: DETECCIÓN DE FASE
-Fase	Descripción	Entry
-EARLY	ADX naciendo (&lt;30 subiendo)	+30 bonus
-MID	ADX 25-40 estable	0
-LATE	ADX &gt;35 cayendo	-60 penalty
-Preguntas:
-¿Reducir BE trigger de 2.0% a 1.0%?
-¿Reducir trailing trigger de 1.5% a 0.7%?
-¿Penalty -60 por LATE phase?
-¿Crear módulos granulares ahora o después?
+2
+Verifying manual_analyzer.py compiles
 
+✅ MÓDULO CREADO: tools/manual_analyzer.py
+Uso:
+powershell
+python tools/manual_analyzer.py 2Z/USDT:USDT
+python tools/manual_analyzer.py AERO/USDT
+python tools/manual_analyzer.py BTC/USDT
+Lo que muestra:
+📊 PASO 1: DATOS BÁSICOS
+📊 PASO 2: ADX + MOMENTUM (15M)
+📊 PASO 3: JOEL'S STRATEGY VALIDATIONS
+📊 PASO 4: VELOCIDAD DEL PRECIO
+📊 PASO 5: GRID DIAGONAL
+📊 PASO 6: RESUMEN PENALTIES/BONUSES
+📊 PASO 7: RESULTADO analyze_15m() REAL
+📊 PASO 8: SNIPER CHECKLIST
+🎯 VEREDICTO FINAL
+Ahora puedes analizar 2Z, AERO y B2 para ver por qué tienen score tan alto con ADX decreciendo.
 
-📋 PLAN COMPLETO - TODO EL CÓDIGO
-PARTE 1: CORRECCIONES URGENTES
-Config	ACTUAL	PROPOSED
-Breakeven trigger	2.0%	1.0%
-Trailing trigger	1.5%	0.7%
-LATE phase penalty	-15	-60
-PARTE 2: NUEVOS MÓDULOS (código completo en plan)
-brain_trend_birth.py:
+Mientras lees el plan, puedo continuar con los cambios al bot cuando me digas.
 
-calculate_adx_lifecycle() → DORMANT/BIRTH/MATURE/DECLINE
-detect_di_divergence() → DIVERGING/CONVERGING/STABLE
-detect_trend_phase() → EARLY (+30) / MID (0) / LATE (-60)
-brain_momentum_colors.py:
+Plan: Diagnóstico y Corrección ADX Decreciendo + Manual Analyzer
+🚨 PROBLEMA IDENTIFICADO
+Evidencia:
+Trade	ADX	Trend	Score	Debería
+2Z	29.4	decreciendo	99.5	&lt; 40
+AERO	35.0	decreciendo	100	&lt; 40
+B2	22.3	decreciendo	100	&lt; 40
+Código actual (ESTÁ CORRECTO):
+# brain_analyzer.py línea 587-589
+elif adx_trend == 'decreciendo':
+    score_15m -= 60  # ✅ PENALTY APLICADA
+    print(f"      ❌ ADX {adx_current:.1f} decreciendo (fuerza muriendo)")
+Posibles causas:
+El score final NO es score_15m - Hay otra función que calcula score diferente
+Score se normaliza/clampea - max(0, min(100, score)) puede enmascarar
+analyze_15m NO se ejecuta - Otro flujo decide entries
+🔍 DIAGNÓSTICO REQUERIDO
+Archivos a revisar:
+brain_intelligent.py
+ - Dónde se llama analyze_15m y se usa su resultado
+brain_sniper_realtime.py
+ - Puede tener su propio scoring
+brain_think.py
+ - Sniper checklist puede tener scores separados
+Pregunta clave:
+¿El Score Brain 99.5/100 viene de analyze_15m o de otra función?
 
-analyze_lime() → NASCENT (+5) / EXPLOSIVE (+15) / CLIMAX (+10) / EXHAUSTED (-20)
-analyze_green() → EARLY (+8) / MATURE (+12) / LATE (+5) / WEAKENING (-10)
-analyze_maroon() / analyze_red() (similar)
-brain_momentum_transitions.py:
+📋 PLAN DE CORRECCIONES
+PARTE 1: Diagnóstico del flujo de score
+Archivo: 
+brain_intelligent.py
+Buscar dónde se llama analyze_15m y cómo se usa score:
 
-RED→GREEN: +20 (Reversión alcista)
-MAROON→GREEN: +25 (Rebote fuerte)
-GREEN→LIME: +15 (Aceleración)
-LIME→GREEN: -10 (Desaceleración)
-GREEN→RED: -30 (Reversión bajista)
-LIME→MAROON: -40 (Colapso)
-PARTE 3: INTEGRACIÓN
-Código completo de integración en analyze_15m()
+# BUSCAR:
+result_15m = analyze_15m(...)
+score = result_15m['score_15m']  # ¿Se usa esto?
+# O HAY OTRO SCORE PARALELO?
+final_score = calculate_final_score(...)  # ¿Existe?
+PARTE 2: Forzar score negativo si ADX decreciendo
+Archivo: 
+brain_analyzer.py
+Cambio propuesto línea 587-600:
 
-Preguntas:
-¿Aprobar arquitectura de 3 módulos?
-¿Aprobar valores de penalties?
-¿Empezar por correcciones urgentes o todo junto?
-
-Plan Maestro: Trend Birth + Momentum Granular
-PARTE 1: DIAGNÓSTICO Y CORRECCIONES URGENTES
-A) ¿Por qué entró con ADX decreciendo?
-Penalty actual: -15 (insuficiente)
-
-B) ¿Por qué Breakeven NO activó?
-Trigger actual: 2.0% - Trades nunca llegaron
-
-C) ¿Por qué Trailing NO protegió?
-Trigger actual: 1.5% - Nunca se activó
-
-Correcciones:
-Config	ACTUAL	PROPOSED
-BE trigger	2.0%	1.0%
-Trailing trigger	1.5%	0.7%
-LATE phase penalty	-15	-60
-PARTE 2: CÓDIGO COMPLETO - brain_trend_birth.py
-"""
-brain_trend_birth.py - Detector de Tendencia Naciente vs Moribunda
-==================================================================
-El bot SOLO debe entrar en tendencias NACIENDO, no cuando están MURIENDO.
-"""
-def calculate_adx_lifecycle(adx_current, adx_history, lookback=5):
-    """
-    Clasifica en qué fase del ciclo de vida está el ADX
-    
-    Args:
-        adx_current: Valor actual de ADX
-        adx_history: Lista de valores históricos
-        lookback: Velas para calcular velocidad
-        
-    Returns:
-        dict: {
-            'phase': 'DORMANT'|'BIRTH'|'MATURE'|'DECLINE',
-            'velocity': float,
-            'acceleration': float
-        }
-    """
-    if len(adx_history) &lt; lookback + 2:
-        return {'phase': 'UNKNOWN', 'velocity': 0, 'acceleration': 0}
-    
-    # Calcular velocidad (cambio por vela)
-    recent = adx_history[-lookback:]
-    velocity = (recent[-1] - recent[0]) / lookback
-    
-    # Calcular aceleración
-    if len(adx_history) &gt;= lookback * 2:
-        prev_velocity = (adx_history[-lookback] - adx_history[-lookback*2]) / lookback
-        acceleration = velocity - prev_velocity
+# -----------------------------------------------------------------
+# 1. ADX FORCE &gt;= 25 Y CRECIENDO (OBLIGATORIO - BLOQUEADOR)
+# -----------------------------------------------------------------
+adx_rejected = False  # Flag de rechazo total
+if adx_current &lt; 25:
+    score_15m -= 60
+    adx_rejected = True
+    print(f"      ❌ BLOQUEADOR: ADX {adx_current:.1f} &lt; 25 (sin fuerza)")
+elif adx_trend == 'decreciendo':
+    score_15m -= 60
+    adx_rejected = True
+    print(f"      ❌ BLOQUEADOR: ADX {adx_current:.1f} decreciendo (fuerza muriendo)")
+elif adx_trend == 'creciendo':
+    if adx_current &gt;= 30:
+        score_15m += 10
     else:
-        acceleration = 0
-    
-    # Clasificar fase
-    if adx_current &lt; 20:
-        phase = 'DORMANT'  # Sin tendencia
-    elif adx_current &lt; 25 and velocity &gt; 1.5:
-        phase = 'BIRTH'    # Tendencia NACIENDO ✅
-    elif 25 &lt;= adx_current &lt;= 40 and abs(velocity) &lt; 1:
-        phase = 'MATURE'   # Tendencia MADURA
-    elif adx_current &gt; 35 and velocity &lt; -0.5:
-        phase = 'DECLINE'  # Tendencia MURIENDO ❌
-    else:
-        phase = 'TRANSITION'
-    
-    return {
-        'phase': phase,
-        'velocity': velocity,
-        'acceleration': acceleration
-    }
-def detect_di_divergence(di_plus_current, di_minus_current, 
-                         di_plus_prev, di_minus_prev):
-    """
-    Detecta si DI+ y DI- están divergiendo o convergiendo
-    
-    Returns:
-        str: 'DIVERGING'|'CONVERGING'|'STABLE'
-    """
-    spread_current = di_plus_current - di_minus_current
-    spread_prev = di_plus_prev - di_minus_prev
-    spread_change = abs(spread_current) - abs(spread_prev)
-    
-    if spread_change &gt; 2:
-        return 'DIVERGING'   # DI se separan → Fuerza creciendo
-    elif spread_change &lt; -2:
-        return 'CONVERGING'  # DI se acercan → Fuerza muriendo
-    else:
-        return 'STABLE'
-def detect_trend_phase(adx_data, momentum_data):
-    """
-    Clasifica la tendencia en EARLY/MID/LATE phase
-    
-    Args:
-        adx_data: Dict de calculate_adx_with_memory
-        momentum_data: Dict de calculate_momentum_with_memory
-        
-    Returns:
-        dict: {
-            'phase': 'EARLY'|'MID'|'LATE',
-            'entry_allowed': bool,
-            'bonus_penalty': int,
-            'reasons': []
-        }
-    """
-    # Calcular ciclo de vida del ADX
-    lifecycle = calculate_adx_lifecycle(
-        adx_data['adx_current'],
-        adx_data.get('adx_history', [])
-    )
-    
-    # Detectar divergencia DI
-    di_divergence = detect_di_divergence(
-        adx_data['di_plus_current'],
-        adx_data['di_minus_current'],
-        adx_data.get('di_plus_prev', adx_data['di_plus_current']),
-        adx_data.get('di_minus_prev', adx_data['di_minus_current'])
-    )
-    
-    # Momentum acelerando
-    mom_strong = momentum_data.get('consecutive_count', 0) &gt;= 3
-    mom_color = momentum_data.get('color_current', 'neutral')
-    
-    phase = 'MID'
-    entry_allowed = True
-    bonus_penalty = 0
-    reasons = []
-    
-    # ===== FASE EARLY (ENTRAR) =====
-    if lifecycle['phase'] == 'BIRTH':
-        if di_divergence == 'DIVERGING' and mom_strong:
-            phase = 'EARLY'
-            entry_allowed = True
-            bonus_penalty = +30
-            reasons.append("ADX naciendo desde bajo")
-            reasons.append("DI+ separándose de DI-")
-            reasons.append("Momentum acelerando")
-        elif di_divergence == 'DIVERGING':
-            phase = 'EARLY'
-            bonus_penalty = +20
-            reasons.append("ADX naciendo")
-    
-    # ===== FASE MID (EVALUAR) =====
-    elif lifecycle['phase'] == 'MATURE':
-        phase = 'MID'
-        entry_allowed = True
-        bonus_penalty = 0
-        
-        if di_divergence == 'CONVERGING':
-            bonus_penalty = -15
-            reasons.append("Cuidado: DI convergiendo")
-    
-    # ===== FASE LATE (NO ENTRAR) =====
-    elif lifecycle['phase'] == 'DECLINE':
-        phase = 'LATE'
-        entry_allowed = False
-        bonus_penalty = -60  # PENALTY SEVERA
-        reasons.append("ADX cayendo desde pico")
-        reasons.append("Tendencia MURIENDO")
-        
-        if di_divergence == 'CONVERGING':
-            bonus_penalty = -80
-            reasons.append("DI+ y DI- convergiendo")
-    
-    # ===== FASE DORMANT (SIN TENDENCIA) =====
-    elif lifecycle['phase'] == 'DORMANT':
-        phase = 'DORMANT'
-        entry_allowed = False
-        bonus_penalty = -40
-        reasons.append("Sin tendencia (ADX &lt; 20)")
-    
-    return {
-        'phase': phase,
-        'entry_allowed': entry_allowed,
-        'bonus_penalty': bonus_penalty,
-        'reasons': reasons,
-        'lifecycle': lifecycle,
-        'di_divergence': di_divergence
-    }
-PARTE 3: CÓDIGO COMPLETO - brain_momentum_colors.py
-"""
-brain_momentum_colors.py - Análisis Granular de Momentum por Color
-===================================================================
-Cada color tiene su propia física: LIME, GREEN, MAROON, RED
-"""
-def analyze_lime(momentum_data, value_history=None):
-    """
-    Analiza momentum LIME (verde explosivo - alcista acelerando)
-    
-    LIME = momentum &gt; 0 AND momentum &gt; prev_momentum
-    
-    Args:
-        momentum_data: Dict de calculate_momentum_with_memory
-        value_history: Lista de valores históricos de momentum
-        
-    Returns:
-        dict: Análisis completo del LIME
-    """
-    if momentum_data.get('color_current') != 'lime':
-        return {'is_active': False}
-    
-    age = momentum_data.get('consecutive_count', 1)
-    value = momentum_data.get('value', 0)
-    
-    # Calcular intensidad vs promedio histórico
-    if value_history and len(value_history) &gt;= 20:
-        positive_values = [v for v in value_history if v &gt; 0]
-        if positive_values:
-            avg_positive = sum(positive_values) / len(positive_values)
-            intensity = value / avg_positive if avg_positive != 0 else 1.0
-        else:
-            intensity = 1.0
-    else:
-        intensity = 1.0
-    
-    # Clasificar fase del LIME
-    if age &lt;= 2:
-        phase = 'NASCENT'
-        bonus_penalty = +5
-        risk_level = 'LOW'
-        recommendation = 'Momentum naciendo, buen timing'
-    elif age &lt;= 5 and intensity &gt; 1.5:
-        phase = 'EXPLOSIVE'
-        bonus_penalty = +15
-        risk_level = 'LOW'
-        recommendation = 'Clímax alcista, momento óptimo'
-    elif age &lt;= 8:
-        phase = 'CLIMAX'
-        bonus_penalty = +10
-        risk_level = 'MEDIUM'
-        recommendation = 'Pico máximo, cuidado agotamiento'
-    else:  # age &gt;= 9
-        phase = 'EXHAUSTED'
-        bonus_penalty = -20
-        risk_level = 'HIGH'
-        recommendation = 'Momentum agotándose, entrada tardía'
-    
-    # Calcular riesgo de agotamiento
-    exhaustion_risk = min(100, age * 10 + (20 if intensity &lt; 1.0 else 0))
-    
-    return {
-        'is_active': True,
-        'age': age,
-        'intensity': round(intensity, 2),
-        'intensity_vs_avg': f"+{((intensity-1)*100):.0f}%" if intensity &gt;= 1 else f"{((intensity-1)*100):.0f}%",
-        'phase': phase,
-        'bonus_penalty': bonus_penalty,
-        'risk_level': risk_level,
-        'exhaustion_risk': exhaustion_risk,
-        'recommendation': recommendation
-    }
-def analyze_green(momentum_data, value_history=None):
-    """
-    Analiza momentum GREEN (verde estable - alcista sostenido)
-    
-    GREEN = momentum &gt; 0 AND momentum &lt;= prev_momentum
-    
-    Args:
-        momentum_data: Dict de calculate_momentum_with_memory
-        
-    Returns:
-        dict: Análisis completo del GREEN
-    """
-    if momentum_data.get('color_current') != 'green':
-        return {'is_active': False}
-    
-    age = momentum_data.get('consecutive_count', 1)
-    value = momentum_data.get('value', 0)
-    color_history = momentum_data.get('color_history', [])
-    
-    # Detectar si viene de LIME (desaceleración)
-    came_from_lime = len(color_history) &gt; 1 and color_history[-2] == 'lime'
-    
-    # Clasificar fase del GREEN
-    if age &lt;= 3:
-        phase = 'EARLY'
-        bonus_penalty = +8
-        if came_from_lime:
-            bonus_penalty = -5  # Desaceleración desde LIME
-            phase = 'DECELERATION'
-    elif age &lt;= 8:
-        phase = 'MATURE'
-        bonus_penalty = +12
-    elif age &lt;= 12:
-        phase = 'LATE'
-        bonus_penalty = +5
-    else:  # age &gt;= 13
-        phase = 'WEAKENING'
-        bonus_penalty = -10
-    
-    # Calcular estabilidad (basado en valor vs promedio)
-    if value_history and len(value_history) &gt;= 10:
-        recent_avg = sum(value_history[-10:]) / 10
-        stability = 1 - abs(value - recent_avg) / (abs(recent_avg) + 0.001)
-        stability = max(0, min(1, stability))
-    else:
-        stability = 0.7
-    
-    # Probabilidades de transición
-    green_to_lime_prob = max(0, 40 - age * 5)  # Menor probabilidad con edad
-    green_to_red_risk = min(100, age * 3 + (30 if stability &lt; 0.5 else 0))
-    
-    return {
-        'is_active': True,
-        'age': age,
-        'stability': round(stability, 2),
-        'phase': phase,
-        'bonus_penalty': bonus_penalty,
-        'came_from_lime': came_from_lime,
-        'green_to_lime_prob': green_to_lime_prob,
-        'green_to_red_risk': green_to_red_risk
-    }
-def analyze_maroon(momentum_data, value_history=None):
-    """
-    Analiza momentum MAROON (rojo explosivo - bajista acelerando)
-    
-    MAROON = momentum &lt; 0 AND momentum &lt; prev_momentum
-    
-    Similar a LIME pero en bajista
-    """
-    if momentum_data.get('color_current') != 'maroon':
-        return {'is_active': False}
-    
-    age = momentum_data.get('consecutive_count', 1)
-    value = momentum_data.get('value', 0)
-    
-    # Calcular intensidad
-    if value_history and len(value_history) &gt;= 20:
-        negative_values = [v for v in value_history if v &lt; 0]
-        if negative_values:
-            avg_negative = sum(negative_values) / len(negative_values)
-            intensity = abs(value / avg_negative) if avg_negative != 0 else 1.0
-        else:
-            intensity = 1.0
-    else:
-        intensity = 1.0
-    
-    # Clasificar fase del MAROON
-    if age &lt;= 2:
-        phase = 'NASCENT'
-        bonus_penalty = +5  # Para SHORTs
-        risk_level = 'LOW'
-    elif age &lt;= 5 and intensity &gt; 1.5:
-        phase = 'EXPLOSIVE'
-        bonus_penalty = +15
-        risk_level = 'LOW'
-    elif age &lt;= 8:
-        phase = 'CLIMAX'
-        bonus_penalty = +10
-        risk_level = 'MEDIUM'
-    else:
-        phase = 'EXHAUSTED'
-        bonus_penalty = -20
-        risk_level = 'HIGH'
-    
-    return {
-        'is_active': True,
-        'age': age,
-        'intensity': round(intensity, 2),
-        'phase': phase,
-        'bonus_penalty': bonus_penalty,
-        'risk_level': risk_level
-    }
-def analyze_red(momentum_data, value_history=None):
-    """
-    Analiza momentum RED (rojo estable - bajista sostenido)
-    
-    RED = momentum &lt; 0 AND momentum &gt;= prev_momentum
-    
-    Similar a GREEN pero en bajista
-    """
-    if momentum_data.get('color_current') != 'red':
-        return {'is_active': False}
-    
-    age = momentum_data.get('consecutive_count', 1)
-    color_history = momentum_data.get('color_history', [])
-    
-    # Detectar si viene de MAROON
-    came_from_maroon = len(color_history) &gt; 1 and color_history[-2] == 'maroon'
-    
-    if age &lt;= 3:
-        phase = 'EARLY'
-        bonus_penalty = +8  # Para SHORTs
-        if came_from_maroon:
-            bonus_penalty = -5
-            phase = 'DECELERATION'
-    elif age &lt;= 8:
-        phase = 'MATURE'
-        bonus_penalty = +12
-    elif age &lt;= 12:
-        phase = 'LATE'
-        bonus_penalty = +5
-    else:
-        phase = 'WEAKENING'
-        bonus_penalty = -10
-    
-    return {
-        'is_active': True,
-        'age': age,
-        'phase': phase,
-        'bonus_penalty': bonus_penalty,
-        'came_from_maroon': came_from_maroon
-    }
-PARTE 4: CÓDIGO COMPLETO - brain_momentum_transitions.py
-"""
-brain_momentum_transitions.py - Detector de Transiciones de Color
-==================================================================
-Las transiciones son CLAVE para timing de entrada.
-"""
-# Matriz de bonus/penalties por transición
-TRANSITION_MATRIX = {
-    # Transiciones ALCISTAS (ENTRAR)
-    ('red', 'green'): {'bonus': +20, 'type': 'REVERSAL', 'meaning': 'Reversión alcista'},
-    ('maroon', 'green'): {'bonus': +25, 'type': 'STRONG_REVERSAL', 'meaning': 'Rebote fuerte'},
-    ('green', 'lime'): {'bonus': +15, 'type': 'ACCELERATION', 'meaning': 'Aceleración alcista'},
-    ('maroon', 'red'): {'bonus': +10, 'type': 'EASING', 'meaning': 'Presión bajista cediendo'},
-    
-    # Transiciones BAJISTAS (SALIR o SHORT)
-    ('lime', 'green'): {'bonus': -10, 'type': 'DECELERATION', 'meaning': 'Desaceleración alcista'},
-    ('green', 'red'): {'bonus': -30, 'type': 'REVERSAL', 'meaning': 'Reversión bajista'},
-    ('lime', 'maroon'): {'bonus': -40, 'type': 'COLLAPSE', 'meaning': 'Colapso desde clímax'},
-    ('green', 'maroon'): {'bonus': -35, 'type': 'STRONG_REVERSAL', 'meaning': 'Caída abrupta'},
-    
-    # Transiciones SHORT FAVORABLE
-    ('green', 'red'): {'bonus': +20, 'type': 'SHORT_ENTRY', 'meaning': 'Entrada SHORT'},
-    ('lime', 'red'): {'bonus': +25, 'type': 'SHORT_ENTRY', 'meaning': 'Entrada SHORT después de clímax'},
-    
-    # Sin cambio (neutral)
-    ('lime', 'lime'): {'bonus': 0, 'type': 'CONTINUATION', 'meaning': 'Continúa explosivo'},
-    ('green', 'green'): {'bonus': 0, 'type': 'STABLE', 'meaning': 'Estable verde'},
-    ('red', 'red'): {'bonus': 0, 'type': 'STABLE', 'meaning': 'Estable rojo'},
-    ('maroon', 'maroon'): {'bonus': 0, 'type': 'CONTINUATION', 'meaning': 'Continúa colapso'},
+        score_15m += 5
+# Si ADX fue rechazado, score MÁXIMO = 30 (nunca entrar)
+if adx_rejected:
+    score_15m = min(score_15m, 30)  # CLAMP MÁXIMO
+    print(f"      🚫 Score CLAMPEADO a máx 30 por ADX rechazado")
+PARTE 3: Bloqueo en el retorno final
+Archivo: 
+brain_analyzer.py
+Cambio propuesto en retorno (línea ~778):
+
+# ANTES del return, aplicar clamp final
+if adx_trend == 'decreciendo' and score_15m &gt; 40:
+    score_15m = 40  # FORZAR score bajo
+    print(f"      🚫 OVERRIDE: Score forzado a 40 (ADX decreciendo)")
+return {
+    'symbol': symbol,
+    'direction': direction,
+    'score_15m': score_15m,
+    'adx_rejected': adx_rejected,  # NUEVO: flag para Sniper
+    ...
 }
-def detect_color_transition(color_history, lookback=5):
+🛠️ PARTE 4: Manual Analyzer Tool
+Nuevo archivo: tools/manual_analyzer.py
+"""
+manual_analyzer.py - Análisis Manual de Moneda en Tiempo Real
+==============================================================
+Uso: python tools/manual_analyzer.py SYMBOL
+Ejemplo: python tools/manual_analyzer.py BTC/USDT:USDT
+Muestra TODOS los filtros por los que pasa la moneda.
+"""
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from brain_analyzer import analyze_15m, analyze_1h, analyze_4h
+from brain_calculator import (
+    calculate_adx_with_memory,
+    calculate_momentum_with_memory,
+    calculate_zigzag
+)
+from brain_think import sniper_checklist
+from brain_intelligent import decide_intelligently
+from exchange_connection import fetch_ohlcv, fetch_current_price
+import pandas as pd
+def analyze_coin_manual(symbol):
     """
-    Detecta transiciones entre colores
-    
-    Args:
-        color_history: Lista de colores (últimas N velas)
-        lookback: Cuántas velas atrás buscar transición
-        
-    Returns:
-        dict: Información de la transición
+    Análisis completo paso a paso de una moneda
     """
-    if len(color_history) &lt; 2:
-        return {'transition_detected': False}
+    print("\n" + "=" * 70)
+    print(f"🔬 ANÁLISIS MANUAL: {symbol}")
+    print("=" * 70)
     
-    current_color = color_history[-1]
+    # 1. PRECIO ACTUAL
+    print("\n📊 PASO 1: DATOS BÁSICOS")
+    print("-" * 50)
+    current_price = fetch_current_price(symbol)
+    print(f"  Precio actual: ${current_price}")
     
-    # Buscar última transición
-    transition_age = 0
-    from_color = current_color
+    # 2. ADX Y MOMENTUM (15M)
+    print("\n📊 PASO 2: ADX + MOMENTUM (15M)")
+    print("-" * 50)
+    ohlcv = fetch_ohlcv(symbol, '15m', 50)
+    if not ohlcv:
+        print("  ❌ Error obteniendo datos 15M")
+        return
     
-    for i in range(len(color_history) - 2, max(-1, len(color_history) - lookback - 1), -1):
-        if color_history[i] != current_color:
-            from_color = color_history[i]
-            transition_age = len(color_history) - 1 - i
-            break
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
-    if from_color == current_color:
-        # Sin transición reciente
-        return {
-            'transition_detected': False,
-            'current_color': current_color,
-            'same_color_count': len(color_history)
-        }
+    adx_data = calculate_adx_with_memory(df)
+    mom_data = calculate_momentum_with_memory(df)
     
-    # Buscar info de transición
-    transition_key = (from_color, current_color)
-    transition_info = TRANSITION_MATRIX.get(transition_key, {
-        'bonus': 0,
-        'type': 'UNKNOWN',
-        'meaning': f'{from_color} → {current_color}'
-    })
+    print(f"  ADX: {adx_data['adx_current']:.1f}")
+    print(f"  ADX Trend: {adx_data['adx_trend']}")
+    print(f"  DI+: {adx_data['di_plus_current']:.1f}")
+    print(f"  DI-: {adx_data['di_minus_current']:.1f}")
+    print(f"  Spread: {abs(adx_data['di_plus_current'] - adx_data['di_minus_current']):.1f}")
+    print(f"  Momentum Color: {mom_data['color_current']}")
+    print(f"  Momentum Age: {mom_data['consecutive_count']}v")
     
-    # Ajustar bonus según edad de transición
-    # Transición muy vieja (&gt;3 velas) pierde fuerza
-    age_factor = max(0.3, 1 - (transition_age - 1) * 0.2)
-    adjusted_bonus = int(transition_info['bonus'] * age_factor)
+    # 3. VALIDACIONES JOEL'S STRATEGY
+    print("\n📊 PASO 3: JOEL'S STRATEGY VALIDATIONS")
+    print("-" * 50)
     
-    return {
-        'transition_detected': True,
-        'from_color': from_color,
-        'to_color': current_color,
-        'transition_age': transition_age,
-        'transition_type': transition_info['type'],
-        'meaning': transition_info['meaning'],
-        'raw_bonus': transition_info['bonus'],
-        'adjusted_bonus': adjusted_bonus
-    }
-def analyze_momentum_complete(momentum_data, value_history=None):
-    """
-    Análisis COMPLETO del momentum: color + fase + transición
+    adx_current = adx_data['adx_current']
+    adx_trend = adx_data['adx_trend']
+    spread = abs(adx_data['di_plus_current'] - adx_data['di_minus_current'])
+    mom_age = mom_data['consecutive_count']
     
-    Returns:
-        dict: Análisis integrado con bonus/penalty final
-    """
-    from brain_momentum_colors import (
-        analyze_lime, analyze_green, analyze_maroon, analyze_red
-    )
-    
-    current_color = momentum_data.get('color_current', 'neutral')
-    color_history = momentum_data.get('color_history', [])
-    
-    # 1. Analizar color actual
-    if current_color == 'lime':
-        color_analysis = analyze_lime(momentum_data, value_history)
-    elif current_color == 'green':
-        color_analysis = analyze_green(momentum_data, value_history)
-    elif current_color == 'maroon':
-        color_analysis = analyze_maroon(momentum_data, value_history)
-    elif current_color == 'red':
-        color_analysis = analyze_red(momentum_data, value_history)
+    # Validación ADX
+    if adx_current &lt; 25:
+        print(f"  ❌ ADX {adx_current:.1f} &lt; 25 → PENALTY -60")
+    elif adx_trend == 'decreciendo':
+        print(f"  ❌ ADX {adx_current:.1f} DECRECIENDO → PENALTY -60")
+    elif adx_trend == 'creciendo':
+        print(f"  ✅ ADX {adx_current:.1f} CRECIENDO → OK")
     else:
-        color_analysis = {'is_active': False, 'bonus_penalty': 0}
+        print(f"  ⚠️ ADX {adx_current:.1f} ESTABLE → NEUTRAL")
     
-    # 2. Detectar transición
-    transition = detect_color_transition(color_history)
+    # Validación Spread
+    if spread &lt; 5:
+        print(f"  ❌ Spread {spread:.1f} &lt; 5 → PENALTY -80")
+    elif spread &lt; 7:
+        print(f"  ❌ Spread {spread:.1f} &lt; 7 → PENALTY -50")
+    else:
+        print(f"  ✅ Spread {spread:.1f} &gt;= 7 → OK")
     
-    # 3. Calcular bonus/penalty total
-    total_bonus = color_analysis.get('bonus_penalty', 0)
-    if transition.get('transition_detected'):
-        total_bonus += transition.get('adjusted_bonus', 0)
+    # Validación Momentum Age
+    if mom_age &gt; 5:
+        print(f"  ❌ Momentum {mom_age}v &gt; 5 → PENALTY -50")
+    elif mom_age &gt; 3:
+        print(f"  ⚠️ Momentum {mom_age}v &gt; 3 → PENALTY -25")
+    else:
+        print(f"  ✅ Momentum {mom_age}v &lt;= 3 → OK")
     
-    return {
-        'current_color': current_color,
-        'color_analysis': color_analysis,
-        'transition': transition,
-        'total_bonus_penalty': total_bonus
+    # 4. VELOCIDAD DEL PRECIO
+    print("\n📊 PASO 4: VELOCIDAD DEL PRECIO")
+    print("-" * 50)
+    closes = df['close'].values
+    price_changes = []
+    for i in range(-10, -1):
+        if closes[i-1] != 0:
+            change = abs((closes[i] - closes[i-1]) / closes[i-1] * 100)
+            price_changes.append(change)
+    
+    if price_changes:
+        avg_change = sum(price_changes) / len(price_changes)
+        if avg_change &lt; 0.1:
+            print(f"  ❌ Avg change: {avg_change:.3f}%/vela → ESTÁTICO (-40)")
+        else:
+            print(f"  ✅ Avg change: {avg_change:.3f}%/vela → MOVIMIENTO OK")
+    
+    # 5. GRID DIAGONAL
+    print("\n📊 PASO 5: GRID DIAGONAL")
+    print("-" * 50)
+    try:
+        from brain_grid import MarketGrid
+        zigzag = calculate_zigzag(df)
+        grid = MarketGrid()
+        diagonal = grid._build_diagonal_trendlines(df, zigzag)
+        if diagonal.get('valid'):
+            pos = diagonal['price_position_pct']
+            if pos &gt; 80:
+                print(f"  ❌ Posición: {pos:.0f}% → CERCA TECHO (-40)")
+            elif pos &lt; 20:
+                print(f"  ✅ Posición: {pos:.0f}% → CERCA SOPORTE (+20)")
+            else:
+                print(f"  ⚪ Posición: {pos:.0f}% → ZONA NEUTRAL")
+        else:
+            print(f"  ⚠️ Grid diagonal no disponible")
+    except Exception as e:
+        print(f"  ⚠️ Error grid: {e}")
+    
+    # 6. LLAMAR A analyze_15m
+    print("\n📊 PASO 6: RESULTADO analyze_15m()")
+    print("-" * 50)
+    
+    # Determinar dirección
+    if adx_data['di_plus_current'] &gt; adx_data['di_minus_current']:
+        direction = 'BULLISH'
+    else:
+        direction = 'BEARISH'
+    
+    result = analyze_15m(symbol, direction)
+    print(f"  Score 15M: {result.get('score_15m', 'N/A')}")
+    print(f"  Direction: {result.get('direction', 'N/A')}")
+    print(f"  Strength: {result.get('strength', 'N/A')}")
+    
+    # 7. SNIPER CHECKLIST
+    print("\n📊 PASO 7: SNIPER CHECKLIST")
+    print("-" * 50)
+    
+    # Crear ladder básico
+    ladder = {
+        '15m': result,
+        '1h': analyze_1h(symbol, direction) if 'analyze_1h' in dir() else {},
+        '4h': analyze_4h(symbol, direction) if 'analyze_4h' in dir() else {},
     }
-PARTE 5: INTEGRACIÓN EN brain_analyzer.py
-# En analyze_15m(), después de calcular momentum_data:
-from brain_trend_birth import detect_trend_phase
-from brain_momentum_colors import analyze_lime, analyze_green, analyze_maroon, analyze_red
-from brain_momentum_transitions import detect_color_transition, analyze_momentum_complete
-# ===== ANÁLISIS TREND PHASE =====
-trend_phase = detect_trend_phase(adx_data, momentum_data)
-if trend_phase['phase'] == 'EARLY':
-    score_15m += trend_phase['bonus_penalty']  # +30
-    print(f"      ✅ FASE EARLY: {', '.join(trend_phase['reasons'])}")
-elif trend_phase['phase'] == 'LATE':
-    score_15m += trend_phase['bonus_penalty']  # -60
-    print(f"      ⚠️ FASE LATE: {', '.join(trend_phase['reasons'])}")
-# ===== ANÁLISIS MOMENTUM GRANULAR =====
-momentum_complete = analyze_momentum_complete(momentum_data)
-# Aplicar bonus/penalty del color
-color_analysis = momentum_complete['color_analysis']
-if color_analysis.get('is_active'):
-    score_15m += color_analysis['bonus_penalty']
-    print(f"      📊 {momentum_data['color_current'].upper()} fase {color_analysis['phase']}: {color_analysis['bonus_penalty']:+d}")
-# Aplicar bonus/penalty de transición
-transition = momentum_complete['transition']
-if transition.get('transition_detected'):
-    score_15m += transition['adjusted_bonus']
-    print(f"      🔄 Transición {transition['from_color']} → {transition['to_color']}: {transition['adjusted_bonus']:+d}")
-PARTE 6: CORRECCIONES BREAKEVEN/TRAILING
-brain_config.py:
-BREAKEVEN_PROFIT_TRIGGER_PCT = 1.0  # Reducido de 2.0
-brain_executor.py (línea 550):
-# ACTUAL:
-if pnl_pct &gt; 1.5:
-# PROPOSED:
-if pnl_pct &gt; 0.7:  # Reducido de 1.5% a 0.7%
-brain_executor.py (línea 557):
-# ACTUAL:
-if pnl_pct &gt;= last_max - 0.5:
-# PROPOSED:
-if pnl_pct &gt;= last_max - 1.0:  # Más tolerante
-PARTE 7: MIGRACIÓN BINANCE (Planificado)
-brain_config.py: Cambiar API keys
-exchange_connection.py: ccxt.binance({...})
-.env: Variables de Binance
-PRIORIDADES
-#	Tarea	Impacto
-1	Breakeven 2.0% → 1.0%	URGENTE
-2	Trailing 1.5% → 0.7%	URGENTE
-3	brain_trend_birth.py	CRÍTICO
-4	brain_momentum_colors.py	IMPORTANTE
-5	brain_momentum_transitions.py	IMPORTANTE
-6	Migración Binance	PLANIFICAR
+    
+    sniper_result = sniper_checklist(symbol, direction, ladder=ladder)
+    print(f"  Ready: {sniper_result.get('ready', 'N/A')}")
+    print(f"  Total Score: {sniper_result.get('total_score', 'N/A')}")
+    print(f"  Archetype: {sniper_result.get('archetype', 'N/A')}")
+    print(f"  Summary: {sniper_result.get('summary', 'N/A')}")
+    
+    # 8. VEREDICTO FINAL
+    print("\n" + "=" * 70)
+    print("🎯 VEREDICTO FINAL")
+    print("=" * 70)
+    
+    score_15m = result.get('score_15m', 0)
+    if score_15m &gt;= 65 and sniper_result.get('ready'):
+        print(f"  ✅ APROBAR (Score: {score_15m})")
+    else:
+        print(f"  ❌ RECHAZAR (Score: {score_15m})")
+        print(f"  Razones de rechazo:")
+        if adx_current &lt; 25:
+            print(f"    - ADX {adx_current:.1f} &lt; 25")
+        if adx_trend == 'decreciendo':
+            print(f"    - ADX DECRECIENDO")
+        if spread &lt; 7:
+            print(f"    - Spread {spread:.1f} &lt; 7")
+        if mom_age &gt; 5:
+            print(f"    - Momentum {mom_age}v &gt; 5")
+if __name__ == "__main__":
+    if len(sys.argv) &lt; 2:
+        print("Uso: python tools/manual_analyzer.py SYMBOL")
+        print("Ejemplo: python tools/manual_analyzer.py BTC/USDT:USDT")
+        sys.exit(1)
+    
+    symbol = sys.argv[1]
+    if not symbol.endswith(':USDT'):
+        symbol = f"{symbol}:USDT"
+    
+    analyze_coin_manual(symbol)
+🔧 PARTE 5: Resumen de Archivos a Modificar
+Archivo	Cambio	Prioridad
+brain_analyzer.py
+Agregar adx_rejected flag y clamp score	CRÍTICO
+brain_analyzer.py
+Override score si ADX decreciendo	CRÍTICO
+brain_think.py
+Verificar si usa score de analyze_15m	DIAGNÓSTICO
+tools/manual_analyzer.py	CREAR archivo completo	NUEVO
 User Review Required
 IMPORTANT
 
-¿Aprobar correcciones BE/Trailing?
-¿Aprobar arquitectura: 3 módulos separados?
-¿Valores de penalties por fase correctos?
-¿Valores de transiciones correctos?
+¿Aprobar este plan?
+
+Diagnóstico del flujo de score real
+Fix de penalties ADX decreciendo con clamp
+Creación de tools/manual_analyzer.py
+Próximos Pasos
+Aprobar plan → Implementar cambios
+Ejecutar: python tools/manual_analyzer.py 2Z/USDT:USDT
+Verificar que muestra penalties correctas
+Reiniciar bot y probar
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 22,337<br>
-    Generado: 2025-12-20 00:48:40
+    Total caracteres: 11,199<br>
+    Generado: 2025-12-20 12:18:49
   </div>
 </body>
 </html>
