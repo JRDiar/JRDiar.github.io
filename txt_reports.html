@@ -15,114 +15,228 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-21 03:58:54</div>
+  <div class="meta">Última actualización: 2025-12-21 10:55:39</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-FASE 2-3 COMPLETADA - IMPLEMENTACIÓN EXITOSA
-Cambios Implementados:
-#	Archivo	Cambio	Estado
-1	brain_executor.py	Recálculo obligatorio antes de entrada	✅
-2	brain_analyzer.py	Bloqueo Spread &lt; 5	✅
-3	brain_analyzer.py	Bloqueo DI dirección incorrecta	✅
-4	brain_analyzer.py	Bloqueo Momentum color opuesto	✅
-5	brain_analyzer.py	Bloqueo Score final &lt; 0	✅
-Verificación:
-✅ Sintaxis verificada
-✅ from brain_analyzer import analyze_15m OK
-✅ from brain_executor import TradeManager OK
-✅ manual_analyzer.py ejecuta correctamente
-Nuevo Flujo:
-Entrada → Recálculo con datos frescos → 
-  Si blocked=True → 🚫 NO ENTRA
-  Si score &lt; 55 → ❌ NO ENTRA
-  Si score &gt;= 55 → ✅ ENTRA con score REAL
-Para Aplicar:
-Reinicia el bot - Los cambios entran en efecto inmediatamente.
 
-El caso OG ahora:
+🔍 INVESTIGACIÓN COMPLETA: Estado del GRID
+📊 CONFIGURACIÓN ACTUAL
+Parámetro	Valor	Alcance Real
+Lookback	20 velas	~1.6 horas (100 min en 5M)
+ATR Period	14 velas	70 min
+Puntero velocidad	3 velas	15 min
+✅ LO QUE SÍ TIENE
+Techo/Piso - Máx/Mín de últimas 20 velas
+Diagonal Trendlines - Usa ZigZag + regresión lineal
+Posición en canal - 0-100% (dónde está el precio)
+Calidad R² - Mide si el canal está bien formado
+Detección LATERAL - Ancho &lt; 2 ATRs = bloquea
+Scoring simétrico LONG/SHORT - Implementado v6.1
+❌ LO QUE FALTA (Tu Visión)
+Característica	Estado
+Rango 48 horas	❌ Solo ve 1.6h
+HH/LL en Grid	❌ Existe en ZigZag, NO integrado
+Volume Profile en malla	❌ Existe separado
+Profit Potential %	❌ NO EXISTE
+Time Ladder visual	❌ NO EXISTE
+Verificar movimiento histórico	❌ Solo 3 velas
+🎯 PROBLEMA CLAVE
+TU VISIÓN:   Ver 48h de historia + HH + VP + Profit%
+BOT ACTUAL:  Solo ve 100 minutos (~1.6 horas)
+El Grid actual es como mirar el mercado con una ventana muy pequeña. No ve las subidas fuertes de 48h que tú quieres ver.
 
-Se recalculará score antes de entrar
-Score -210 → BLOCKED_NEGATIVE_SCORE
-NO entrará
-brain_executor.py
-Open
-brain_analyzer.py
-Open
-walkthrough.md
-Open
+❓ PREGUNTAS PARA TI
+¿Quieres que extienda el lookback a 48h? (576 velas en 5M)
+¿Quieres integrar HH/LL y VP dentro del Grid?
+¿Quieres agregar cálculo de Profit Potential (% ganancia soporte→resistencia)?
+¿O prefieres un Grid multi-timeframe (5M=corto, 1H=48h)?
+Te dejo el reporte completo para que lo revises.
 
-WALKTHROUGH: Phase 2-3 Implementation Complete
-🎯 Problem Fixed
-Bot entered OG with Score 100 when actual score was -210. Loss: -0.77%
+grid_investigation_report.md
 
-📋 Changes Implemented
-1. Mandatory Recalculation (brain_executor.py)
-Lines: 62-131 (new code block)
+ Bot detenido por usuario
 
-# RECÁLCULO OBLIGATORIO - FIX SCORE DESACTUALIZADO v6.2
-fresh_result = analyze_15m(symbol, direction)
-if fresh_result.get('blocked'):
-    print(f"🚫 ENTRADA BLOQUEADA en recálculo:")
-    return None
-if fresh_score &lt; 55:
-    print(f"❌ Score recalculado insuficiente")
-    return None
-2. Hard Block: Spread &lt; 5 (brain_analyzer.py)
-Lines: 607-625
+================================================================================
+📊 RESUMEN SESIÓN
+================================================================================
+Total trades: 16
+Wins: 11 | Losses: 5
+Win rate: 68.8%
+Avg PnL: -0.10%
+Total PnL: $-5.44
+⚠️ Error guardando stats en Sheets: SheetsManager.write_stats() missing 2 required positional arguments: 'best_trade' and 'worst_trade'
 
-if spread &lt; 5:
+--------------------------------------------------------------------------------
+🎯 SNIPER STATS FINALES:
+
+📊 SNIPER STATUS:
+   🎯 Priority: 1
+   ⏳ Waiting: 1
+   ❌ Rejected: 170
+   📍 Scan: 626/734 (Ciclo #2)
+
+ INVESTIGACIÓN PROFUNDA: Arquitectura del GRID
+📊 ESTADO ACTUAL DEL GRID
+1. Configuración Actual (
+brain_grid.py
+)
+GRID_CONFIG = {
+    'lookback_velas': 20,           # ⚠️ Solo 20 velas (100 min en 5M)
+    'lateral_threshold_atr': 2.0,   # Ancho &lt; 2 ATRs = lateral
+    'tendencia_threshold_atr': 3.5, # Ancho &gt; 3.5 ATRs = tendencia
+    'puntero_sensibilidad': 3,      # Velas para vector velocidad
+    'fuerza_min_adx': 22,           # ADX mínimo
+    'fuerza_fuerte_adx': 30,        # ADX brutal
+}
+Parámetro	Valor Actual	Alcance Temporal
+Lookback	20 velas	~100 min (1.6h) en 5M
+ATR Period	14 velas	70 min
+Puntero	3 velas	15 min
+2. Dimensiones que Construye
+┌─────────────────────────────────────────────┐
+│                 TECHO (High 20v)            │  ← Máximo de 20 velas
+├─────────────────────────────────────────────┤
+│                                             │
+│           MEDIO = (Techo + Piso) / 2        │
+│                                             │
+├─────────────────────────────────────────────┤
+│                 PISO (Low 20v)              │  ← Mínimo de 20 velas
+└─────────────────────────────────────────────┘
+         Ancho en % y ATRs
+3. Diagonal Trendlines (ZigZag)
+✅ SÍ TIENE - Usa pivots del ZigZag para calcular:
+
+Upper Trendline (regresión lineal de HIGHs)
+Lower Trendline (regresión lineal de LOWs)
+R² (calidad del canal: &gt;0.8 = bueno)
+price_position_pct (0-100% posición en canal)
+Channel Width %
+4. Contextos que Detecta
+Contexto	Descripción
+LATERAL	Ancho &lt; 2 ATRs (BLOQUEA)
+TENDENCIA_ALCISTA	Slope &gt;0 + Puntero UP
+TENDENCIA_BAJISTA	Slope &lt;0 + Puntero DOWN
+CORRECCION_ALCISTA	Slope &gt;0 + Puntero DOWN
+REBOTE_BAJISTA	Slope &lt;0 + Puntero UP
+EXPLOSION	Breakout violento
+5. Zonas de Operación
+LONG (BULLISH):
+
+Posición %	Zona	Score
+0-15%	IDEAL_LONG	+30
+15-35%	ACEPTABLE	+15
+65-75%	RIESGO	-10
+75-85%	ALTO RIESGO	-25
+85-100%	TECHO	-40
+SHORT (BEARISH):
+
+Posición %	Zona	Score
+80-100%	IDEAL_SHORT	+30
+65-80%	ACEPTABLE	+15
+25-35%	RIESGO	-10
+15-25%	ALTO RIESGO	-25
+0-15%	PISO	-40
+🔴 LO QUE FALTA (Gaps vs Visión Joel)
+1. ❌ Rango de 48 Horas
+Joel quiere: Ver subidas fuertes en 48h Estado actual: Solo usa 20 velas (100 min)
+
+ACTUAL:    [........20 velas........] (~1.6h)
+DEBERÍA:   [...............576 velas...............] (48h en 5M)
+2. ❌ Volume Profile DENTRO del Grid
+Joel quiere: VP dibujado en la malla espacial Estado actual: VP existe pero SEPARADO del Grid
+
+# En brain_analyzer.py (línea 229)
+vp_data = calculate_volume_profile_with_memory(df, lookback=200)
+# Pero NO se integra con las dimensiones del Grid
+3. ❌ HH/LL DENTRO del Grid
+Joel quiere: Higher High visible en la malla Estado actual: HH/LL existe en ZigZag pero solo como FLAG
+
+# En brain_zigzag_tti.py
+pivot_type = 'HH'  # Higher High
+# Pero NO se dibuja en el Grid espacial
+4. ❌ Cálculo de Profit Potential
+Joel quiere: % ganancia potencial desde soporte a resistencia Estado actual: NO EXISTE
+
+FALTA:
+  Soporte = $100
+  Resistencia = $115
+  Profit Potential = 15%
+  
+  ¿Vale la pena el trade?
+5. ❌ Time Ladder VISUAL
+Joel quiere: Malla que muestre tiempo + precio Estado actual: Solo tiene posición % en canal
+
+JOEL QUIERE:
+  +48h ──────────┬─────────────────
+                 │    RESISTENCIA
+  +24h ──────────┼─────────────────
+                 │      │
+  +12h ──────────┼──────┼──────────
+                 │      │ PRECIO
+  NOW  ──────────┼──────●──────────
+                 │
+  -12h ──────────┼─────────────────
+                 │    SOPORTE
+  -24h ──────────┴─────────────────
+6. ❌ Movimiento Real de Moneda
+Joel quiere: Verificar si la moneda se mueve Estado actual: Solo verifica velocidad de últimas 3 velas
+
+📋 RESUMEN: QUÉ TIENE vs QUÉ FALTA
+Característica	¿Tiene?	Implementación
+Techo/Piso	✅	20 velas lookback
+Diagonal Trendlines	✅	ZigZag + regresión
+Posición % en canal	✅	0-100%
+Calidad canal (R²)	✅	Regresión lineal
+Detección LATERAL	✅	Ancho ATRs
+Scoring por zona	✅	LONG/SHORT simétrico
+Rango 48h	❌	FALTA
+Volume Profile integrado	❌	Existe separado
+HH/LL en Grid	❌	Existe separado
+Profit Potential %	❌	FALTA
+Time Ladder visual	❌	FALTA
+Movimiento histórico	❌	Solo 3 velas
+💡 PROPUESTA DE MEJORAS
+Prioridad 1: Extender Lookback a 48h
+GRID_CONFIG = {
+    'lookback_velas': 576,  # 48h en 5M (era 20)
+    # o multiframe:
+    'lookback_5m': 20,      # Corto plazo
+    'lookback_1h': 48,      # 48h
+    'lookback_4h': 48,      # 8 días
+}
+Prioridad 2: Integrar HH/LL
+# En _build_dimensions():
+last_hh = zigzag_data.get('last_hh')
+last_ll = zigzag_data.get('last_ll')
+estructura = 'ALCISTA' if last_hh &gt; last_ll else 'BAJISTA'
+Prioridad 3: Calcular Profit Potential
+def calculate_profit_potential(current_price, target, stop):
+    profit_pct = abs(target - current_price) / current_price * 100
+    risk_pct = abs(current_price - stop) / current_price * 100
     return {
-        'blocked': True,
-        'verdict': 'BLOCKED_SPREAD'
+        'profit_potential': profit_pct,
+        'risk': risk_pct,
+        'rr_ratio': profit_pct / risk_pct
     }
-3. Hard Block: DI Wrong Direction (brain_analyzer.py)
-Lines: 630-657
+Prioridad 4: Integrar VP en Grid
+# Agregar POC y VAH/VAL a dimensiones
+grid_dims['poc'] = vp_data['poc_current']
+grid_dims['vah'] = vp_data['value_area_high']
+grid_dims['val'] = vp_data['value_area_low']
+🎯 CONCLUSIÓN
+El Grid actual es FUNCIONAL pero LIMITED:
 
-if direction == 'BEARISH' and di_minus &lt;= di_plus:
-    return {'blocked': True, 'verdict': 'BLOCKED_DI_WRONG'}
-if direction == 'BULLISH' and di_plus &lt;= di_minus:
-    return {'blocked': True, 'verdict': 'BLOCKED_DI_WRONG'}
-4. Hard Block: Momentum Opposite (brain_analyzer.py)
-Lines: 660-693
-
-if direction == 'BEARISH' and mom_color not in bearish_colors:
-    return {'blocked': True, 'verdict': 'BLOCKED_MOMENTUM_OPPOSITE'}
-if direction == 'BULLISH' and mom_color not in bullish_colors:
-    return {'blocked': True, 'verdict': 'BLOCKED_MOMENTUM_OPPOSITE'}
-5. Hard Block: Score &lt; 0 (brain_analyzer.py)
-Lines: 1034-1048
-
-if score_15m &lt; 0:
-    return {
-        'blocked': True,
-        'verdict': 'BLOCKED_NEGATIVE_SCORE'
-    }
-📊 Testing Results
-Test	Status
-Syntax Check	✅ Pass
-from brain_analyzer import analyze_15m	✅ Pass
-from brain_executor import TradeManager	✅ Pass
-manual_analyzer.py
- runs	✅ Pass
-🔄 Flow After Fix
-T=0: Coin enters watchlist (Score 100)
-T=5: Conditions change (Score now -210)
-T=6: Bot attempts entry
-     ├─ Recalculates score with fresh data
-     ├─ Gets score = -210
-     ├─ BLOCKED_NEGATIVE_SCORE triggered
-     └─ Entry prevented ✅
-⚠️ Next Steps
-Restart Bot to apply changes
-Monitor entries - all should show recalculated score
-If blocked: will show 🚫 BLOQUEO DURO: [reason]
+✅ Funciona para detectar zonas y lateralización
+❌ NO tiene la visión de 48h que Joel quiere
+❌ NO integra VP, HH/LL, profit potential en una sola vista
+El bot opera con una ventana de 1.6 horas cuando Joel quiere ver 48 horas.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 2,961<br>
-    Generado: 2025-12-21 03:58:54
+    Total caracteres: 7,359<br>
+    Generado: 2025-12-21 10:55:39
   </div>
 </body>
 </html>
