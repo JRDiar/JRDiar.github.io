@@ -15,153 +15,457 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-21 03:06:16</div>
+  <div class="meta">Última actualización: 2025-12-21 03:24:38</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Veo que hay código relacionado con direction. Veo Grid DIAGONAL (líneas 828-851) y lateral. Veamos el código completo:
+PLAN MAESTRO GUARDADO
+El plan completo incluye:
 
-2
-Examining Grid position code for symmetry
+5 FASES:
+INVESTIGACIÓN - Rastrear origen del Score 100
+BLOQUEOS DUROS - 5 bloqueos con return en vez de penalties
+RECÁLCULO OBLIGATORIO - Antes de cada entrada
+GRID SIMÉTRICO - Ya implementado
+TESTING - Casos de validación
+Problema Central:
+Telegram: Score 100 → Entró
+Análisis: Score -210 → Debió rechazar
+Solución Principal:
+Convertir penalties (-70, -60, etc.) en BLOQUEOS DUROS (return None)
+Agregar recálculo obligatorio antes de ejecutar
+Validar score &gt;= 55 antes de entrar
+¿Apruebas para proceder con FASE 1 (Investigación)?
 
-Analyzed
-brain_analyzer.py#L820-870
-¡ENCONTRÉ ASIMETRÍA #1! El código de Grid DIAGONAL (líneas 832-851) NO considera la dirección:
+plan_maestro_score_fix.md
 
-Siempre penaliza posición alta (malo para SHORT)
-Siempre bonifica posición baja (malo para SHORT)
-Veamos el lateral detection y DI validation también:
-
-Analyzed
-brain_analyzer.py#L870-910
-Analyzed
-brain_analyzer.py#L615-650
-Excelente, encontré:
-
-✅ Lateral (líneas 890-895): CORRECTO - Considera dirección
-✅ DI validation (líneas 623-632): CORRECTO - Simétrico
-✅ Momentum color (líneas 637-644): CORRECTO - Simétrico
-❌ Grid DIAGONAL (líneas 832-851): ASIMÉTRICO - No considera dirección
-Ahora creo el reporte y propongo la corrección:
-
-
-
-Thought for 5s
-
-
-
-
-
-🚨 BUG CONFIRMADO - DISCREPANCIA CRÍTICA
-Lo que pasó hace 30 min:
-ENTRADA - 0G/USDT:USDT
-Score Brain: 100/100 ← ¿DE DÓNDE SALE ESTE 100?
-Lo que dice el análisis AHORA:
-Score 15M: -210
-Archetype: REJECTED_NON_COMPENSABLE
-❌ RECHAZAR
-📋 PLAN COMPLETO DE CORRECCIÓN (Sin tocar código aún)
-FASE 1: Identificar dónde se calcula el Score de Entrada
-Pregunta crítica: ¿El "Score Brain: 100" viene de un módulo diferente al 
+ PLAN MAESTRO - CORRECCIÓN BUG SCORE 100 vs -210
+🎯 SÍNTOMA
+Bot entra trades con "Score Brain: 100" pero 
 analyze_15m()
-?
+ retorna -210
 
-Sospecha: El score de telegram puede venir de:
-
+Evidencia:
+TELEGRAM (02:32:14):
+  ENTRADA - 0G/USDT:USDT
+  Score Brain: 100/100 ← El bot entró
+ANÁLISIS MANUAL (02:59):
+  Score 15M: -210
+  Archetype: REJECTED_NON_COMPENSABLE ← Debió rechazar
+  
+RESULTADO:
+  Pérdida: -0.77% (-$2.56) en 16 min
+🔍 CAUSA RAÍZ (3 hipótesis)
+Hipótesis	Probabilidad	Descripción
+A	80%	Watchlist score desactualizado
+B	15%	Score de módulo diferente
+C	5%	Bug en sniper_checklist
+Hipótesis A: Watchlist score desactualizado
+Score se calcula cuando moneda entra a watchlist
+Score NO se recalcula antes de ejecutar entrada
+Bot opera con score viejo
+Hipótesis B: Score de módulo diferente
+"Score Brain" viene de 
 brain_intelligent.py
- - línea diferente
-brain_think.py - sniper con lógica propia
-watchlist - score guardado anteriormente
-FASE 2: Verificar flujo de entrada
-bot_main.py
-    ↓
-brain_intelligent.py (decide_intelligently)
-    ↓
-brain_analyzer.py (analyze_15m)
-    ↓
-brain_think.py (sniper_checklist)
-    ↓
-brain_executor.py (enter_trade)
-    ↓
-Telegram notification (Score 100)
-¿Dónde se pierde la penalidad de -210?
+analyze_15m()
+ calcula otro score
+Se usa el score equivocado
+Hipótesis C: Bug en sniper_checklist
+Sniper aprueba ignorando score negativo
+Retorna score propio (100)
+📋 FASE 1: INVESTIGACIÓN DEL FLUJO (DIAGNÓSTICO)
+1️⃣ RASTREAR: ¿De dónde viene "Score Brain: 100"?
+A. brain_intelligent.py (decide_intelligently)
+UBICACIÓN: Función principal de decisión
 
-FASE 3: Revisar qué score se envía a Telegram
-Archivo: telegram_notifications.py Buscar: ¿De dónde viene 
-score
- en notify_entry?
+BUSCAR:
 
-FASE 4: Bloqueos Duros Faltantes
-El código actual PENALIZA pero NO BLOQUEA:
+¿Dónde se calcula/guarda el score final?
+¿Se usa score de 
+analyze_15m()
+ o propio?
+¿Hay un "brain_score" diferente?
+# ¿Hay algo así?
+brain_score = ...  # Cálculo propio
+# O usa:
+score = result_15m['score_15m']  # Del analyzer
+B. brain_think.py (sniper_checklist)
+UBICACIÓN: Filtro final antes de entrada
 
-Condición	Actual	Debería
-Spread &lt; 5	-80 pts	RETURN None
-ADX decreciendo	-60 pts	RETURN None
-Momentum contrario	-60 pts	RETURN None
-Score &lt; 0	Permite	RETURN None
-🎯 HIPÓTESIS FINAL
-El bot está usando un SCORE DIFERENTE para la entrada.
+BUSCAR:
 
-Probablemente:
+¿Retorna score propio?
+¿Puede override score de analyzer?
+return {
+    'ready': True,
+    'total_score': ???,  # ¿De dónde viene?
+    ...
+}
+C. brain_watchlist.py
+UBICACIÓN: Gestión de monedas en espera
 
-El watchlist guardó un score alto cuando la moneda entró
-El score NO se recalcula antes de ejecutar
-O hay un "Score Brain" que viene de otro módulo
-📝 PRÓXIMOS PASOS PROPUESTOS
-Buscar dónde se define "Score Brain: 100" en el código
-Revisar si watchlist guarda score viejo
-Agregar BLOQUEOS DUROS (no solo penalidades)
-Forzar recálculo de score antes de cada entrada
-¿Apruebas que investigue el flujo del "Score Brain: 100" para encontrar exactamente dónde se origina?
+BUSCAR:
 
-Me das el plan completo? sin tocar código? El plan como venimos hacendo. Gracias.
+¿Guarda score cuando agrega moneda?
+¿Recalcula score antes de ejecutar?
+# Al agregar:
+watchlist[symbol] = {'score': 100, 'timestamp': ...}
+# Al ejecutar:
+# ¿Recalcula o usa el guardado?
+D. brain_executor_entry.py
+UBICACIÓN: Ejecución de entrada
 
-Thought for 51s
+BUSCAR:
 
-Edited
-Plan Fix Score Discrepancy
-Generating
+¿De dónde toma el score para Telegram?
+¿Llama a analyzer antes de entrar?
+def execute_entry(...):
+    # ¿Hay recálculo?
+    score = ???  # ¿De dónde?
+    notify_telegram(score)  # ← Este es el 100
+E. telegram_notifications.py
+UBICACIÓN: Notificaciones
 
+BUSCAR:
 
+Función 
+notify_entry()
+¿De dónde recibe el score?
+def notify_entry(symbol, direction, price, score, ...):
+    message = f"Score Brain: {score}/100"  # ← Este mensaje
+2️⃣ CREAR MAPA DE FLUJO
+[Watchlist] → score guardado = 100
+      ↓
+[Sniper Check] → ¿recalcula? o ¿usa guardado?
+      ↓
+[Executor] → score para Telegram = ???
+      ↓
+[Telegram] → "Score Brain: 100"
+PERO:
+[Manual Analyzer] → score actual = -210
+3️⃣ IDENTIFICAR MOMENTO DE DIVERGENCIA
+ESCENARIO A: Watchlist desactualizado
 
-Thought for 51s
+T=0: Moneda buena, score = 100 → guarda en watchlist
+T=5: Condiciones cambian, score ahora = -210
+T=6: Bot ejecuta con score guardado (100) ❌
+ESCENARIO B: Módulos diferentes
 
-Edited
-Plan Fix Score Discrepancy
-Plan completo creado. Aquí está el resumen:
+brain_intelligent: calcula score = 100
+brain_analyzer: calcula score = -210
+Executor usa: intelligent (100) ❌
+ESCENARIO C: Sniper override
 
-📋 PLAN COMPLETO: Corrección Bug Score 100 vs -210
-🚨 Problema:
-Bot entró OG con Score 100
-Análisis manual muestra Score -210
-Pérdida: -0.77% en 16 min
-📊 Hipótesis Principal (80%):
-Score de watchlist desactualizado - El bot guarda un score cuando la moneda entra a watchlist, pero NO lo recalcula antes de ejecutar.
-
-FASES DEL PLAN:
-Fase	Descripción	Prioridad
-1	Investigar origen del Score 100	🔍
-2	Implementar BLOQUEOS DUROS	🔴 CRÍTICO
-3	Recálculo obligatorio antes de entrada	🔴 CRÍTICO
-4	Mostrar score real en Telegram	🟡 MEDIO
-Bloqueos Duros Propuestos:
-python
-# En vez de solo restar puntos:
+analyzer: score = -210
+sniper: "fuerza bruta" override → score = 100 ❌
+📋 FASE 2: IMPLEMENTAR BLOQUEOS DUROS (CRÍTICO)
+PROBLEMA ACTUAL:
+# Solo penalties (no bloquea)
 if spread &lt; 5:
-    return None  # BLOQUEO DURO
-if adx_trend == 'decreciendo' and adx_current &lt; 30:
-    return None  # BLOQUEO DURO
-if direction == 'BULLISH' and mom_color not in ['lime', 'green']:
-    return None  # BLOQUEO DURO
-¿Apruebas el plan para proceder?
+    score -= 80  # Permite score = 20 (entraría)
+SOLUCIÓN: Bloqueos duros con return temprano
+1️⃣ BLOQUEO: Spread &lt; 5
+ARCHIVO: 
+brain_analyzer.py
 
+UBICACIÓN: Línea ~617
 
+CÓDIGO ACTUAL:
+
+if spread &lt; 5:
+    score_15m -= 80
+    print(f"      ❌ Spread {spread:.1f} &lt; 5 (CRÍTICO: DI muy juntos)")
+CÓDIGO PROPUESTO:
+
+if spread &lt; 5:
+    print(f"      🚫 BLOQUEO DURO: Spread {spread:.1f} &lt; 5 (reversión inminente)")
+    return {
+        'symbol': symbol,
+        'direction': direction,
+        'score_15m': -999,
+        'blocked': True,
+        'block_reason': f'Spread {spread:.1f} &lt; 5',
+        'verdict': 'BLOCKED_SPREAD'
+    }
+2️⃣ BLOQUEO: ADX decreciendo + bajo
+UBICACIÓN: Línea ~592
+
+CÓDIGO ACTUAL:
+
+elif adx_trend == 'decreciendo':
+    score_15m -= 60
+    print(f"      ❌ ADX {adx_current:.1f} decreciendo (fuerza muriendo)")
+CÓDIGO PROPUESTO:
+
+elif adx_trend == 'decreciendo' and adx_current &lt; 30:
+    print(f"      🚫 BLOQUEO DURO: ADX {adx_current:.1f} decreciendo (tendencia muriendo)")
+    return {
+        'symbol': symbol,
+        'direction': direction,
+        'score_15m': -999,
+        'blocked': True,
+        'block_reason': f'ADX {adx_current:.1f} decreciendo',
+        'verdict': 'BLOCKED_ADX_FALLING'
+    }
+3️⃣ BLOQUEO: Momentum color incorrecto
+UBICACIÓN: Línea ~637-644
+
+CÓDIGO ACTUAL:
+
+if direction == 'BEARISH':
+    if mom_color not in bearish_colors:
+        score_15m -= 60
+        print(f"      ❌ SHORT pero momentum {mom_color} (no bajista)")
+elif direction == 'BULLISH':
+    if mom_color not in bullish_colors:
+        score_15m -= 60
+        print(f"      ❌ LONG pero momentum {mom_color} (no alcista)")
+CÓDIGO PROPUESTO:
+
+if direction == 'BEARISH':
+    if mom_color not in bearish_colors:
+        print(f"      🚫 BLOQUEO DURO: SHORT con momentum {mom_color} (contrario)")
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'SHORT con momentum {mom_color}',
+            'verdict': 'BLOCKED_MOMENTUM_OPPOSITE'
+        }
+elif direction == 'BULLISH':
+    if mom_color not in bullish_colors:
+        print(f"      🚫 BLOQUEO DURO: LONG con momentum {mom_color} (contrario)")
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'LONG con momentum {mom_color}',
+            'verdict': 'BLOCKED_MOMENTUM_OPPOSITE'
+        }
+4️⃣ BLOQUEO: DI dirección incorrecta
+UBICACIÓN: Línea ~623-632
+
+CÓDIGO ACTUAL:
+
+if direction == 'BEARISH':
+    if di_minus &lt;= di_plus:
+        score_15m -= 70
+        print(f"      ❌ SHORT pero DI+ ({di_plus:.1f}) &gt;= DI- ({di_minus:.1f})")
+elif direction == 'BULLISH':
+    if di_plus &lt;= di_minus:
+        score_15m -= 70
+        print(f"      ❌ LONG pero DI- ({di_minus:.1f}) &gt;= DI+ ({di_plus:.1f})")
+CÓDIGO PROPUESTO:
+
+if direction == 'BEARISH':
+    if di_minus &lt;= di_plus:
+        print(f"      🚫 BLOQUEO DURO: SHORT pero DI+ dominante")
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'SHORT con DI+ ({di_plus:.1f}) &gt; DI- ({di_minus:.1f})',
+            'verdict': 'BLOCKED_DI_WRONG'
+        }
+elif direction == 'BULLISH':
+    if di_plus &lt;= di_minus:
+        print(f"      🚫 BLOQUEO DURO: LONG pero DI- dominante")
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'LONG con DI- ({di_minus:.1f}) &gt; DI+ ({di_plus:.1f})',
+            'verdict': 'BLOCKED_DI_WRONG'
+        }
+5️⃣ BLOQUEO: Score final negativo
+UBICACIÓN: Al final de 
+analyze_15m()
+, antes del return
+
+CÓDIGO NUEVO:
+
+# VALIDACIÓN FINAL: Score negativo = BLOQUEO
+if score_15m &lt; 0:
+    print(f"      🚫 BLOQUEO DURO: Score final {score_15m} &lt; 0")
+    return {
+        'symbol': symbol,
+        'direction': direction,
+        'score_15m': -999,
+        'blocked': True,
+        'block_reason': f'Score final {score_15m} negativo',
+        'verdict': 'BLOCKED_NEGATIVE_SCORE'
+    }
+📋 FASE 3: RECÁLCULO OBLIGATORIO ANTES DE ENTRADA
+PROBLEMA:
+Si el score viene de watchlist desactualizado
+
+SOLUCIÓN:
+Recalcular SIEMPRE antes de ejecutar
+
+ARCHIVO: 
+brain_executor_entry.py
+ o donde se ejecute la entrada
+
+CÓDIGO ACTUAL (hipotético):
+
+def execute_entry(symbol, decision):
+    # Usa score del decision
+    score = decision.get('score', 100)  # ❌ Score viejo
+    
+    # Ejecuta entrada
+    enter_trade(symbol, direction, price, score)
+CÓDIGO PROPUESTO:
+
+def execute_entry(symbol, decision):
+    # RECÁLCULO OBLIGATORIO
+    print(f"   🔄 Recalculando score antes de entrada...")
+    
+    from brain_analyzer import analyze_15m
+    
+    # Recalcular con datos frescos
+    direction = decision.get('direction')
+    fresh_result = analyze_15m(symbol, direction)
+    
+    # Verificar si está bloqueado
+    if fresh_result.get('blocked'):
+        print(f"   🚫 ENTRADA BLOQUEADA: {fresh_result.get('block_reason')}")
+        return None
+    
+    # Verificar score mínimo
+    fresh_score = fresh_result.get('score_15m', 0)
+    if fresh_score &lt; 55:
+        print(f"   ❌ Score insuficiente: {fresh_score} &lt; 55")
+        return None
+    
+    # Proceder con score fresco
+    enter_trade(symbol, direction, price, fresh_score)
+VALIDACIÓN ADICIONAL en brain_think.py (sniper):
+
+def sniper_checklist(...):
+    # Obtener score de analyzer
+    score_15m = ladder['15m'].get('score_15m', 0)
+    
+    # Si score es negativo, BLOQUEAR
+    if score_15m &lt; 0:
+        return {
+            'ready': False,
+            'approved': False,
+            'reason': f'Score 15M negativo ({score_15m})'
+        }
+    
+    # Si está bloqueado, BLOQUEAR
+    if ladder['15m'].get('blocked'):
+        return {
+            'ready': False,
+            'approved': False,
+            'reason': ladder['15m'].get('block_reason')
+        }
+    
+    # Continuar con validaciones normales...
+📋 FASE 4: CORRECCIÓN ASIMETRÍA GRID (YA IMPLEMENTADO)
+NOTA: Esta corrección YA FUE IMPLEMENTADA anteriormente en esta sesión.
+
+PROBLEMA: Grid Diagonal no consideraba dirección SHORT
+
+SOLUCIÓN IMPLEMENTADA:
+
+LONG: Posición baja = +30, Posición alta = -40
+SHORT: Posición alta = +30, Posición baja = -40
+📋 FASE 5: TESTING Y VALIDACIÓN
+CASO 1: 0G/USDT (trade problemático)
+ANTES (código actual):
+
+Watchlist: score = 100 (guardado hace 5 min)
+Executor: usa score guardado (100)
+Entrada: ejecuta con 100
+Real: score actual = -210
+Resultado: pérdida -0.77%
+DESPUÉS (con correcciones):
+
+Watchlist: score = 100 (guardado)
+Executor: RECALCULA score = -210
+Bloqueo: score &lt; 0 → BLOCKED
+Entrada: NO EJECUTA
+Resultado: trade evitado ✅
+CASO 2: Setup perfecto LONG
+Spread: 18 &gt; 5 ✅
+ADX: 52 creciendo ✅
+DI: DI+ &gt; DI- ✅
+Momentum: LIME ✅
+Grid: 15% (piso) → +25 ✅
+Score: 125 &gt; 55 ✅
+Blocked: False ✅
+Entrada: EJECUTA ✅
+CASO 3: Setup perfecto SHORT
+Spread: 16 &gt; 5 ✅
+ADX: 45 creciendo ✅
+DI: DI- &gt; DI+ ✅
+Momentum: RED ✅
+Grid: 88% (techo) → +25 ✅ (SIMÉTRICO)
+Score: 115 &gt; 55 ✅
+Blocked: False ✅
+Entrada: EJECUTA ✅
+CASO 4: Bloqueos duros
+Spread 3:
+  Bloqueo: spread &lt; 5
+  Score: -999
+  Blocked: True
+  Entrada: NO EJECUTA ✅
+ADX 25 decreciendo:
+  Bloqueo: ADX decreciendo &lt; 30
+  Score: -999
+  Blocked: True
+  Entrada: NO EJECUTA ✅
+LONG con momentum RED:
+  Bloqueo: momentum contrario
+  Score: -999
+  Blocked: True
+  Entrada: NO EJECUTA ✅
+📊 RESUMEN DE ARCHIVOS A MODIFICAR
+Archivo	Modificación	Líneas	Prioridad
+brain_analyzer.py	Bloqueos duros (5)	590-650	🔴 CRÍTICO
+brain_analyzer.py	Bloqueo score &lt; 0	Final	🔴 CRÍTICO
+brain_executor_entry.py	Recálculo obligatorio	Execute	🔴 CRÍTICO
+brain_think.py	Validar bloqueado	Sniper	🟠 ALTO
+telegram_notifications.py	Verificar source	notify	🟡 MEDIO
+INVESTIGACIÓN REQUERIDA:
+brain_intelligent.py
+ → ¿score propio?
+brain_watchlist.py
+ → ¿guarda score?
+brain_executor_entry.py
+ → ¿de dónde score?
+🗓️ ORDEN DE IMPLEMENTACIÓN
+DÍA 1 (INVESTIGACIÓN):
+Rastrear flujo del "Score Brain: 100"
+Identificar dónde se origina
+Crear mapa de flujo
+Confirmar hipótesis (A, B o C)
+DÍA 2 (CORRECCIONES CRÍTICAS):
+Implementar bloqueos duros (5)
+Recálculo obligatorio en executor
+Testing básico
+DÍA 3 (VALIDACIÓN):
+Testing exhaustivo
+Monitoreo en producción
+Ajustes finales
+✅ ESTE PLAN GARANTIZA:
+✅ Score real usado en entradas
+✅ Bloqueos duros (no solo penalties)
+✅ Simetría LONG/SHORT
+✅ No más entradas con score -210
+⚠️ APROBACIÓN REQUERIDA
+¿Aprobar para proceder con FASE 1 (INVESTIGACIÓN)?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3,773<br>
-    Generado: 2025-12-21 03:06:16
+    Total caracteres: 12,303<br>
+    Generado: 2025-12-21 03:24:38
   </div>
 </body>
 </html>
