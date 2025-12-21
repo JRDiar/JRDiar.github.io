@@ -15,228 +15,1084 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-21 10:55:39</div>
+  <div class="meta">Última actualización: 2025-12-21 12:08:37</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
 
-🔍 INVESTIGACIÓN COMPLETA: Estado del GRID
-📊 CONFIGURACIÓN ACTUAL
-Parámetro	Valor	Alcance Real
-Lookback	20 velas	~1.6 horas (100 min en 5M)
-ATR Period	14 velas	70 min
-Puntero velocidad	3 velas	15 min
-✅ LO QUE SÍ TIENE
-Techo/Piso - Máx/Mín de últimas 20 velas
-Diagonal Trendlines - Usa ZigZag + regresión lineal
-Posición en canal - 0-100% (dónde está el precio)
-Calidad R² - Mide si el canal está bien formado
-Detección LATERAL - Ancho &lt; 2 ATRs = bloquea
-Scoring simétrico LONG/SHORT - Implementado v6.1
-❌ LO QUE FALTA (Tu Visión)
-Característica	Estado
-Rango 48 horas	❌ Solo ve 1.6h
-HH/LL en Grid	❌ Existe en ZigZag, NO integrado
-Volume Profile en malla	❌ Existe separado
-Profit Potential %	❌ NO EXISTE
-Time Ladder visual	❌ NO EXISTE
-Verificar movimiento histórico	❌ Solo 3 velas
-🎯 PROBLEMA CLAVE
-TU VISIÓN:   Ver 48h de historia + HH + VP + Profit%
-BOT ACTUAL:  Solo ve 100 minutos (~1.6 horas)
-El Grid actual es como mirar el mercado con una ventana muy pequeña. No ve las subidas fuertes de 48h que tú quieres ver.
+📊 PLAN: MÓDULOS GRANULARES ADX + MOMENTUM
+Problema Identificado (APE/USDT):
+DI+ y DI-: Casi juntos (spread bajo ~11)
+ADX: Confuso, tendencia no definida
+Momentum: Barras finales, agotado
+Zona: Mini lateralización
+Módulos a Crear (5 archivos):
+#	Archivo	Responsabilidad
+1	brain_adx_plus.py	DI+ granular (dominancia LONG)
+2	brain_adx_minus.py	DI- granular (dominancia SHORT)
+3	brain_adx_value.py	ADX value (fase del ciclo)
+4	brain_momentum_green.py	Momentum verde/lime (fase, intensidad)
+5	brain_momentum_red.py	Momentum rojo/maroon (fase, intensidad)
+Con esto APE sería RECHAZADO:
+DI+ (verde): 31.77  
+DI- (rojo):  20.20  
+Spread:      11.57  → ⚠️ &lt; 15 (bajo)
+Momentum:    Barras finales → ❌ Agotado
+RESULTADO: NO ENTRAR
+¿Apruebas para proceder con la implementación?
 
-❓ PREGUNTAS PARA TI
-¿Quieres que extienda el lookback a 48h? (576 velas en 5M)
-¿Quieres integrar HH/LL y VP dentro del Grid?
-¿Quieres agregar cálculo de Profit Potential (% ganancia soporte→resistencia)?
-¿O prefieres un Grid multi-timeframe (5M=corto, 1H=48h)?
-Te dejo el reporte completo para que lo revises.
+implementation_plan.md
 
-grid_investigation_report.md
+Plan Detallado: Módulos Granulares ADX + Momentum
+🔴 PROBLEMA IDENTIFICADO
+APE Bad Entry
+Review
+APE Bad Entry
 
- Bot detenido por usuario
+APE/USDT BEARISH - Score 48/100 pero NO debería entrar:
 
-================================================================================
-📊 RESUMEN SESIÓN
-================================================================================
-Total trades: 16
-Wins: 11 | Losses: 5
-Win rate: 68.8%
-Avg PnL: -0.10%
-Total PnL: $-5.44
-⚠️ Error guardando stats en Sheets: SheetsManager.write_stats() missing 2 required positional arguments: 'best_trade' and 'worst_trade'
-
---------------------------------------------------------------------------------
-🎯 SNIPER STATS FINALES:
-
-📊 SNIPER STATUS:
-   🎯 Priority: 1
-   ⏳ Waiting: 1
-   ❌ Rejected: 170
-   📍 Scan: 626/734 (Ciclo #2)
-
- INVESTIGACIÓN PROFUNDA: Arquitectura del GRID
-📊 ESTADO ACTUAL DEL GRID
-1. Configuración Actual (
-brain_grid.py
-)
-GRID_CONFIG = {
-    'lookback_velas': 20,           # ⚠️ Solo 20 velas (100 min en 5M)
-    'lateral_threshold_atr': 2.0,   # Ancho &lt; 2 ATRs = lateral
-    'tendencia_threshold_atr': 3.5, # Ancho &gt; 3.5 ATRs = tendencia
-    'puntero_sensibilidad': 3,      # Velas para vector velocidad
-    'fuerza_min_adx': 22,           # ADX mínimo
-    'fuerza_fuerte_adx': 30,        # ADX brutal
-}
-Parámetro	Valor Actual	Alcance Temporal
-Lookback	20 velas	~100 min (1.6h) en 5M
-ATR Period	14 velas	70 min
-Puntero	3 velas	15 min
-2. Dimensiones que Construye
-┌─────────────────────────────────────────────┐
-│                 TECHO (High 20v)            │  ← Máximo de 20 velas
-├─────────────────────────────────────────────┤
-│                                             │
-│           MEDIO = (Techo + Piso) / 2        │
-│                                             │
-├─────────────────────────────────────────────┤
-│                 PISO (Low 20v)              │  ← Mínimo de 20 velas
-└─────────────────────────────────────────────┘
-         Ancho en % y ATRs
-3. Diagonal Trendlines (ZigZag)
-✅ SÍ TIENE - Usa pivots del ZigZag para calcular:
-
-Upper Trendline (regresión lineal de HIGHs)
-Lower Trendline (regresión lineal de LOWs)
-R² (calidad del canal: &gt;0.8 = bueno)
-price_position_pct (0-100% posición en canal)
-Channel Width %
-4. Contextos que Detecta
-Contexto	Descripción
-LATERAL	Ancho &lt; 2 ATRs (BLOQUEA)
-TENDENCIA_ALCISTA	Slope &gt;0 + Puntero UP
-TENDENCIA_BAJISTA	Slope &lt;0 + Puntero DOWN
-CORRECCION_ALCISTA	Slope &gt;0 + Puntero DOWN
-REBOTE_BAJISTA	Slope &lt;0 + Puntero UP
-EXPLOSION	Breakout violento
-5. Zonas de Operación
-LONG (BULLISH):
-
-Posición %	Zona	Score
-0-15%	IDEAL_LONG	+30
-15-35%	ACEPTABLE	+15
-65-75%	RIESGO	-10
-75-85%	ALTO RIESGO	-25
-85-100%	TECHO	-40
-SHORT (BEARISH):
-
-Posición %	Zona	Score
-80-100%	IDEAL_SHORT	+30
-65-80%	ACEPTABLE	+15
-25-35%	RIESGO	-10
-15-25%	ALTO RIESGO	-25
-0-15%	PISO	-40
-🔴 LO QUE FALTA (Gaps vs Visión Joel)
-1. ❌ Rango de 48 Horas
-Joel quiere: Ver subidas fuertes en 48h Estado actual: Solo usa 20 velas (100 min)
-
-ACTUAL:    [........20 velas........] (~1.6h)
-DEBERÍA:   [...............576 velas...............] (48h en 5M)
-2. ❌ Volume Profile DENTRO del Grid
-Joel quiere: VP dibujado en la malla espacial Estado actual: VP existe pero SEPARADO del Grid
-
-# En brain_analyzer.py (línea 229)
-vp_data = calculate_volume_profile_with_memory(df, lookback=200)
-# Pero NO se integra con las dimensiones del Grid
-3. ❌ HH/LL DENTRO del Grid
-Joel quiere: Higher High visible en la malla Estado actual: HH/LL existe en ZigZag pero solo como FLAG
-
-# En brain_zigzag_tti.py
-pivot_type = 'HH'  # Higher High
-# Pero NO se dibuja en el Grid espacial
-4. ❌ Cálculo de Profit Potential
-Joel quiere: % ganancia potencial desde soporte a resistencia Estado actual: NO EXISTE
-
-FALTA:
-  Soporte = $100
-  Resistencia = $115
-  Profit Potential = 15%
-  
-  ¿Vale la pena el trade?
-5. ❌ Time Ladder VISUAL
-Joel quiere: Malla que muestre tiempo + precio Estado actual: Solo tiene posición % en canal
-
-JOEL QUIERE:
-  +48h ──────────┬─────────────────
-                 │    RESISTENCIA
-  +24h ──────────┼─────────────────
-                 │      │
-  +12h ──────────┼──────┼──────────
-                 │      │ PRECIO
-  NOW  ──────────┼──────●──────────
-                 │
-  -12h ──────────┼─────────────────
-                 │    SOPORTE
-  -24h ──────────┴─────────────────
-6. ❌ Movimiento Real de Moneda
-Joel quiere: Verificar si la moneda se mueve Estado actual: Solo verifica velocidad de últimas 3 velas
-
-📋 RESUMEN: QUÉ TIENE vs QUÉ FALTA
-Característica	¿Tiene?	Implementación
-Techo/Piso	✅	20 velas lookback
-Diagonal Trendlines	✅	ZigZag + regresión
-Posición % en canal	✅	0-100%
-Calidad canal (R²)	✅	Regresión lineal
-Detección LATERAL	✅	Ancho ATRs
-Scoring por zona	✅	LONG/SHORT simétrico
-Rango 48h	❌	FALTA
-Volume Profile integrado	❌	Existe separado
-HH/LL en Grid	❌	Existe separado
-Profit Potential %	❌	FALTA
-Time Ladder visual	❌	FALTA
-Movimiento histórico	❌	Solo 3 velas
-💡 PROPUESTA DE MEJORAS
-Prioridad 1: Extender Lookback a 48h
-GRID_CONFIG = {
-    'lookback_velas': 576,  # 48h en 5M (era 20)
-    # o multiframe:
-    'lookback_5m': 20,      # Corto plazo
-    'lookback_1h': 48,      # 48h
-    'lookback_4h': 48,      # 8 días
-}
-Prioridad 2: Integrar HH/LL
-# En _build_dimensions():
-last_hh = zigzag_data.get('last_hh')
-last_ll = zigzag_data.get('last_ll')
-estructura = 'ALCISTA' if last_hh &gt; last_ll else 'BAJISTA'
-Prioridad 3: Calcular Profit Potential
-def calculate_profit_potential(current_price, target, stop):
-    profit_pct = abs(target - current_price) / current_price * 100
-    risk_pct = abs(current_price - stop) / current_price * 100
+DI+ y DI- muy juntos (spread bajo)
+ADX confuso
+Momentum agotado (barras finales)
+📦 MÓDULO 1: brain_adx_plus.py
+"""
+brain_adx_plus.py - Análisis Granular DI+ (Directional Index Plus)
+===================================================================
+Responsabilidad: Analizar la línea VERDE del ADX (DI+)
+Para LONG: DI+ debe DOMINAR
+Para SHORT: DI+ debe estar SUBORDINADO
+Autor: Joel Rodríguez Diarte
+Fecha: 2025-12-21
+"""
+import pandas as pd
+import numpy as np
+def analyze_di_plus(df, lookback=14):
+    """
+    Analiza DI+ de forma granular.
+    
+    Args:
+        df: DataFrame con OHLCV
+        lookback: Período del indicador
+        
+    Returns:
+        dict: {
+            'value': float,           # Valor actual DI+
+            'trend': str,             # 'creciendo', 'decreciendo', 'estable'
+            'velocity': float,        # Velocidad de cambio pts/vela
+            'history': list,          # Últimos 5 valores
+            'phase': str,             # 'nacimiento', 'climax', 'muerte'
+            'strength': str,          # 'fuerte', 'moderado', 'debil'
+            'valid': bool
+        }
+    """
+    try:
+        if len(df) &lt; lookback + 5:
+            return _default_result()
+        
+        # Calcular DI+
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        # True Range
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(lookback).mean()
+        
+        # +DM (Directional Movement Plus)
+        up_move = high - high.shift(1)
+        down_move = low.shift(1) - low
+        
+        plus_dm = pd.Series(0.0, index=df.index)
+        plus_dm[(up_move &gt; down_move) &amp; (up_move &gt; 0)] = up_move
+        
+        # +DI
+        plus_di = 100 * (plus_dm.rolling(lookback).mean() / atr)
+        
+        # Valores
+        current = float(plus_di.iloc[-1])
+        prev_1 = float(plus_di.iloc[-2])
+        prev_3 = float(plus_di.iloc[-4])
+        prev_5 = float(plus_di.iloc[-6]) if len(plus_di) &gt; 5 else current
+        
+        # Trend (últimas 3 velas)
+        delta = current - prev_3
+        if delta &gt; 2:
+            trend = 'creciendo'
+        elif delta &lt; -2:
+            trend = 'decreciendo'
+        else:
+            trend = 'estable'
+        
+        # Velocity (pts por vela)
+        velocity = delta / 3
+        
+        # History
+        history = [float(plus_di.iloc[-i]) for i in range(1, 6)]
+        
+        # Phase (basado en cambio desde 5 velas)
+        delta_5 = current - prev_5
+        if delta_5 &gt; 5 and current &gt; 25:
+            phase = 'climax'
+        elif delta_5 &gt; 2:
+            phase = 'nacimiento'
+        elif delta_5 &lt; -3:
+            phase = 'muerte'
+        else:
+            phase = 'estable'
+        
+        # Strength
+        if current &gt; 35:
+            strength = 'fuerte'
+        elif current &gt; 25:
+            strength = 'moderado'
+        else:
+            strength = 'debil'
+        
+        return {
+            'value': round(current, 2),
+            'trend': trend,
+            'velocity': round(velocity, 2),
+            'history': history,
+            'phase': phase,
+            'strength': strength,
+            'valid': True
+        }
+        
+    except Exception as e:
+        print(f"❌ Error analyze_di_plus: {e}")
+        return _default_result()
+def validate_di_plus_for_long(di_plus_data, di_minus_value):
+    """
+    Valida DI+ para entrada LONG.
+    
+    Requisitos:
+    - DI+ &gt; DI- por al menos 5 puntos
+    - DI+ no decreciendo rápido
+    - DI+ &gt; 20 (mínimo de fuerza)
+    
+    Returns:
+        dict: {valid, score, block_reason}
+    """
+    if not di_plus_data['valid']:
+        return {'valid': False, 'score': 0, 'block_reason': 'DI+ inválido'}
+    
+    value = di_plus_data['value']
+    trend = di_plus_data['trend']
+    spread = value - di_minus_value
+    
+    # BLOQUEO: DI+ no domina (spread &lt; 5)
+    if spread &lt; 5:
+        return {
+            'valid': False,
+            'score': -30,
+            'block_reason': f'DI+ no domina: spread {spread:.1f} &lt; 5'
+        }
+    
+    # BLOQUEO: DI+ muy débil
+    if value &lt; 20:
+        return {
+            'valid': False,
+            'score': -20,
+            'block_reason': f'DI+ débil: {value:.1f} &lt; 20'
+        }
+    
+    # ADVERTENCIA: DI+ decreciendo
+    if trend == 'decreciendo':
+        return {
+            'valid': True,
+            'score': -15,
+            'block_reason': f'DI+ decreciendo'
+        }
+    
+    # BONUS: DI+ fuerte y creciendo
+    score = 0
+    if spread &gt;= 15:
+        score += 20
+    elif spread &gt;= 10:
+        score += 10
+    
+    if trend == 'creciendo':
+        score += 10
+    
+    if di_plus_data['phase'] == 'climax':
+        score += 15
+    
     return {
-        'profit_potential': profit_pct,
-        'risk': risk_pct,
-        'rr_ratio': profit_pct / risk_pct
+        'valid': True,
+        'score': score,
+        'block_reason': None
     }
-Prioridad 4: Integrar VP en Grid
-# Agregar POC y VAH/VAL a dimensiones
-grid_dims['poc'] = vp_data['poc_current']
-grid_dims['vah'] = vp_data['value_area_high']
-grid_dims['val'] = vp_data['value_area_low']
-🎯 CONCLUSIÓN
-El Grid actual es FUNCIONAL pero LIMITED:
-
-✅ Funciona para detectar zonas y lateralización
-❌ NO tiene la visión de 48h que Joel quiere
-❌ NO integra VP, HH/LL, profit potential en una sola vista
-El bot opera con una ventana de 1.6 horas cuando Joel quiere ver 48 horas.
+def validate_di_plus_for_short(di_plus_data, di_minus_value):
+    """
+    Valida DI+ para entrada SHORT.
+    
+    Requisitos:
+    - DI+ &lt; DI- (DI- domina)
+    - DI+ no creciendo rápido
+    
+    Returns:
+        dict: {valid, score, block_reason}
+    """
+    if not di_plus_data['valid']:
+        return {'valid': False, 'score': 0, 'block_reason': 'DI+ inválido'}
+    
+    value = di_plus_data['value']
+    trend = di_plus_data['trend']
+    spread = di_minus_value - value  # Para SHORT, DI- debe dominar
+    
+    # BLOQUEO: DI+ domina (mal para SHORT)
+    if value &gt; di_minus_value + 5:
+        return {
+            'valid': False,
+            'score': -30,
+            'block_reason': f'DI+ domina: no SHORT cuando DI+ &gt; DI-'
+        }
+    
+    # ADVERTENCIA: DI+ creciendo (va contra SHORT)
+    if trend == 'creciendo':
+        return {
+            'valid': True,
+            'score': -15,
+            'block_reason': 'DI+ creciendo (contra SHORT)'
+        }
+    
+    # BONUS: DI+ subordinado y decreciendo
+    score = 0
+    if spread &gt;= 10:
+        score += 15
+    elif spread &gt;= 5:
+        score += 5
+    
+    if trend == 'decreciendo':
+        score += 10
+    
+    return {
+        'valid': True,
+        'score': score,
+        'block_reason': None
+    }
+def _default_result():
+    return {
+        'value': 0,
+        'trend': 'unknown',
+        'velocity': 0,
+        'history': [],
+        'phase': 'unknown',
+        'strength': 'unknown',
+        'valid': False
+    }
+📦 MÓDULO 2: brain_adx_minus.py
+"""
+brain_adx_minus.py - Análisis Granular DI- (Directional Index Minus)
+====================================================================
+Responsabilidad: Analizar la línea ROJA del ADX (DI-)
+Para SHORT: DI- debe DOMINAR
+Para LONG: DI- debe estar SUBORDINADO
+Autor: Joel Rodríguez Diarte
+Fecha: 2025-12-21
+"""
+import pandas as pd
+import numpy as np
+def analyze_di_minus(df, lookback=14):
+    """
+    Analiza DI- de forma granular.
+    
+    Args:
+        df: DataFrame con OHLCV
+        lookback: Período del indicador
+        
+    Returns:
+        dict: {
+            'value': float,           # Valor actual DI-
+            'trend': str,             # 'creciendo', 'decreciendo', 'estable'
+            'velocity': float,        # Velocidad de cambio pts/vela
+            'history': list,          # Últimos 5 valores
+            'phase': str,             # 'nacimiento', 'climax', 'muerte'
+            'strength': str,          # 'fuerte', 'moderado', 'debil'
+            'valid': bool
+        }
+    """
+    try:
+        if len(df) &lt; lookback + 5:
+            return _default_result()
+        
+        # Calcular DI-
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        # True Range
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(lookback).mean()
+        
+        # -DM (Directional Movement Minus)
+        up_move = high - high.shift(1)
+        down_move = low.shift(1) - low
+        
+        minus_dm = pd.Series(0.0, index=df.index)
+        minus_dm[(down_move &gt; up_move) &amp; (down_move &gt; 0)] = down_move
+        
+        # -DI
+        minus_di = 100 * (minus_dm.rolling(lookback).mean() / atr)
+        
+        # Valores
+        current = float(minus_di.iloc[-1])
+        prev_1 = float(minus_di.iloc[-2])
+        prev_3 = float(minus_di.iloc[-4])
+        prev_5 = float(minus_di.iloc[-6]) if len(minus_di) &gt; 5 else current
+        
+        # Trend
+        delta = current - prev_3
+        if delta &gt; 2:
+            trend = 'creciendo'
+        elif delta &lt; -2:
+            trend = 'decreciendo'
+        else:
+            trend = 'estable'
+        
+        # Velocity
+        velocity = delta / 3
+        
+        # History
+        history = [float(minus_di.iloc[-i]) for i in range(1, 6)]
+        
+        # Phase
+        delta_5 = current - prev_5
+        if delta_5 &gt; 5 and current &gt; 25:
+            phase = 'climax'
+        elif delta_5 &gt; 2:
+            phase = 'nacimiento'
+        elif delta_5 &lt; -3:
+            phase = 'muerte'
+        else:
+            phase = 'estable'
+        
+        # Strength
+        if current &gt; 35:
+            strength = 'fuerte'
+        elif current &gt; 25:
+            strength = 'moderado'
+        else:
+            strength = 'debil'
+        
+        return {
+            'value': round(current, 2),
+            'trend': trend,
+            'velocity': round(velocity, 2),
+            'history': history,
+            'phase': phase,
+            'strength': strength,
+            'valid': True
+        }
+        
+    except Exception as e:
+        print(f"❌ Error analyze_di_minus: {e}")
+        return _default_result()
+def validate_di_minus_for_short(di_minus_data, di_plus_value):
+    """
+    Valida DI- para entrada SHORT.
+    
+    Requisitos:
+    - DI- &gt; DI+ por al menos 5 puntos
+    - DI- no decreciendo rápido
+    - DI- &gt; 20 (mínimo de fuerza)
+    """
+    if not di_minus_data['valid']:
+        return {'valid': False, 'score': 0, 'block_reason': 'DI- inválido'}
+    
+    value = di_minus_data['value']
+    trend = di_minus_data['trend']
+    spread = value - di_plus_value
+    
+    # BLOQUEO: DI- no domina
+    if spread &lt; 5:
+        return {
+            'valid': False,
+            'score': -30,
+            'block_reason': f'DI- no domina: spread {spread:.1f} &lt; 5'
+        }
+    
+    # BLOQUEO: DI- muy débil
+    if value &lt; 20:
+        return {
+            'valid': False,
+            'score': -20,
+            'block_reason': f'DI- débil: {value:.1f} &lt; 20'
+        }
+    
+    # ADVERTENCIA: DI- decreciendo
+    if trend == 'decreciendo':
+        return {
+            'valid': True,
+            'score': -15,
+            'block_reason': 'DI- decreciendo'
+        }
+    
+    # BONUS
+    score = 0
+    if spread &gt;= 15:
+        score += 20
+    elif spread &gt;= 10:
+        score += 10
+    
+    if trend == 'creciendo':
+        score += 10
+    
+    if di_minus_data['phase'] == 'climax':
+        score += 15
+    
+    return {
+        'valid': True,
+        'score': score,
+        'block_reason': None
+    }
+def validate_di_minus_for_long(di_minus_data, di_plus_value):
+    """
+    Valida DI- para entrada LONG.
+    
+    Requisitos:
+    - DI- &lt; DI+ (DI+ domina)
+    - DI- no creciendo rápido
+    """
+    if not di_minus_data['valid']:
+        return {'valid': False, 'score': 0, 'block_reason': 'DI- inválido'}
+    
+    value = di_minus_data['value']
+    trend = di_minus_data['trend']
+    
+    # BLOQUEO: DI- domina
+    if value &gt; di_plus_value + 5:
+        return {
+            'valid': False,
+            'score': -30,
+            'block_reason': f'DI- domina: no LONG cuando DI- &gt; DI+'
+        }
+    
+    # ADVERTENCIA: DI- creciendo
+    if trend == 'creciendo':
+        return {
+            'valid': True,
+            'score': -15,
+            'block_reason': 'DI- creciendo (contra LONG)'
+        }
+    
+    # BONUS
+    score = 0
+    if value &lt; di_plus_value - 10:
+        score += 15
+    
+    if trend == 'decreciendo':
+        score += 10
+    
+    return {
+        'valid': True,
+        'score': score,
+        'block_reason': None
+    }
+def _default_result():
+    return {
+        'value': 0,
+        'trend': 'unknown',
+        'velocity': 0,
+        'history': [],
+        'phase': 'unknown',
+        'strength': 'unknown',
+        'valid': False
+    }
+📦 MÓDULO 3: brain_adx_value.py
+"""
+brain_adx_value.py - Análisis Granular ADX Value (Línea Negra)
+==============================================================
+Responsabilidad: Analizar el ADX (fuerza de la tendencia)
+ADX &gt; 25 = Tendencia fuerte
+ADX &lt; 20 = Lateral/débil
+ADX creciendo = Tendencia ganando fuerza
+ADX decreciendo = Tendencia perdiendo fuerza
+Autor: Joel Rodríguez Diarte
+Fecha: 2025-12-21
+"""
+import pandas as pd
+import numpy as np
+def analyze_adx_value(df, lookback=14):
+    """
+    Analiza ADX (valor absoluto) de forma granular.
+    
+    Returns:
+        dict: {
+            'value': float,
+            'trend': str,
+            'velocity': float,
+            'lifecycle': str,      # 'nacimiento', 'expansion', 'climax', 'muerte'
+            'strength': str,
+            'history': list,
+            'valid': bool
+        }
+    """
+    try:
+        if len(df) &lt; lookback + 10:
+            return _default_result()
+        
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        # True Range
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(lookback).mean()
+        
+        # +DM / -DM
+        up_move = high - high.shift(1)
+        down_move = low.shift(1) - low
+        
+        plus_dm = pd.Series(0.0, index=df.index)
+        plus_dm[(up_move &gt; down_move) &amp; (up_move &gt; 0)] = up_move
+        
+        minus_dm = pd.Series(0.0, index=df.index)
+        minus_dm[(down_move &gt; up_move) &amp; (down_move &gt; 0)] = down_move
+        
+        # DI+ / DI-
+        plus_di = 100 * (plus_dm.rolling(lookback).mean() / atr)
+        minus_di = 100 * (minus_dm.rolling(lookback).mean() / atr)
+        
+        # ADX
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+        adx = dx.rolling(lookback).mean()
+        
+        # Valores
+        current = float(adx.iloc[-1])
+        prev_1 = float(adx.iloc[-2])
+        prev_3 = float(adx.iloc[-4])
+        prev_5 = float(adx.iloc[-6])
+        prev_10 = float(adx.iloc[-11]) if len(adx) &gt; 10 else current
+        
+        # Trend (últimas 3 velas)
+        delta_3 = current - prev_3
+        if delta_3 &gt; 1.5:
+            trend = 'creciendo'
+        elif delta_3 &lt; -1.5:
+            trend = 'decreciendo'
+        else:
+            trend = 'estable'
+        
+        # Velocity
+        velocity = delta_3 / 3
+        
+        # Lifecycle (basado en cambios históricos)
+        delta_5 = current - prev_5
+        delta_10 = current - prev_10
+        
+        if current &lt; 20:
+            lifecycle = 'lateral'
+        elif delta_10 &gt; 10 and delta_5 &gt; 3:
+            lifecycle = 'nacimiento'  # ADX subiendo fuerte
+        elif current &gt; 40 and delta_5 &gt; 0:
+            lifecycle = 'climax'      # ADX alto y aún subiendo
+        elif current &gt; 35 and delta_5 &lt; -2:
+            lifecycle = 'muerte'      # ADX alto pero cayendo
+        elif delta_5 &gt; 1:
+            lifecycle = 'expansion'   # ADX subiendo moderado
+        else:
+            lifecycle = 'estable'
+        
+        # Strength
+        if current &gt; 50:
+            strength = 'brutal'
+        elif current &gt; 35:
+            strength = 'fuerte'
+        elif current &gt; 25:
+            strength = 'moderado'
+        elif current &gt; 20:
+            strength = 'debil'
+        else:
+            strength = 'muy_debil'
+        
+        # History
+        history = [float(adx.iloc[-i]) for i in range(1, 8)]
+        
+        return {
+            'value': round(current, 2),
+            'trend': trend,
+            'velocity': round(velocity, 2),
+            'lifecycle': lifecycle,
+            'strength': strength,
+            'history': history,
+            'valid': True
+        }
+        
+    except Exception as e:
+        print(f"❌ Error analyze_adx_value: {e}")
+        return _default_result()
+def validate_adx_for_entry(adx_data, brutal_force=False):
+    """
+    Valida ADX para cualquier entrada (LONG o SHORT).
+    
+    Requisitos:
+    - ADX &gt; 20 (mínimo)
+    - ADX no en fase 'muerte' (a menos que brutal_force)
+    - ADX no en 'lateral'
+    """
+    if not adx_data['valid']:
+        return {'valid': False, 'score': 0, 'block_reason': 'ADX inválido'}
+    
+    value = adx_data['value']
+    trend = adx_data['trend']
+    lifecycle = adx_data['lifecycle']
+    strength = adx_data['strength']
+    
+    # BLOQUEO: ADX muy bajo (lateral)
+    if value &lt; 18:
+        return {
+            'valid': False,
+            'score': -40,
+            'block_reason': f'ADX {value:.1f} &lt; 18 (lateral)'
+        }
+    
+    # BLOQUEO: ADX decreciendo sin brutal_force
+    if lifecycle == 'muerte' and not brutal_force:
+        return {
+            'valid': False,
+            'score': -30,
+            'block_reason': f'ADX {value:.1f} muriendo'
+        }
+    
+    # ADVERTENCIA: ADX débil
+    if 18 &lt;= value &lt; 22:
+        return {
+            'valid': True,
+            'score': -10,
+            'block_reason': f'ADX {value:.1f} débil'
+        }
+    
+    # BONUS según strength
+    score = 0
+    
+    if strength == 'brutal':
+        score += 30
+    elif strength == 'fuerte':
+        score += 20
+    elif strength == 'moderado':
+        score += 10
+    
+    if lifecycle == 'climax':
+        score += 15
+    elif lifecycle == 'nacimiento':
+        score += 20  # Mejor entrar en nacimiento
+    elif lifecycle == 'expansion':
+        score += 10
+    
+    if trend == 'creciendo':
+        score += 10
+    
+    return {
+        'valid': True,
+        'score': score,
+        'block_reason': None
+    }
+def _default_result():
+    return {
+        'value': 0,
+        'trend': 'unknown',
+        'velocity': 0,
+        'lifecycle': 'unknown',
+        'strength': 'unknown',
+        'history': [],
+        'valid': False
+    }
+📦 MÓDULO 4: brain_momentum_green.py
+"""
+brain_momentum_green.py - Análisis Granular Momentum Verde
+==========================================================
+Responsabilidad: Analizar barras VERDES del momentum (lime, green)
+Colores verdes = momentum ALCISTA
+- lime = verde brillante (momentum fuerte alcista)
+- green = verde oscuro (momentum moderado alcista)
+Fases:
+- Nacimiento: velas 1-3 (óptimo)
+- Clímax: velas 4-8 (bueno)
+- Madurez: velas 9-12 (aceptable)
+- Agotamiento: velas 13+ (peligro)
+Autor: Joel Rodríguez Diarte
+Fecha: 2025-12-21
+"""
+def analyze_momentum_green(momentum_data):
+    """
+    Analiza momentum verde de forma granular.
+    
+    Args:
+        momentum_data: Dict del calculate_momentum_with_memory
+        
+    Returns:
+        dict: {
+            'is_green': bool,
+            'color': str,
+            'age': int,
+            'phase': str,
+            'phase_score': int,
+            'intensity': float,
+            'squeeze_on': bool,
+            'valid': bool
+        }
+    """
+    try:
+        color = momentum_data.get('color_current', 'gray')
+        age = momentum_data.get('consecutive_count', 0)
+        intensity = momentum_data.get('intensity', 0)
+        squeeze_on = momentum_data.get('squeeze_on', False)
+        
+        # ¿Es verde?
+        is_green = color in ['lime', 'green']
+        
+        if not is_green:
+            return {
+                'is_green': False,
+                'color': color,
+                'age': age,
+                'phase': 'no_green',
+                'phase_score': 0,
+                'intensity': intensity,
+                'squeeze_on': squeeze_on,
+                'valid': True
+            }
+        
+        # Determinar fase según edad
+        if age &lt;= 3:
+            phase = 'nacimiento'
+            phase_score = 25  # Óptimo para entrar
+        elif age &lt;= 8:
+            phase = 'climax'
+            phase_score = 20  # Muy bueno
+        elif age &lt;= 12:
+            phase = 'madurez'
+            phase_score = 5   # Aceptable
+        elif age &lt;= 15:
+            phase = 'tardio'
+            phase_score = -15 # Cuidado
+        else:
+            phase = 'agotamiento'
+            phase_score = -30 # Peligro
+        
+        # Bonus por color lime (más fuerte que green)
+        if color == 'lime':
+            phase_score += 5
+        
+        # Bonus por squeeze (compresión liberándose)
+        if squeeze_on:
+            phase_score += 10
+        
+        return {
+            'is_green': True,
+            'color': color,
+            'age': age,
+            'phase': phase,
+            'phase_score': phase_score,
+            'intensity': intensity,
+            'squeeze_on': squeeze_on,
+            'valid': True
+        }
+        
+    except Exception as e:
+        print(f"❌ Error analyze_momentum_green: {e}")
+        return _default_result()
+def validate_green_for_long(green_data):
+    """
+    Valida momentum verde para entrada LONG.
+    
+    Requisitos:
+    - Debe ser verde (lime o green)
+    - Fase no debe ser agotamiento
+    """
+    if not green_data['valid']:
+        return {'valid': False, 'score': 0, 'block_reason': 'Momentum inválido'}
+    
+    # BLOQUEO: No es verde
+    if not green_data['is_green']:
+        return {
+            'valid': False,
+            'score': -40,
+            'block_reason': f'Momentum {green_data["color"]} no es verde para LONG'
+        }
+    
+    # BLOQUEO: Agotamiento
+    if green_data['phase'] == 'agotamiento':
+        return {
+            'valid': False,
+            'score': -35,
+            'block_reason': f'Momentum verde AGOTADO ({green_data["age"]} velas)'
+        }
+    
+    # ADVERTENCIA: Tardío
+    if green_data['phase'] == 'tardio':
+        return {
+            'valid': True,
+            'score': green_data['phase_score'],
+            'block_reason': f'Momentum verde tardío ({green_data["age"]} velas)'
+        }
+    
+    # OK
+    return {
+        'valid': True,
+        'score': green_data['phase_score'],
+        'block_reason': None
+    }
+def _default_result():
+    return {
+        'is_green': False,
+        'color': 'unknown',
+        'age': 0,
+        'phase': 'unknown',
+        'phase_score': 0,
+        'intensity': 0,
+        'squeeze_on': False,
+        'valid': False
+    }
+📦 MÓDULO 5: brain_momentum_red.py
+"""
+brain_momentum_red.py - Análisis Granular Momentum Rojo
+=======================================================
+Responsabilidad: Analizar barras ROJAS del momentum (red, maroon)
+Colores rojos = momentum BAJISTA
+- red = rojo brillante (momentum fuerte bajista)
+- maroon = rojo oscuro (momentum moderado bajista)
+Fases:
+- Nacimiento: velas 1-3 (óptimo para SHORT)
+- Clímax: velas 4-8 (bueno)
+- Madurez: velas 9-12 (aceptable)
+- Agotamiento: velas 13+ (peligro)
+Autor: Joel Rodríguez Diarte
+Fecha: 2025-12-21
+"""
+def analyze_momentum_red(momentum_data):
+    """
+    Analiza momentum rojo de forma granular.
+    
+    Args:
+        momentum_data: Dict del calculate_momentum_with_memory
+        
+    Returns:
+        dict: {
+            'is_red': bool,
+            'color': str,
+            'age': int,
+            'phase': str,
+            'phase_score': int,
+            'intensity': float,
+            'squeeze_on': bool,
+            'valid': bool
+        }
+    """
+    try:
+        color = momentum_data.get('color_current', 'gray')
+        age = momentum_data.get('consecutive_count', 0)
+        intensity = momentum_data.get('intensity', 0)
+        squeeze_on = momentum_data.get('squeeze_on', False)
+        
+        # ¿Es rojo?
+        is_red = color in ['red', 'maroon']
+        
+        if not is_red:
+            return {
+                'is_red': False,
+                'color': color,
+                'age': age,
+                'phase': 'no_red',
+                'phase_score': 0,
+                'intensity': intensity,
+                'squeeze_on': squeeze_on,
+                'valid': True
+            }
+        
+        # Determinar fase según edad
+        if age &lt;= 3:
+            phase = 'nacimiento'
+            phase_score = 25
+        elif age &lt;= 8:
+            phase = 'climax'
+            phase_score = 20
+        elif age &lt;= 12:
+            phase = 'madurez'
+            phase_score = 5
+        elif age &lt;= 15:
+            phase = 'tardio'
+            phase_score = -15
+        else:
+            phase = 'agotamiento'
+            phase_score = -30
+        
+        # Bonus por color red (más fuerte que maroon)
+        if color == 'red':
+            phase_score += 5
+        
+        # Bonus por squeeze
+        if squeeze_on:
+            phase_score += 10
+        
+        return {
+            'is_red': True,
+            'color': color,
+            'age': age,
+            'phase': phase,
+            'phase_score': phase_score,
+            'intensity': intensity,
+            'squeeze_on': squeeze_on,
+            'valid': True
+        }
+        
+    except Exception as e:
+        print(f"❌ Error analyze_momentum_red: {e}")
+        return _default_result()
+def validate_red_for_short(red_data):
+    """
+    Valida momentum rojo para entrada SHORT.
+    
+    Requisitos:
+    - Debe ser rojo (red o maroon)
+    - Fase no debe ser agotamiento
+    """
+    if not red_data['valid']:
+        return {'valid': False, 'score': 0, 'block_reason': 'Momentum inválido'}
+    
+    # BLOQUEO: No es rojo
+    if not red_data['is_red']:
+        return {
+            'valid': False,
+            'score': -40,
+            'block_reason': f'Momentum {red_data["color"]} no es rojo para SHORT'
+        }
+    
+    # BLOQUEO: Agotamiento
+    if red_data['phase'] == 'agotamiento':
+        return {
+            'valid': False,
+            'score': -35,
+            'block_reason': f'Momentum rojo AGOTADO ({red_data["age"]} velas)'
+        }
+    
+    # ADVERTENCIA: Tardío
+    if red_data['phase'] == 'tardio':
+        return {
+            'valid': True,
+            'score': red_data['phase_score'],
+            'block_reason': f'Momentum rojo tardío ({red_data["age"]} velas)'
+        }
+    
+    # OK
+    return {
+        'valid': True,
+        'score': red_data['phase_score'],
+        'block_reason': None
+    }
+def _default_result():
+    return {
+        'is_red': False,
+        'color': 'unknown',
+        'age': 0,
+        'phase': 'unknown',
+        'phase_score': 0,
+        'intensity': 0,
+        'squeeze_on': False,
+        'valid': False
+    }
+📋 INTEGRACIÓN EN brain_analyzer.py
+# Al inicio del archivo:
+from brain_adx_plus import analyze_di_plus, validate_di_plus_for_long, validate_di_plus_for_short
+from brain_adx_minus import analyze_di_minus, validate_di_minus_for_short, validate_di_minus_for_long
+from brain_adx_value import analyze_adx_value, validate_adx_for_entry
+from brain_momentum_green import analyze_momentum_green, validate_green_for_long
+from brain_momentum_red import analyze_momentum_red, validate_red_for_short
+# En analyze_15m(), después de obtener el df:
+def analyze_15m(symbol, direction='BULLISH'):
+    # ... código existente ...
+    
+    # === ANÁLISIS GRANULAR ADX ===
+    di_plus = analyze_di_plus(df)
+    di_minus = analyze_di_minus(df)
+    adx_value = analyze_adx_value(df)
+    
+    print(f"   📊 DI+: {di_plus['value']:.1f} ({di_plus['trend']})")
+    print(f"   📊 DI-: {di_minus['value']:.1f} ({di_minus['trend']})")
+    print(f"   📊 ADX: {adx_value['value']:.1f} ({adx_value['lifecycle']})")
+    
+    # Validar según dirección
+    if direction == 'BULLISH':
+        di_plus_valid = validate_di_plus_for_long(di_plus, di_minus['value'])
+        di_minus_valid = validate_di_minus_for_long(di_minus, di_plus['value'])
+    else:
+        di_plus_valid = validate_di_plus_for_short(di_plus, di_minus['value'])
+        di_minus_valid = validate_di_minus_for_short(di_minus, di_plus['value'])
+    
+    adx_valid = validate_adx_for_entry(adx_value)
+    
+    # BLOQUEOS
+    if not di_plus_valid['valid']:
+        return {'blocked': True, 'block_reason': di_plus_valid['block_reason'], ...}
+    
+    if not di_minus_valid['valid']:
+        return {'blocked': True, 'block_reason': di_minus_valid['block_reason'], ...}
+    
+    if not adx_valid['valid']:
+        return {'blocked': True, 'block_reason': adx_valid['block_reason'], ...}
+    
+    # === ANÁLISIS GRANULAR MOMENTUM ===
+    momentum_data = calculate_momentum_with_memory(df)
+    
+    if direction == 'BULLISH':
+        green = analyze_momentum_green(momentum_data)
+        green_valid = validate_green_for_long(green)
+        print(f"   🟢 Momentum: {green['color']} {green['age']}v ({green['phase']})")
+        
+        if not green_valid['valid']:
+            return {'blocked': True, 'block_reason': green_valid['block_reason'], ...}
+        
+        momentum_score = green_valid['score']
+    else:
+        red = analyze_momentum_red(momentum_data)
+        red_valid = validate_red_for_short(red)
+        print(f"   🔴 Momentum: {red['color']} {red['age']}v ({red['phase']})")
+        
+        if not red_valid['valid']:
+            return {'blocked': True, 'block_reason': red_valid['block_reason'], ...}
+        
+        momentum_score = red_valid['score']
+    
+    # === SUMAR SCORES ===
+    granular_score = (
+        di_plus_valid['score'] +
+        di_minus_valid['score'] +
+        adx_valid['score'] +
+        momentum_score
+    )
+    
+    # Incluir en score total
+    score_15m += granular_score
+    
+    # ... resto del código ...
+🎯 CASO APE/USDT CON MÓDULOS GRANULARES
+📊 DI+: 31.77 (estable)
+📊 DI-: 20.20 (estable)
+📊 ADX: 16.09 (lateral)
+📊 Spread: 11.57 (&lt; 15 BAJO)
+🔴 Momentum: maroon 14v (tardio)
+VALIDACIONES:
+- DI+ para SHORT: ❌ DI+ domina (31.77 &gt; 20.20)
+- ADX: ❌ 16.09 &lt; 18 (lateral)
+- Momentum: ❌ 14 velas (tardío/agotado)
+RESULTADO: BLOCKED ❌ (DI+ domina + ADX lateral + Momentum tardío)
+❓ ¿Apruebas para proceder?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 7,359<br>
-    Generado: 2025-12-21 10:55:39
+    Total caracteres: 30,785<br>
+    Generado: 2025-12-21 12:08:37
   </div>
 </body>
 </html>
