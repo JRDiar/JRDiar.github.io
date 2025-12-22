@@ -15,191 +15,793 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-21 18:58:05</div>
+  <div class="meta">Última actualización: 2025-12-21 22:16:10</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
+PLAN MAESTRO LISTO PARA REVISIÓN
+Resumen del Cambio de Paradigma:
+De (actual)	A (propuesto)
+Penalties acumulativos	Detector de alineación
+ADX &lt; 25 = -60	ADX subiendo = ALIGNED
+Momentum &gt; 3v = -25	Momentum verde = ALIGNED
+Buscar PERFECCIÓN	Buscar COHERENCIA
+Componentes del Plan:
+brain_adx_zones.py (NUEVO)
+6 zonas: LATERAL, INICIANDO, TENDENCIA, FUERTE, BRUTAL, EXTREMO
+Detecta cruces entre zonas
+Bonus por cruces ascendentes
+brain_alignment.py (NUEVO)
+Detecta si 6 señales apuntan misma dirección
+ADX, Precio, ZigZag, Momentum, DI, Volumen
+Decisión por % de alineación (&gt;=50% y &lt;=2 conflictos)
+brain_think.py (sniper v6.0)
+Elimina penalties acumulativos
+Usa alignment_detector
+Único bloqueo duro: Spread &lt; 5
+brain_analyzer.py (simplificado)
+Score = alignment_score
+Sin clampeo
+Sin penalties por ADX/momentum/volumen
+Resultado Esperado XPIN:
+ANTES: Score -85 → RECHAZADO ❌ DESPUÉS: Alineación 83% (5/6) → APROBADO ✅
 
-📊 ESTADO ACTUAL DEL BOT - ARQUITECTURA DINÁMICA
-✅ IMPLEMENTADO HOY:
-Componente	Archivo	Estado
-Frame Storage	brain_frames.py	✅ 20 frames por símbolo
-Trajectory Analyzer	brain_trajectory.py	✅ Velocidad, aceleración, fase
-Grid Master Multi-TF	brain_grid_master.py	✅ 5M(20v), 1H(48v), 4H(48v)
-ADX/Mom Granular en Grid	brain_grid_master.py	✅ Cortometrajes con indicadores
-Pump Explosivo	brain_analyzer.py	✅ Detector + reglas especiales
-Motion Score	brain_analyzer.py	✅ Bonus dinámico (+40 explosión)
-Sniper Contextual	brain_think.py	✅ Thresholds dinámicos
-Veredicto Fix	manual_analyzer.py	✅ Sniper como fuente de verdad
-📐 CONFIGURACIÓN GRID:
-5M: 20 velas (~100 min) - Detalle fino
-1H: 48 velas (48 horas) - Contexto
-4H: 48 velas (8 días) - Estructura macro
-⚠️ PENDIENTE PARA SISTEMA 100% DINÁMICO:
-Multi-TF Motion Integrator - Unir películas de 5M, 1H, 4H
-Movie Engine Centralizado - Motor único de decisiones
-🎯 PREGUNTA CLAVE:
-¿Quieres que implemente ahora lo que falta para que TODO el bot sea 100% dinámico?
+Preguntas Pendientes:
+¿Threshold de alineación 50% es correcto o prefieres otro?
+¿Mantener spread &lt; 5 como único bloqueo duro?
+¿Agregar alguna otra validación obligatoria?
+Por favor revisa el plan completo y aprueba o solicita cambios antes de implementar.
 
-Opción A: Implementar Multi-TF Motion Integrator (une cortometrajes) Opción B: Implementar Movie Engine Centralizado (reemplaza lógica estática) Opción C: Ambos (sistema completo de película)
+PLAN MAESTRO: SISTEMA DE ALINEACIÓN DINÁMICA
+📋 RESUMEN EJECUTIVO
+Problema Identificado
+El bot se volvió RÍGIDO con demasiadas validaciones. Busca PERFECCIÓN en cada indicador en vez de COHERENCIA global.
 
-¿Cuál prefieres que hagamos ahora?
+Resultado: 3 monedas subiendo hoy → Bot rechazó las 3.
 
-architecture_dynamic_movie.md
+Solución Propuesta
+Cambio de paradigma de PENALTIES ACUMULATIVOS a DETECTOR DE ALINEACIÓN.
 
-ARQUITECTURA DINÁMICA DEL BOT - ESTADO ACTUAL
-📊 RESUMEN EJECUTIVO
-El bot ahora tiene un sistema DINÁMICO basado en PELÍCULA en lugar de fotos estáticas.
+Aspecto	Sistema Actual	Sistema Propuesto
+Enfoque	Penalties por imperfección	Coherencia direccional
+ADX	Valor estático (&lt; 25 = malo)	Zonas + Movimiento entre zonas
+Momentum	Edad estática (&gt; 3v = malo)	Fase según contexto
+Volumen	Ratio fijo (&lt; 50% = malo)	Contextual según fase
+Decisión	Score acumulativo	% de alineación
+🏗️ ARQUITECTURA NUEVA
+┌─────────────────────────────────────────────────────────────┐
+│                    ALIGNMENT DETECTOR                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │  ADX ZONES   │  │   PRICE      │  │  ZIGZAG      │       │
+│  │  Subiendo?   │  │  Subiendo?   │  │  HH/HL?      │       │
+│  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │  MOMENTUM    │  │  DI+/DI-     │  │  VOLUME      │       │
+│  │  Green?      │  │  DI+ &gt; DI-?  │  │  Aumentando? │       │
+│  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│                                                              │
+│  ALINEACIÓN: 6/6 = 100% → ✅ ENTRAR                         │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+📁 COMPONENTE 1: ADX ZONES
+Archivo Nuevo: brain_adx_zones.py
+Concepto: ADX no es solo un número, es una POSICIÓN en un mapa de zonas.
 
-🏗️ COMPONENTES IMPLEMENTADOS
-1. ✅ Frame Storage (
-brain_frames.py
-)
-Estado: IMPLEMENTADO
+ZONAS ADX:
+┌────────────────────────────────────────────────────────────┐
+│ 0────20────25────35────50────70────100                     │
+│ │LATERAL│INIC│TENDENCIA│FUERTE│BRUTAL│EXTREMO│             │
+│ │ -40   │ 0  │  +10    │ +20  │ +30  │ -10   │             │
+└────────────────────────────────────────────────────────────┘
+Código Propuesto:
+"""
+brain_adx_zones.py - ADX Cortometraje con Zonas
+================================================
+Analiza ADX como movimiento entre ZONAS, no valores estáticos.
+"""
+class ADXZoneAnalyzer:
+    """
+    Analiza ADX como cortometraje con zonas
+    """
+    
+    # Definición de zonas
+    ZONES = {
+        'LATERAL': (0, 20),
+        'INICIANDO': (20, 25),
+        'TENDENCIA': (25, 35),
+        'FUERTE': (35, 50),
+        'BRUTAL': (50, 70),
+        'EXTREMO': (70, 100)
+    }
+    
+    # Bonus por zona actual
+    ZONE_BONUS = {
+        'LATERAL': -40,
+        'INICIANDO': 0,
+        'TENDENCIA': 10,
+        'FUERTE': 20,
+        'BRUTAL': 30,
+        'EXTREMO': -10
+    }
+    
+    def get_zone(self, adx_value):
+        """Determina zona del ADX"""
+        for zone_name, (min_val, max_val) in self.ZONES.items():
+            if min_val &lt;= adx_value &lt; max_val:
+                return zone_name
+        return 'EXTREMO'
+    
+    def analyze_zone_trajectory(self, adx_frames):
+        """
+        Analiza trayectoria del ADX entre zonas
+        
+        Args:
+            adx_frames: Lista [más viejo ... más nuevo]
+                       Ej: [28, 30, 33, 35, 38, 41, 45]
+        
+        Returns:
+            dict con zonas, cruces, dirección, historia, bonus
+        """
+        if len(adx_frames) &lt; 3:
+            return self._default_result()
+        
+        # Mapear zonas
+        zones = [self.get_zone(adx) for adx in adx_frames]
+        current_zone = zones[-1]
+        
+        # Detectar cruces de zona
+        zone_changes = []
+        for i in range(1, len(zones)):
+            if zones[i] != zones[i-1]:
+                zone_changes.append({
+                    'from': zones[i-1],
+                    'to': zones[i],
+                    'adx': adx_frames[i]
+                })
+        
+        # Analizar dirección
+        delta = adx_frames[-1] - adx_frames[0]
+        if delta &gt; 5:
+            direction = 'ASCENDING'
+        elif delta &lt; -5:
+            direction = 'DESCENDING'
+        else:
+            direction = 'STABLE'
+        
+        # Calcular fuerza
+        velocity = delta / len(adx_frames)
+        if abs(velocity) &gt; 3:
+            strength = 'EXPLOSIVE'
+        elif abs(velocity) &gt; 1.5:
+            strength = 'STRONG'
+        elif abs(velocity) &gt; 0.5:
+            strength = 'MODERATE'
+        else:
+            strength = 'WEAK'
+        
+        # Calcular bonus
+        bonus = self._calculate_zone_bonus(
+            current_zone, zone_changes, direction, strength
+        )
+        
+        # Crear historia
+        story = self._create_story(
+            adx_frames, zones, zone_changes, direction, strength
+        )
+        
+        return {
+            'zones': zones,
+            'current_zone': current_zone,
+            'zone_changes': zone_changes,
+            'direction': direction,
+            'strength': strength,
+            'story': story,
+            'bonus': bonus,
+            'is_aligned': direction == 'ASCENDING' and current_zone not in ['LATERAL'],
+            'valid': True
+        }
+    
+    def _calculate_zone_bonus(self, current_zone, zone_changes, direction, strength):
+        """Calcula bonus por zonas y cruces"""
+        bonus = self.ZONE_BONUS.get(current_zone, 0)
+        
+        # Bonus por cruces ascendentes
+        if direction == 'ASCENDING':
+            for change in zone_changes:
+                if change['from'] == 'INICIANDO' and change['to'] == 'TENDENCIA':
+                    bonus += 20  # Confirmación
+                elif change['from'] == 'TENDENCIA' and change['to'] == 'FUERTE':
+                    bonus += 30  # Fortalecimiento
+                elif change['from'] == 'FUERTE' and change['to'] == 'BRUTAL':
+                    bonus += 40  # Explosión
+            
+            # Bonus por fuerza
+            if strength == 'EXPLOSIVE':
+                bonus += 25
+            elif strength == 'STRONG':
+                bonus += 15
+        
+        # Penalty por cruces descendentes
+        elif direction == 'DESCENDING':
+            for change in zone_changes:
+                if change['from'] == 'BRUTAL' and change['to'] == 'FUERTE':
+                    bonus -= 20
+                elif change['from'] == 'FUERTE' and change['to'] == 'TENDENCIA':
+                    bonus -= 30
+        
+        return bonus
+    
+    def _create_story(self, adx_frames, zones, zone_changes, direction, strength):
+        """Crea historia del cortometraje"""
+        start_adx = adx_frames[0]
+        end_adx = adx_frames[-1]
+        
+        if len(zone_changes) == 0:
+            return f"ADX {start_adx:.0f}→{end_adx:.0f} ({direction}) en zona {zones[-1]}"
+        elif len(zone_changes) == 1:
+            c = zone_changes[0]
+            return f"ADX cruzó {c['from']}→{c['to']} ({start_adx:.0f}→{end_adx:.0f})"
+        else:
+            return f"ADX cruzó {len(zone_changes)} zonas ({start_adx:.0f}→{end_adx:.0f}) | {strength}"
+    
+    def _default_result(self):
+        return {
+            'zones': [],
+            'current_zone': 'UNKNOWN',
+            'zone_changes': [],
+            'direction': 'UNKNOWN',
+            'strength': 'UNKNOWN',
+            'story': 'Datos insuficientes',
+            'bonus': 0,
+            'is_aligned': False,
+            'valid': False
+        }
+# Instancia global
+adx_zone_analyzer = ADXZoneAnalyzer()
+📁 COMPONENTE 2: ALIGNMENT DETECTOR
+Archivo Nuevo: brain_alignment.py
+Concepto: Detectar cuando TODOS los indicadores apuntan en la MISMA dirección.
 
-Almacena historia de indicadores como "frames" de película:
-
-Guarda últimos 20 frames por símbolo/timeframe
-Cada frame contiene: ADX, DI+, DI-, Spread, Momentum, Precio, Volumen
-Permite extraer trayectorias: 
-get_trajectory('adx.value', n=5)
-# Ejemplo: Ver película de ADX
-storage = get_frame_storage('RAVE/USDT:USDT', '15m')
-adx_trajectory = storage.get_trajectory('adx.value', 5)
-# [45, 48, 52, 56, 58] → ADX SUBIENDO
-2. ✅ Trajectory Analyzer (
-brain_trajectory.py
-)
-Estado: IMPLEMENTADO
-
-Analiza MOVIMIENTO de indicadores:
-
-Velocidad (cambio por frame)
-Aceleración (cambio de velocidad)
-Dirección (ASCENDING, DESCENDING, STABLE)
-Fase (EXPLOSION_NASCENT, EXPLOSION_SUSTAINED, etc.)
-Fases detectadas:
-
-Fase	Significado	Score
-EXPLOSION_NASCENT	Explosión naciendo	+40
-EXPLOSION_SUSTAINED	Explosión sostenida	+40
-EXPLOSION_CLIMAX	Clímax de explosión	+20
-TREND_BUILDING	Tendencia construyéndose	+10
-EXPLOSION_FADING	Explosión terminando	-15
-FORCE_DYING	Fuerza muriendo	-30
-3. ✅ Grid Master Multi-TF (
-brain_grid_master.py
-)
-Estado: IMPLEMENTADO CON GRANULAR
-
-Timeframes:
-
-TF	Lookback	Descripción
-5M	20 velas	~100 min (detalle fino)
-1H	48 velas	48 horas (contexto)
-4H	48 velas	8 días (estructura)
-Cada grid incluye:
-
-Dimensiones: precio_max, precio_min, canal_width
-Estructura: HH/HL/LL/LH (tendencia)
-Diagonal: trendlines con regresión lineal
-NUEVO: ADX granular (DI+, DI-, ADX value, spread)
-NUEVO: Momentum granular (green/red, age, phase)
-NUEVO: Dirección cortometraje
-4. ✅ Pump Explosivo Detector (
-brain_analyzer.py
-)
-Estado: IMPLEMENTADO
-
-Detecta explosiones en vivo:
-
-pump_explosivo = (
-    adx_current &gt; 50 and
-    adx_trend == 'creciendo' and
-    spread &gt; 25 and
-    avg_change_pct &gt; 2.0 and
-    position_in_range &gt; 85
-)
-Reglas especiales en pump:
-
-Momentum hasta 15v = SOSTENIDO (+30)
-Profit threshold = 0.1% (casi sin requisito)
-R/R ignorado
-Estructura ignorada
-5. ✅ Motion Score Integration (
-brain_analyzer.py
-)
-Estado: IMPLEMENTADO
-
-El score final incluye bonus por movimiento:
-
-score_15m = -pump_penalty - lateral_penalty - macro_penalty - tf_penalty + motion_score
-Motion bonuses:
-
-ADX explosion phase: +40
-Momentum sustained: +20
-ADX climax: +20
-Momentum developing: +15
-6. ✅ Sniper Contextual (
+Código Propuesto:
+"""
+brain_alignment.py - Detector de Alineación Global
+==================================================
+Detecta cuando TODOS los indicadores están alineados.
+NO busca perfección individual.
+Busca COHERENCIA direccional del conjunto.
+"""
+from brain_adx_zones import adx_zone_analyzer
+from brain_frames import get_frame_storage
+from brain_trajectory import TrajectoryAnalyzer
+class AlignmentDetector:
+    """
+    Detecta alineación global de todos los indicadores
+    """
+    
+    def __init__(self):
+        self.trajectory_analyzer = TrajectoryAnalyzer()
+    
+    def analyze_alignment(self, symbol, direction, ladder_data):
+        """
+        Analiza alineación COMPLETA de todos los componentes
+        
+        Args:
+            symbol: Par a analizar
+            direction: 'BULLISH' o 'BEARISH'
+            ladder_data: Datos de todos los TFs
+        
+        Returns:
+            dict con alignment_score, signals, story, decision
+        """
+        
+        signals = {}
+        
+        # Obtener datos del 15m
+        data_15m = ladder_data.get('15m', {})
+        adx_data = data_15m.get('adx', {})
+        momentum_data = data_15m.get('momentum', {})
+        zigzag_data = data_15m.get('zigzag', {})
+        
+        # Obtener frames para análisis dinámico
+        storage = get_frame_storage(symbol, '15m')
+        
+        # ===============================================
+        # SEÑAL 1: ADX DIRECTION (usando zonas)
+        # ===============================================
+        adx_values = storage.get_trajectory('adx.value', 5)
+        
+        if len(adx_values) &gt;= 3:
+            zone_analysis = adx_zone_analyzer.analyze_zone_trajectory(adx_values)
+            
+            if zone_analysis['is_aligned']:
+                signals['adx'] = 'ALIGNED'
+            elif zone_analysis['direction'] == 'DESCENDING':
+                signals['adx'] = 'CONFLICT'
+            else:
+                signals['adx'] = 'NEUTRAL'
+        else:
+            # Sin frames: usar ADX trend como proxy
+            adx_trend = adx_data.get('adx_trend', 'estable')
+            if adx_trend == 'creciendo':
+                signals['adx'] = 'ALIGNED'
+            elif adx_trend == 'decreciendo':
+                signals['adx'] = 'CONFLICT'
+            else:
+                signals['adx'] = 'NEUTRAL'
+        
+        # ===============================================
+        # SEÑAL 2: PRICE DIRECTION
+        # ===============================================
+        price_values = storage.get_trajectory('price', 5)
+        
+        if len(price_values) &gt;= 3:
+            price_delta = price_values[-1] - price_values[0]
+            
+            if direction == 'BULLISH':
+                signals['price'] = 'ALIGNED' if price_delta &gt; 0 else 'CONFLICT'
+            else:
+                signals['price'] = 'ALIGNED' if price_delta &lt; 0 else 'CONFLICT'
+        else:
+            # Sin frames: asumir neutral
+            signals['price'] = 'NEUTRAL'
+        
+        # ===============================================
+        # SEÑAL 3: ZIGZAG STRUCTURE
+        # ===============================================
+        structure = zigzag_data.get('structure', '')
+        current_trend = zigzag_data.get('current_trend', 'LATERAL')
+        
+        if direction == 'BULLISH':
+            if current_trend == 'BULLISH' or 'HH' in structure or 'HL' in structure:
+                signals['zigzag'] = 'ALIGNED'
+            elif current_trend == 'BEARISH' or 'LL' in structure or 'LH' in structure:
+                signals['zigzag'] = 'CONFLICT'
+            else:
+                signals['zigzag'] = 'NEUTRAL'
+        else:
+            if current_trend == 'BEARISH' or 'LL' in structure or 'LH' in structure:
+                signals['zigzag'] = 'ALIGNED'
+            elif current_trend == 'BULLISH' or 'HH' in structure or 'HL' in structure:
+                signals['zigzag'] = 'CONFLICT'
+            else:
+                signals['zigzag'] = 'NEUTRAL'
+        
+        # ===============================================
+        # SEÑAL 4: MOMENTUM COLOR
+        # ===============================================
+        mom_color = momentum_data.get('color_current', 'gray')
+        
+        if direction == 'BULLISH':
+            if mom_color in ['lime', 'green']:
+                signals['momentum'] = 'ALIGNED'
+            elif mom_color in ['red', 'maroon']:
+                signals['momentum'] = 'CONFLICT'
+            else:
+                signals['momentum'] = 'NEUTRAL'
+        else:
+            if mom_color in ['red', 'maroon']:
+                signals['momentum'] = 'ALIGNED'
+            elif mom_color in ['lime', 'green']:
+                signals['momentum'] = 'CONFLICT'
+            else:
+                signals['momentum'] = 'NEUTRAL'
+        
+        # ===============================================
+        # SEÑAL 5: DI DOMINANCE
+        # ===============================================
+        di_plus = adx_data.get('di_plus_current', 0)
+        di_minus = adx_data.get('di_minus_current', 0)
+        spread = abs(di_plus - di_minus)
+        
+        if spread &lt; 5:
+            signals['di'] = 'NEUTRAL'  # DIs muy juntos
+        elif direction == 'BULLISH':
+            signals['di'] = 'ALIGNED' if di_plus &gt; di_minus else 'CONFLICT'
+        else:
+            signals['di'] = 'ALIGNED' if di_minus &gt; di_plus else 'CONFLICT'
+        
+        # ===============================================
+        # SEÑAL 6: VOLUME TREND
+        # ===============================================
+        volume_values = storage.get_trajectory('volume', 5)
+        
+        if len(volume_values) &gt;= 3:
+            vol_delta = volume_values[-1] - volume_values[0]
+            if vol_delta &gt; 0:
+                signals['volume'] = 'ALIGNED'  # Volumen aumentando siempre es bueno
+            else:
+                signals['volume'] = 'NEUTRAL'  # No penalizar vol bajando
+        else:
+            signals['volume'] = 'NEUTRAL'
+        
+        # ===============================================
+        # CALCULAR ALINEACIÓN
+        # ===============================================
+        aligned_count = sum(1 for s in signals.values() if s == 'ALIGNED')
+        conflict_count = sum(1 for s in signals.values() if s == 'CONFLICT')
+        total_signals = len(signals)
+        
+        alignment_score = (aligned_count / total_signals) * 100
+        
+        # Listas para reporte
+        aligned_list = [k for k, v in signals.items() if v == 'ALIGNED']
+        conflict_list = [k for k, v in signals.items() if v == 'CONFLICT']
+        neutral_list = [k for k, v in signals.items() if v == 'NEUTRAL']
+        
+        # ===============================================
+        # DECISIÓN BASADA EN ALINEACIÓN
+        # ===============================================
+        if alignment_score &gt;= 80:
+            decision = True
+            story = f"ALTA COHERENCIA ({alignment_score:.0f}%): {', '.join(aligned_list)}"
+        elif alignment_score &gt;= 60 and conflict_count &lt;= 1:
+            decision = True
+            story = f"COHERENCIA MODERADA ({alignment_score:.0f}%): {aligned_count}/{total_signals}"
+        elif alignment_score &gt;= 50 and conflict_count == 0:
+            decision = True
+            story = f"COHERENCIA ACEPTABLE ({alignment_score:.0f}%): Sin conflictos"
+        else:
+            decision = False
+            if conflict_list:
+                story = f"CONFLICTOS ({conflict_count}): {', '.join(conflict_list)}"
+            else:
+                story = f"ALINEACIÓN BAJA ({alignment_score:.0f}%)"
+        
+        return {
+            'alignment_score': alignment_score,
+            'aligned_count': aligned_count,
+            'conflict_count': conflict_count,
+            'total_signals': total_signals,
+            'signals': signals,
+            'aligned_list': aligned_list,
+            'conflict_list': conflict_list,
+            'neutral_list': neutral_list,
+            'story': story,
+            'decision': decision
+        }
+# ===============================================
+# FUNCIÓN HELPER SIMPLIFICADA
+# ===============================================
+def check_alignment(symbol, direction, ladder_data):
+    """
+    Verificación rápida de alineación
+    
+    Returns:
+        tuple: (decision, alignment_score, story)
+    """
+    detector = AlignmentDetector()
+    result = detector.analyze_alignment(symbol, direction, ladder_data)
+    
+    return (
+        result['decision'],
+        result['alignment_score'],
+        result['story']
+    )
+# Instancia global
+alignment_detector = AlignmentDetector()
+📁 COMPONENTE 3: INTEGRACIÓN EN SNIPER
+Archivo: 
 brain_think.py
-)
-Estado: IMPLEMENTADO
+ (sniper_checklist)
+Código ACTUAL (problema):
+def sniper_checklist(symbol, direction, ladder, triggers=None, current_price=None):
+    """
+    Checklist completo del Sniper Cognitivo (versión 5.0)
+    """
+    
+    # ... muchas líneas de validaciones ...
+    
+    # PROBLEMA 1: Penalties acumulativos
+    if adx &lt; 25:
+        total_score -= 60
+    if adx &lt; 30:
+        total_score -= 30
+    if momentum_age &gt; 3:
+        total_score -= 25
+    if volume_ratio &lt; 0.5:
+        total_score -= 20
+    # ... más penalties ...
+    
+    # PROBLEMA 2: Thresholds rígidos
+    if profit_potential &lt; 2.0:
+        return {'ready': False, 'reason': 'Profit bajo'}
+    
+    if rr_ratio &lt; 1.5:
+        return {'ready': False, 'reason': 'R/R bajo'}
+    
+    # PROBLEMA 3: Estructura obligatoria
+    if structure == 'LH':
+        return {'ready': False, 'reason': 'Estructura correctiva'}
+    
+    # Score final
+    if total_score &lt; 40:
+        return {'ready': False}
+Código PROPUESTO (solución):
+def sniper_checklist(symbol, direction, ladder, triggers=None, current_price=None):
+    """
+    Checklist del Sniper basado en ALINEACIÓN (versión 6.0)
+    
+    NO más penalties acumulativos.
+    SOLO: ¿Están todos alineados?
+    """
+    
+    from brain_alignment import alignment_detector
+    from brain_adx_zones import adx_zone_analyzer
+    from brain_frames import get_frame_storage
+    
+    print(f"\n🧠 SNIPER COGNITIVO v6.0: {symbol} ({direction})")
+    print("=" * 50)
+    
+    # ===================================================
+    # PASO 1: ANÁLISIS DE ALINEACIÓN (NUEVO)
+    # ===================================================
+    
+    alignment = alignment_detector.analyze_alignment(symbol, direction, ladder)
+    
+    print(f"\n🎯 ALINEACIÓN GLOBAL:")
+    print(f"   Score: {alignment['alignment_score']:.0f}%")
+    print(f"   Alineados: {', '.join(alignment['aligned_list'])}")
+    if alignment['conflict_list']:
+        print(f"   Conflictos: {', '.join(alignment['conflict_list'])}")
+    print(f"   Historia: {alignment['story']}")
+    
+    # Si alineación &lt; 50% o &gt; 2 conflictos = RECHAZAR
+    if alignment['alignment_score'] &lt; 50 or alignment['conflict_count'] &gt; 2:
+        return {
+            'ready': False,
+            'approved': False,
+            'reason': alignment['story'],
+            'archetype': 'LOW_ALIGNMENT',
+            'total_score': int(alignment['alignment_score']),
+            'alignment': alignment
+        }
+    
+    # ===================================================
+    # PASO 2: ANÁLISIS DE ZONAS ADX (NUEVO)
+    # ===================================================
+    
+    storage = get_frame_storage(symbol, '15m')
+    adx_values = storage.get_trajectory('adx.value', 5)
+    
+    if len(adx_values) &gt;= 3:
+        zone_analysis = adx_zone_analyzer.analyze_zone_trajectory(adx_values)
+        
+        print(f"\n📊 ADX ZONAS:")
+        print(f"   Zona actual: {zone_analysis['current_zone']}")
+        print(f"   Dirección: {zone_analysis['direction']}")
+        print(f"   Fuerza: {zone_analysis['strength']}")
+        print(f"   Historia: {zone_analysis['story']}")
+        print(f"   Bonus: {zone_analysis['bonus']:+d}")
+        
+        # Si ADX en zona LATERAL y NO subiendo = RECHAZAR
+        if zone_analysis['current_zone'] == 'LATERAL' and zone_analysis['direction'] != 'ASCENDING':
+            return {
+                'ready': False,
+                'approved': False,
+                'reason': 'ADX en zona LATERAL sin movimiento',
+                'archetype': 'ADX_LATERAL',
+                'total_score': 0,
+                'zone_analysis': zone_analysis
+            }
+    else:
+        zone_analysis = None
+    
+    # ===================================================
+    # PASO 3: VALIDACIONES MÍNIMAS (SIMPLIFICADAS)
+    # ===================================================
+    
+    data_15m = ladder.get('15m', {})
+    adx_data = data_15m.get('adx', {})
+    
+    spread = adx_data.get('spread', 0)
+    
+    # ÚNICO bloqueo duro: Spread &lt; 5 (DIs convergiendo)
+    if spread &lt; 5:
+        return {
+            'ready': False,
+            'approved': False,
+            'reason': f'Spread {spread:.1f} &lt; 5 (sin claridad)',
+            'archetype': 'NO_CLARITY',
+            'total_score': 0
+        }
+    
+    # ===================================================
+    # PASO 4: CALCULAR SCORE FINAL
+    # ===================================================
+    
+    # Score base = alignment_score
+    total_score = int(alignment['alignment_score'])
+    
+    # Agregar bonus de zonas ADX
+    if zone_analysis:
+        total_score += zone_analysis['bonus']
+    
+    # Bonus por spread fuerte
+    if spread &gt;= 15:
+        total_score += 20
+    elif spread &gt;= 10:
+        total_score += 10
+    
+    # ===================================================
+    # PASO 5: DETERMINAR ARCHETYPE
+    # ===================================================
+    
+    if alignment['alignment_score'] &gt;= 80:
+        archetype = 'PERFECT_ALIGNMENT'
+    elif alignment['alignment_score'] &gt;= 60:
+        archetype = 'GOOD_ALIGNMENT'
+    else:
+        archetype = 'MODERATE_ALIGNMENT'
+    
+    # ===================================================
+    # PASO 6: DECISIÓN FINAL
+    # ===================================================
+    
+    # ENTRAR si:
+    # - Alineación &gt;= 50% Y
+    # - No más de 2 conflictos Y
+    # - Spread &gt;= 5
+    
+    ready = alignment['decision']
+    
+    print(f"\n🎯 VEREDICTO:")
+    print(f"   Score Final: {total_score}")
+    print(f"   Archetype: {archetype}")
+    print(f"   Ready: {'✅ SÍ' if ready else '❌ NO'}")
+    
+    return {
+        'ready': ready,
+        'approved': ready,
+        'total_score': total_score,
+        'archetype': archetype,
+        'reason': alignment['story'],
+        'alignment': alignment,
+        'zone_analysis': zone_analysis
+    }
+📁 COMPONENTE 4: SIMPLIFICAR brain_analyzer.py
+Cambios Propuestos:
+ELIMINAR:
 
-Validaciones dinámicas según contexto:
+Penalties acumulativos por ADX &lt; X
+Penalties por momentum age
+Penalties por volumen ratio
+Clampeo de score
+MANTENER:
 
-Profit threshold: 0.1% (pump) / 0.5% (brutal) / 2% (normal)
-R/R threshold: 0.05 (pump) / 1.0 (brutal) / 2.0 (normal)
-Estructura: IGNORADA en pump explosivo
-🔮 FLUJO DINÁMICO ACTUAL
-COIN ANALIZADA
-     ↓
-Frame Storage (guarda indicadores)
-     ↓
-Trajectory Analyzer (analiza movimiento)
-     ↓
-┌─────────────────────────────────────┐
-│ ¿ADX acelerando?                    │
-│ ¿Momentum sostenido?                │
-│ ¿Pump explosivo activo?             │
-└─────────────────────────────────────┘
-     ↓
-Motion Score (bonus/penalty dinámico)
-     ↓
-Grid Master (cortometrajes 5M, 1H, 4H)
-     ↓
-Sniper Checklist (validación contextual)
-     ↓
-DECISIÓN: APROBAR / RECHAZAR
-⚠️ PENDIENTE POR IMPLEMENTAR
-Multi-TF Motion Integrator
-Falta unificar movimiento de todos los timeframes:
+Frame storage (para análisis dinámico)
+Cálculo de indicadores base
+Grid Master y estructura
+AGREGAR:
 
-Ver película en 5M, 1H, 4H
-Integrar en una sola decisión
-Movie Engine Centralizado
-Falta motor que procese:
+Llamada a alignment_detector
+Retornar alignment_score en resultado
+Código ACTUAL (fragmento problemático):
+# brain_analyzer.py líneas ~675-750
+# PROBLEMA: Penalties rígidas
+if adx_current &lt; 25:
+    score_15m -= 60
+    adx_rejected = True
+    print(f"      ❌ BLOQUEADOR: ADX {adx_current:.1f} &lt; 25")
+# PROBLEMA: Clampeo
+if adx_rejected:
+    score_15m = min(score_15m, 30)
+# PROBLEMA: Más penalties
+if spread &lt; 7:
+    score_15m -= 50
+if mom_age &gt; 3:
+    score_15m -= 25
+Código PROPUESTO (reemplazo):
+# brain_analyzer.py - Nueva sección de scoring
+# ===================================================
+# SCORING BASADO EN ALINEACIÓN (Reemplaza penalties)
+# ===================================================
+from brain_alignment import alignment_detector
+# Preparar datos para alignment
+ladder_data = {'15m': {
+    'adx': adx_data,
+    'momentum': momentum_data,
+    'zigzag': zigzag_granular
+}}
+# Obtener alineación
+alignment = alignment_detector.analyze_alignment(symbol, direction, ladder_data)
+# Score base = alineación
+score_15m = int(alignment['alignment_score'])
+print(f"\n🎯 ALINEACIÓN: {alignment['alignment_score']:.0f}%")
+print(f"   {alignment['story']}")
+# ÚNICO bloqueo: Spread &lt; 5 (sin claridad direccional)
+if spread &lt; 5:
+    print(f"   🚫 BLOQUEO: Spread {spread:.1f} &lt; 5")
+    return {
+        'symbol': symbol,
+        'direction': direction,
+        'score_15m': -999,
+        'blocked': True,
+        'block_reason': f'Spread {spread:.1f} &lt; 5'
+    }
+# Bonus por spread alto (única validación adicional)
+if spread &gt;= 15:
+    score_15m += 15
+    print(f"   ✅ Spread {spread:.1f} &gt;= 15 (+15)")
+elif spread &gt;= 10:
+    score_15m += 10
+    print(f"   ✅ Spread {spread:.1f} &gt;= 10 (+10)")
+# NO más penalties
+# NO más clampeo
+# Alineación decide
+📊 EJEMPLOS COMPARATIVOS
+Caso 1: XPIN (ADX 23.3, Mom 5v, subiendo)
+Sistema ACTUAL:
 
-Frames de todos los TF
-Genere veredicto unificado
-Control central de decisiones
-📋 CONFIGURACIÓN ACTUAL GRID
-'5m': {'lookback_velas': 20}    # ~100 min
-'1h': {'lookback_velas': 48}    # 48 horas exactas  
-'4h': {'lookback_velas': 48}    # 8 días
-Grid incluye:
+ADX 23.3 &lt; 25 → -60
+ADX &lt; 30 → -30 extra
+Mom 5v &gt; 3 → -25
+Clampeo → max 30
+Score: -85 → RECHAZADO ❌
+Sistema PROPUESTO:
 
-Soporte/Resistencia principal (del 1H)
-Profit Potential calculado
-Estructura dominante (4H tiene más peso)
-Movimiento 48h (clasificación: PUMP_EXTREMO, SUBIDA_FUERTE, etc.)
-Posición combinada (70% 1H + 30% 5M)
+ALINEACIÓN:
+  ADX: creciendo → ALIGNED ✅
+  Price: subiendo → ALIGNED ✅
+  ZigZag: HH → ALIGNED ✅
+  Momentum: lime → ALIGNED ✅
+  DI: DI+ &gt; DI- → ALIGNED ✅
+  Volume: neutral → NEUTRAL ⚪
+Score: 5/6 = 83%
+Spread &gt; 5 → OK
+Decisión: APROBADO ✅
+Caso 2: Moneda lateral
+Sistema ACTUAL:
 
+ADX 18 &lt; 25 → -60
+Mom gray → -30
+Score: -90 → RECHAZADO ❌
+Sistema PROPUESTO:
+
+ALINEACIÓN:
+  ADX: estable → NEUTRAL ⚪
+  Price: flat → NEUTRAL ⚪
+  ZigZag: mixed → CONFLICT ❌
+  Momentum: gray → CONFLICT ❌
+  DI: juntos → NEUTRAL ⚪
+  Volume: bajo → NEUTRAL ⚪
+Score: 0/6 = 0%
+Conflictos: 2
+Decisión: RECHAZADO ❌ (correcto)
+✅ CHECKLIST DE IMPLEMENTACIÓN
+ Crear brain_adx_zones.py con ADXZoneAnalyzer
+ Crear brain_alignment.py con AlignmentDetector
+ Modificar 
+brain_think.py
+ (sniper_checklist v6.0)
+ Simplificar 
+brain_analyzer.py
+ (eliminar penalties)
+ Testing con XPIN
+ Testing con NIGHT
+ Testing con moneda lateral
+ Verificar bot no quedó rígido
+⚠️ DECISIONES PENDIENTES
+¿Mantener alguna penalty?
+
+Propuesta: Solo spread &lt; 5 como bloqueo duro
+¿Threshold de alineación para entrar?
+
+Propuesta: &gt;= 50% con &lt;= 2 conflictos
+¿Qué hacer sin frames acumulados?
+
+Propuesta: Usar ADX trend como proxy de dirección
+¿Apruebas este plan antes de implementar?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,155<br>
-    Generado: 2025-12-21 18:58:05
+    Total caracteres: 26,978<br>
+    Generado: 2025-12-21 22:16:10
   </div>
 </body>
 </html>
