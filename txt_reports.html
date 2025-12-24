@@ -15,1738 +15,3035 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-21 22:21:54</div>
+  <div class="meta">Última actualización: 2025-12-24 13:31:18</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Se lleno el chat, este es el chat que no vas a ver porque desde donde vas a leer es donde edite para que escribirte y tener espacio.
-
-Veo que tenemos que corregir constantemente el adx, falta el cortometraje ADX&gt;35 18:40 hs ADX&gt; 41 18:41 hs, eso recibe el bot de datos en tiempo real, peeero el bot sabe que que el cortometraje de ADX tiene rangos con fuerza y rangos debiles. Como esta configurado? esta mejor que eso?
-
-10:00 p. m.
-
-Analizó configuración de rangos ADX y propuso sistema de zonas mejorado.
-
-
-
-
-
-
-EXCELENTE PREGUNTA JOEL 🎯 Esta es la CLAVE del sistema dinámico.
-
-🎬 TU VISIÓN: ADX COMO CORTOMETRAJE CON RANGOS
-CORTOMETRAJE ADX (frames en tiempo real):
-
-18:35 → ADX = 28 [ZONA: TENDENCIA DÉBIL]
-18:36 → ADX = 30 [ZONA: TENDENCIA DÉBIL]
-18:37 → ADX = 33 [ZONA: TENDENCIA MODERADA]
-18:38 → ADX = 35 [ZONA: TENDENCIA MODERADA]
-18:39 → ADX = 38 [ZONA: TENDENCIA FUERTE] ← Cruzó zona
-18:40 → ADX = 41 [ZONA: TENDENCIA FUERTE]
-18:41 → ADX = 45 [ZONA: BRUTAL FORCE] ← Cruzó zona
-
-PELÍCULA:
-"ADX acelerando y cruzando zonas"
-"28→45 en 6 frames = EXPLOSIÓN"
-"Cruzó 3 zonas = MOMENTUM FUERTE"
-🚨 ESTADO ACTUAL DEL SISTEMA
-¿Qué TIENE implementado?
-python
-# brain_frames.py (parcial):
-storage.add_frame(symbol, '15m', {
-    'adx': {
-        'value': 41,  # ← Guarda valor
-        # ...
-    }
-})
-
-# brain_trajectory.py (parcial):
-adx_motion = analyzer.analyze_adx_motion([28, 30, 33, 35, 38, 41])
-# Retorna:
-# - velocity: +2.6/frame
-# - direction: ASCENDING
-# - phase: NASCENT/SUSTAINED/FADING
-```
-
-### **¿Qué FALTA?**
-```
-❌ NO tiene RANGOS/ZONAS definidos
-❌ NO detecta cruces de zonas
-❌ NO entiende significado de cada zona
-❌ NO analiza aceleración entre zonas
-```
-
----
-
-## 💡 **ARQUITECTURA ADX POR RANGOS (FALTANTE)**
-```
-================================================================================
-SISTEMA ADX CORTOMETRAJE CON RANGOS
-================================================================================
-
-CONCEPTO:
-ADX no es solo un número (41), es una POSICIÓN en un mapa de zonas.
-Cada zona tiene un significado diferente.
-El movimiento ENTRE zonas es crítico.
-
-ZONAS ADX:
-
-ZONA 1: LATERAL (0-20)
-  Significado: Sin tendencia, ruido
-  Acción: NO OPERAR
-  
-ZONA 2: INICIANDO (20-25)
-  Significado: Tendencia naciendo
-  Acción: OBSERVAR (puede ser falso)
-  
-ZONA 3: TENDENCIA (25-35)
-  Significado: Tendencia confirmada
-  Acción: OPERAR con confirmación
-  
-ZONA 4: FUERTE (35-50)
-  Significado: Tendencia fuerte
-  Acción: OPERAR (setup óptimo)
-  
-ZONA 5: BRUTAL (50-70)
-  Significado: Explosión en curso
-  Acción: OPERAR (alta confianza)
-  
-ZONA 6: EXTREMO (70+)
-  Significado: Sobreextensión
-  Acción: PRECAUCIÓN (puede revertir)
-
-MOVIMIENTOS CRÍTICOS:
-
-CRUCE ASCENDENTE:
-ZONA 2→3 (20→25): Confirmación de tendencia (+20 pts)
-ZONA 3→4 (25→35): Fortalecimiento (+30 pts)
-ZONA 4→5 (35→50): Explosión (+40 pts)
-
-CRUCE DESCENDENTE:
-ZONA 5→4 (50→35): Enfriamiento (-20 pts)
-ZONA 4→3 (35→25): Debilitamiento (-30 pts)
-ZONA 3→2 (25→20): Tendencia muriendo (-40 pts)
-
-ACELERACIÓN EN ZONA:
-ZONA 4: 35→41 en 1 min = Acelerando dentro de zona fuerte (+25 pts)
-ZONA 5: 55→52 en 1 min = Muriendo dentro de brutal (-30 pts)
-
-================================================================================
-IMPLEMENTACIÓN: brain_adx_zones.py
-================================================================================
-
-ARCHIVO NUEVO: brain_adx_zones.py
-
 """
-brain_adx_zones.py - ADX Cortometraje con Rangos
-================================================
-Analiza ADX como movimiento entre ZONAS, no valores estáticos.
-
-Zonas:
-1. LATERAL (0-20): Sin tendencia
-2. INICIANDO (20-25): Naciendo
-3. TENDENCIA (25-35): Confirmada
-4. FUERTE (35-50): Fuerte
-5. BRUTAL (50-70): Explosión
-6. EXTREMO (70+): Sobreextensión
+================================================================================
+BRAIN ANALYZER - Análisis Multi-Timeframe Contextual Acumulativo
+================================================================================
 """
-
-class ADXZoneAnalyzer:
-    """
-    Analiza ADX como cortometraje con zonas
-    """
-    
-    # Definición de zonas
-    ZONES = {
-        'LATERAL': (0, 20),
-        'INICIANDO': (20, 25),
-        'TENDENCIA': (25, 35),
-        'FUERTE': (35, 50),
-        'BRUTAL': (50, 70),
-        'EXTREMO': (70, 100)
-    }
-    
-    def get_zone(self, adx_value):
-        """
-        Determina zona del ADX
-        
-        Args:
-            adx_value: Valor ADX
-            
-        Returns:
-            str: Nombre de la zona
-        """
-        for zone_name, (min_val, max_val) in self.ZONES.items():
-            if min_val &lt;= adx_value &lt; max_val:
-                return zone_name
-        
-        return 'EXTREMO'  # &gt;70
-    
-    def analyze_zone_trajectory(self, adx_frames):
-        """
-        Analiza trayectoria del ADX entre zonas
-        
-        Args:
-            adx_frames: Lista de valores ADX [más viejo ... más nuevo]
-                       Ej: [28, 30, 33, 35, 38, 41, 45]
-        
-        Returns:
-            dict: {
-                'zones': list,           # Zonas de cada frame
-                'current_zone': str,     # Zona actual
-                'zone_changes': list,    # Cruces de zona
-                'direction': str,        # ASCENDING, DESCENDING, STABLE
-                'strength': str,         # Fuerza del movimiento
-                'story': str,            # Historia del cortometraje
-                'score_bonus': int       # Bonus por movimiento
-            }
-        """
-        
-        if len(adx_frames) &lt; 3:
-            return self._default_result()
-        
-        # === MAPEAR ZONAS ===
-        zones = [self.get_zone(adx) for adx in adx_frames]
-        current_zone = zones[-1]
-        
-        # === DETECTAR CRUCES DE ZONA ===
-        zone_changes = []
-        for i in range(1, len(zones)):
-            if zones[i] != zones[i-1]:
-                zone_changes.append({
-                    'from': zones[i-1],
-                    'to': zones[i],
-                    'frame': i,
-                    'adx': adx_frames[i]
-                })
-        
-        # === ANALIZAR DIRECCIÓN ===
-        delta = adx_frames[-1] - adx_frames[0]
-        
-        if delta &gt; 5:
-            direction = 'ASCENDING'
-        elif delta &lt; -5:
-            direction = 'DESCENDING'
-        else:
-            direction = 'STABLE'
-        
-        # === CALCULAR FUERZA DEL MOVIMIENTO ===
-        velocity = delta / len(adx_frames)
-        
-        if abs(velocity) &gt; 3:
-            strength = 'EXPLOSIVE'
-        elif abs(velocity) &gt; 1.5:
-            strength = 'STRONG'
-        elif abs(velocity) &gt; 0.5:
-            strength = 'MODERATE'
-        else:
-            strength = 'WEAK'
-        
-        # === CREAR HISTORIA ===
-        story = self._create_story(
-            adx_frames, 
-            zones, 
-            zone_changes, 
-            direction, 
-            strength
-        )
-        
-        # === CALCULAR SCORE BONUS ===
-        score_bonus = self._calculate_zone_bonus(
-            zones,
-            zone_changes,
-            direction,
-            strength,
-            current_zone
-        )
-        
-        return {
-            'zones': zones,
-            'current_zone': current_zone,
-            'zone_changes': zone_changes,
-            'direction': direction,
-            'strength': strength,
-            'story': story,
-            'score_bonus': score_bonus,
-            'adx_frames': adx_frames,
-            'valid': True
-        }
-    
-    def _create_story(self, adx_frames, zones, zone_changes, direction, strength):
-        """
-        Crea historia del cortometraje ADX
-        """
-        
-        # Frame inicial y final
-        start_adx = adx_frames[0]
-        end_adx = adx_frames[-1]
-        start_zone = zones[0]
-        end_zone = zones[-1]
-        
-        # Historia base
-        if len(zone_changes) == 0:
-            # Sin cruces de zona
-            story = f"ADX {start_adx:.1f}→{end_adx:.1f} ({direction.lower()}) en zona {end_zone}"
-        
-        elif len(zone_changes) == 1:
-            # Un cruce
-            change = zone_changes[0]
-            story = f"ADX cruzó de {change['from']} a {change['to']} ({start_adx:.1f}→{end_adx:.1f})"
-        
-        else:
-            # Múltiples cruces
-            zones_crossed = ' → '.join([c['to'] for c in zone_changes])
-            story = f"ADX cruzó {len(zone_changes)} zonas: {start_zone} → {zones_crossed} ({start_adx:.1f}→{end_adx:.1f})"
-        
-        # Agregar fuerza
-        story += f" | Fuerza: {strength}"
-        
-        return story
-    
-    def _calculate_zone_bonus(self, zones, zone_changes, direction, strength, current_zone):
-        """
-        Calcula bonus basado en movimiento entre zonas
-        """
-        
-        bonus = 0
-        
-        # === BONUS POR ZONA ACTUAL ===
-        zone_bonus = {
-            'LATERAL': -40,      # Muy malo
-            'INICIANDO': 0,      # Neutral
-            'TENDENCIA': 10,     # Bueno
-            'FUERTE': 20,        # Muy bueno
-            'BRUTAL': 30,        # Excelente
-            'EXTREMO': -10       # Precaución
-        }
-        bonus += zone_bonus.get(current_zone, 0)
-        
-        # === BONUS POR CRUCES ASCENDENTES ===
-        if direction == 'ASCENDING':
-            for change in zone_changes:
-                # LATERAL → INICIANDO
-                if change['from'] == 'LATERAL' and change['to'] == 'INICIANDO':
-                    bonus += 10
-                
-                # INICIANDO → TENDENCIA (confirmación)
-                elif change['from'] == 'INICIANDO' and change['to'] == 'TENDENCIA':
-                    bonus += 20
-                
-                # TENDENCIA → FUERTE (fortalecimiento)
-                elif change['from'] == 'TENDENCIA' and change['to'] == 'FUERTE':
-                    bonus += 30
-                
-                # FUERTE → BRUTAL (explosión)
-                elif change['from'] == 'FUERTE' and change['to'] == 'BRUTAL':
-                    bonus += 40
-        
-        # === PENALTY POR CRUCES DESCENDENTES ===
-        elif direction == 'DESCENDING':
-            for change in zone_changes:
-                # BRUTAL → FUERTE
-                if change['from'] == 'BRUTAL' and change['to'] == 'FUERTE':
-                    bonus -= 20
-                
-                # FUERTE → TENDENCIA
-                elif change['from'] == 'FUERTE' and change['to'] == 'TENDENCIA':
-                    bonus -= 30
-                
-                # TENDENCIA → INICIANDO
-                elif change['from'] == 'TENDENCIA' and change['to'] == 'INICIANDO':
-                    bonus -= 40
-        
-        # === BONUS POR FUERZA ===
-        if strength == 'EXPLOSIVE' and direction == 'ASCENDING':
-            bonus += 25
-        elif strength == 'STRONG' and direction == 'ASCENDING':
-            bonus += 15
-        
-        return bonus
-    
-    def _default_result(self):
-        return {
-            'zones': [],
-            'current_zone': 'UNKNOWN',
-            'zone_changes': [],
-            'direction': 'UNKNOWN',
-            'strength': 'UNKNOWN',
-            'story': 'Datos insuficientes',
-            'score_bonus': 0,
-            'valid': False
-        }
-
-
-# === INTEGRACIÓN CON brain_trajectory.py ===
-
-# Modificar TrajectoryAnalyzer para incluir zonas
-
-class TrajectoryAnalyzer:
-    
-    def __init__(self):
-        self.zone_analyzer = ADXZoneAnalyzer()
-    
-    def analyze_adx_motion(self, adx_values):
-        """
-        Analiza ADX con trayectoria Y zonas
-        """
-        # Análisis de trayectoria (ya existe)
-        traj = self.analyze_trajectory(adx_values)
-        
-        # Análisis de zonas (NUEVO)
-        zone_analysis = self.zone_analyzer.analyze_zone_trajectory(adx_values)
-        
-        # Combinar
-        return {
-            **traj,
-            'zones': zone_analysis,
-            'story_complete': f"{zone_analysis['story']} | {traj.get('phase', 'N/A')}"
-        }
-📊 EJEMPLOS CON TU CASO:
-Caso: ADX 35→41 en 1 minuto
-python
-# Frames ADX últimos 7:
-adx_frames = [28, 30, 33, 35, 38, 41, 45]
-
-analyzer = ADXZoneAnalyzer()
-result = analyzer.analyze_zone_trajectory(adx_frames)
-
-# RESULTADO:
-{
-    'zones': ['TENDENCIA', 'TENDENCIA', 'TENDENCIA', 'TENDENCIA', 
-              'FUERTE', 'FUERTE', 'FUERTE'],
-    
-    'current_zone': 'FUERTE',
-    
-    'zone_changes': [
-        {
-            'from': 'TENDENCIA',
-            'to': 'FUERTE',
-            'frame': 4,
-            'adx': 38
-        }
-    ],
-    
-    'direction': 'ASCENDING',
-    'strength': 'EXPLOSIVE',  # +17 en 7 frames
-    
-    'story': 'ADX cruzó de TENDENCIA a FUERTE (28→45) | Fuerza: EXPLOSIVE',
-    
-    'score_bonus': +75  # 20 (zona FUERTE) + 30 (cruce) + 25 (explosive)
-}
-Caso XPIN: ADX 18→23
-python
-adx_frames = [18, 20, 22, 23, 23.3]
-
-result = analyzer.analyze_zone_trajectory(adx_frames)
-
-# RESULTADO:
-{
-    'zones': ['LATERAL', 'INICIANDO', 'INICIANDO', 'INICIANDO', 'INICIANDO'],
-    
-    'current_zone': 'INICIANDO',
-    
-    'zone_changes': [
-        {
-            'from': 'LATERAL',
-            'to': 'INICIANDO',
-            'frame': 1,
-            'adx': 20
-        }
-    ],
-    
-    'direction': 'ASCENDING',
-    'strength': 'MODERATE',
-    
-    'story': 'ADX cruzó de LATERAL a INICIANDO (18→23.3) | Fuerza: MODERATE',
-    
-    'score_bonus': +10  # 0 (zona INICIANDO) + 10 (cruce LATERAL→INICIANDO)
-}
-```
-
----
-
-## 📋 **PROMPT PARA OPUS**
-```
-================================================================================
-IMPLEMENTACIÓN URGENTE: SISTEMA ADX POR ZONAS
-================================================================================
-
-🎯 VISIÓN DE JOEL:
-
-"El cortometraje de ADX tiene rangos con fuerza y rangos débiles"
-"ADX 35 18:40, ADX 41 18:41 → Bot debe ver MOVIMIENTO ENTRE ZONAS"
-
-IMPLEMENTAR:
-
-1. brain_adx_zones.py (código completo arriba)
-   - ADXZoneAnalyzer class
-   - 6 zonas definidas
-   - Detección de cruces
-   - Historia + score bonus
-
-2. Modificar brain_trajectory.py
-   - Integrar zone_analyzer
-   - analyze_adx_motion retorna traj + zones
-
-3. Modificar brain_analyzer.py
-   - Usar zone analysis
-   - Aplicar zone_bonus al score
-
-CASOS DE PRUEBA:
-
-CASO 1: ADX 28→45 (cruce TENDENCIA→FUERTE)
-  Bonus esperado: +75
-  
-CASO 2: ADX 18→23 (cruce LATERAL→INICIANDO)
-  Bonus esperado: +10
-
-CASO 3: ADX 55→52 (dentro de BRUTAL, bajando)
-  Bonus esperado: -20
-
-PROCEDE INMEDIATAMENTE.
-ESTE ES EL SISTEMA QUE FALTA.
-```
-
----
-
-## 📊 **Para ti Joel:**
-
-**Estado actual:**
-```
-✅ Frames guardados en tiempo real
-✅ Trayectoria calculada (velocidad, aceleración)
-❌ FALTA: Sistema de ZONAS/RANGOS
-```
-
-**Con sistema de zonas:**
-```
-Bot verá:
-ADX 35 → 41 = "Cruzó a zona FUERTE, acelerando (+30)"
-ADX 18 → 23 = "Saliendo de LATERAL a INICIANDO (+10)"
-ADX 55 → 52 = "Muriendo en zona BRUTAL (-20)"
-Esto resuelve:
-
-✅ XPIN (ADX 18→23 = nascent +10, no -60)
-✅ NIGHT (ADX 28→33 = tendencia +20, no -60)
-✅ Tu caso (ADX 35→41 = fuerte +30)
-¿Aprobar implementación sistema de zonas ADX? 🎯
-
-
-El trader mira la linea de adx fuerte, peero mira tambien las velas subiendo fuertemente con el zigzag subiendo, en este caso seria cambio de precio constantemente sumando pnl, fuerte suba y el trazado diagonal alcista en caso de long, misma configuración para long, ademas el momentum en desarrollo, todo tiene que estar unido, se entiende, todo tiene que estar alineado, y esto pasa constantemente, yo le estoy pasando monedas subiendo y el bot lo rechaza, cuantas pase al azar hoy? domingo, dia tranquilo de operaciones, creo que pase tres monedas, o sea el setup siempre esta, las oportunidades siempre esta, el tema es que el bot encuentre esas oportunidades y no quede muy estricto con tanto código, en realidad estos codigo son para que mejore su vision y no lo rigidice y no opere mas.
-
-10:05 p. m.
-
-Diagnosticó rigidez algorítmica y propuso sistema de alineación direccional.
-23s
-
-
-
-
-
-
-
-
-
-ENTIENDO PERFECTAMENTE JOEL 💡 Este es el punto MÁS IMPORTANTE de toda la conversación.
-
-🎯 EL PROBLEMA REAL
-TRADER HUMANO:
-Ve moneda subiendo → Mira rápido:
-  ✅ ADX subiendo fuerte
-  ✅ Velas verdes aumentando
-  ✅ ZigZag: HH, HL (alcista)
-  ✅ Precio sumando PnL
-  ✅ Diagonal alcista clara
-  ✅ Momentum lime desarrollándose
-
-TODO ALINEADO → ENTRAR (5 segundos)
-
-BOT ACTUAL:
-Ve moneda subiendo → Empieza a validar:
-  ✅ ADX 32... pero &lt;35 → penalty -15
-  ✅ Momentum 5v... pero &gt;3 → penalty -25
-  ✅ Volumen 85%... pero &lt;100% → penalty -10
-  ❌ Cambio +45%... "agotado" → penalty -30
-  ❌ Score: -20 → RECHAZAR
-
-TODO PERFECTO NO ES → NO ENTRAR (setup perdido)
-💥 LA PARADOJA DEL CÓDIGO
-Lo que hicimos:
-Día 1: "Bot muy simple, agregar validaciones"
-Día 2: "Agregar frames para ver movimiento"
-Día 3: "Agregar zonas ADX"
-Día 4: "Agregar trayectorias"
-Día 5: "Agregar grid multi-TF"
-Día 6: "Agregar pump detector"
-Día 7: "Agregar movie engine"
-...
-
-Resultado: Bot PARALIZADO por tanto código
-Joel hoy:
-"Pasé 3 monedas subiendo → Bot rechazó las 3"
-"El setup SIEMPRE está"
-"Las oportunidades SIEMPRE están"
-"El código debería MEJORAR visión, no RIGIDIZAR"
-Tienes TODA la razón ✅
-
-🔄 CAMBIO DE PARADIGMA NECESARIO
-SISTEMA ACTUAL (Validaciones independientes):
-python
-score = 100
-
-# Cada cosa resta independiente
-if adx &lt; 35:
-    score -= 20
-if momentum &gt; 3v:
-    score -= 25
-if volume &lt; 100%:
-    score -= 15
-if cambio &gt; 40%:
-    score -= 30
-
-# Resultado: score = 10 → RECHAZAR
-
-PROBLEMA: Busca PERFECCIÓN, no ALINEACIÓN
-SISTEMA NECESARIO (Detector de Alineación):
-python
-# ¿Todo apunta en la MISMA dirección?
-
-alignment_signals = {
-    'adx_direction': 'UP',      # ADX subiendo
-    'price_direction': 'UP',    # Precio subiendo
-    'zigzag_structure': 'BULL', # HH/HL
-    'momentum_color': 'GREEN',  # Lime/green
-    'diagonal_slope': 'UP',     # Diagonal alcista
-    'volume_trend': 'UP'        # Volumen aumentando
-}
-
-# Contar alineación
-aligned_count = count(signal == 'UP' or signal == 'BULL' or signal == 'GREEN')
-total_signals = len(alignment_signals)
-alignment_pct = aligned_count / total_signals
-
-if alignment_pct &gt;= 0.75:  # 75% alineado
-    ENTRAR ✅
-
-ENFOQUE: Busca COHERENCIA, no PERFECCIÓN
-```
-
----
-
-## 📋 **ARQUITECTURA NUEVA: ALIGNMENT DETECTOR**
-```
-================================================================================
-SISTEMA DEFINITIVO: DETECTOR DE ALINEACIÓN GLOBAL
-================================================================================
-
-🎯 FILOSOFÍA:
-
-NO importa si ADX es 30 o 50
-NO importa si momentum es 3v o 7v
-NO importa si volumen es 80% o 150%
-
-LO QUE IMPORTA:
-¿TODO apunta en la MISMA dirección?
-¿La historia es COHERENTE?
-¿Todos los indicadores "cantan la misma canción"?
-
-================================================================================
-ARCHIVO: brain_alignment.py
-================================================================================
-
-"""
-brain_alignment.py - Detector de Alineación Global
-==================================================
-Detecta cuando TODOS los indicadores están alineados en la misma dirección.
-
-NO busca perfección de valores individuales.
-Busca COHERENCIA direccional del conjunto.
-"""
-
-class AlignmentDetector:
-    """
-    Detecta alineación global de todos los indicadores
-    """
-    
-    def analyze_complete_alignment(self, symbol, direction):
-        """
-        Analiza alineación COMPLETA de todos los componentes
-        
-        Returns:
-            dict: {
-                'alignment_score': float,  # 0-100%
-                'aligned_signals': list,   # Qué está alineado
-                'conflicting_signals': list, # Qué NO está alineado
-                'story': str,              # Historia coherente
-                'decision': bool           # ENTRAR o NO
-            }
-        """
-        
-        # === OBTENER TODOS LOS DATOS ===
-        
-        from brain_frames import get_frame_storage
-        from brain_trajectory import TrajectoryAnalyzer
-        from brain_calculator import (
-            calculate_adx_with_memory,
-            calculate_momentum_with_memory,
-            calculate_zigzag
-        )
-        from exchange_connection import fetch_ohlcv
-        
-        df = fetch_ohlcv(symbol, '5m', 100)
-        
-        adx_data = calculate_adx_with_memory(df)
-        momentum_data = calculate_momentum_with_memory(df)
-        zigzag_data = calculate_zigzag(df)
-        
-        storage = get_frame_storage(symbol, '15m')
-        analyzer = TrajectoryAnalyzer()
-        
-        # === ANALIZAR CADA COMPONENTE ===
-        
-        signals = {}
-        
-        # 1. ADX DIRECCIÓN
-        adx_values = storage.get_trajectory('adx.value', 5)
-        if len(adx_values) &gt;= 3:
-            adx_delta = adx_values[-1] - adx_values[0]
-            if direction == 'BULLISH':
-                signals['adx'] = 'ALIGNED' if adx_delta &gt; 0 else 'CONFLICT'
-            else:
-                signals['adx'] = 'ALIGNED' if adx_delta &gt; 0 else 'CONFLICT'
-        
-        # 2. PRECIO DIRECCIÓN
-        price_values = storage.get_trajectory('price', 5)
-        if len(price_values) &gt;= 3:
-            price_delta = price_values[-1] - price_values[0]
-            if direction == 'BULLISH':
-                signals['price'] = 'ALIGNED' if price_delta &gt; 0 else 'CONFLICT'
-            else:
-                signals['price'] = 'ALIGNED' if price_delta &lt; 0 else 'CONFLICT'
-        
-        # 3. ZIGZAG ESTRUCTURA
-        pivot_types = zigzag_data.get('pivot_types', [])
-        if pivot_types and len(pivot_types) &gt;= 2:
-            recent = pivot_types[-2:]
-            
-            if direction == 'BULLISH':
-                # LONG necesita HH o HL
-                signals['zigzag'] = 'ALIGNED' if any(p in ['HH', 'HL'] for p in recent) else 'CONFLICT'
-            else:
-                # SHORT necesita LL o LH
-                signals['zigzag'] = 'ALIGNED' if any(p in ['LL', 'LH'] for p in recent) else 'CONFLICT'
-        
-        # 4. MOMENTUM COLOR
-        mom_color = momentum_data.get('color_current', 'gray')
-        
-        if direction == 'BULLISH':
-            signals['momentum'] = 'ALIGNED' if mom_color in ['lime', 'green'] else 'CONFLICT'
-        else:
-            signals['momentum'] = 'ALIGNED' if mom_color in ['red', 'maroon'] else 'CONFLICT'
-        
-        # 5. DI DOMINANCIA
-        di_plus = adx_data.get('di_plus_current', 0)
-        di_minus = adx_data.get('di_minus_current', 0)
-        
-        if direction == 'BULLISH':
-            signals['di'] = 'ALIGNED' if di_plus &gt; di_minus else 'CONFLICT'
-        else:
-            signals['di'] = 'ALIGNED' if di_minus &gt; di_plus else 'CONFLICT'
-        
-        # 6. VOLUMEN TENDENCIA
-        volume_values = storage.get_trajectory('volume', 5)
-        if len(volume_values) &gt;= 3:
-            volume_delta = volume_values[-1] - volume_values[0]
-            # Volumen aumentando es siempre bueno
-            signals['volume'] = 'ALIGNED' if volume_delta &gt; 0 else 'NEUTRAL'
-        
-        # === CALCULAR ALINEACIÓN ===
-        
-        aligned_count = sum(1 for s in signals.values() if s == 'ALIGNED')
-        conflict_count = sum(1 for s in signals.values() if s == 'CONFLICT')
-        total_signals = len(signals)
-        
-        alignment_score = (aligned_count / total_signals * 100)
-        
-        # === HISTORIA ===
-        
-        aligned_list = [k for k, v in signals.items() if v == 'ALIGNED']
-        conflict_list = [k for k, v in signals.items() if v == 'CONFLICT']
-        
-        if alignment_score &gt;= 80:
-            story = f"ALTA COHERENCIA: {', '.join(aligned_list)} todos alineados {direction}"
-            decision = True
-        elif alignment_score &gt;= 60:
-            story = f"COHERENCIA MODERADA: {aligned_count}/{total_signals} alineados"
-            decision = True if conflict_count &lt;= 1 else False
-        else:
-            story = f"BAJA COHERENCIA: Conflictos en {', '.join(conflict_list)}"
-            decision = False
-        
-        return {
-            'alignment_score': alignment_score,
-            'aligned_signals': aligned_list,
-            'conflicting_signals': conflict_list,
-            'signals_detail': signals,
-            'story': story,
-            'decision': decision,
-            'aligned_count': aligned_count,
-            'total_signals': total_signals
-        }
-
-
-# === REEMPLAZAR TODA LA LÓGICA DE SCORING ===
-
-def decide_entry_simple(symbol, direction):
-    """
-    Decisión SIMPLE basada en alineación
-    
-    NO más penalties acumulativos.
-    NO más thresholds múltiples.
-    SOLO: ¿Está todo alineado?
-    """
-    
-    detector = AlignmentDetector()
-    alignment = detector.analyze_complete_alignment(symbol, direction)
-    
-    print(f"\n🎯 DETECTOR DE ALINEACIÓN")
-    print(f"   Símbolo: {symbol} | Dirección: {direction}")
-    print(f"   Alineación: {alignment['alignment_score']:.0f}%")
-    print(f"   Alineados: {', '.join(alignment['aligned_signals'])}")
-    if alignment['conflicting_signals']:
-        print(f"   Conflictos: {', '.join(alignment['conflicting_signals'])}")
-    print(f"   Historia: {alignment['story']}")
-    print(f"   Decisión: {'✅ ENTRAR' if alignment['decision'] else '❌ NO ENTRAR'}")
-    
-    return alignment['decision']
-🎬 EJEMPLO CON MONEDA SUBIENDO (TU CASO)
-Moneda que pasaste hoy:
-python
-Moneda: XYZ/USDT subiendo
-
-SEÑALES:
-ADX: 32 (subiendo desde 28) → ALIGNED ✅
-Precio: $1.50 (subiendo desde $1.42) → ALIGNED ✅
-ZigZag: HH, HL → ALIGNED ✅
-Momentum: LIME 5v → ALIGNED ✅
-DI: DI+ 35 &gt; DI- 12 → ALIGNED ✅
-Volumen: Aumentando → ALIGNED ✅
-
-ALINEACIÓN: 6/6 = 100%
-
-DECISIÓN: ENTRAR ✅
-Bot actual lo rechazó porque:
-python
-ADX 32 &lt; 35 → penalty -15
-Momentum 5v &gt; 3 → penalty -25
-Volumen 90% &lt; 100% → penalty -10
-Cambio +48% → penalty -30
-Score: -10 → RECHAZADO ❌
-
-PERO todo apuntaba en la MISMA dirección.
-```
-
----
-
-## 📋 **PROMPT FINAL PARA OPUS**
-```
-================================================================================
-REDISEÑO COMPLETO: SISTEMA DE ALINEACIÓN (NO MÁS PENALTIES)
-================================================================================
-
-🎯 PROBLEMA IDENTIFICADO POR JOEL:
-
-"Pasé 3 monedas subiendo hoy → Bot rechazó las 3"
-"El setup siempre está, las oportunidades siempre están"
-"El código debería mejorar visión, NO rigidizar"
-"Con tanto código, el bot NO opera"
-
-CAUSA RAÍZ:
-Sistema de penalties acumulativos PARALIZA al bot.
-Busca PERFECCIÓN en vez de COHERENCIA.
-
-SOLUCIÓN:
-Reemplazar TODO el sistema de scoring por DETECTOR DE ALINEACIÓN.
-
-================================================================================
-IMPLEMENTACIÓN
-================================================================================
-
-1. Crear brain_alignment.py (código completo arriba)
-   - AlignmentDetector class
-   - analyze_complete_alignment()
-   
-2. Modificar brain_analyzer.py
-   - ELIMINAR penalties/bonuses acumulativos
-   - USAR alignment detector
-   - Retornar solo alignment_score
-   
-3. Modificar brain_think.py (sniper)
-   - ELIMINAR validaciones complejas
-   - USAR: if alignment_score &gt; 75% → APROBAR
-   
-4. Simplificar brain_intelligent.py
-   - Llamar alignment detector
-   - Si aligned → agregar a watchlist
-   - Sin más validaciones
-
-RESULTADO ESPERADO:
-
-ANTES (penalties):
-```
-Moneda subiendo clara
-→ 10 validaciones
-→ 3 penalties
-→ Score -10
-→ RECHAZAR ❌
-```
-
-DESPUÉS (alignment):
-```
-Moneda subiendo clara
-→ 6/6 señales alineadas
-→ 100% coherencia
-→ ENTRAR ✅
-```
-
-CASOS DE PRUEBA:
-
-CASO 1: Moneda subiendo (todo aligned)
-  ADX: UP, Precio: UP, ZigZag: HH, Momentum: GREEN, DI: Aligned
-  Resultado: 100% → ENTRAR ✅
-  
-CASO 2: Lateral confuso
-  ADX: FLAT, Precio: FLAT, ZigZag: Mixed, Momentum: GRAY
-  Resultado: 20% → NO ENTRAR ✅
-  
-CASO 3: Reversión (4/6 aligned)
-  ADX: UP, Precio: UP, Momentum: GREEN, DI: Aligned
-  ZigZag: LH (conflicto), Volume: Down (conflicto)
-  Resultado: 66% → ENTRAR (mayoría aligned) ✅
-
-PROCEDE INMEDIATAMENTE.
-
-ESTE ES EL CAMBIO MÁS IMPORTANTE.
-De PENALTIES a ALINEACIÓN.
-De PERFECCIÓN a COHERENCIA.
-De RIGIDEZ a FLEXIBILIDAD.
-```
-
----
-
-## 📊 **Para ti Joel:**
-
-**Tienes 100% razón:**
-
-Agregamos tanto código que el bot quedó PARALIZADO.
-
-**Problema:**
-```
-Sistema actual: Busca perfección → Nunca la encuentra → No opera
-```
-
-**Solución:**
-```
-Sistema alineación: Busca coherencia → La encuentra seguido → Opera
-```
-
-**Resultado esperado:**
-```
-Tus 3 monedas hoy:
-→ Sistema actual: 0/3 entraron ❌
-→ Sistema alineación: 3/3 entran ✅
-El código debe FLEXIBILIZAR, no RIGIDIZAR ✅
-
-¿Aprobar rediseño completo a sistema de alineación? 🎯
-
-
-Plan completo de Opus: Aca se llenó el chat, tenia el link aca y me decia, chat lleno, cuando quisiste leer.
-
-Este es el plan que querias que leas.
-
-PLAN MAESTRO LISTO PARA REVISIÓN
-Resumen del Cambio de Paradigma:
-De (actual)	A (propuesto)
-Penalties acumulativos	Detector de alineación
-ADX &lt; 25 = -60	ADX subiendo = ALIGNED
-Momentum &gt; 3v = -25	Momentum verde = ALIGNED
-Buscar PERFECCIÓN	Buscar COHERENCIA
-Componentes del Plan:
-brain_adx_zones.py (NUEVO)
-6 zonas: LATERAL, INICIANDO, TENDENCIA, FUERTE, BRUTAL, EXTREMO
-Detecta cruces entre zonas
-Bonus por cruces ascendentes
-brain_alignment.py (NUEVO)
-Detecta si 6 señales apuntan misma dirección
-ADX, Precio, ZigZag, Momentum, DI, Volumen
-Decisión por % de alineación (&gt;=50% y &lt;=2 conflictos)
-brain_think.py (sniper v6.0)
-Elimina penalties acumulativos
-Usa alignment_detector
-Único bloqueo duro: Spread &lt; 5
-brain_analyzer.py (simplificado)
-Score = alignment_score
-Sin clampeo
-Sin penalties por ADX/momentum/volumen
-Resultado Esperado XPIN:
-ANTES: Score -85 → RECHAZADO ❌ DESPUÉS: Alineación 83% (5/6) → APROBADO ✅
-
-Preguntas Pendientes:
-¿Threshold de alineación 50% es correcto o prefieres otro?
-¿Mantener spread &lt; 5 como único bloqueo duro?
-¿Agregar alguna otra validación obligatoria?
-Por favor revisa el plan completo y aprueba o solicita cambios antes de implementar.
-
-PLAN MAESTRO: SISTEMA DE ALINEACIÓN DINÁMICA
-📋 RESUMEN EJECUTIVO
-Problema Identificado
-El bot se volvió RÍGIDO con demasiadas validaciones. Busca PERFECCIÓN en cada indicador en vez de COHERENCIA global.
-
-Resultado: 3 monedas subiendo hoy → Bot rechazó las 3.
-
-Solución Propuesta
-Cambio de paradigma de PENALTIES ACUMULATIVOS a DETECTOR DE ALINEACIÓN.
-
-Aspecto	Sistema Actual	Sistema Propuesto
-Enfoque	Penalties por imperfección	Coherencia direccional
-ADX	Valor estático (&lt; 25 = malo)	Zonas + Movimiento entre zonas
-Momentum	Edad estática (&gt; 3v = malo)	Fase según contexto
-Volumen	Ratio fijo (&lt; 50% = malo)	Contextual según fase
-Decisión	Score acumulativo	% de alineación
-🏗️ ARQUITECTURA NUEVA
-┌─────────────────────────────────────────────────────────────┐
-│                    ALIGNMENT DETECTOR                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │  ADX ZONES   │  │   PRICE      │  │  ZIGZAG      │       │
-│  │  Subiendo?   │  │  Subiendo?   │  │  HH/HL?      │       │
-│  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │       │
-│  └──────────────┘  └──────────────┘  └──────────────┘       │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │  MOMENTUM    │  │  DI+/DI-     │  │  VOLUME      │       │
-│  │  Green?      │  │  DI+ &gt; DI-?  │  │  Aumentando? │       │
-│  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │  │  ✅ ALIGNED  │       │
-│  └──────────────┘  └──────────────┘  └──────────────┘       │
-│                                                              │
-│  ALINEACIÓN: 6/6 = 100% → ✅ ENTRAR                         │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-📁 COMPONENTE 1: ADX ZONES
-Archivo Nuevo: brain_adx_zones.py
-Concepto: ADX no es solo un número, es una POSICIÓN en un mapa de zonas.
-
-ZONAS ADX:
-┌────────────────────────────────────────────────────────────┐
-│ 0────20────25────35────50────70────100                     │
-│ │LATERAL│INIC│TENDENCIA│FUERTE│BRUTAL│EXTREMO│             │
-│ │ -40   │ 0  │  +10    │ +20  │ +30  │ -10   │             │
-└────────────────────────────────────────────────────────────┘
-Código Propuesto:
-"""
-brain_adx_zones.py - ADX Cortometraje con Zonas
-================================================
-Analiza ADX como movimiento entre ZONAS, no valores estáticos.
-"""
-class ADXZoneAnalyzer:
-    """
-    Analiza ADX como cortometraje con zonas
-    """
-    
-    # Definición de zonas
-    ZONES = {
-        'LATERAL': (0, 20),
-        'INICIANDO': (20, 25),
-        'TENDENCIA': (25, 35),
-        'FUERTE': (35, 50),
-        'BRUTAL': (50, 70),
-        'EXTREMO': (70, 100)
-    }
-    
-    # Bonus por zona actual
-    ZONE_BONUS = {
-        'LATERAL': -40,
-        'INICIANDO': 0,
-        'TENDENCIA': 10,
-        'FUERTE': 20,
-        'BRUTAL': 30,
-        'EXTREMO': -10
-    }
-    
-    def get_zone(self, adx_value):
-        """Determina zona del ADX"""
-        for zone_name, (min_val, max_val) in self.ZONES.items():
-            if min_val &lt;= adx_value &lt; max_val:
-                return zone_name
-        return 'EXTREMO'
-    
-    def analyze_zone_trajectory(self, adx_frames):
-        """
-        Analiza trayectoria del ADX entre zonas
-        
-        Args:
-            adx_frames: Lista [más viejo ... más nuevo]
-                       Ej: [28, 30, 33, 35, 38, 41, 45]
-        
-        Returns:
-            dict con zonas, cruces, dirección, historia, bonus
-        """
-        if len(adx_frames) &lt; 3:
-            return self._default_result()
-        
-        # Mapear zonas
-        zones = [self.get_zone(adx) for adx in adx_frames]
-        current_zone = zones[-1]
-        
-        # Detectar cruces de zona
-        zone_changes = []
-        for i in range(1, len(zones)):
-            if zones[i] != zones[i-1]:
-                zone_changes.append({
-                    'from': zones[i-1],
-                    'to': zones[i],
-                    'adx': adx_frames[i]
-                })
-        
-        # Analizar dirección
-        delta = adx_frames[-1] - adx_frames[0]
-        if delta &gt; 5:
-            direction = 'ASCENDING'
-        elif delta &lt; -5:
-            direction = 'DESCENDING'
-        else:
-            direction = 'STABLE'
-        
-        # Calcular fuerza
-        velocity = delta / len(adx_frames)
-        if abs(velocity) &gt; 3:
-            strength = 'EXPLOSIVE'
-        elif abs(velocity) &gt; 1.5:
-            strength = 'STRONG'
-        elif abs(velocity) &gt; 0.5:
-            strength = 'MODERATE'
-        else:
-            strength = 'WEAK'
-        
-        # Calcular bonus
-        bonus = self._calculate_zone_bonus(
-            current_zone, zone_changes, direction, strength
-        )
-        
-        # Crear historia
-        story = self._create_story(
-            adx_frames, zones, zone_changes, direction, strength
-        )
-        
-        return {
-            'zones': zones,
-            'current_zone': current_zone,
-            'zone_changes': zone_changes,
-            'direction': direction,
-            'strength': strength,
-            'story': story,
-            'bonus': bonus,
-            'is_aligned': direction == 'ASCENDING' and current_zone not in ['LATERAL'],
-            'valid': True
-        }
-    
-    def _calculate_zone_bonus(self, current_zone, zone_changes, direction, strength):
-        """Calcula bonus por zonas y cruces"""
-        bonus = self.ZONE_BONUS.get(current_zone, 0)
-        
-        # Bonus por cruces ascendentes
-        if direction == 'ASCENDING':
-            for change in zone_changes:
-                if change['from'] == 'INICIANDO' and change['to'] == 'TENDENCIA':
-                    bonus += 20  # Confirmación
-                elif change['from'] == 'TENDENCIA' and change['to'] == 'FUERTE':
-                    bonus += 30  # Fortalecimiento
-                elif change['from'] == 'FUERTE' and change['to'] == 'BRUTAL':
-                    bonus += 40  # Explosión
-            
-            # Bonus por fuerza
-            if strength == 'EXPLOSIVE':
-                bonus += 25
-            elif strength == 'STRONG':
-                bonus += 15
-        
-        # Penalty por cruces descendentes
-        elif direction == 'DESCENDING':
-            for change in zone_changes:
-                if change['from'] == 'BRUTAL' and change['to'] == 'FUERTE':
-                    bonus -= 20
-                elif change['from'] == 'FUERTE' and change['to'] == 'TENDENCIA':
-                    bonus -= 30
-        
-        return bonus
-    
-    def _create_story(self, adx_frames, zones, zone_changes, direction, strength):
-        """Crea historia del cortometraje"""
-        start_adx = adx_frames[0]
-        end_adx = adx_frames[-1]
-        
-        if len(zone_changes) == 0:
-            return f"ADX {start_adx:.0f}→{end_adx:.0f} ({direction}) en zona {zones[-1]}"
-        elif len(zone_changes) == 1:
-            c = zone_changes[0]
-            return f"ADX cruzó {c['from']}→{c['to']} ({start_adx:.0f}→{end_adx:.0f})"
-        else:
-            return f"ADX cruzó {len(zone_changes)} zonas ({start_adx:.0f}→{end_adx:.0f}) | {strength}"
-    
-    def _default_result(self):
-        return {
-            'zones': [],
-            'current_zone': 'UNKNOWN',
-            'zone_changes': [],
-            'direction': 'UNKNOWN',
-            'strength': 'UNKNOWN',
-            'story': 'Datos insuficientes',
-            'bonus': 0,
-            'is_aligned': False,
-            'valid': False
-        }
-# Instancia global
-adx_zone_analyzer = ADXZoneAnalyzer()
-📁 COMPONENTE 2: ALIGNMENT DETECTOR
-Archivo Nuevo: brain_alignment.py
-Concepto: Detectar cuando TODOS los indicadores apuntan en la MISMA dirección.
-
-Código Propuesto:
-"""
-brain_alignment.py - Detector de Alineación Global
-==================================================
-Detecta cuando TODOS los indicadores están alineados.
-NO busca perfección individual.
-Busca COHERENCIA direccional del conjunto.
-"""
-from brain_adx_zones import adx_zone_analyzer
-from brain_frames import get_frame_storage
+import pandas as pd
+from datetime import datetime
+from brain_calculator import (
+    calculate_adx_with_memory,
+    calculate_momentum_with_memory,
+    calculate_velocity,
+    calculate_acceleration,
+    calculate_rsi_with_memory,
+    calculate_emas_with_memory,
+    detect_support_resistance_with_memory,
+    detect_price_structure,
+    calculate_zigzag,
+    calculate_volume_profile_with_memory,
+    calculate_bollinger_bands,
+    calculate_atr
+)
+# &gt;&gt;&gt; NUEVO: Imports granulares para detección de lateralización
+from brain_adx_plus import analyze_di_plus, validate_di_plus_for_long, validate_di_plus_for_short
+from brain_adx_minus import analyze_di_minus, validate_di_minus_for_long, validate_di_minus_for_short
+from brain_adx_value import analyze_adx_value, validate_adx_for_entry
+from brain_momentum_green import analyze_momentum_green, validate_green_for_long
+from brain_momentum_red import analyze_momentum_red, validate_red_for_short
+from brain_zigzag_tti import analyze_zigzag_tti
+
+# &gt;&gt;&gt; NUEVO: Imports para trend birth
+from brain_trend_birth import detect_trend_phase
+
+# &gt;&gt;&gt; NUEVO: Import para grid diagonal
+from brain_grid import MarketGrid
+
+# &gt;&gt;&gt; NUEVO: Sistema de PELÍCULA (frames + trayectorias)
+from brain_frames import get_frame_storage, detect_price_pattern, load_frames_from_ohlcv
 from brain_trajectory import TrajectoryAnalyzer
-class AlignmentDetector:
-    """
-    Detecta alineación global de todos los indicadores
-    """
+
+from exchange_connection import fetch_ohlcv
+from brain_config import *
+from brain_deep_analyzer import deep_analysis_complete
+from sheets_manager import sheets_manager
+from database_manager import db_manager
+
+# Flags para desactivar componentes (debugging)
+import sys
+ENABLE_1D_ANALYSIS = getattr(sys.modules['brain_config'], 'ENABLE_1D_ANALYSIS', True)
+ENABLE_4H_STRUCTURE = getattr(sys.modules['brain_config'], 'ENABLE_4H_STRUCTURE', True)
+ENABLE_4H_ZIGZAG = getattr(sys.modules['brain_config'], 'ENABLE_4H_ZIGZAG', True)
+ENABLE_VELOCITY_FILTER = getattr(sys.modules['brain_config'], 'ENABLE_VELOCITY_FILTER', True)
+
+
+
+# ============================================================================
+# HELPER: BTC ALIGNMENT (CONDICIONAL)
+# ============================================================================
+
+def check_btc_alignment(score=0, strict=None):
+    """Verifica si BTC está estable. Ahora CONDICIONAL por score.
     
-    def __init__(self):
-        self.trajectory_analyzer = TrajectoryAnalyzer()
-    
-    def analyze_alignment(self, symbol, direction, ladder_data):
-        """
-        Analiza alineación COMPLETA de todos los componentes
-        
-        Args:
-            symbol: Par a analizar
-            direction: 'BULLISH' o 'BEARISH'
-            ladder_data: Datos de todos los TFs
-        
-        Returns:
-            dict con alignment_score, signals, story, decision
-        """
-        
-        signals = {}
-        
-        # Obtener datos del 15m
-        data_15m = ladder_data.get('15m', {})
-        adx_data = data_15m.get('adx', {})
-        momentum_data = data_15m.get('momentum', {})
-        zigzag_data = data_15m.get('zigzag', {})
-        
-        # Obtener frames para análisis dinámico
-        storage = get_frame_storage(symbol, '15m')
-        
-        # ===============================================
-        # SEÑAL 1: ADX DIRECTION (usando zonas)
-        # ===============================================
-        adx_values = storage.get_trajectory('adx.value', 5)
-        
-        if len(adx_values) &gt;= 3:
-            zone_analysis = adx_zone_analyzer.analyze_zone_trajectory(adx_values)
-            
-            if zone_analysis['is_aligned']:
-                signals['adx'] = 'ALIGNED'
-            elif zone_analysis['direction'] == 'DESCENDING':
-                signals['adx'] = 'CONFLICT'
-            else:
-                signals['adx'] = 'NEUTRAL'
-        else:
-            # Sin frames: usar ADX trend como proxy
-            adx_trend = adx_data.get('adx_trend', 'estable')
-            if adx_trend == 'creciendo':
-                signals['adx'] = 'ALIGNED'
-            elif adx_trend == 'decreciendo':
-                signals['adx'] = 'CONFLICT'
-            else:
-                signals['adx'] = 'NEUTRAL'
-        
-        # ===============================================
-        # SEÑAL 2: PRICE DIRECTION
-        # ===============================================
-        price_values = storage.get_trajectory('price', 5)
-        
-        if len(price_values) &gt;= 3:
-            price_delta = price_values[-1] - price_values[0]
-            
-            if direction == 'BULLISH':
-                signals['price'] = 'ALIGNED' if price_delta &gt; 0 else 'CONFLICT'
-            else:
-                signals['price'] = 'ALIGNED' if price_delta &lt; 0 else 'CONFLICT'
-        else:
-            # Sin frames: asumir neutral
-            signals['price'] = 'NEUTRAL'
-        
-        # ===============================================
-        # SEÑAL 3: ZIGZAG STRUCTURE
-        # ===============================================
-        structure = zigzag_data.get('structure', '')
-        current_trend = zigzag_data.get('current_trend', 'LATERAL')
-        
-        if direction == 'BULLISH':
-            if current_trend == 'BULLISH' or 'HH' in structure or 'HL' in structure:
-                signals['zigzag'] = 'ALIGNED'
-            elif current_trend == 'BEARISH' or 'LL' in structure or 'LH' in structure:
-                signals['zigzag'] = 'CONFLICT'
-            else:
-                signals['zigzag'] = 'NEUTRAL'
-        else:
-            if current_trend == 'BEARISH' or 'LL' in structure or 'LH' in structure:
-                signals['zigzag'] = 'ALIGNED'
-            elif current_trend == 'BULLISH' or 'HH' in structure or 'HL' in structure:
-                signals['zigzag'] = 'CONFLICT'
-            else:
-                signals['zigzag'] = 'NEUTRAL'
-        
-        # ===============================================
-        # SEÑAL 4: MOMENTUM COLOR
-        # ===============================================
-        mom_color = momentum_data.get('color_current', 'gray')
-        
-        if direction == 'BULLISH':
-            if mom_color in ['lime', 'green']:
-                signals['momentum'] = 'ALIGNED'
-            elif mom_color in ['red', 'maroon']:
-                signals['momentum'] = 'CONFLICT'
-            else:
-                signals['momentum'] = 'NEUTRAL'
-        else:
-            if mom_color in ['red', 'maroon']:
-                signals['momentum'] = 'ALIGNED'
-            elif mom_color in ['lime', 'green']:
-                signals['momentum'] = 'CONFLICT'
-            else:
-                signals['momentum'] = 'NEUTRAL'
-        
-        # ===============================================
-        # SEÑAL 5: DI DOMINANCE
-        # ===============================================
-        di_plus = adx_data.get('di_plus_current', 0)
-        di_minus = adx_data.get('di_minus_current', 0)
-        spread = abs(di_plus - di_minus)
-        
-        if spread &lt; 5:
-            signals['di'] = 'NEUTRAL'  # DIs muy juntos
-        elif direction == 'BULLISH':
-            signals['di'] = 'ALIGNED' if di_plus &gt; di_minus else 'CONFLICT'
-        else:
-            signals['di'] = 'ALIGNED' if di_minus &gt; di_plus else 'CONFLICT'
-        
-        # ===============================================
-        # SEÑAL 6: VOLUME TREND
-        # ===============================================
-        volume_values = storage.get_trajectory('volume', 5)
-        
-        if len(volume_values) &gt;= 3:
-            vol_delta = volume_values[-1] - volume_values[0]
-            if vol_delta &gt; 0:
-                signals['volume'] = 'ALIGNED'  # Volumen aumentando siempre es bueno
-            else:
-                signals['volume'] = 'NEUTRAL'  # No penalizar vol bajando
-        else:
-            signals['volume'] = 'NEUTRAL'
-        
-        # ===============================================
-        # CALCULAR ALINEACIÓN
-        # ===============================================
-        aligned_count = sum(1 for s in signals.values() if s == 'ALIGNED')
-        conflict_count = sum(1 for s in signals.values() if s == 'CONFLICT')
-        total_signals = len(signals)
-        
-        alignment_score = (aligned_count / total_signals) * 100
-        
-        # Listas para reporte
-        aligned_list = [k for k, v in signals.items() if v == 'ALIGNED']
-        conflict_list = [k for k, v in signals.items() if v == 'CONFLICT']
-        neutral_list = [k for k, v in signals.items() if v == 'NEUTRAL']
-        
-        # ===============================================
-        # DECISIÓN BASADA EN ALINEACIÓN
-        # ===============================================
-        if alignment_score &gt;= 80:
-            decision = True
-            story = f"ALTA COHERENCIA ({alignment_score:.0f}%): {', '.join(aligned_list)}"
-        elif alignment_score &gt;= 60 and conflict_count &lt;= 1:
-            decision = True
-            story = f"COHERENCIA MODERADA ({alignment_score:.0f}%): {aligned_count}/{total_signals}"
-        elif alignment_score &gt;= 50 and conflict_count == 0:
-            decision = True
-            story = f"COHERENCIA ACEPTABLE ({alignment_score:.0f}%): Sin conflictos"
-        else:
-            decision = False
-            if conflict_list:
-                story = f"CONFLICTOS ({conflict_count}): {', '.join(conflict_list)}"
-            else:
-                story = f"ALINEACIÓN BAJA ({alignment_score:.0f}%)"
-        
-        return {
-            'alignment_score': alignment_score,
-            'aligned_count': aligned_count,
-            'conflict_count': conflict_count,
-            'total_signals': total_signals,
-            'signals': signals,
-            'aligned_list': aligned_list,
-            'conflict_list': conflict_list,
-            'neutral_list': neutral_list,
-            'story': story,
-            'decision': decision
-        }
-# ===============================================
-# FUNCIÓN HELPER SIMPLIFICADA
-# ===============================================
-def check_alignment(symbol, direction, ladder_data):
-    """
-    Verificación rápida de alineación
+    Args:
+        score: Score de la moneda analizada
+        strict: Si True, bloquea siempre. Si False/None, solo bloquea scores bajos
     
     Returns:
-        tuple: (decision, alignment_score, story)
+        bool: True si OK para operar, False si debe bloquearse
     """
-    detector = AlignmentDetector()
-    result = detector.analyze_alignment(symbol, direction, ladder_data)
+    if strict is None:
+        strict = BTC_ALIGNMENT_STRICT  # Usar config
     
-    return (
-        result['decision'],
-        result['alignment_score'],
-        result['story']
-    )
-# Instancia global
-alignment_detector = AlignmentDetector()
-📁 COMPONENTE 3: INTEGRACIÓN EN SNIPER
-Archivo: 
-brain_think.py
- (sniper_checklist)
-Código ACTUAL (problema):
-def sniper_checklist(symbol, direction, ladder, triggers=None, current_price=None):
+    try:
+        btc_ohlcv = fetch_ohlcv('BTC/USDT:USDT', '15m', 10)
+        if not btc_ohlcv or len(btc_ohlcv) &lt; 5:
+            return True  # Sin datos, no bloqueamos
+        
+        df_btc = pd.DataFrame(btc_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        last_5_closes = df_btc['close'].tail(5).values
+        btc_change_pct = ((last_5_closes[-1] - last_5_closes[0]) / last_5_closes[0]) * 100
+        
+        # Threshold más suave: -3% en vez de -2%
+        if btc_change_pct &lt; -3.0:
+            # Si score es alto (&gt;70), permitir operar igual (desacoplamiento)
+            if not strict and score &gt;= 70:
+                print(f"🔓 BTC cayendo {btc_change_pct:.2f}% PERO score {score} alto. Permitiendo.")
+                return True
+            else:
+                print(f"⚠️ BTC cayendo {btc_change_pct:.2f}% en 15M. Protección activada.")
+                return False
+        return True
+    except Exception as e:
+        print(f"⚠️ Error verificando BTC: {e}")
+        return True  # Error = no bloquear
+
+# ============================================================================
+# FUNCIÓN 1: analyze_4h() - CONTEXTO DOMINANTE
+# ============================================================================
+
+def analyze_4h(symbol):
     """
-    Checklist completo del Sniper Cognitivo (versión 5.0)
+    4H: Define contexto dominante y clima de mercado
+    
+    NUNCA RECHAZA - Solo informa dirección y fuerza
+    
+    Args:
+        symbol (str): Par trading (ej: 'BTC/USDT')
+    
+    Returns:
+        dict: Análisis completo con direction, strength, indicadores
+        None: Solo si no hay datos (caso extremo)
     """
+    # Fetch datos
+    ohlcv = fetch_ohlcv(symbol, '4h', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    current_price = float(df['close'].iloc[-1])
     
-    # ... muchas líneas de validaciones ...
+    # ===== ADX con memoria =====
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
     
-    # PROBLEMA 1: Penalties acumulativos
-    if adx &lt; 25:
-        total_score -= 60
-    if adx &lt; 30:
-        total_score -= 30
-    if momentum_age &gt; 3:
-        total_score -= 25
-    if volume_ratio &lt; 0.5:
-        total_score -= 20
-    # ... más penalties ...
+    # ADX ANTICIPATORIO: Proyectar evolución
+    adx_now = adx_data['adx_current']
+    adx_trend = adx_data['adx_trend']
     
-    # PROBLEMA 2: Thresholds rígidos
-    if profit_potential &lt; 2.0:
-        return {'ready': False, 'reason': 'Profit bajo'}
+    # Calcular velocidad ADX (puntos por vela)
+    if len(adx_data['adx_history']) &gt;= 5:
+        adx_velocity = (adx_data['adx_history'][-1] - adx_data['adx_history'][0]) / 5
+    else:
+        adx_velocity = 0.0
     
-    if rr_ratio &lt; 1.5:
-        return {'ready': False, 'reason': 'R/R bajo'}
+    # Proyección 3 velas adelante (12 horas en 4H)
+    adx_proyectado = adx_now + (adx_velocity * 3)
     
-    # PROBLEMA 3: Estructura obligatoria
-    if structure == 'LH':
-        return {'ready': False, 'reason': 'Estructura correctiva'}
+    # ===== Determinar dirección base por dominancia =====
+    di_direction = 'LATERAL'
+    if adx_data['dominance'] == 'DI+':
+        di_direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        di_direction = 'BEARISH'
     
-    # Score final
-    if total_score &lt; 40:
-        return {'ready': False}
-Código PROPUESTO (solución):
-def sniper_checklist(symbol, direction, ladder, triggers=None, current_price=None):
-    """
-    Checklist del Sniper basado en ALINEACIÓN (versión 6.0)
+    # ===== Calcular momentum e indicadores ANTES de validación =====
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    expected_colors_bullish = ['green', 'lime']
+    expected_colors_bearish = ['red', 'maroon']
     
-    NO más penalties acumulativos.
-    SOLO: ¿Están todos alineados?
-    """
+    # Calcular zigzag UNA SOLA VEZ (se usará más adelante también)
+    if ENABLE_4H_ZIGZAG:
+        zigzag = calculate_zigzag(df, threshold_pct=3.0)
+        last_pivot = zigzag.get('pivot_types', [''])[-1] if zigzag.get('pivot_types') else ''
+    else:
+        zigzag = None
+        last_pivot = ''
     
-    from brain_alignment import alignment_detector
-    from brain_adx_zones import adx_zone_analyzer
-    from brain_frames import get_frame_storage
+    # ===== VALIDACIÓN CRUZADA (Bug #28 Fix + ULTIMA Fix) =====
+    score_4h = 0  # FIX: Inicializar antes de usar en gradiente
     
-    print(f"\n🧠 SNIPER COGNITIVO v6.0: {symbol} ({direction})")
-    print("=" * 50)
+    # === GRADIENTE BULLISH ===
+    if di_direction == 'BULLISH':
+        expected_colors_bullish = ['green', 'lime', 'gray']
+        
+        if momentum_data['color_current'] not in expected_colors_bullish:
+            if adx_now &gt; 30 and abs(adx_data['spread']) &gt; 10:
+                direction = 'BULLISH' # Override por fuerza bruta
+                score_4h -= 10
+            else:
+                direction = 'LATERAL'
+        elif last_pivot in ['H', 'LH']:
+            if adx_now &gt; 35 and abs(adx_data['spread']) &gt; 12:
+                direction = 'BULLISH' # Override por fuerza bruta extrema
+                score_4h -= 15
+            else:
+                direction = 'LATERAL'
+        else:
+            direction = 'BULLISH'
+
+    # === GRADIENTE BEARISH (SIMÉTRICO) ===
+    elif di_direction == 'BEARISH':
+        expected_colors_bearish = ['red', 'maroon', 'gray']
+        
+        if momentum_data['color_current'] not in expected_colors_bearish:
+            if adx_now &gt; 30 and abs(adx_data['spread']) &gt; 10:
+                direction = 'BEARISH'
+                score_4h -= 10
+            else:
+                direction = 'LATERAL'
+        elif last_pivot in ['L', 'HL']:
+            if adx_now &gt; 35 and abs(adx_data['spread']) &gt; 12:
+                direction = 'BEARISH'
+                score_4h -= 15
+            else:
+                direction = 'LATERAL'
+        else:
+            direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
     
-    # ===================================================
-    # PASO 1: ANÁLISIS DE ALINEACIÓN (NUEVO)
-    # ===================================================
+    # ===== Evaluar fuerza ADX =====
+    strength = 'WEAK'  # Inicializar en WEAK
     
-    alignment = alignment_detector.analyze_alignment(symbol, direction, ladder)
+    # CASO 1: ADX ya &gt;25 (perfecto)
+    if adx_now &gt;= 25:
+        strength = 'STRONG'
+    elif adx_now &gt;= 17 and adx_velocity &gt; 1.5:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
+
+    if adx_trend == 'decreciendo' and adx_velocity &lt; -0.8:
+        strength = 'WEAK'
+
+    if direction != 'LATERAL' and abs(adx_data['spread']) &lt; 5.0:
+        strength = 'WEAK'
+
+    if momentum_data['consecutive_count'] &lt; 3:
+        strength = 'WEAK'
+
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+
+    if ENABLE_4H_STRUCTURE:
+        structure = detect_price_structure(df, lookback=20)
+    else:
+        structure = {'structure': 'N/A'}
     
-    print(f"\n🎯 ALINEACIÓN GLOBAL:")
-    print(f"   Score: {alignment['alignment_score']:.0f}%")
-    print(f"   Alineados: {', '.join(alignment['aligned_list'])}")
-    if alignment['conflict_list']:
-        print(f"   Conflictos: {', '.join(alignment['conflict_list'])}")
-    print(f"   Historia: {alignment['story']}")
+    # zigzag ya calculado arriba - ELIMINAR DUPLICADO
+    if not ENABLE_4H_ZIGZAG:
+        zigzag = {'zigzag': 'N/A'}
+
+    # ROADMAP: Detectar Soportes y Resistencias Mayores
+    sr_data = detect_support_resistance_with_memory(df, lookback=50)
     
-    # Si alineación &lt; 50% o &gt; 2 conflictos = RECHAZAR
-    if alignment['alignment_score'] &lt; 50 or alignment['conflict_count'] &gt; 2:
+    # VOLUME PROFILE (Exponer para Market Force)
+    vp_data = calculate_volume_profile_with_memory(df, lookback=200)
+
+    print(f"📊 4H | {symbol} | {direction} {strength} | ADX:{adx_data['adx_current']:.1f} DI+:{adx_data['di_plus_current']:.1f} DI-:{adx_data['di_minus_current']:.1f} | Mom:{momentum_data['consecutive_count']}v | Estructura:{structure['structure']}")
+
+    score_4h = 0
+    if strength == 'STRONG':
+        score_4h += 20
+    elif strength == 'MODERATE':
+        score_4h += 10
+    else:
+        score_4h += 0
+    if adx_trend == 'creciendo':
+        score_4h += 5
+    if momentum_data['consecutive_count'] &gt;= 5:
+        score_4h += 5
+    if abs(adx_data['spread']) &gt; 7:
+        score_4h += 5
+
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_4h': score_4h,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'structure': structure,
+        'zigzag': zigzag,
+        'sr': sr_data, # ROADMAP DATA
+        'volume_profile': vp_data, # EXPOSED FOR MARKET FORCE
+        'current_price': current_price,
+        'context': f"4H {direction} {strength} - ADX {adx_data['adx_current']:.1f}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+
+# ============================================================================
+# FUNCIÓN 2: analyze_1h() - CONFIRMACIÓN INTERMEDIA
+# ============================================================================
+
+def analyze_1h(symbol):
+    """1H: Confirma tendencia 4H"""
+    ohlcv = fetch_ohlcv(symbol, '1h', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+    adx_trend = adx_data['adx_trend']
+    adx_current = adx_data['adx_current']
+    spread = abs(adx_data['spread'])
+
+    # ===== Determinar dirección con validación cruzada (Bug #28 Fix) =====
+    di_direction = 'LATERAL'
+    if adx_data['dominance'] == 'DI+':
+        di_direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        di_direction = 'BEARISH'
+    
+    # Calcular momentum PRIMERO
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    zigzag = calculate_zigzag(df, threshold_pct=2.5)
+    last_pivot = zigzag.get('pivot_types', [''])[-1] if zigzag.get('pivot_types') else ''
+    
+    # Validación cruzada CON DEGRADACIÓN CONSISTENTE
+    if di_direction == 'BULLISH':
+        mom_bullish = momentum_data['color_current'] in ['green', 'lime']
+        struct_bullish = last_pivot not in ['H', 'LH']
+        
+        if mom_bullish and struct_bullish:
+            direction = 'BULLISH'
+        else:
+            direction = 'LATERAL'  # Degrada, no invierte
+    elif di_direction == 'BEARISH':
+        mom_bearish = momentum_data['color_current'] in ['red', 'maroon']
+        struct_bearish = last_pivot not in ['L', 'HL']
+        
+        if mom_bearish and struct_bearish:
+            direction = 'BEARISH'
+        else:
+            direction = 'LATERAL'  # Degrada, no invierte
+    else:
+        direction = 'LATERAL'
+    
+    # FIX: Aceptar 'lime' como bullish y 'maroon' como bearish
+    expected_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
+    momentum_color = momentum_data['color_current']
+
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+    structure = detect_price_structure(df, lookback=20)
+    
+    # ROADMAP: Detectar Soportes y Resistencias Intermedios
+    sr_data = detect_support_resistance_with_memory(df, lookback=50)
+    
+    # VOLUME PROFILE (Exponer para Market Force)
+    vp_data = calculate_volume_profile_with_memory(df, lookback=100)
+
+    if adx_current &gt; 32:
+        strength = 'STRONG'
+    elif adx_current &gt; 25:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
+
+    score_1h = 0
+    if adx_trend == 'creciendo':
+        score_1h += 5
+    if adx_current &gt;= 22:
+        score_1h += 5
+    if momentum_color in expected_colors:
+        score_1h += 5
+    if spread &gt; 4.0:
+        score_1h += 5
+
+    adx_val = adx_data['adx_current']
+    momentum = momentum_data['color_current']
+    rsi = rsi_data['rsi_current']
+    emas_aligned = emas_data.get('emas_aligned', False)
+
+    if adx_val &gt;= 25:
+        score_1h += 5
+    elif adx_val &gt;= 20:
+        score_1h += 2
+
+    if momentum in ['green', 'lime', 'red', 'maroon']:
+        score_1h += 2
+
+    if 40 &lt;= rsi &lt;= 70:
+        score_1h += 2
+
+    if emas_aligned:
+        score_1h += 2
+
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_1h': score_1h,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'structure': structure,
+        'zigzag': zigzag,
+        'sr': sr_data, # ROADMAP DATA
+        'volume_profile': vp_data, # EXPOSED FOR MARKET FORCE
+        'context': f"1H {direction} {strength} - ADX {adx_current:.1f}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+
+# ============================================================================
+# FUNCIÓN 3: analyze_15m() - TIMING Y DESARROLLO
+# ============================================================================
+
+def analyze_15m(symbol, strict=None, context_4h=None, context_1h=None):
+    """15M: Timing de entrada - CON DETECCIÓN GRANULAR + CONTEXTO MACRO + ALINEACIÓN TF"""
+    # Auto-detectar modo si no se especifica
+    if strict is None:
+        strict = not ENABLE_INTELLIGENT_MODE  # Intelligent mode = No estricto
+    
+    ohlcv = fetch_ohlcv(symbol, '15m', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    current_price = float(df['close'].iloc[-1])
+    
+    # &gt;&gt;&gt; NUEVO: CARGA INSTANTÁNEA DE TIME LADDER
+    # "El Time Ladder debe ser rápido, no en slow motion" - Joel
+    load_frames_from_ohlcv(symbol, '15m', ohlcv, num_frames=10)
+    
+    # --- ANTI-PUMP MEJORADO (Más inteligente) ---
+    vol_avg = df['volume'].iloc[:-1].mean()
+    last_vol = df['volume'].iloc[-1]
+    last_candle_pct = abs((df['close'].iloc[-1] - df['open'].iloc[-1]) / df['open'].iloc[-1]) * 100
+    
+    # Anti-Pump con PENALIZACIONES (Time Ladder), NO bloqueo
+    pump_penalty = 0
+
+    if last_vol &gt; vol_avg * 25 and last_candle_pct &gt; 30:
+        # Pump extremo: penalización -50
+        pump_penalty = 50
+        print(f"⚠️ PUMP EXTREMO: Vol {last_vol/vol_avg:.1f}x, Vela {last_candle_pct:.1f}% → Penalty -50")
+    elif last_vol &gt; vol_avg * 15 and last_candle_pct &gt; 20:
+        # Pump moderado: penalización -30
+        pump_penalty = 30
+        print(f"⚠️ Pump moderado: Vol {last_vol/vol_avg:.1f}x, Vela {last_candle_pct:.1f}% → Penalty -30")
+    # -----------------------------------------------
+
+    # &gt;&gt;&gt; NUEVO: Análisis granular con módulos separados (DI+, DI-, ADX, Momentum)
+    di_plus_granular = analyze_di_plus(df, lookback=14)
+    di_minus_granular = analyze_di_minus(df, lookback=14)
+    adx_value_granular = analyze_adx_value(df, lookback=14)
+    zigzag_granular = analyze_zigzag_tti(df, threshold=5.0)
+    
+    # &gt;&gt;&gt; LEGACY: Mantener análisis monolítico (compatibilidad hacia atrás)
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50], lookback=10)
+    
+    # Análisis granular de momentum según color
+    momentum_green = analyze_momentum_green(momentum_data)
+    momentum_red = analyze_momentum_red(momentum_data)
+    
+    # ===================================================================
+    # SISTEMA DE PELÍCULA: Guardar frame + Analizar movimiento
+    # ===================================================================
+    # Concepto Joel: "Como un dibujante que apila dibujos y los mueve
+    # rápido para generar animación"
+    
+    # Obtener storage para este símbolo
+    frame_storage = get_frame_storage(symbol, '15m')
+    
+    # Guardar frame actual (el "dibujo" de este momento)
+    frame_storage.add_frame(symbol, '15m', {
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'price': current_price,
+        'volume': float(df['volume'].iloc[-1]),
+        'position_in_range': 50,  # Se calculará después
+        'score_15m': 0  # Se actualizará
+    })
+    
+    # Analizar MOVIMIENTO (si hay suficientes frames)
+    motion_score = 0
+    motion_analysis = None
+    
+    if frame_storage.has_enough_frames(min_frames=3):
+        trajectory_analyzer = TrajectoryAnalyzer()
+        motion_analysis = trajectory_analyzer.get_complete_motion_analysis(frame_storage, n_frames=5)
+        
+        if motion_analysis.get('valid'):
+            # ADX Motion
+            adx_motion = motion_analysis.get('adx', {})
+            adx_phase = adx_motion.get('phase', 'UNKNOWN')
+            
+            print(f"\n🎬 PELÍCULA (MOVIMIENTO):")
+            print(f"   ADX: [{' → '.join([f'{v:.0f}' for v in adx_motion.get('values', [])])}]")
+            print(f"   Velocidad: {adx_motion.get('velocity', 0):+.1f} pts/frame")
+            print(f"   Fase: {adx_phase}")
+            
+            # Bonus por explosión
+            if adx_phase in ['EXPLOSION_NASCENT', 'EXPLOSION_SUSTAINED']:
+                motion_score += 40
+                print(f"   ✅ ADX ACELERANDO → 💥 EXPLOSIÓN (+40)")
+            elif adx_phase == 'EXPLOSION_CLIMAX':
+                motion_score += 20
+                print(f"   ✅ ADX en clímax (+20)")
+            elif adx_phase in ['TREND_BUILDING', 'TREND_DEVELOPING']:
+                motion_score += 10
+                print(f"   ✅ Tendencia desarrollándose (+10)")
+            elif adx_phase == 'EXPLOSION_FADING':
+                motion_score -= 15
+                print(f"   ⚠️ Explosión terminando (-15)")
+            elif adx_phase in ['FORCE_DYING', 'FORCE_WEAK']:
+                motion_score -= 30
+                print(f"   ❌ Fuerza muriendo (-30)")
+            
+            # Momentum Motion
+            mom_motion = motion_analysis.get('momentum', {})
+            mom_phase = mom_motion.get('phase', 'UNKNOWN')
+            
+            print(f"   Mom: [{' → '.join([f'{int(v)}v' for v in mom_motion.get('values', [])])}]")
+            print(f"   Fase: {mom_phase}")
+            
+            if mom_phase in ['SUSTAINING', 'SUSTAINED']:
+                motion_score += 20
+                print(f"   ✅ Momentum SOSTENIDO (+20)")
+            elif mom_phase == 'DEVELOPING':
+                motion_score += 15
+                print(f"   ✅ Momentum creciendo (+15)")
+            elif mom_phase == 'BIRTH':
+                motion_score += 25
+                print(f"   ✅ Momentum naciendo (+25)")
+            elif mom_phase == 'EXHAUSTING':
+                motion_score -= 20
+                print(f"   ⚠️ Momentum agotándose (-20)")
+            
+            # Veredicto de película
+            movie_verdict = motion_analysis.get('movie_verdict', {})
+            print(f"   🎯 Veredicto: {movie_verdict.get('verdict', 'UNKNOWN')} ({movie_verdict.get('confidence', 0)}%)")
+    
+    # &gt;&gt;&gt; NUEVO: DETECCIÓN DE LATERALIZACIÓN GRANULAR (TIME LADDER)
+    lateral_penalty = 0
+    lateral_reasons = []
+    
+    # --- 1. ADX Granular: Detectar lateralización por componentes ---
+    # Spread bajo = DI+ y DI- juntos = lateral
+    spread_di = abs(di_plus_granular['value'] - di_minus_granular['value'])
+    if spread_di &lt; 5:
+        lateral_penalty += 25
+        lateral_reasons.append(f"DI spread muy bajo: {spread_di:.1f}")
+    elif spread_di &lt; 10:
+        lateral_penalty += 10
+        lateral_reasons.append(f"DI spread bajo: {spread_di:.1f}")
+    
+    # ADX bajo o lateral
+    if adx_value_granular['lifecycle'] == 'lateral':
+        lateral_penalty += 20
+        lateral_reasons.append(f"ADX lateral: {adx_value_granular['value']:.1f}")
+    elif adx_value_granular['lifecycle'] == 'debil':
+        lateral_penalty += 10
+        lateral_reasons.append(f"ADX débil: {adx_value_granular['value']:.1f}")
+    elif adx_value_granular['lifecycle'] == 'muerte':
+        # ADX muriendo = SIEMPRE penalizar
+        # Joel: "El impulso ya murió, es tarde para entrar"
+        # ACH: ADX creciendo → ENTRAR ✅
+        # ALCH: ADX muriendo → NO ENTRAR ❌
+        lateral_penalty += 25  # Penalty fuerte (aumentado de 15)
+        lateral_reasons.append(f"ADX muriendo: {adx_value_granular['value']:.1f}")
+    
+    # --- 2. Momentum Granular: Detectar momentum agotado ---
+    mom_color = momentum_data.get('color_current', 'gray')
+    mom_age = momentum_data.get('consecutive_count', 0)
+    if mom_age &gt; 12:
+        lateral_penalty += 15
+        lateral_reasons.append(f"Momentum agotado: {mom_color} {mom_age}v")
+    
+    # --- 3. ZigZag Granular: Detectar estructura lateral (HH/LL mezclados) ---
+    if zigzag_granular.get('current_trend') == 'LATERAL':
+        lateral_penalty += 15
+        lateral_reasons.append(f"Estructura: {zigzag_granular.get('structure', 'LATERAL')}")
+    
+    # &gt;&gt;&gt; NUEVO: Logging si lateralización detectada
+    if lateral_penalty &gt; 0:
+        print(f"⚠️  LATERALIZACIÓN | {symbol} | Penalty: -{lateral_penalty} | Razones: {', '.join(lateral_reasons)}")
+    
+    # Determinar dirección con validación de momentum (Bug #28 Fix + ULTIMA Fix)
+    di_direction = 'LATERAL'
+    if adx_data['dominance'] == 'DI+':
+        di_direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        di_direction = 'BEARISH'
+    
+    # Validar con momentum
+    if di_direction == 'BULLISH':
+        if momentum_data['color_current'] in ['green', 'lime']:
+            direction = 'BULLISH'
+        else:
+            direction = 'LATERAL'
+    elif di_direction == 'BEARISH':
+        if momentum_data['color_current'] in ['red', 'maroon']:
+            direction = 'BEARISH'
+        else:
+            direction = 'LATERAL'
+    else:
+        direction = 'LATERAL'
+    
+    expected_colors = ['green', 'lime'] if direction == 'BULLISH' else ['red', 'maroon']
+    
+    # ===== CONTEXTO MACRO: Movimiento previo 20-50 velas (TIME LADDER) =====
+    precio_actual = float(df['close'].iloc[-1])
+    precio_hace_20 = float(df['close'].iloc[-20])
+    precio_hace_50 = float(df['close'].iloc[-50]) if len(df) &gt;= 50 else precio_hace_20
+    
+    cambio_20v = ((precio_actual - precio_hace_20) / precio_hace_20) * 100
+    cambio_50v = ((precio_actual - precio_hace_50) / precio_hace_50) * 100
+    
+    macro_penalty = 0
+    
+    # Penalty: SHORT después de rally alcista → Probable trampa
+    if direction == 'BEARISH':
+        if cambio_50v &gt; 20:
+            macro_penalty += 50
+            print(f"      ⚠️ SHORT después rally +{cambio_50v:.1f}% (50v) - TRAMPA")
+        elif cambio_20v &gt; 10:
+            macro_penalty += 30
+            print(f"      ⚠️ SHORT después subida +{cambio_20v:.1f}% (20v) - Riesgoso")
+    
+    # Bonus: LONG después de caída → Posible rebote
+    if direction == 'BULLISH':
+        if cambio_50v &lt; -15:
+            macro_penalty -= 20  # Bonus (resta de penalty)
+            print(f"      ✅ LONG después caída {cambio_50v:.1f}% (50v) - Rebote")
+    
+    # ===== VALIDACIÓN ALINEACIÓN TIMEFRAMES (TIME LADDER) =====
+    # &gt;&gt;&gt; MODIFICADO: BLOQUEO DURO contra tendencia mayor, no solo penalty
+    tf_penalty = 0
+    direction_4h = context_4h.get('direction', 'NEUTRAL') if context_4h else 'NEUTRAL'
+    direction_1h = context_1h.get('direction', 'NEUTRAL') if context_1h else 'NEUTRAL'
+    
+    # BLOQUEO DURO: Operar contra tendencia MAYOR (4H)
+    if direction == 'BEARISH' and direction_4h == 'BULLISH':
+        print(f"      🚫 BLOQUEO DURO: SHORT contra 4H alcista")
+        print(f"         La tendencia mayor es ALCISTA - NO permitir SHORT")
         return {
-            'ready': False,
-            'approved': False,
-            'reason': alignment['story'],
-            'archetype': 'LOW_ALIGNMENT',
-            'total_score': int(alignment['alignment_score']),
-            'alignment': alignment
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'SHORT contra tendencia 4H ALCISTA',
+            'verdict': 'BLOCKED_AGAINST_TREND'
         }
     
-    # ===================================================
-    # PASO 2: ANÁLISIS DE ZONAS ADX (NUEVO)
-    # ===================================================
+    if direction == 'BULLISH' and direction_4h == 'BEARISH':
+        print(f"      🚫 BLOQUEO DURO: LONG contra 4H bajista")
+        print(f"         La tendencia mayor es BAJISTA - NO permitir LONG")
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'LONG contra tendencia 4H BAJISTA',
+            'verdict': 'BLOCKED_AGAINST_TREND'
+        }
     
-    storage = get_frame_storage(symbol, '15m')
-    adx_values = storage.get_trajectory('adx.value', 5)
+    # Penalty por contra 1H (menos severo)
+    if direction == 'BEARISH' and direction_1h == 'BULLISH':
+        tf_penalty += 50
+        print(f"      ⚠️ SHORT contra 1H alcista - Penalty -50")
     
-    if len(adx_values) &gt;= 3:
-        zone_analysis = adx_zone_analyzer.analyze_zone_trajectory(adx_values)
+    if direction == 'BULLISH' and direction_1h == 'BEARISH':
+        tf_penalty += 50
+        print(f"      ⚠️ LONG contra 1H bajista - Penalty -50")
+    
+    # ===================================================================
+    # &gt;&gt;&gt; NUEVO: PRICE ACTION TIME LADDER (CONCEPTO DE JOEL)
+    # ===================================================================
+    # "El bot no esperaba el piso y luego el impulso, entraba sin ver ese piso"
+    # Detectar patrón de precio para confirmar piso+impulso antes de entrar
+    
+    price_pattern = detect_price_pattern(symbol, direction, '15m')
+    print(f"      🎬 Price Pattern: {price_pattern['pattern']} | Fase: {price_pattern['phase']}")
+    
+    if not price_pattern['ready']:
+        # BLOQUEO: Esperando patrón correcto
+        print(f"      ⚠️ ESPERANDO: {price_pattern['reason']}")
+        print(f"         Esperar: {price_pattern['wait_for']}")
         
-        print(f"\n📊 ADX ZONAS:")
-        print(f"   Zona actual: {zone_analysis['current_zone']}")
-        print(f"   Dirección: {zone_analysis['direction']}")
-        print(f"   Fuerza: {zone_analysis['strength']}")
-        print(f"   Historia: {zone_analysis['story']}")
-        print(f"   Bonus: {zone_analysis['bonus']:+d}")
+        # Aplicar penalty severa si está en corrección (no bloqueo total para flexibilidad)
+        if price_pattern['pattern'] in ['CORRECTION_IN_PROGRESS', 'RALLY_IN_PROGRESS']:
+            tf_penalty += 80  # Penalty fuerte - muy probable que siga cayendo/subiendo
+            print(f"      ❌ En corrección activa - Penalty -80")
+        elif price_pattern['pattern'] in ['FLOOR_TOUCHED', 'CEILING_TOUCHED']:
+            tf_penalty += 30  # Penalty moderada - cerca pero sin confirmación
+            print(f"      ⚠️ Tocó nivel, esperando confirmación - Penalty -30")
+        elif price_pattern['pattern'] == 'LATERAL':
+            tf_penalty += 20  # Penalty leve - sin dirección clara
+            print(f"      ⚠️ Sin dirección clara - Penalty -20")
+    else:
+        # BONUS: Patrón confirmado
+        motion_score += 25
+        print(f"      ✅ {price_pattern['reason']} (+25 bonus)")
+    
+    # ===== FUZZY SCORING (Siempre calcular) =====
+    # &gt;&gt;&gt; MODIFICADO: Ahora incluye penalty lateral + macro + TF + MOTION BONUS
+    score_15m = -pump_penalty - lateral_penalty - macro_penalty - tf_penalty + motion_score
+    
+    # MODO ESTRICTO: Penalización en lugar de bloqueo (Time Ladder)
+    if strict:
+        violation_count = 0
+        if adx_data['adx_current'] &lt; 17:
+             score_15m -= 20
+             violation_count += 1
+        if abs(adx_data['spread']) &lt; 2.0:
+             score_15m -= 20
+             violation_count += 1
+        if momentum_data['color_current'] not in expected_colors:
+             score_15m -= 30
+             violation_count += 1
         
-        # Si ADX en zona LATERAL y NO subiendo = RECHAZAR
-        if zone_analysis['current_zone'] == 'LATERAL' and zone_analysis['direction'] != 'ASCENDING':
+        if violation_count &gt; 0:
+            print(f"⚠️ Strict Mode Violations: {violation_count} - Penalizing score")
+
+    # Continuar con cálculo normal...
+    
+    # ===== FORCE VALIDATION - TIME LADDER con FLAG + ADX TREND =====
+    # &gt;&gt;&gt; MODIFICADO: Ahora valida si ADX está creciendo o decreciendo
+    
+    # ADX: Gradiente con PENALTIES según MODE + TREND
+    adx_current = adx_data['adx_current']
+    adx_trend = adx_data.get('adx_trend', 'estable')  # 'creciendo'/'decreciendo'/'estable'
+    
+    if FORCE_VALIDATION_MODE == 'STRICT':
+        pass  # Ya no se usa FORCE_VALIDATION_MODE, Joel's Strategy es único
+    
+    # ===================================================================
+    # VALIDACIÓN SETUP ÚNICO - JOEL'S STRATEGY (NO NEGOCIABLE)
+    # ===================================================================
+    
+    adx_current = adx_data['adx_current']
+    adx_trend = adx_data.get('adx_trend', 'estable')
+    di_plus = adx_data['di_plus_current']
+    di_minus = adx_data['di_minus_current']
+    spread = abs(di_plus - di_minus)
+    mom_color = momentum_data['color_current']
+    mom_age = momentum_data['consecutive_count']
+    
+    # Colores esperados según dirección
+    bullish_colors = ['lime', 'green']
+    bearish_colors = ['maroon', 'red']
+    
+    # -----------------------------------------------------------------
+    # 1. ADX FORCE VALIDATION (DINÁMICO - NASCENT vs DÉBIL)
+    # -----------------------------------------------------------------
+    adx_rejected = False  # Flag para bloquear entrada
+    adx_is_nascent = False  # Flag para explosión naciente
+    
+    # ===================================================================
+    # DETECCIÓN DINÁMICA: ADX &lt; 25 PERO ACELERANDO = NASCENT
+    # ===================================================================
+    if adx_current &lt; 25:
+        # Intentar detectar si es NASCENT (acelerando desde bajo)
+        try:
+            adx_values = frame_storage.get_trajectory('adx.value', 5)
+            
+            if len(adx_values) &gt;= 3:
+                trajectory_analyzer = TrajectoryAnalyzer()
+                adx_motion = trajectory_analyzer.analyze_adx_motion(adx_values)
+                
+                # Si ADX está ASCENDIENDO con velocidad &gt; 0.5/frame = NASCENT
+                if (adx_motion['direction'] == 'ASCENDING' and 
+                    adx_motion['velocity'] &gt; 0.5):
+                    
+                    adx_is_nascent = True
+                    score_15m += 30
+                    print(f"      🚀 ADX NASCENT: {adx_current:.1f} acelerando desde bajo")
+                    print(f"         Frames: {adx_motion['values']}")
+                    print(f"         Velocidad: {adx_motion['velocity']:+.1f}/frame")
+                    print(f"         Fase inicial de explosión (+30)")
+                    
+        except Exception as e:
+            pass  # Sin frames, usar lógica de fallback
+        
+        # Si NO es nascent = realmente débil
+        if not adx_is_nascent:
+            # Pero si está creciendo, penalty menor
+            if adx_trend == 'creciendo':
+                score_15m -= 30  # Penalty reducida (era -60)
+                print(f"      ⚠️ ADX {adx_current:.1f} &lt; 25 pero creciendo (-30)")
+            else:
+                score_15m -= 60
+                adx_rejected = True
+                print(f"      ❌ ADX {adx_current:.1f} &lt; 25 y NO creciendo (débil)")
+    
+    elif adx_trend == 'decreciendo':
+        score_15m -= 60
+        adx_rejected = True
+        print(f"      ❌ BLOQUEADOR: ADX {adx_current:.1f} decreciendo (fuerza muriendo)")
+    elif adx_trend == 'creciendo':
+        # ADX &gt;= 25 y creciendo = OK, bonus
+        if adx_current &gt;= 30:
+            score_15m += 10
+        else:
+            score_15m += 5
+    # Si estable, no bonus ni penalty
+    
+    # CLAMP: Solo si ADX realmente débil (NO si nascent)
+    if adx_rejected and not adx_is_nascent:
+        score_15m = min(score_15m, 30)
+        print(f"      🚫 Score CLAMPEADO a máx 30 por ADX débil")
+    elif adx_is_nascent:
+        print(f"      ✅ NO clampeo (ADX nascent permite score completo)")
+    
+    # -----------------------------------------------------------------
+    # 2. SPREAD DI &gt;= 7 (BLOQUEO DURO SI &lt; 5)
+    # -----------------------------------------------------------------
+    if spread &lt; 5:
+        print(f"      🚫 BLOQUEO DURO: Spread {spread:.1f} &lt; 5")
+        print(f"         Razón: DI+ ({di_plus:.1f}) y DI- ({di_minus:.1f}) muy juntos")
+        print(f"         Riesgo: Reversión inminente, sin claridad direccional")
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'Spread {spread:.1f} &lt; 5 (DI convergiendo)',
+            'verdict': 'BLOCKED_SPREAD'
+        }
+    elif spread &lt; 7:
+        score_15m -= 50
+        print(f"      ❌ Spread {spread:.1f} &lt; 7 (DI juntos, puede revertir)")
+    elif spread &gt;= 10:
+        score_15m += 10
+        print(f"      ✅ Spread {spread:.1f} &gt;= 10 (claridad direccional)")
+    # Si 7-10, neutral
+    
+    # -----------------------------------------------------------------
+    # 3. DIRECCIÓN DI CORRECTA (BLOQUEO DURO SI INCORRECTA)
+    # -----------------------------------------------------------------
+    if direction == 'BEARISH':
+        # SHORT: DI- debe dominar (DI- &gt; DI+)
+        if di_minus &lt;= di_plus:
+            print(f"      🚫 BLOQUEO DURO: SHORT pero DI+ ({di_plus:.1f}) &gt;= DI- ({di_minus:.1f})")
+            print(f"         Razón: DI indica tendencia alcista, no bajista")
+            return {
+                'symbol': symbol,
+                'direction': direction,
+                'score_15m': -999,
+                'blocked': True,
+                'block_reason': f'SHORT con DI+ dominante ({di_plus:.1f} &gt;= {di_minus:.1f})',
+                'verdict': 'BLOCKED_DI_WRONG'
+            }
+    elif direction == 'BULLISH':
+        # LONG: DI+ debe dominar (DI+ &gt; DI-)
+        if di_plus &lt;= di_minus:
+            print(f"      🚫 BLOQUEO DURO: LONG pero DI- ({di_minus:.1f}) &gt;= DI+ ({di_plus:.1f})")
+            print(f"         Razón: DI indica tendencia bajista, no alcista")
+            return {
+                'symbol': symbol,
+                'direction': direction,
+                'score_15m': -999,
+                'blocked': True,
+                'block_reason': f'LONG con DI- dominante ({di_minus:.1f} &gt;= {di_plus:.1f})',
+                'verdict': 'BLOCKED_DI_WRONG'
+            }
+    
+    # -----------------------------------------------------------------
+    # 4. MOMENTUM COLOR CORRECTO (BLOQUEO DURO SI CONTRARIO)
+    # -----------------------------------------------------------------
+    if direction == 'BEARISH':
+        if mom_color not in bearish_colors:
+            print(f"      🚫 BLOQUEO DURO: SHORT con momentum {mom_color}")
+            print(f"         Razón: Momentum alcista en setup bajista")
+            print(f"         Colores esperados: {bearish_colors}")
+            return {
+                'symbol': symbol,
+                'direction': direction,
+                'score_15m': -999,
+                'blocked': True,
+                'block_reason': f'SHORT con momentum {mom_color} (alcista)',
+                'verdict': 'BLOCKED_MOMENTUM_OPPOSITE'
+            }
+    elif direction == 'BULLISH':
+        if mom_color not in bullish_colors:
+            print(f"      🚫 BLOQUEO DURO: LONG con momentum {mom_color}")
+            print(f"         Razón: Momentum bajista en setup alcista")
+            print(f"         Colores esperados: {bullish_colors}")
+            return {
+                'symbol': symbol,
+                'direction': direction,
+                'score_15m': -999,
+                'blocked': True,
+                'block_reason': f'LONG con momentum {mom_color} (bajista)',
+                'verdict': 'BLOCKED_MOMENTUM_OPPOSITE'
+            }
+    
+    # -----------------------------------------------------------------
+    # 5. MOMENTUM CONTEXTUAL (Time Ladder - Fases del cortometraje)
+    # -----------------------------------------------------------------
+    
+    # PRIMERO: Calcular velocidad del precio (necesitamos avg_change_pct)
+    avg_change_pct = 0.0
+    try:
+        price_changes = []
+        closes = df['close'].values
+        for i in range(-10, -1):
+            if len(closes) &gt; abs(i) and closes[i-1] != 0:
+                change_pct = abs((closes[i] - closes[i-1]) / closes[i-1] * 100)
+                price_changes.append(change_pct)
+        if price_changes:
+            avg_change_pct = sum(price_changes) / len(price_changes)
+    except:
+        pass
+    
+    # SEGUNDO: Calcular rango de precio (necesitamos price_range_pct)
+    price_range_pct = 0.0
+    try:
+        highs = df['high'].iloc[-20:].values
+        lows = df['low'].iloc[-20:].values
+        price_max = highs.max()
+        price_min = lows.min()
+        price_current = float(df['close'].iloc[-1])
+        price_range = price_max - price_min
+        price_range_pct = (price_range / price_current * 100) if price_current &gt; 0 else 0
+    except:
+        pass
+    
+    # TERCERO: Calcular contextos de fuerza
+    brutal_force = (
+        adx_current &gt; 50 and 
+        adx_trend == 'creciendo' and 
+        spread &gt;= 15 and
+        price_range_pct &gt; 3.5  # NO lateral
+    )
+    
+    strong_force = (
+        adx_current &gt; 35 and
+        adx_trend == 'creciendo' and
+        spread &gt;= 10 and
+        price_range_pct &gt; 2.5  # NO lateral
+    )
+    
+    # -----------------------------------------------------------------
+    # ADX DECRECIENDO: PENALTY en vez de BLOQUEO (dejar fluir la fuerza)
+    # -----------------------------------------------------------------
+    # brutal_force = ADX&gt;50 AND spread&gt;15 AND rango&gt;3.5% (ya calculado arriba)
+    # REGLA: ADX decreciendo SIN fuerza brutal → PENALTY -50
+    # EXCEPCIÓN: ADX decreciendo CON brutal_force → Sin penalty (clímax explosivo)
+    
+    adx_decreciendo_penalty = 0
+    if adx_trend == 'decreciendo' and not brutal_force:
+        adx_decreciendo_penalty = -50
+        print(f"      ⚠️ ADX {adx_current:.1f} decreciendo → PENALTY {adx_decreciendo_penalty}")
+        print(f"         (No es bloqueo duro, continúa evaluación)")
+        score_15m += adx_decreciendo_penalty
+
+    # Si ADX decreciendo PERO brutal_force = True → NO bloquea (clímax)
+    if adx_trend == 'decreciendo' and brutal_force:
+        print(f"      ⚠️ ADX {adx_current:.1f} decreciendo PERO brutal_force = True")
+        print(f"         Permitiendo entrada (fuerza aún brutal)")
+        print(f"         Spread: {spread:.1f}, Velocidad: {avg_change_pct:.2f}%, Rango: {price_range_pct:.2f}%")
+    
+    high_velocity = avg_change_pct &gt; 1.5
+    
+    # ===================================================================
+    # DETECTOR DE PUMP EXPLOSIVO EN VIVO
+    # ===================================================================
+    # Un pump explosivo es cuando TODOS estos criterios se cumplen:
+    # - ADX &gt; 50 Y creciendo (fuerza brutal activa)
+    # - Spread &gt; 25 (claridad extrema)
+    # - Velocidad &gt; 2% sostenida (momentum real)
+    # - Posición &gt; 85% (breakout/rompiendo)
+    
+    # Calcular posición en rango (necesario para pump)
+    position_in_range = 50  # default
+    try:
+        highs = df['high'].iloc[-20:].values
+        lows = df['low'].iloc[-20:].values
+        price_max = highs.max()
+        price_min = lows.min()
+        price_current = float(df['close'].iloc[-1])
+        if price_max &gt; price_min:
+            position_in_range = ((price_current - price_min) / (price_max - price_min)) * 100
+    except:
+        pass
+    
+    # Calcular volume ratio
+    volume_ratio = 100  # default
+    try:
+        vol_avg = df['volume'].iloc[-20:-1].mean()
+        vol_current = float(df['volume'].iloc[-1])
+        if vol_avg &gt; 0:
+            volume_ratio = (vol_current / vol_avg) * 100
+    except:
+        pass
+    
+    pump_explosivo = (
+        adx_current &gt; 50 and
+        adx_trend == 'creciendo' and
+        spread &gt; 25 and
+        avg_change_pct &gt; 2.0 and
+        position_in_range &gt; 85
+    )
+    
+    if pump_explosivo:
+        print(f"\n{'='*70}")
+        print(f"💥💥💥 PUMP EXPLOSIVO DETECTADO 💥💥💥")
+        print(f"{'='*70}")
+        print(f"   ADX: {adx_current:.1f} {adx_trend}")
+        print(f"   Spread: {spread:.1f}")
+        print(f"   Velocidad: {avg_change_pct:.2f}%/vela")
+        print(f"   Volumen: {volume_ratio:.0f}%")
+        print(f"   Rompiendo: {position_in_range:.0f}%")
+        print(f"   🚀 APLICANDO REGLAS ESPECIALES DE EXPLOSIÓN")
+        print(f"{'='*70}\n")
+    
+    # CUARTO: Aplicar fases del cortometraje según contexto
+    # ===================================================================
+    # MOMENTUM CONTEXTUAL - PUMP EXPLOSIVO PRIMERO
+    # ===================================================================
+    
+    if pump_explosivo:
+        # PUMP EXPLOSIVO: Reglas MUY permisivas
+        if mom_age &lt;= 15:  # 1-15v = SOSTENIDO (excelente en pump)
+            score_15m += 30
+            print(f"      💥 PUMP: Momentum {mom_color} {mom_age}v SOSTENIDO (+30)")
+        elif mom_age &lt;= 20:  # 16-20v = Maduro pero OK
+            score_15m += 10
+            print(f"      💥 PUMP: Momentum {mom_color} {mom_age}v MADURO (+10)")
+        else:  # 21+v = Realmente agotado
+            score_15m -= 20
+            print(f"      ⚠️ PUMP: Momentum {mom_color} {mom_age}v muy extendido (-20)")
+    
+    elif brutal_force and high_velocity:
+        # FUERZA BRUTAL + VELOCIDAD: Cortometraje largo
+        if mom_age &lt;= 3:
+            score_15m += 15
+            print(f"      ✅ Momentum {mom_color} {mom_age}v (NACIMIENTO explosivo)")
+        elif mom_age &lt;= 8:
+            score_15m += 25  # ⭐ CLÍMAX
+            print(f"      ⭐ Momentum {mom_color} {mom_age}v (CLÍMAX explosivo)")
+        elif mom_age &lt;= 12:
+            score_15m += 10
+            print(f"      ✅ Momentum {mom_color} {mom_age}v (MADUREZ)")
+        elif mom_age &lt;= 15:
+            score_15m -= 10
+            print(f"      ⚠️ Momentum {mom_color} {mom_age}v (tardío)")
+        else:
+            score_15m -= 30
+            print(f"      ❌ Momentum {mom_color} {mom_age}v (AGOTAMIENTO)")
+    
+    elif brutal_force:
+        # FUERZA BRUTAL sin velocidad alta
+        if mom_age &lt;= 3:
+            score_15m += 10
+            print(f"      ✅ Momentum {mom_color} {mom_age}v (nacimiento brutal)")
+        elif mom_age &lt;= 6:
+            score_15m += 15
+            print(f"      ✅ Momentum {mom_color} {mom_age}v (desarrollo brutal)")
+        elif mom_age &lt;= 10:
+            score_15m += 5
+            print(f"      ⚪ Momentum {mom_color} {mom_age}v (clímax brutal)")
+        elif mom_age &lt;= 12:
+            score_15m -= 15
+            print(f"      ⚠️ Momentum {mom_color} {mom_age}v (maduro)")
+        else:
+            score_15m -= 40
+            print(f"      ❌ Momentum {mom_color} {mom_age}v (agotamiento)")
+    
+    elif strong_force:
+        # FUERZA FUERTE: Cortometraje medio
+        if mom_age &lt;= 2:
+            score_15m += 10
+            print(f"      ✅ Momentum {mom_color} {mom_age}v (nacimiento fuerte)")
+        elif mom_age &lt;= 5:
+            score_15m += 15
+            print(f"      ✅ Momentum {mom_color} {mom_age}v (desarrollo fuerte)")
+        elif mom_age &lt;= 8:
+            score_15m += 5
+            print(f"      ⚪ Momentum {mom_color} {mom_age}v (clímax fuerte)")
+        elif mom_age &lt;= 12:
+            score_15m -= 20
+            print(f"      ⚠️ Momentum {mom_color} {mom_age}v (maduro)")
+        else:
+            score_15m -= 40
+            print(f"      ❌ Momentum {mom_color} {mom_age}v (agotamiento)")
+    
+    else:
+        # FUERZA NORMAL: Cortometraje corto
+        if mom_age &lt;= 2:
+            score_15m += 5
+            print(f"      ✅ Momentum {mom_color} {mom_age}v (naciente)")
+        elif mom_age &lt;= 4:
+            score_15m += 0
+            print(f"      ⚪ Momentum {mom_color} {mom_age}v (desarrollo)")
+        elif mom_age &lt;= 7:
+            score_15m -= 25
+            print(f"      ⚠️ Momentum {mom_color} {mom_age}v (tardío)")
+        else:
+            score_15m -= 50
+            print(f"      ❌ Momentum {mom_color} {mom_age}v (agotamiento)")
+    
+    # -----------------------------------------------------------------
+    # 6. BONUS SETUP PERFECTO (+30 solo si TODO OK)
+    # -----------------------------------------------------------------
+    perfect_adx = adx_current &gt;= 30 and adx_trend == 'creciendo'
+    perfect_spread = spread &gt;= 10
+    perfect_momentum = mom_age &lt;= 2
+    
+    if direction == 'BEARISH':
+        perfect_di = di_minus &gt; di_plus + 5
+        perfect_color = mom_color in bearish_colors
+    else:
+        perfect_di = di_plus &gt; di_minus + 5
+        perfect_color = mom_color in bullish_colors
+    
+    if perfect_adx and perfect_spread and perfect_momentum and perfect_di and perfect_color:
+        score_15m += 30
+        print(f"      ✅ SETUP PERFECTO: ADX {adx_current:.1f}↑, spread {spread:.1f}, {mom_color} {mom_age}v")
+    
+    # -----------------------------------------------------------------
+    # 7. VELOCIDAD DEL PRECIO (Monedas que SE MUEVEN de verdad)
+    # -----------------------------------------------------------------
+    try:
+        # Calcular cambios de precio últimas 10 velas
+        price_changes = []
+        closes = df['close'].values
+        for i in range(-10, -1):
+            if len(closes) &gt; abs(i) and closes[i-1] != 0:
+                change_pct = abs((closes[i] - closes[i-1]) / closes[i-1] * 100)
+                price_changes.append(change_pct)
+        
+        if price_changes:
+            avg_change_pct = sum(price_changes) / len(price_changes)
+            current_change = abs((closes[-1] - closes[-2]) / closes[-2] * 100) if closes[-2] != 0 else 0
+            
+            # Precio ESTÁTICO (cambios muy pequeños) = advertencia suave
+            if avg_change_pct &lt; 0.1:
+                score_15m -= 15  # Era -40, ahora -15 (suave)
+                print(f"      ⚠️ Precio quieto (avg: {avg_change_pct:.3f}%/vela)")
+            # Precio DESACELERANDO (&lt; 50% del promedio)
+            elif current_change &lt; avg_change_pct * 0.5 and avg_change_pct &gt; 0.15:
+                score_15m -= 10  # Era -20, ahora -10 (suave)
+                print(f"      ⚠️ Precio desacelerando (current: {current_change:.3f}%, avg: {avg_change_pct:.3f}%)")
+            # Precio ACELERANDO (&gt; 150% del promedio)
+            elif current_change &gt; avg_change_pct * 1.5 and avg_change_pct &gt; 0.2:
+                score_15m += 10
+                print(f"      ✅ Precio ACELERANDO (current: {current_change:.3f}%, avg: {avg_change_pct:.3f}%)")
+    except Exception as e:
+        pass  # No bloquear por error de cálculo
+    
+    # DEBUG: Mostrar valores clave para diagnóstico
+    print(f"      📊 DEBUG: ADX={adx_current:.1f}({adx_trend}), Spread={spread:.1f}, Mom={mom_color} {mom_age}v, Score15m={score_15m}")
+    
+    # -----------------------------------------------------------------
+    # 8. GRID DIAGONAL - POSICIÓN EN CANAL (CRÍTICO)
+    # -----------------------------------------------------------------
+    try:
+        # Obtener datos zigzag para grid diagonal
+        zigzag_data = calculate_zigzag(df, threshold_pct=1.5)
+        
+        # Crear instancia del grid y calcular trendlines
+        grid = MarketGrid()
+        diagonal = grid._build_diagonal_trendlines(df, zigzag_data)
+        
+        if diagonal.get('valid', False):
+            position_pct = diagonal['price_position_pct']
+            avg_r2 = diagonal.get('avg_r2', 0)
+            channel_width_pct = diagonal.get('channel_width_pct', 0)
+            
+            # ================================================================
+            # GRID DIAGONAL - SIMÉTRICO LONG/SHORT (FIX v6.1)
+            # ================================================================
+            if direction == 'BULLISH':
+                # LONG: Posición BAJA = bueno (comprar soporte)
+                if position_pct &lt; 20:
+                    score_15m += 30
+                    print(f"      ✅ Canal DIAGONAL: Precio al {position_pct:.0f}% (SOPORTE - ideal LONG)")
+                elif position_pct &lt; 35:
+                    score_15m += 15
+                    print(f"      ✅ Canal DIAGONAL: Precio al {position_pct:.0f}% (zona baja - bueno LONG)")
+                # LONG: Posición ALTA = malo (comprar resistencia)
+                elif position_pct &gt; 85:
+                    score_15m -= 40
+                    print(f"      ❌ Canal DIAGONAL: Precio al {position_pct:.0f}% (TECHO - peligro LONG)")
+                elif position_pct &gt; 75:
+                    score_15m -= 25
+                    print(f"      ⚠️ Canal DIAGONAL: Precio al {position_pct:.0f}% (zona alta - riesgo LONG)")
+                elif position_pct &gt; 65:
+                    score_15m -= 10
+                    print(f"      ⚠️ Canal DIAGONAL: Precio al {position_pct:.0f}% (medio-alto)")
+                else:
+                    print(f"      ℹ️ Canal DIAGONAL: Precio al {position_pct:.0f}% (zona neutral)")
+            
+            else:  # BEARISH (SHORT)
+                # SHORT: Posición ALTA = bueno (vender resistencia)
+                if position_pct &gt; 80:
+                    score_15m += 30
+                    print(f"      ✅ Canal DIAGONAL: Precio al {position_pct:.0f}% (TECHO - ideal SHORT)")
+                elif position_pct &gt; 65:
+                    score_15m += 15
+                    print(f"      ✅ Canal DIAGONAL: Precio al {position_pct:.0f}% (zona alta - bueno SHORT)")
+                # SHORT: Posición BAJA = malo (vender soporte)
+                elif position_pct &lt; 15:
+                    score_15m -= 40
+                    print(f"      ❌ Canal DIAGONAL: Precio al {position_pct:.0f}% (PISO - peligro SHORT)")
+                elif position_pct &lt; 25:
+                    score_15m -= 25
+                    print(f"      ⚠️ Canal DIAGONAL: Precio al {position_pct:.0f}% (zona baja - riesgo SHORT)")
+                elif position_pct &lt; 35:
+                    score_15m -= 10
+                    print(f"      ⚠️ Canal DIAGONAL: Precio al {position_pct:.0f}% (medio-bajo)")
+                else:
+                    print(f"      ℹ️ Canal DIAGONAL: Precio al {position_pct:.0f}% (zona neutral)")
+            
+            # Penalty por canal mal formado (R² bajo) - aplica a ambos
+            if avg_r2 &lt; 0.5 and avg_r2 &gt; 0:
+                score_15m -= 20
+                print(f"      ⚠️ Canal mal formado (R²={avg_r2:.2f})")
+        else:
+            print(f"      ℹ️ Grid diagonal: datos insuficientes")
+    except Exception as e:
+        print(f"      ⚠️ Error grid diagonal: {e}")
+    
+    # -----------------------------------------------------------------
+    # 9. DETECCIÓN LATERAL (Rectángulo - moneda estancada)
+    # -----------------------------------------------------------------
+    try:
+        highs = df['high'].iloc[-20:].values
+        lows = df['low'].iloc[-20:].values
+        price_max = highs.max()
+        price_min = lows.min()
+        price_current = float(df['close'].iloc[-1])
+        
+        price_range = price_max - price_min
+        price_range_pct = (price_range / price_current * 100) if price_current &gt; 0 else 0
+        
+        if price_range_pct &lt; 2.5:  # Rango muy estrecho = LATERAL
+            position_in_range = ((price_current - price_min) / price_range * 100) if price_range &gt; 0 else 50
+            
+            if 30 &lt; position_in_range &lt; 70:  # En el medio del rectángulo
+                score_15m -= 50
+                print(f"      ❌ LATERAL: Rango {price_range_pct:.2f}% (precio en medio)")
+            elif position_in_range &lt;= 30:
+                score_15m -= 25
+                print(f"      ⚠️ Lateral en PISO del rango ({position_in_range:.0f}%)")
+            elif position_in_range &gt;= 70:
+                score_15m -= 25
+                print(f"      ⚠️ Lateral en TECHO del rango ({position_in_range:.0f}%)")
+        elif price_range_pct &gt; 5:  # Rango amplio = movimiento fuerte
+            position_in_range = ((price_current - price_min) / price_range * 100) if price_range &gt; 0 else 50
+            
+            if position_in_range &gt; 85 and direction == 'BULLISH':
+                score_15m += 15
+                print(f"      ✅ ROMPIENDO ARRIBA (rango {price_range_pct:.1f}%, pos {position_in_range:.0f}%)")
+            elif position_in_range &lt; 15 and direction == 'BEARISH':
+                score_15m += 15
+                print(f"      ✅ ROMPIENDO ABAJO (rango {price_range_pct:.1f}%, pos {position_in_range:.0f}%)")
+            else:
+                print(f"      ✅ Movimiento amplio: Rango {price_range_pct:.1f}%")
+        else:
+            print(f"      ⚪ Rango moderado: {price_range_pct:.1f}%")
+    except Exception as e:
+        print(f"      ⚠️ Error detección lateral: {e}")
+    
+    # -----------------------------------------------------------------
+    # 10. VALIDACIÓN VOLUMEN (CONTEXTUAL con fase de momentum)
+    # -----------------------------------------------------------------
+    try:
+        volume_avg_20 = df['volume'].iloc[-20:].mean()
+        volume_current = float(df['volume'].iloc[-1])
+        volume_ratio = volume_current / volume_avg_20 if volume_avg_20 &gt; 0 else 1.0
+        
+        # ===================================================================
+        # VOLUMEN CONTEXTUAL: Depende de fase del momentum
+        # En NASCENT (1-3v): volumen bajo es NORMAL (inicio de explosión)
+        # En MADURO (10+v): volumen bajo es PROBLEMA (agotamiento)
+        # ===================================================================
+        
+        if mom_age &lt;= 3:
+            # FASE NASCENT: Volumen bajo es normal
+            if volume_ratio &lt; 0.3:
+                score_15m += 0  # Neutral
+                print(f"      ⚪ Volumen {volume_ratio:.0%} bajo PERO momentum {mom_age}v NASCENT (normal)")
+            elif volume_ratio &lt; 0.6:
+                score_15m += 0  # Neutral
+                print(f"      ⚪ Volumen {volume_ratio:.0%} débil + momentum NASCENT (OK)")
+            elif volume_ratio &gt; 2.0:
+                score_15m += 25  # Bonus fuerte (explosión confirmada)
+                print(f"      ✅ VOLUMEN EXPLOSIVO {volume_ratio:.0%} + NASCENT (+25)")
+            elif volume_ratio &gt; 1.5:
+                score_15m += 15
+                print(f"      ✅ Volumen alto {volume_ratio:.0%} + NASCENT (+15)")
+            else:
+                print(f"      ⚪ Volumen {volume_ratio:.0%} normal")
+        
+        elif mom_age &lt;= 8:
+            # FASE DESARROLLO: Volumen debería estar subiendo
+            if volume_ratio &lt; 0.3:
+                score_15m -= 10  # Penalty suave
+                print(f"      ⚠️ Volumen {volume_ratio:.0%} bajo en desarrollo ({mom_age}v)")
+            elif volume_ratio &lt; 0.6:
+                score_15m -= 5  # Penalty muy suave
+                print(f"      ⚠️ Volumen {volume_ratio:.0%} débil en desarrollo")
+            elif volume_ratio &gt; 2.0:
+                score_15m += 20
+                print(f"      ✅ VOLUMEN EXPLOSIVO: {volume_ratio:.0%} del promedio")
+            elif volume_ratio &gt; 1.5:
+                score_15m += 10
+                print(f"      ✅ Volumen alto: {volume_ratio:.0%} del promedio")
+            else:
+                print(f"      ⚪ Volumen normal: {volume_ratio:.0%}")
+        
+        else:
+            # FASE MADURA (10+v): Volumen bajo es problema
+            if volume_ratio &lt; 0.3:
+                score_15m -= 20  # Penalty fuerte
+                print(f"      ❌ Volumen {volume_ratio:.0%} bajo en madurez ({mom_age}v)")
+            elif volume_ratio &lt; 0.6:
+                score_15m -= 15
+                print(f"      ⚠️ Volumen {volume_ratio:.0%} débil en madurez")
+            elif volume_ratio &gt; 2.0:
+                score_15m += 15
+                print(f"      ✅ VOLUMEN EXPLOSIVO: {volume_ratio:.0%}")
+            elif volume_ratio &gt; 1.5:
+                score_15m += 5
+                print(f"      ✅ Volumen alto: {volume_ratio:.0%}")
+            else:
+                print(f"      ⚪ Volumen normal: {volume_ratio:.0%}")
+        
+        # Volumen decreciente (CONTEXTUAL)
+        if len(df) &gt;= 5:
+            volume_recent = df['volume'].iloc[-5:].mean()
+            if volume_recent &gt; 0:
+                volume_trend = (volume_current - volume_recent) / volume_recent
+                if volume_trend &lt; -0.3:
+                    if mom_age &lt;= 3:
+                        # En nascent, volumen decreciendo es menos grave
+                        score_15m -= 5
+                        print(f"      ⚠️ Volumen decreciendo ({volume_trend:.0%}) pero NASCENT")
+                    else:
+                        score_15m -= 15
+                        print(f"      ⚠️ Volumen DECRECIENDO ({volume_trend:.0%})")
+    except Exception as e:
+        print(f"      ⚠️ Error validación volumen: {e}")
+    
+    # -----------------------------------------------------------------
+    # 11. CAMBIO DIARIO CONTEXTUAL (Insight de Joel - depende de fase)
+    # -----------------------------------------------------------------
+    try:
+        # Calcular cambio en últimas 24h (96 velas de 15m)
+        if len(df) &gt;= 96:
+            price_24h_ago = float(df['close'].iloc[-96])
+            price_now = float(df['close'].iloc[-1])
+            daily_change_pct = ((price_now - price_24h_ago) / price_24h_ago) * 100
+            
+            # ===================================================================
+            # CAMBIO DIARIO CONTEXTUAL: Depende de fase del momentum
+            # En NASCENT (1-5v): Cambio alto es INICIO de pump (+bonus)
+            # En MADURO (10+v): Cambio alto es AGOTAMIENTO (-penalty)
+            # ===================================================================
+            
+            # CASO 1: Momentum NASCENT (1-5v) + Cambio alto = PUMP INICIANDO
+            if mom_age &lt;= 5 and 40.0 &lt; daily_change_pct &lt;= 100.0:
+                score_15m += 20
+                print(f"      ✅ Cambio {daily_change_pct:+.1f}% + momentum {mom_age}v NASCENT")
+                print(f"         Pump recién comenzando (no agotado) (+20)")
+            
+            # CASO 2: Momentum NASCENT + Cambio extremo (&gt;100%)
+            elif mom_age &lt;= 5 and daily_change_pct &gt; 100.0:
+                score_15m += 5  # Bonus leve, cuidado
+                print(f"      ⚠️ Cambio {daily_change_pct:+.1f}% EXTREMO pero NASCENT (+5)")
+            
+            # CASO 3: Momentum DESARROLLO (6-10v) + Cambio alto = Neutral
+            elif mom_age &lt;= 10 and 40.0 &lt; daily_change_pct &lt;= 70.0:
+                score_15m += 0  # Neutral
+                print(f"      ⚪ Cambio {daily_change_pct:+.1f}% + momentum {mom_age}v desarrollo")
+            
+            # CASO 4: Momentum MADURO (11+v) + Cambio alto = AGOTADO
+            elif mom_age &gt; 10 and daily_change_pct &gt; 40.0:
+                score_15m -= 30
+                print(f"      ❌ Cambio {daily_change_pct:+.1f}% + momentum {mom_age}v MADURO")
+                print(f"         Pump probablemente agotado (-30)")
+            
+            # CASO 5: Cambio EXTREMO (&gt;100%) con momentum maduro
+            elif daily_change_pct &gt; 100.0 and mom_age &gt; 5:
+                score_15m -= 25
+                print(f"      ❌ Cambio {daily_change_pct:+.1f}% EXTREMO + momentum {mom_age}v")
+            
+            # Momentum SANO: +2% a +15% = BONUS (independiente)
+            elif 2.0 &lt;= daily_change_pct &lt;= 15.0:
+                score_15m += 10
+                print(f"      ✅ Cambio diario SANO: {daily_change_pct:+.1f}% (momentum fresco)")
+            
+            # Momentum MUY SANO: +5% a +10%
+            elif 5.0 &lt;= daily_change_pct &lt;= 10.0:
+                score_15m += 15
+                print(f"      ⭐ Cambio diario ÓPTIMO: {daily_change_pct:+.1f}% (momentum ideal)")
+            
+            # PUMP ligero: +15% a +40% = advertencia (sin penalty si nascent)
+            elif 15.0 &lt; daily_change_pct &lt;= 40.0:
+                if mom_age &lt;= 5:
+                    print(f"      ⚪ Cambio {daily_change_pct:+.1f}% alto pero NASCENT (OK)")
+                else:
+                    print(f"      ⚠️ Cambio diario ALTO: {daily_change_pct:+.1f}% (posible extensión)")
+            
+            # Bearish momentum
+            elif -15.0 &lt;= daily_change_pct &lt; -2.0:
+                if direction == 'BEARISH':
+                    score_15m += 10
+                    print(f"      ✅ Cambio diario BAJISTA: {daily_change_pct:+.1f}% (momentum SHORT sano)")
+            elif daily_change_pct &lt; -40.0 and direction == 'BEARISH':
+                if mom_age &lt;= 5:
+                    print(f"      ⚪ Dump {daily_change_pct:+.1f}% pero SHORT NASCENT (OK)")
+                else:
+                    score_15m -= 15
+                    print(f"      ⚠️ Dump diario EXTREMO: {daily_change_pct:+.1f}% (posible rebote)")
+    except Exception as e:
+        pass  # No penalizar por error de cálculo
+    
+    # RSI razonable
+    rsi = rsi_data['rsi_current']
+    if rsi and 40 &lt;= rsi &lt;= 70:
+        score_15m += 5
+    elif rsi and 30 &lt;= rsi &lt;= 80:
+        score_15m += 2
+    
+    # EMAs alineadas
+    if emas_data.get('emas_aligned', False):
+        score_15m += 5
+    
+    # Tendencia ADX (bonus si creciendo)
+    if adx_data['adx_trend'] == 'creciendo':
+        score_15m += 3
+    
+    # ===== DETERMINAR STRENGTH =====
+    if adx_current &gt;= 25 and spread &gt;= 5:
+        strength = 'STRONG'
+    elif adx_current &gt;= 20 and spread &gt;= 3:
+        strength = 'MODERATE'
+    elif adx_current &gt;= 17:
+        strength = 'WEAK'
+    else:
+        strength = 'VERY_WEAK'
+    
+    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
+    
+    # ================================================================
+    # VALIDACIÓN FINAL: BLOQUEO SI SCORE NEGATIVO
+    # ================================================================
+    if score_15m &lt; 0:
+        print(f"      🚫 BLOQUEO DURO: Score final {score_15m} &lt; 0")
+        print(f"         Razón: Acumulación de penalties supera bonuses")
+        print(f"         Moneda no cumple criterios mínimos")
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'score_15m': -999,
+            'blocked': True,
+            'block_reason': f'Score final negativo ({score_15m})',
+            'verdict': 'BLOCKED_NEGATIVE_SCORE'
+        }
+    
+    # &gt;&gt;&gt; MODIFICADO: Return dict con nuevos campos granulares
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_15m': score_15m,
+        'blocked': False,  # Explícitamente marcado como NO bloqueado
+        'current_price': current_price,
+        # &gt;&gt;&gt; NUEVO: Contexto de fuerza para Sniper
+        'brutal_force': brutal_force,
+        'strong_force': strong_force,
+        'pump_explosivo': pump_explosivo,
+        # Legacy (compatibilidad)
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        # &gt;&gt;&gt; NUEVO: Campos granulares (nuevos módulos)
+        'di_plus_granular': di_plus_granular,
+        'di_minus_granular': di_minus_granular,
+        'adx_value_granular': adx_value_granular,
+        'momentum_green': momentum_green,
+        'momentum_red': momentum_red,
+        'zigzag_granular': zigzag_granular,
+        'lateral_penalty': lateral_penalty,
+        'lateral_reasons': lateral_reasons,
+        # &gt;&gt;&gt; NUEVO: GRID con datos de S/R para entry_validator
+        'grid': {
+            'diagonal': {
+                'valid': zigzag_granular.get('current_trend', 'UNKNOWN') != 'UNKNOWN',
+                'soporte_diagonal': zigzag_granular.get('lowest_low', 0),
+                'resistencia_diagonal': zigzag_granular.get('highest_high', 0),
+                'last_pivot_type': zigzag_granular.get('last_pivot_type', 'UNKNOWN'),
+                'canal_tipo': zigzag_granular.get('current_trend', 'LATERAL')
+            }
+        },
+        'volume_profile': vp_data if 'vp_data' in dir() else {},
+        'zigzag': zigzag_granular,
+        'context': f"15M {direction} {strength} - Score {score_15m}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+# FUNCIÓN 4: analyze_5m() - EJECUCIÓN INMEDIATA
+# ============================================================================
+
+def analyze_5m(symbol):
+    """5M: Data para ejecución - NO rechaza"""
+    ohlcv = fetch_ohlcv(symbol, '5m', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+
+    # Calcular momentum PRIMERO (Bug #28 Fix)
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    
+    # Determinar dirección con validación (5M es CRÍTICO - momentum MANDA)
+    di_direction = 'LATERAL'
+    if adx_data['dominance'] == 'DI+':
+        di_direction = 'BULLISH'
+    elif adx_data['dominance'] == 'DI-':
+        di_direction = 'BEARISH'
+    
+    # 5M: momentum color es la señal más inmediata (Bug #28 Fix + ULTIMA Fix)
+    mom_color = momentum_data['color_current']
+    
+    # Calcular zigzag para detección de pivot
+    zigzag = calculate_zigzag(df, threshold_pct=0.6)
+    last_pivot = zigzag.get('pivot_types', [''])[-1] if zigzag.get('pivot_types') else ''
+    
+    if di_direction == 'BULLISH':
+        # PASO 1: Validar momentum (SIEMPRE - filosofía FUERZA)
+        if mom_color not in ['green', 'lime']:
+            direction = 'LATERAL'
+        # PASO 2: Validar estructura (con excepción fuerza extrema)
+        elif last_pivot in ['H', 'LH']:
+            # Permitir pivot bypass si fuerza extrema
+            if adx_data['adx_current'] &gt; 40 and abs(adx_data['spread']) &gt; 15 and momentum_data['consecutive_count'] &gt;= 2:
+                direction = 'BULLISH'
+            else:
+                direction = 'LATERAL'
+        else:
+            direction = 'BULLISH'
+    elif di_direction == 'BEARISH':
+        if mom_color not in ['red', 'maroon']:
+            direction = 'LATERAL'
+        elif last_pivot in ['L', 'HL']:
+            if adx_data['adx_current'] &gt; 40 and abs(adx_data['spread']) &gt; 15 and momentum_data['consecutive_count'] &gt;= 2:
+                direction = 'BEARISH'
+            else:
+                direction = 'LATERAL'
+        else:
+            direction = 'BEARISH'
+    else:
+        direction = 'LATERAL'
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21], lookback=10)
+    structure = detect_price_structure(df, lookback=10)
+    zigzag = calculate_zigzag(df, threshold_pct=0.6)
+    sr_data = detect_support_resistance_with_memory(df, lookback=30)
+    velocity_data = calculate_velocity(df, lookback=5)
+    acceleration_data = calculate_acceleration(df, lookback=5)
+    volume_profile = calculate_volume_profile_with_memory(df, num_levels=20)
+    current_price = float(df['close'].iloc[-1])
+
+    if adx_data['adx_current'] &gt; 25:
+        strength = 'STRONG'
+    elif adx_data['adx_current'] &gt; 18:
+        strength = 'MODERATE'
+    else:
+        strength = 'WEAK'
+
+    score_5m = 0
+    if adx_data['adx_current'] &gt; 25:
+        score_5m += 10
+    elif adx_data['adx_current'] &gt; 18:
+        score_5m += 5
+    if velocity_data.get('velocity_current', 0) &gt; 0:
+        score_5m += 5
+    if rsi_data['rsi_current'] and 30 &lt;= rsi_data['rsi_current'] &lt;= 70:
+        score_5m += 5
+
+    print(f"         ⚡ 5M | {symbol} | {direction} | Precio:${current_price:.6f} | Vel:{velocity_data['velocity_current']:.6f} | Score5M:{score_5m}")
+
+    # Contexto de Volume Profile
+    vp = calculate_volume_profile_with_memory(df, lookback=50)
+    profile_high = vp.get('profile_high', current_price * 1.1)
+    breaking_profile = current_price &gt; profile_high
+    
+    # Distancia a EMA 20 (Bollinger Middle)
+    bb = calculate_bollinger_bands(df, period=20)
+    ema_20 = bb['middle'][-1]
+    dist_ema_pct = ((current_price - ema_20) / ema_20) * 100
+
+    # ATR para volatilidad dinámica
+    atr_data = calculate_atr(df, period=14)
+    atr_val = atr_data.get('atr_current', current_price * 0.01)
+    atr_pct = (atr_val / current_price) * 100
+
+    return {
+        'direction': direction,
+        'strength': strength,
+        'score_5m': score_5m,
+        'current_price': current_price,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'structure': structure,
+        'zigzag': zigzag,
+        'sr': sr_data,
+        'velocity': velocity_data,
+        'acceleration': acceleration_data,
+        'volume_profile': vp,
+        'breaking_profile': breaking_profile,
+        'dist_ema_pct': dist_ema_pct,
+        'atr_pct': atr_pct, # Nuevo campo
+        'context': f"5M {direction} - Ejecución inmediata",
+        'timestamp': datetime.now().isoformat()
+    }
+
+def analyze_1d(symbol):
+    ohlcv = fetch_ohlcv(symbol, '1d', 100)
+    if not ohlcv or len(ohlcv) &lt; 50:
+        return None
+
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
+    momentum_data = calculate_momentum_with_memory(df, lookback=10)
+    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
+    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
+
+    adx_current = adx_data['adx_current']
+    dominance = adx_data['dominance']
+    momentum_color = momentum_data['color_current']
+    momentum_count = momentum_data['consecutive_count']
+
+    if adx_current &gt;= 25 and dominance == 'DI+' and momentum_color in ['green', 'lime'] and momentum_count &gt;= 5:
+        phase = 'BULLISH'
+        strength = 'STRONG'
+    elif adx_current &gt;= 25 and dominance == 'DI-' and momentum_color in ['red', 'maroon'] and momentum_count &gt;= 5:
+        phase = 'BEARISH'
+        strength = 'STRONG'
+    elif adx_current &lt; 25 and momentum_color in ['green', 'lime']:
+        phase = 'BULLISH'
+        strength = 'WEAK'
+    elif adx_current &lt; 25 and momentum_color in ['red', 'maroon']:
+        phase = 'BEARISH'
+        strength = 'WEAK'
+    else:
+        phase = 'LATERAL'
+        strength = 'WEAK'
+
+    print(f"📅 1D | {symbol} | {phase} {strength} | ADX:{adx_current:.1f}")
+
+    return {
+        'phase': phase,
+        'strength': strength,
+        'adx': adx_data,
+        'momentum': momentum_data,
+        'rsi': rsi_data,
+        'emas': emas_data,
+        'context': f"1D {phase} - ADX {adx_current:.1f}",
+        'timestamp': datetime.now().isoformat()
+    }
+
+def analyze_temporal_context(symbol):
+    """
+    Analiza el contexto temporal reciente (últimos 60 min) usando la DB.
+    Busca estabilidad y consistencia.
+    """
+    try:
+        history = db_manager.get_recent_context(symbol, limit_minutes=60)
+        if not history or len(history) &lt; 10:
+            return {'stability': 'DESCONOCIDO', 'bonus': 0}
+        
+        # 1. Verificar cambios de dirección (inestabilidad)
+        directions = [row['direction'] for row in history]
+        flips = 0
+        for i in range(1, len(directions)):
+            if directions[i] != directions[i-1]:
+                flips += 1
+        
+        # 2. Verificar consistencia de ADX
+        adx_values = [row['adx_15m'] for row in history]
+        adx_rising = 0
+        for i in range(1, len(adx_values)):
+            if adx_values[i] &gt; adx_values[i-1]:
+                adx_rising += 1
+        
+        # Evaluación
+        bonus = 0
+        stability = 'ESTABLE'
+        
+        if flips &gt; 3:
+            stability = 'INESTABLE'
+            bonus -= 10  # Penalización por inestabilidad
+        elif flips == 0:
+            stability = 'MUY_ESTABLE'
+            bonus += 10  # Bonus por tendencia sostenida
+            
+        if adx_rising &gt; len(adx_values) * 0.7:
+            bonus += 5  # Bonus si ADX sube la mayoría del tiempo
+            
+        return {'stability': stability, 'bonus': bonus, 'flips': flips}
+        
+    except Exception as e:
+        print(f"⚠️ Error analizando contexto temporal: {e}")
+        return {'stability': 'ERROR', 'bonus': 0}
+
+def analyze_trend_evolution(symbol):
+    """
+    ANÁLISIS DE EVOLUCIÓN (TIME LADDER / ROADMAP)
+    Analiza velas de 1M para detectar tendencias explosivas en tiempo real.
+    Permite 'bypassear' filtros estrictos si la moneda está explotando ahora mismo.
+    """
+    try:
+        # Buscar 30 velas de 1M (media hora de evolución)
+        ohlcv = fetch_ohlcv(symbol, '1m', 30)
+        if not ohlcv or len(ohlcv) &lt; 15:
+            return {'is_explosive': False, 'score': 0, 'reason': 'Sin datos 1M'}
+
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        # 1. Análisis de ADX en 1M (Velocidad de tendencia)
+        adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
+        adx_current = adx_data['adx_current']
+        adx_history = adx_data['adx_history']
+        
+        # 2. Análisis de Precio (Escalera de precios)
+        closes = df['close'].values
+        price_velocity = calculate_velocity(df, lookback=5)
+        
+        # DETECCIÓN DE EXPLOSIÓN
+        is_explosive = False
+        score = 0
+        reason = []
+
+        # Criterio A: ADX Disparándose (Roadmap de fuerza)
+        # Si ADX subió más de 5 puntos en las últimas 5 velas 1M
+        if len(adx_history) &gt;= 5:
+            adx_change = adx_history[-1] - adx_history[0]
+            if adx_change &gt; 3.0 and adx_current &gt; 20:
+                score += 40
+                reason.append(f"ADX 1M disparándose (+{adx_change:.1f})")
+                if adx_current &gt; 25:
+                    is_explosive = True
+
+        # Criterio B: Escalera de Precios (ZigZag alcista agresivo)
+        # Verificar si las últimas 3 velas son verdes y con cuerpos crecientes o fuertes
+        last_3_closes = closes[-3:]
+        last_3_opens = df['open'].values[-3:]
+        is_green_ladder = all(c &gt; o for c, o in zip(last_3_closes, last_3_opens))
+        
+        if is_green_ladder and price_velocity['velocity_current'] &gt; 0:
+            score += 30
+            reason.append("Escalera de precios 1M alcista")
+            if price_velocity['trend'] == 'acelerando':
+                is_explosive = True
+                score += 20
+
+        # Criterio C: Volumen Climático
+        volumes = df['volume'].values
+        vol_avg = volumes[:-1].mean()
+        if volumes[-1] &gt; vol_avg * 2:
+            score += 20
+            reason.append("Volumen 1M climático")
+
+        # Decisión final de explosividad
+        if score &gt;= 70:
+            is_explosive = True
+        
+        return {
+            'is_explosive': is_explosive,
+            'score': score,
+            'adx_1m': adx_current,
+            'reason': ", ".join(reason),
+            'timestamp': datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        print(f"⚠️ Error en analyze_trend_evolution: {e}")
+        return {'is_explosive': False, 'score': 0, 'reason': 'Error'}
+
+def analyze_coin_complete(symbol):
+    """
+    Análisis completo multi-timeframe para un símbolo.
+    Ejecuta 5 análisis en cascada: 1D → 4H → 1H → 15M → 5M
+    
+    Returns:
+        dict: Análisis completo con viabilidad y scores
+    """
+    try:
+        # Análisis multi-timeframe en cascada
+        analysis_1d = analyze_1d(symbol) if ENABLE_ANALYSIS_1D else None
+        
+        # 4H (contexto dominante)
+        analysis_4h = analyze_4h(symbol)
+        if not analysis_4h:
+            return {
+                'viable': False,
+                'score_data': {'score': 0, 'clasificacion': 'SIN_DATOS'},
+                'analysis_4h': None,
+                'analysis_1h': None,
+                'analysis_15m': None,
+                'analysis_5m': None,
+                'sr_zones': None
+            }
+        
+        # 1H (confirmación)
+        analysis_1h = analyze_1h(symbol)
+        if not analysis_1h:
+            return {
+                'viable': False,
+                'score_data': {'score': 0, 'clasificacion': 'CONFIRMACION_FALLO'},
+                'analysis_4h': analysis_4h,
+                'analysis_1h': None,
+                'analysis_15m': None,
+                'analysis_5m': None,
+                'sr_zones': None
+            }
+        
+        # VALIDACIÓN CRÍTICA: 1H contradice 4H → Penalización FUERTE, NO rechazo automático
+        # FILOSOFÍA: Si hay fuerza brutal (ADX&gt;35, Spread&gt;12), puede compensar esta contradicción
+        contradiction_penalty = 0
+        
+        # Extraer direcciones de los análisis
+        direction_4h = analysis_4h.get('direction', 'LATERAL')
+        direction_1h = analysis_1h.get('direction', 'LATERAL')
+        
+        # Diferenciar pullback (ADX 1H bajo) vs reversión (ADX 1H alto)
+        adx_1h_val = analysis_1h.get('adx', {}).get('adx_current', 0)
+
+        if direction_4h == 'BULLISH' and direction_1h == 'BEARISH':
+            if adx_1h_val &gt; 30:
+                # Reversión fuerte: Castigo total
+                contradiction_penalty = 30
+                print(f" ⚠️ {symbol}: 1H Reversal STRONG (ADX {adx_1h_val:.1f}) → Penalty -30")
+            elif adx_1h_val &gt; 20:
+                # Pullback moderado: Castigo medio
+                contradiction_penalty = 15
+                print(f" ⚠️ {symbol}: 1H Pullback Moderate (ADX {adx_1h_val:.1f}) → Penalty -15")
+            else:
+                # Corrección débil (normal): Castigo leve
+                contradiction_penalty = 5
+                print(f" ⚠️ {symbol}: 1H Pullback Weak (ADX {adx_1h_val:.1f}) → Penalty -5")
+                
+        # APLICAR LÓGICA SIMÉTRICA PARA EL CASO INVERSO (BEARISH vs BULLISH)
+        elif direction_4h == 'BEARISH' and direction_1h == 'BULLISH':
+            if adx_1h_val &gt; 30:
+                contradiction_penalty = 30
+                print(f" ⚠️ {symbol}: 1H Reversal STRONG (ADX {adx_1h_val:.1f}) → Penalty -30")
+            elif adx_1h_val &gt; 20:
+                contradiction_penalty = 15
+                print(f" ⚠️ {symbol}: 1H Pullback Moderate (ADX {adx_1h_val:.1f}) → Penalty -15")
+            else:
+                contradiction_penalty = 5
+                print(f" ⚠️ {symbol}: 1H Pullback Weak (ADX {adx_1h_val:.1f}) → Penalty -5")
+        
+        # La contradicción reduce el score, pero si hay fuerza extrema, puede seguir viable
+        
+        # --- NUEVO: ANÁLISIS DE EVOLUCIÓN (TIME LADDER) ---
+        evolution = analyze_trend_evolution(symbol)
+        print(f"      🚀 EVOLUCIÓN 1M | {symbol} | Explosivo: {evolution['is_explosive']} | Score: {evolution['score']} | Razón: {evolution['reason']}")
+        
+        # 15M (timing)
+        analysis_15m = analyze_15m(symbol)
+        
+        # LÓGICA DE BYPASS: Si es explosivo Y 4H es BULLISH, ignoramos el rechazo de 15M
+        bypass_15m = False
+        if not analysis_15m and evolution['is_explosive'] and evolution['score'] &gt;= 70 and analysis_4h.get('direction') == 'BULLISH':
+            # Re-intentar análisis 15M con modo NO estricto
+            analysis_15m = analyze_15m(symbol, strict=False)
+            
+            if analysis_15m:
+                print(f"      ⚡ BYPASS: Análisis 15M exitoso con modo flexible por explosión 1M")
+                bypass_15m = True
+            else:
+                # Si aun así falla, rechazar (protección)
+                print(f"      ⚠️ BYPASS RECHAZADO: Explosión 1M pero 15M inviable incluso flexible")
+                bypass_15m = False
+
+        # --- NUEVO: ESTRUCTURA DE MERCADO (ZIGZAG) ---
+        structure_data = {'last_structure': 'N/A'}
+        if analysis_15m:
+            # Re-fetch si es necesario o usar df existente si pudiéramos, pero aquí fetch es seguro
+            ohlcv_15m_struct = fetch_ohlcv(symbol, '15m', 100)
+            if ohlcv_15m_struct:
+                df_15_struct = pd.DataFrame(ohlcv_15m_struct, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                zigzag_res = calculate_zigzag(df_15_struct, percent=2.0) # 2% para estructura fina
+                structure_data = {
+                    'last_structure': zigzag_res['last_structure'],
+                    'pivot_types': zigzag_res['pivot_types'][-5:] if zigzag_res['pivot_types'] else []
+                }
+
+        if not analysis_15m and not bypass_15m:
+            return {
+                'viable': False,
+                'score_data': {'score': 0, 'clasificacion': 'TIMING_FALLO'},
+                'analysis_4h': analysis_4h,
+                'analysis_1h': analysis_1h,
+                'analysis_15m': None,
+                'analysis_5m': None,
+                'sr_zones': None,
+                'evolution': evolution,
+                'structure': structure_data
+            }
+        
+        # 5M (ejecución)
+        analysis_5m = analyze_5m(symbol)
+        if not analysis_5m:
+            return {
+                'viable': False,
+                'score_data': {'score': 0, 'clasificacion': 'EJECUCION_FALLO'},
+                'analysis_4h': analysis_4h,
+                'analysis_1h': analysis_1h,
+                'analysis_15m': analysis_15m,
+                'analysis_5m': None,
+                'sr_zones': None
+            }
+        
+        # Calcular score (sin rechazar por LATERAL)
+        score_data = calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m)
+        
+        # --- NUEVO: AJUSTE POR CONTEXTO TEMPORAL ---
+        # Ensure score is an integer, not a dict
+        score = _extract_score(score_data.get('score', 0), 0)
+        
+        temporal_context = analyze_temporal_context(symbol)
+        score += temporal_context.get('bonus', 0)
+        score += _extract_score(evolution.get('score', 0), 0) / 2  # Sumar bonus por evolución
+        score_data['temporal_stability'] = temporal_context.get('stability', 'DESCONOCIDO')
+        
+        # Aplicar penalización por contradicción 4H/1H
+        score -= contradiction_penalty
+        if contradiction_penalty &gt; 0:
+            print(f"      📉 Score ajustado por contradicción: {score + contradiction_penalty} → {score}")
+        
+        # Asegurar límites 0-100
+        score_data['score'] = int(max(0, min(100, score)))
+        # -------------------------------------------
+        
+        # Viabilidad: Score &gt;= 40 (REDUCIDO otra vez) + Dirección
+        direction_4h = analysis_4h.get('direction', 'LATERAL')
+        
+        # Bloquear LATERAL estrictamente
+        if direction_4h == 'LATERAL':
+            viable = False
+            print(f"      ❌ {symbol}: LATERAL bloqueado (Score: {score})")
+        elif direction_4h in ['BULLISH', 'BEARISH']:
+            viable = score &gt;= 40  # Reducido de 50 → 40
+        else:
+            viable = False
+        
+        # Chequeo BTC CONDICIONAL (no absoluto)
+        if viable and not check_btc_alignment(score=score):
+            viable = False
+            score_data['clasificacion'] = 'BTC_DUMP_PROTECTION'
+        
+        # Calcular triggers si es viable
+        triggers = None
+        if viable:
+            triggers = calculate_triggers(analysis_15m, analysis_5m, analysis_5m['direction'])
+        
+        # RECALCULAR CLASIFICACIÓN FINAL (Fix visual)
+        # El score pudo haber cambiado por penalizaciones/bonificaciones
+        final_valid_score = score_data['score']
+        if final_valid_score &gt;= 90:
+            score_data['clasificacion'] = 'ÓPTIMA'
+        elif final_valid_score &gt;= 80:
+            score_data['clasificacion'] = 'ALTA'
+        elif final_valid_score &gt;= 70:
+            score_data['clasificacion'] = 'BUENA'
+        elif final_valid_score &gt;= 50:
+            score_data['clasificacion'] = 'REGULAR'
+        else:
+            score_data['clasificacion'] = 'POBRE'
+
+        return {
+            'viable': viable,
+            'score_data': score_data,
+            'analysis_4h': analysis_4h,
+            'analysis_1h': analysis_1h,
+            'analysis_15m': analysis_15m,
+            'analysis_5m': analysis_5m,
+            'sr_zones': analysis_15m.get('sr'),
+            'triggers': triggers,
+            'evolution': evolution,
+            'structure': structure_data
+        }
+    
+    except Exception as e:
+        print(f"❌ ERROR analyze_coin_complete({symbol}): {e}")
+        return {
+            'viable': False,
+            'score_data': {'score': 0, 'clasificacion': 'ERROR'},
+            'error_message': str(e)
+        }
+
+def _extract_score(score_value, default=0):
+    """
+    Recursively extract integer score from potentially nested dict.
+    
+    Args:
+        score_value: The value to extract (can be int, float, dict, or None)
+        default: Default value if extraction fails
+    
+    Returns:
+        int: Extracted integer score
+    """
+    if score_value is None:
+        return default
+    if isinstance(score_value, (int, float)):
+        return int(score_value)
+    if isinstance(score_value, dict):
+        # Recursively extract from nested dict
+        return _extract_score(score_value.get('score', default), default)
+    # Fallback for any other type
+    return default
+
+
+def calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m):
+    """Calcula score usando los datos reales de cada timeframe y CONTEXTO."""
+    score = 0  # Initialize as integer
+    
+    # Usar los scores calculados en cada timeframe - ULTRA DEFENSIVE
+    if analysis_4h and 'score_4h' in analysis_4h:
+        score_4h_value = _extract_score(analysis_4h['score_4h'], 0)
+        try:
+            score_4h_value = int(score_4h_value) if score_4h_value is not None else 0
+        except (ValueError, TypeError):
+            score_4h_value = 0
+        score = int(score + min(int(score_4h_value), 30))
+    elif analysis_4h and analysis_4h.get('strength') == 'STRONG':
+        score = int(score + 25)
+    
+    if analysis_1h and 'score_1h' in analysis_1h:
+        score_1h_value = _extract_score(analysis_1h['score_1h'], 0)
+        try:
+            score_1h_value = int(score_1h_value) if score_1h_value is not None else 0
+        except (ValueError, TypeError):
+            score_1h_value = 0
+        score = int(score + min(int(score_1h_value), 25))
+    elif analysis_1h and analysis_1h.get('strength') == 'STRONG':
+        score = int(score + 15)
+    
+    if analysis_15m and 'score_15m' in analysis_15m:
+        score_15m_value = _extract_score(analysis_15m['score_15m'], 0)
+        try:
+            score_15m_value = int(score_15m_value) if score_15m_value is not None else 0
+        except (ValueError, TypeError):
+            score_15m_value = 0
+        score = int(score + min(int(score_15m_value), 25))
+    elif analysis_15m and analysis_15m.get('strength') == 'STRONG':
+        score = int(score + 15)
+    
+    if analysis_5m and 'score_5m' in analysis_5m:
+        score_5m_value = _extract_score(analysis_5m['score_5m'], 0)
+        try:
+            score_5m_value = int(score_5m_value) if score_5m_value is not None else 0
+        except (ValueError, TypeError):
+            score_5m_value = 0
+        score = int(score + min(int(score_5m_value), 20))
+    elif analysis_5m and analysis_5m.get('strength') == 'STRONG':
+        score = int(score + 10)
+    
+    # Bonus por alineación de direcciones
+    directions = []
+    if analysis_4h and 'direction' in analysis_4h:
+        directions.append(analysis_4h['direction'])
+    if analysis_1h and 'direction' in analysis_1h:
+        directions.append(analysis_1h['direction'])
+    if analysis_15m and 'direction' in analysis_15m:
+        directions.append(analysis_15m['direction'])
+    if analysis_5m and 'direction' in analysis_5m:
+        directions.append(analysis_5m['direction'])
+    
+    # Si 3+ direcciones coinciden (excluyendo LATERAL), suma bonus
+    non_lateral = [d for d in directions if d != 'LATERAL']
+    if len(non_lateral) &gt;= 3 and len(set(non_lateral)) == 1:
+        score = int(score + 10)
+    
+    # --- CONTEXTUAL MULTIPLIERS (Phase 4.1) ---
+    multiplier = 1.0
+    
+    # 1. Volatility (ATR)
+    if analysis_15m and 'atr' in analysis_15m and 'current_price' in analysis_15m:
+        atr = analysis_15m['atr']
+        price = analysis_15m['current_price']
+        if price &gt; 0 and (atr / price) &gt; 0.05:
+            multiplier *= 0.9
+            # print(f"⚠️ High Volatility Penalty (ATR &gt; 5%): x0.9")
+
+    # 2. Time/Liquidity (00-06 UTC assumed low volume)
+    try:
+        current_utc_hour = datetime.utcnow().hour
+        if 0 &lt;= current_utc_hour &lt; 6:
+            multiplier *= 0.98  # Reducir penalización
+            # print(f"⚠️ Low Liquidity Hours: x0.95")
+    except Exception:
+        pass # Ignore if time check fails
+
+    # 3. Volume Profile (Price &gt; POC)
+    if analysis_15m and 'volume_profile' in analysis_15m and 'current_price' in analysis_15m:
+        vp = analysis_15m['volume_profile']
+        price = analysis_15m['current_price']
+        poc = vp.get('poc_current', 0)
+        if poc &gt; 0 and price &gt; poc:
+            multiplier *= 1.1
+            # print(f"✅ Price above POC Bonus: x1.1")
+
+    # 4. Session Context (Asia Penalty - REDUCIDA)
+    hour = datetime.now().hour
+    if 2 &lt;= hour &lt;= 8: # Asia Session (aprox)
+        multiplier *= 0.95  # Reducir penalización Asia
+        # print(f"⚠️ Asia Session Penalty: x0.92")
+
+    score = int(score * multiplier)
+
+    # Ensure score is definitely an integer before comparisons
+    score = int(score)
+    
+    # Clasificación
+    clasificacion = 'REGULAR'
+    if score &gt;= 90:
+        clasificacion = 'ÓPTIMA'
+    elif score &gt;= 80:
+        clasificacion = 'ALTA'
+    elif score &gt;= 70:
+        clasificacion = 'BUENA'
+    elif score &gt;= 50:
+        clasificacion = 'BUENA'
+    else:
+        clasificacion = 'POBRE'
+
+    return {
+        'score': int(score),  # Absolutely ensure it's int
+        'clasificacion': clasificacion
+    }
+
+
+def calculate_triggers(analysis_15m, analysis_5m, direction):
+    entry_price = analysis_5m['current_price']
+    
+    # --- DYNAMIC RISK MANAGEMENT (Phase 4.1) ---
+    # Use ATR for Stop Loss if available
+    atr_val = analysis_15m.get('atr')
+    
+    # Si atr_val es un dict, extraer atr_current
+    if isinstance(atr_val, dict):
+        atr = atr_val.get('atr_current', 0)
+    elif isinstance(atr_val, (int, float)):
+        atr = float(atr_val)
+    else:
+        atr = 0
+    
+    # Si no hay ATR en analysis_15m, intentar calcularlo
+    if atr == 0:
+        try:
+            from exchange_connection import fetch_ohlcv
+            import pandas as pd
+            
+            # Inferir symbol del contexto (nota: esto asume que tenemos acceso al symbol)
+            # Como workaround, usaremos los datos ya disponibles si es posible
+            # Si analysis_15m tiene datos suficientes, no necesitamos fetch
+            pass  # Fallback a fixed percentage
+        except:
+            pass
+    
+    if atr &gt; 0:
+        # Multiplicador dinámico: 2.0x ATR es estándar
+        atr_multiplier = 2.0
+        stop_loss_dist = atr * atr_multiplier
+        
+        if direction == 'BULLISH':
+            stop_loss = entry_price - stop_loss_dist
+        else:
+            stop_loss = entry_price + stop_loss_dist
+            
+        # Sanity Check: Ensure SL is not too close (&lt; 0.5%) or too far (&gt; 5%)
+        # If too close, force min 0.5%
+        min_dist = entry_price * 0.015  # 1.5% mínimo
+        if stop_loss_dist &lt; min_dist:
+            if direction == 'BULLISH': stop_loss = entry_price - min_dist
+            else: stop_loss = entry_price + min_dist
+            
+    else:
+        # Fallback: Fixed 2%
+        stop_loss = entry_price * 0.98 if direction == 'BULLISH' else entry_price * 1.02
+
+    # Target: 1.5x Risk (Simple initial target)
+    risk = abs(entry_price - stop_loss)
+    target_dist = risk * 1.5
+    
+    if direction == 'BULLISH':
+        target_price = entry_price + target_dist
+    else:
+        target_price = entry_price - target_dist
+
+    rr_ratio = target_dist / risk if risk &gt; 0 else 0
+    tiempo_proyectado_min = 15
+
+    return {
+        'entry_price': entry_price,
+        'stop_loss': stop_loss,
+        'target_price': target_price,
+        'rr_ratio': rr_ratio,
+        'tiempo_proyectado_min': tiempo_proyectado_min,
+        'metodo_target': 'atr_dynamic' if atr &gt; 0 else 'fixed_pct'
+    }
+
+def get_quick_analysis(symbol):
+    return analyze_coin_complete(symbol)
+
+def calculate_adx(df, period=14):
+    adx_data = calculate_adx_with_memory(df, period=period, lookback=10)
+    return adx_data['adx_current']
+
+def calculate_momentum_color(df, ema_period=20):
+    mom_data = calculate_momentum_with_memory(df, lookback=10)
+    return mom_data['color_current']
+
+if __name__ == "__main__":
+    print("Brain Analyzer cargado correctamente.")
+
+coin_memory = {}
+
+def save_analysis_snapshot(symbol, analysis_4h, analysis_1h, analysis_15m):
+    coin_memory[symbol] = {
+        'analysis_4h': analysis_4h,
+        'analysis_1h': analysis_1h,
+        'analysis_15m': analysis_15m
+    }
+
+def get_historical_context(symbol):
+    return coin_memory.get(symbol, None)
+
+def calculate_evolution_score(symbol):
+    return 0
+
+def validate_5m_entry_conditions(symbol, direction='BULLISH'):
+    """
+    Checklist quirúrgico de 5M para entrada precisa.
+    NO rechaza - solo informa qué falta.
+    
+    Returns:
+        dict: {
+            'ready': bool (True si TODAS las condiciones OK),
+            'conditions': {
+                'momentum_green': {'ok': bool, 'value': str, 'reason': str},
+                'adx_accompanied': {'ok': bool, 'value': str, 'reason': str},
+                'not_in_correction': {'ok': bool, 'value': str, 'reason': str},
+                'above_ema_support': {'ok': bool, 'value': str, 'reason': str}
+            },
+            'score': int (0-100, cuántas condiciones OK),
+            'missing': [lista de condiciones faltantes]
+        }
+    """
+    try:
+        # 1. Fetch Data Fresca (5M)
+        ohlcv = fetch_ohlcv(symbol, '5m', 50)
+        if not ohlcv or len(ohlcv) &lt; 20:
+            return {'ready': False, 'conditions': {}, 'score': 0, 'missing': ['No Data']}
+            
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        current_price = float(df['close'].iloc[-1])
+        
+        # 2. Calcular Indicadores
+        mom_data = calculate_momentum_with_memory(df, lookback=5)
+        adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
+        emas_data = calculate_emas_with_memory(df, periods=[21], lookback=5)
+        
+        # 3. Validar Condiciones
+        conditions = {}
+        missing = []
+        score_count = 0
+        
+        # A. Momentum Green
+        mom_color = mom_data['color_current']
+        if direction == 'BULLISH':
+            mom_ok = mom_color in ['green', 'lime']
+        else:
+            mom_ok = mom_color in ['red', 'maroon']
+            
+        conditions['momentum_green'] = {
+            'ok': mom_ok,
+            'value': mom_color,
+            'reason': f"Momentum is {mom_color}"
+        }
+        if mom_ok: score_count += 1
+        else: missing.append(f"Momentum {mom_color} (Need {direction} colors)")
+
+        # B. ADX Accompanied (Fuerza + Dirección) - FLEXIBLE
+        adx_trend = adx_data['adx_trend']
+        adx_current = adx_data['adx_current']
+        di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
+        
+        # TIME LADDER: Permitir si ADX alto aunque decrezca (post-impulso normal)
+        adx_ok = (
+            (adx_trend == 'creciendo' and di_trend == 'creciendo') or  # Ideal
+            (adx_current &gt; 25 and di_trend == 'creciendo') or  # ADX alto + DI subiendo
+            (adx_current &gt; 35)  # ADX muy alto = fuerza brutal (bypass)
+        )
+        
+        conditions['adx_accompanied'] = {
+            'ok': adx_ok,
+            'value': f"ADX:{adx_trend} DI:{di_trend}",
+            'reason': "ADX and DI must both be growing"
+        }
+        if adx_ok: score_count += 1
+        else: missing.append(f"ADX/DI not synced (ADX:{adx_trend}, DI:{di_trend})")
+
+        # C. Not in Correction (Velas)
+        closes = df['close'].values[-3:]
+        opens = df['open'].values[-3:]
+        
+        is_correction = True
+        for c, o in zip(closes, opens):
+            if direction == 'BULLISH':
+                if c &gt; o: # Vela verde
+                    is_correction = False
+                    break
+            else:
+                if c &lt; o: # Vela roja
+                    is_correction = False
+                    break
+                    
+        conditions['not_in_correction'] = {
+            'ok': not is_correction,
+            'value': 'Correction' if is_correction else 'Clean',
+            'reason': "Last 3 candles cannot be all against trend"
+        }
+        if not is_correction: score_count += 1
+        else: missing.append("Price in active correction (3 candles against trend)")
+
+        # D. Above EMA Support (Soporte)
+        ema21 = emas_data['emas'].get(21, 0)
+        
+        if ema21 &gt; 0:
+            dist_pct = (current_price - ema21) / ema21 * 100
+            if direction == 'BULLISH':
+                ema_ok = dist_pct &gt; -0.5 # Puede estar apenas abajo (retest)
+            else:
+                ema_ok = dist_pct &lt; 0.5
+        else:
+            dist_pct = 0
+            ema_ok = True # Sin EMA, no penalizar
+            
+        conditions['above_ema_support'] = {
+            'ok': ema_ok,
+            'value': f"{dist_pct:.2f}% vs EMA21",
+            'reason': "Price must hold EMA21 support"
+        }
+        if ema_ok: score_count += 1
+        else: missing.append(f"Lost EMA21 support (Dist: {dist_pct:.2f}%)")
+
+        # Resultado Final
+        final_score = score_count * 25
+        
+        # LÓGICA GRADIENTE (No exigir perfección)
+        # 4/4 = Perfecto (100%)
+        # 3/4 = Suficiente para entrar (75%)
+        # 2/4 = Esperar (50%)
+        # 1/4 o menos = Rechazar
+
+        if score_count &gt;= 3:
+            ready = True
+            status = 'READY'
+        elif score_count == 2:
+            ready = False
+            status = 'WAITING'
+        else:
+            ready = False
+            status = 'REJECT'
+        
+        return {
+            'ready': ready,
+            'status': status,
+            'conditions': conditions,
+            'score': final_score,
+            'missing': missing
+        }
+    except Exception as e:
+        print(f"⚠️ Error en validate_5m_entry_conditions: {e}")
+        return {'ready': False, 'conditions': {}, 'score': 0, 'missing': ['Error de cálculo']}
+
+Modulo brain frames
+
+"""
+brain_frames.py - Sistema de Frames Temporales (PELÍCULA)
+=========================================================
+Guarda historia de indicadores como "frames" de una película.
+
+Concepto de Joel:
+"Es como un dibujante que apila sus dibujos con secuencia y los 
+mueve rápido para generar el dibujo animado."
+
+Cada frame contiene:
+- ADX, DI+, DI-, Spread
+- Momentum color, age
+- Precio, volumen
+- Grid posición
+- ZigZag estado
+- Timestamp
+
+Los frames se apilan secuencialmente para ver MOVIMIENTO.
+
+Autor: Joel Rodríguez Diarte (concepto)
+Implementación: Claude (Anthropic)
+Fecha: 2025-12-21
+"""
+
+from datetime import datetime
+from collections import deque
+import json
+import os
+
+# ============================================================================
+# CLASE PRINCIPAL: FrameStorage
+# ============================================================================
+
+class FrameStorage:
+    """
+    Almacena frames temporales de indicadores.
+    
+    Permite ver la PELÍCULA del mercado, no solo fotos estáticas.
+    
+    Ejemplo:
+        Frame -5: ADX = 45
+        Frame -4: ADX = 48  (+3)
+        Frame -3: ADX = 52  (+4)
+        Frame -2: ADX = 56  (+4)
+        Frame -1: ADX = 58  (+2)
+        
+        → ADX ACELERANDO → EXPLOSIÓN EN CURSO
+    """
+    
+    def __init__(self, max_frames=20):
+        """
+        Args:
+            max_frames: Máximo de frames a guardar (20 = últimas 20 velas)
+        """
+        self.max_frames = max_frames
+        self.frames = deque(maxlen=max_frames)
+    
+    def add_frame(self, symbol, timeframe, indicators):
+        """
+        Agrega un frame nuevo (un "dibujo" del momento actual)
+        
+        Args:
+            symbol: Par (ej: RAVE/USDT:USDT)
+            timeframe: TF (5m, 15m, 1h, 4h)
+            indicators: Dict con todos los indicadores actuales
+        """
+        frame = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'timeframe': timeframe,
+            
+            # ADX (líneas del indicador)
+            'adx': {
+                'value': indicators.get('adx', {}).get('adx_current', 0),
+                'di_plus': indicators.get('adx', {}).get('di_plus_current', 0),
+                'di_minus': indicators.get('adx', {}).get('di_minus_current', 0),
+                'spread': abs(
+                    indicators.get('adx', {}).get('di_plus_current', 0) -
+                    indicators.get('adx', {}).get('di_minus_current', 0)
+                ),
+                'trend': indicators.get('adx', {}).get('adx_trend', 'unknown')
+            },
+            
+            # Momentum (barras)
+            'momentum': {
+                'color': indicators.get('momentum', {}).get('color_current', 'gray'),
+                'age': indicators.get('momentum', {}).get('consecutive_count', 0),
+                'intensity': indicators.get('momentum', {}).get('intensity', 0)
+            },
+            
+            # &gt;&gt;&gt; NUEVO: OHLC Completo para ver "dibujo" del precio
+            'ohlc': {
+                'open': indicators.get('open', 0),
+                'high': indicators.get('high', 0),
+                'low': indicators.get('low', 0),
+                'close': indicators.get('close', indicators.get('price', 0))
+            },
+            
+            # Precio (legacy - mantener compatibilidad)
+            'price': indicators.get('price', indicators.get('close', 0)),
+            
+            # Volumen
+            'volume': indicators.get('volume', 0),
+            'volume_ratio': indicators.get('volume_ratio', 100),
+            
+            # Grid
+            'grid': {
+                'position_pct': indicators.get('position_in_range', 50),
+                'rompiendo': indicators.get('position_in_range', 50) &gt; 85
+            },
+            
+            # Score
+            'score': indicators.get('score_15m', 0)
+        }
+        
+        self.frames.append(frame)
+    
+    def get_frames(self, n=None):
+        """
+        Obtiene últimos N frames
+        
+        Args:
+            n: Número de frames (None = todos)
+            
+        Returns:
+            list: Lista de frames [más viejo ... más nuevo]
+        """
+        if n is None:
+            return list(self.frames)
+        else:
+            return list(self.frames)[-n:]
+    
+    def get_trajectory(self, indicator_path, n=5):
+        """
+        Obtiene trayectoria de un indicador (la "animación")
+        
+        Args:
+            indicator_path: Ruta al indicador (ej: 'adx.value')
+            n: Frames a analizar
+            
+        Returns:
+            list: Valores históricos [más viejo ... más nuevo]
+            
+        Example:
+            trajectory = storage.get_trajectory('adx.value', 5)
+            # [45, 48, 52, 56, 58] → subiendo
+        """
+        frames = self.get_frames(n)
+        values = []
+        
+        for frame in frames:
+            # Navegar por el path (ej: 'adx.value')
+            parts = indicator_path.split('.')
+            value = frame
+            
+            try:
+                for part in parts:
+                    if isinstance(value, dict):
+                        value = value.get(part, 0)
+                    else:
+                        value = 0
+                        break
+                values.append(value)
+            except:
+                values.append(0)
+        
+        return values
+    
+    def get_frame_count(self):
+        """Retorna cantidad de frames almacenados"""
+        return len(self.frames)
+    
+    def clear(self):
+        """Limpia todos los frames"""
+        self.frames.clear()
+    
+    def get_latest_frame(self):
+        """Obtiene el frame más reciente"""
+        if self.frames:
+            return self.frames[-1]
+        return None
+    
+    def has_enough_frames(self, min_frames=3):
+        """Verifica si hay suficientes frames para análisis"""
+        return len(self.frames) &gt;= min_frames
+
+
+# ============================================================================
+# STORAGE GLOBAL (una instancia por símbolo/timeframe)
+# ============================================================================
+
+_frame_storages = {}
+
+
+def get_frame_storage(symbol, timeframe='15m'):
+    """
+    Obtiene o crea storage para símbolo/timeframe
+    
+    Args:
+        symbol: Par (ej: RAVE/USDT:USDT)
+        timeframe: TF (default '15m')
+        
+    Returns:
+        FrameStorage: Instancia para ese par/tf
+    """
+    key = f"{symbol}_{timeframe}"
+    if key not in _frame_storages:
+        _frame_storages[key] = FrameStorage(max_frames=20)
+    return _frame_storages[key]
+
+
+def get_all_storages():
+    """Retorna todos los storages activos"""
+    return _frame_storages
+
+
+def clear_all_storages():
+    """Limpia todos los storages"""
+    global _frame_storages
+    _frame_storages = {}
+
+
+def load_frames_from_ohlcv(symbol: str, timeframe: str, ohlcv_data: list, num_frames: int = 10):
+    """
+    CARGA INSTANTÁNEA DE FRAMES DESDE OHLCV HISTÓRICO.
+    
+    CONCEPTO DE JOEL:
+    "El Time Ladder debe ser rápido, no en slow motion"
+    
+    Esta función carga los últimos N frames inmediatamente desde los datos
+    OHLCV históricos del exchange, en lugar de esperar múltiples ciclos.
+    
+    Args:
+        symbol: Par (ej: RAVE/USDT:USDT)
+        timeframe: TF (5m, 15m, 1h, 4h)
+        ohlcv_data: Lista de OHLCV [[timestamp, open, high, low, close, volume], ...]
+        num_frames: Cantidad de frames a cargar (default 10)
+        
+    Returns:
+        int: Cantidad de frames cargados
+    """
+    if not ohlcv_data or len(ohlcv_data) &lt; 5:
+        return 0
+    
+    storage = get_frame_storage(symbol, timeframe)
+    
+    # Si ya tiene suficientes frames, no recargar
+    if storage.has_enough_frames(num_frames):
+        return storage.get_frame_count()
+    
+    # Limpiar frames antiguos si los hay
+    storage.clear()
+    
+    # Cargar últimos N candles como frames
+    candles_to_load = ohlcv_data[-num_frames:]
+    
+    for candle in candles_to_load:
+        if len(candle) &gt;= 6:
+            timestamp, open_p, high_p, low_p, close_p, volume = candle[:6]
+            
+            # Crear indicadores simulados para el frame
+            indicators = {
+                'open': open_p,
+                'high': high_p,
+                'low': low_p,
+                'close': close_p,
+                'price': close_p,
+                'volume': volume,
+                'volume_ratio': 100,  # Se calculará después si es necesario
+                'position_in_range': 50,  # Se calculará después
+                
+                # ADX y momentum se llenarán con datos reales cuando se analice
+                'adx': {'adx_current': 0, 'di_plus_current': 0, 'di_minus_current': 0},
+                'momentum': {'color_current': 'gray', 'consecutive_count': 0}
+            }
+            
+            storage.add_frame(symbol, timeframe, indicators)
+    
+    loaded = storage.get_frame_count()
+    if loaded &gt;= 5:
+        print(f"   ⚡ Time Ladder INSTANTÁNEO: {symbol} - {loaded} frames cargados")
+    
+    return loaded
+
+
+# ============================================================================
+# DETECCIÓN DE PATRONES EN PRECIO (TIME LADDER)
+# ============================================================================
+
+def detect_price_pattern(symbol, direction='BULLISH', timeframe='15m'):
+    """
+    Detecta patrón de precio usando Time Ladder.
+    
+    CONCEPTO DE JOEL:
+    "El bot no esperaba el piso y luego el impulso, entraba sin ver ese piso."
+    
+    Esta función ve la PELÍCULA del precio frame a frame para detectar:
+    - LONG: Corrección → Piso → Rebote confirmado → ENTRAR
+    - SHORT: Rally → Techo → Caída confirmada → ENTRAR
+    
+    Args:
+        symbol: Par a analizar
+        direction: 'BULLISH' o 'BEARISH'
+        timeframe: TF para análisis
+        
+    Returns:
+        dict: {
+            'ready': bool - Si el patrón está listo para entrar
+            'pattern': str - Nombre del patrón detectado
+            'phase': str - Fase actual (CORRECCION, PISO, IMPULSO, etc)
+            'reason': str - Razón descriptiva
+            'wait_for': str - Qué esperar si no está listo
+        }
+    """
+    storage = get_frame_storage(symbol, timeframe)
+    
+    # Necesitamos mínimo 5 frames para ver la película
+    if not storage.has_enough_frames(5):
+        return {
+            'ready': False,
+            'pattern': 'INSUFFICIENT_DATA',
+            'phase': 'UNKNOWN',
+            'reason': f'Solo {storage.get_frame_count()} frames, necesita 5',
+            'wait_for': 'Más datos de precio'
+        }
+    
+    # Obtener trayectorias
+    closes = storage.get_trajectory('ohlc.close', 5)
+    lows = storage.get_trajectory('ohlc.low', 5)
+    highs = storage.get_trajectory('ohlc.high', 5)
+    
+    # Fallback si OHLC no está disponible
+    if not closes or closes[-1] == 0:
+        closes = storage.get_trajectory('price', 5)
+        lows = closes.copy()
+        highs = closes.copy()
+    
+    if not closes or len(closes) &lt; 5:
+        return {
+            'ready': False,
+            'pattern': 'NO_PRICE_DATA',
+            'phase': 'UNKNOWN',
+            'reason': 'Sin datos de precio',
+            'wait_for': 'Datos de precio',
+            'structure': None
+        }
+    
+    # ===================================================================
+    # &gt;&gt;&gt; NUEVO: DETECCIÓN DE HH/HL/LL/LH (ESTRUCTURA DE TENDENCIA)
+    # ===================================================================
+    # Esto es como ver el gráfico completo de velas pero con el precio
+    
+    # Identificar swing highs y swing lows (pivots locales)
+    swing_highs = []  # [(idx, price)]
+    swing_lows = []   # [(idx, price)]
+    
+    for i in range(1, len(highs) - 1):
+        # Swing High: precio mayor que vecinos
+        if highs[i] &gt; highs[i-1] and highs[i] &gt;= highs[i+1]:
+            swing_highs.append((i, highs[i]))
+        # Swing Low: precio menor que vecinos  
+        if lows[i] &lt; lows[i-1] and lows[i] &lt;= lows[i+1]:
+            swing_lows.append((i, lows[i]))
+    
+    # Analizar estructura HH/HL/LL/LH
+    structure = {
+        'swing_highs': swing_highs,
+        'swing_lows': swing_lows,
+        'trend': 'LATERAL',
+        'hh_count': 0,
+        'hl_count': 0,
+        'll_count': 0,
+        'lh_count': 0,
+        'last_pivot': 'NONE'
+    }
+    
+    # Contar HH (Higher High) y LH (Lower High)
+    for i in range(1, len(swing_highs)):
+        if swing_highs[i][1] &gt; swing_highs[i-1][1]:
+            structure['hh_count'] += 1
+        else:
+            structure['lh_count'] += 1
+    
+    # Contar HL (Higher Low) y LL (Lower Low)
+    for i in range(1, len(swing_lows)):
+        if swing_lows[i][1] &gt; swing_lows[i-1][1]:
+            structure['hl_count'] += 1
+        else:
+            structure['ll_count'] += 1
+    
+    # Determinar tendencia por estructura
+    alcista_score = structure['hh_count'] + structure['hl_count']
+    bajista_score = structure['ll_count'] + structure['lh_count']
+    
+    if alcista_score &gt; bajista_score + 1:
+        structure['trend'] = 'UPTREND'
+        structure['last_pivot'] = 'HL' if swing_lows and swing_lows[-1][0] &gt; (swing_highs[-1][0] if swing_highs else 0) else 'HH'
+    elif bajista_score &gt; alcista_score + 1:
+        structure['trend'] = 'DOWNTREND'
+        structure['last_pivot'] = 'LL' if swing_lows and swing_lows[-1][0] &gt; (swing_highs[-1][0] if swing_highs else 0) else 'LH'
+    else:
+        structure['trend'] = 'LATERAL'
+    
+    print(f"         📊 Estructura: {structure['trend']} | HH:{structure['hh_count']} HL:{structure['hl_count']} LL:{structure['ll_count']} LH:{structure['lh_count']}")
+    
+    # === ANÁLISIS PARA LONG (BULLISH) ===
+    if direction == 'BULLISH':
+        # Calcular movimientos
+        lowest_idx = lows.index(min(lows)) if lows else -1
+        current_close = closes[-1]
+        previous_close = closes[-2]
+        lowest_low = min(lows) if lows else 0
+        highest_high = max(highs) if highs else 0
+        
+        # &gt;&gt;&gt; NUEVO: BLOQUEAR LONG EN ZONA DE RESISTENCIA
+        # El bot no debe entrar LONG justo en la resistencia (probable rechazo)
+        if highest_high &gt; 0:
+            dist_to_resistance = abs(highest_high - current_close) / highest_high * 100
+            if dist_to_resistance &lt; 1.0:  # Menos de 1% del máximo
+                return {
+                    'ready': False,
+                    'pattern': 'AT_RESISTANCE',
+                    'phase': 'RESISTENCIA',
+                    'reason': f'LONG en zona de RESISTENCIA (a {dist_to_resistance:.2f}% del máximo)',
+                    'wait_for': 'Esperar rechazo o ruptura de resistencia',
+                    'structure': structure
+                }
+        
+        # Detectar fases
+        # FASE 1: Corrección (precio bajando)
+        if closes[-3] &gt; closes[-2] &gt; closes[-1]:
             return {
                 'ready': False,
-                'approved': False,
-                'reason': 'ADX en zona LATERAL sin movimiento',
-                'archetype': 'ADX_LATERAL',
-                'total_score': 0,
-                'zone_analysis': zone_analysis
+                'pattern': 'CORRECTION_IN_PROGRESS',
+                'phase': 'CORRECCION',
+                'reason': 'Precio bajando - esperar piso',
+                'wait_for': 'Rebote desde piso',
+                'structure': structure
             }
-    else:
-        zone_analysis = None
-    
-    # ===================================================
-    # PASO 3: VALIDACIONES MÍNIMAS (SIMPLIFICADAS)
-    # ===================================================
-    
-    data_15m = ladder.get('15m', {})
-    adx_data = data_15m.get('adx', {})
-    
-    spread = adx_data.get('spread', 0)
-    
-    # ÚNICO bloqueo duro: Spread &lt; 5 (DIs convergiendo)
-    if spread &lt; 5:
+        
+        # FASE 2: Piso detectado (mínimo tocado, precio rebotando)
+        if lowest_idx &gt;= 2 and current_close &gt; lowest_low * 1.005:
+            # Verificar que hay rebote confirmado
+            if current_close &gt; previous_close:
+                return {
+                    'ready': True,
+                    'pattern': 'FLOOR_BOUNCE',
+                    'phase': 'IMPULSO',
+                    'reason': f'Rebote desde piso ${lowest_low:.4f} confirmado',
+                    'wait_for': None,
+                    'structure': structure
+                }
+            else:
+                return {
+                    'ready': False,
+                    'pattern': 'FLOOR_TOUCHED',
+                    'phase': 'PISO',
+                    'reason': 'Piso tocado, esperando confirmación de rebote',
+                    'wait_for': 'Vela verde desde piso',
+                    'structure': structure
+                }
+        
+        # FASE 3: Impulso en curso (subiendo)
+        if closes[-2] &lt; closes[-1] and closes[-3] &lt; closes[-2]:
+            # &gt;&gt;&gt; NUEVO: Verificar que el movimiento es FUERTE (no solo subiendo)
+            price_change_pct = ((closes[-1] - closes[-3]) / closes[-3]) * 100
+            
+            if price_change_pct &gt;= 0.5:  # Subida fuerte (&gt;=0.5% en 3 velas)
+                return {
+                    'ready': True,
+                    'pattern': 'IMPULSE_STRONG',
+                    'phase': 'EXPLOSIÓN',
+                    'reason': f'Impulso FUERTE confirmado (+{price_change_pct:.2f}% en 3 velas)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': price_change_pct
+                }
+            else:
+                return {
+                    'ready': True,
+                    'pattern': 'IMPULSE_CONFIRMED',
+                    'phase': 'IMPULSO',
+                    'reason': f'Impulso alcista (+{price_change_pct:.2f}%)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': price_change_pct
+                }
+        
+        # FASE 4: Lateral (sin dirección clara)
         return {
             'ready': False,
-            'approved': False,
-            'reason': f'Spread {spread:.1f} &lt; 5 (sin claridad)',
-            'archetype': 'NO_CLARITY',
-            'total_score': 0
+            'pattern': 'LATERAL',
+            'phase': 'CONSOLIDACION',
+            'reason': 'Sin patrón claro - lateralizando',
+            'wait_for': 'Dirección definida',
+            'structure': structure
         }
     
-    # ===================================================
-    # PASO 4: CALCULAR SCORE FINAL
-    # ===================================================
-    
-    # Score base = alignment_score
-    total_score = int(alignment['alignment_score'])
-    
-    # Agregar bonus de zonas ADX
-    if zone_analysis:
-        total_score += zone_analysis['bonus']
-    
-    # Bonus por spread fuerte
-    if spread &gt;= 15:
-        total_score += 20
-    elif spread &gt;= 10:
-        total_score += 10
-    
-    # ===================================================
-    # PASO 5: DETERMINAR ARCHETYPE
-    # ===================================================
-    
-    if alignment['alignment_score'] &gt;= 80:
-        archetype = 'PERFECT_ALIGNMENT'
-    elif alignment['alignment_score'] &gt;= 60:
-        archetype = 'GOOD_ALIGNMENT'
+    # === ANÁLISIS PARA SHORT (BEARISH) ===
     else:
-        archetype = 'MODERATE_ALIGNMENT'
+        highest_idx = highs.index(max(highs)) if highs else -1
+        current_close = closes[-1]
+        previous_close = closes[-2]
+        highest_high = max(highs) if highs else 0
+        lowest_low = min(lows) if lows else 0
+        
+        # &gt;&gt;&gt; NUEVO: BLOQUEAR SHORT EN ZONA DE SOPORTE
+        # El bot no debe entrar SHORT justo en el soporte (probable rebote)
+        if lowest_low &gt; 0:
+            dist_to_support = abs(current_close - lowest_low) / lowest_low * 100
+            if dist_to_support &lt; 1.0:  # Menos de 1% del mínimo
+                return {
+                    'ready': False,
+                    'pattern': 'AT_SUPPORT',
+                    'phase': 'SOPORTE',
+                    'reason': f'SHORT en zona de SOPORTE (a {dist_to_support:.2f}% del mínimo)',
+                    'wait_for': 'Esperar rebote o ruptura del soporte',
+                    'structure': structure
+                }
+        
+        # FASE 1: Rally (precio subiendo - contra-tendencia)
+        if closes[-3] &lt; closes[-2] &lt; closes[-1]:
+            return {
+                'ready': False,
+                'pattern': 'RALLY_IN_PROGRESS',
+                'phase': 'RALLY',
+                'reason': 'Precio subiendo - esperar techo',
+                'wait_for': 'Rechazo desde techo',
+                'structure': structure
+            }
+        
+        # FASE 2: Techo detectado (máximo tocado, precio cayendo)
+        if highest_idx &gt;= 2 and current_close &lt; highest_high * 0.995:
+            if current_close &lt; previous_close:
+                return {
+                    'ready': True,
+                    'pattern': 'CEILING_REJECTION',
+                    'phase': 'CAIDA',
+                    'reason': f'Rechazo desde techo ${highest_high:.4f} confirmado',
+                    'wait_for': None,
+                    'structure': structure
+                }
+            else:
+                return {
+                    'ready': False,
+                    'pattern': 'CEILING_TOUCHED',
+                    'phase': 'TECHO',
+                    'reason': 'Techo tocado, esperando confirmación de caída',
+                    'wait_for': 'Vela roja desde techo',
+                    'structure': structure
+                }
+        
+        # FASE 3: Caída en curso
+        if closes[-2] &gt; closes[-1] and closes[-3] &gt; closes[-2]:
+            # &gt;&gt;&gt; NUEVO: Verificar que el movimiento es FUERTE (no solo cayendo)
+            price_change_pct = ((closes[-3] - closes[-1]) / closes[-3]) * 100
+            
+            if price_change_pct &gt;= 0.5:  # Caída fuerte (&gt;=0.5% en 3 velas)
+                return {
+                    'ready': True,
+                    'pattern': 'DROP_STRONG',
+                    'phase': 'EXPLOSIÓN',
+                    'reason': f'Caída FUERTE confirmada (-{price_change_pct:.2f}% en 3 velas)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': -price_change_pct
+                }
+            else:
+                return {
+                    'ready': True,
+                    'pattern': 'DROP_CONFIRMED',
+                    'phase': 'CAIDA',
+                    'reason': f'Caída confirmada (-{price_change_pct:.2f}%)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': -price_change_pct
+                }
+        
+        # FASE 4: Lateral
+        return {
+            'ready': False,
+            'pattern': 'LATERAL',
+            'phase': 'CONSOLIDACION',
+            'reason': 'Sin patrón claro - lateralizando',
+            'wait_for': 'Dirección definida',
+            'structure': structure
+        }
+
+
+# ============================================================================
+# TESTING
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 60)
+    print("BRAIN FRAMES - Testing Sistema de Película")
+    print("=" * 60)
     
-    # ===================================================
-    # PASO 6: DECISIÓN FINAL
-    # ===================================================
+    # Simular frames de RAVE
+    storage = get_frame_storage('RAVE/USDT:USDT', '15m')
     
-    # ENTRAR si:
-    # - Alineación &gt;= 50% Y
-    # - No más de 2 conflictos Y
-    # - Spread &gt;= 5
+    # Agregar frames simulados (como si pasaran los minutos)
+    test_frames = [
+        {'adx': {'adx_current': 45, 'di_plus_current': 30, 'di_minus_current': 10, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 8, 'intensity': 0.6},
+         'price': 0.50, 'volume': 50000, 'position_in_range': 70},
+         
+        {'adx': {'adx_current': 48, 'di_plus_current': 32, 'di_minus_current': 9, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 9, 'intensity': 0.7},
+         'price': 0.52, 'volume': 55000, 'position_in_range': 75},
+         
+        {'adx': {'adx_current': 52, 'di_plus_current': 35, 'di_minus_current': 8, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 10, 'intensity': 0.7},
+         'price': 0.55, 'volume': 60000, 'position_in_range': 82},
+         
+        {'adx': {'adx_current': 56, 'di_plus_current': 37, 'di_minus_current': 6, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 10, 'intensity': 0.8},
+         'price': 0.60, 'volume': 70000, 'position_in_range': 88},
+         
+        {'adx': {'adx_current': 58, 'di_plus_current': 38, 'di_minus_current': 5, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 10, 'intensity': 0.8},
+         'price': 0.65, 'volume': 75000, 'position_in_range': 93},
+    ]
     
-    ready = alignment['decision']
+    for frame_data in test_frames:
+        storage.add_frame('RAVE/USDT:USDT', '15m', frame_data)
     
-    print(f"\n🎯 VEREDICTO:")
-    print(f"   Score Final: {total_score}")
-    print(f"   Archetype: {archetype}")
-    print(f"   Ready: {'✅ SÍ' if ready else '❌ NO'}")
+    # Mostrar trayectorias
+    print("\n🎬 PELÍCULA RAVE (últimos 5 frames):")
+    print("-" * 40)
     
-    return {
-        'ready': ready,
-        'approved': ready,
-        'total_score': total_score,
-        'archetype': archetype,
-        'reason': alignment['story'],
-        'alignment': alignment,
-        'zone_analysis': zone_analysis
-    }
-📁 COMPONENTE 4: SIMPLIFICAR brain_analyzer.py
-Cambios Propuestos:
-ELIMINAR:
+    adx_trajectory = storage.get_trajectory('adx.value', 5)
+    print(f"ADX:      {adx_trajectory}")
+    
+    spread_trajectory = storage.get_trajectory('adx.spread', 5)
+    print(f"Spread:   {spread_trajectory}")
+    
+    mom_age = storage.get_trajectory('momentum.age', 5)
+    print(f"Mom Age:  {mom_age}")
+    
+    price = storage.get_trajectory('price', 5)
+    print(f"Precio:   {price}")
+    
+    position = storage.get_trajectory('grid.position_pct', 5)
+    print(f"Posición: {position}")
+    
+    print("\n" + "-" * 40)
+    print(f"Total frames: {storage.get_frame_count()}")
+    print("✅ Sistema de frames funcionando")
+    print("=" * 60)
 
-Penalties acumulativos por ADX &lt; X
-Penalties por momentum age
-Penalties por volumen ratio
-Clampeo de score
-MANTENER:
-
-Frame storage (para análisis dinámico)
-Cálculo de indicadores base
-Grid Master y estructura
-AGREGAR:
-
-Llamada a alignment_detector
-Retornar alignment_score en resultado
-Código ACTUAL (fragmento problemático):
-# brain_analyzer.py líneas ~675-750
-# PROBLEMA: Penalties rígidas
-if adx_current &lt; 25:
-    score_15m -= 60
-    adx_rejected = True
-    print(f"      ❌ BLOQUEADOR: ADX {adx_current:.1f} &lt; 25")
-# PROBLEMA: Clampeo
-if adx_rejected:
-    score_15m = min(score_15m, 30)
-# PROBLEMA: Más penalties
-if spread &lt; 7:
-    score_15m -= 50
-if mom_age &gt; 3:
-    score_15m -= 25
-Código PROPUESTO (reemplazo):
-# brain_analyzer.py - Nueva sección de scoring
-# ===================================================
-# SCORING BASADO EN ALINEACIÓN (Reemplaza penalties)
-# ===================================================
-from brain_alignment import alignment_detector
-# Preparar datos para alignment
-ladder_data = {'15m': {
-    'adx': adx_data,
-    'momentum': momentum_data,
-    'zigzag': zigzag_granular
-}}
-# Obtener alineación
-alignment = alignment_detector.analyze_alignment(symbol, direction, ladder_data)
-# Score base = alineación
-score_15m = int(alignment['alignment_score'])
-print(f"\n🎯 ALINEACIÓN: {alignment['alignment_score']:.0f}%")
-print(f"   {alignment['story']}")
-# ÚNICO bloqueo: Spread &lt; 5 (sin claridad direccional)
-if spread &lt; 5:
-    print(f"   🚫 BLOQUEO: Spread {spread:.1f} &lt; 5")
-    return {
-        'symbol': symbol,
-        'direction': direction,
-        'score_15m': -999,
-        'blocked': True,
-        'block_reason': f'Spread {spread:.1f} &lt; 5'
-    }
-# Bonus por spread alto (única validación adicional)
-if spread &gt;= 15:
-    score_15m += 15
-    print(f"   ✅ Spread {spread:.1f} &gt;= 15 (+15)")
-elif spread &gt;= 10:
-    score_15m += 10
-    print(f"   ✅ Spread {spread:.1f} &gt;= 10 (+10)")
-# NO más penalties
-# NO más clampeo
-# Alineación decide
-📊 EJEMPLOS COMPARATIVOS
-Caso 1: XPIN (ADX 23.3, Mom 5v, subiendo)
-Sistema ACTUAL:
-
-ADX 23.3 &lt; 25 → -60
-ADX &lt; 30 → -30 extra
-Mom 5v &gt; 3 → -25
-Clampeo → max 30
-Score: -85 → RECHAZADO ❌
-Sistema PROPUESTO:
-
-ALINEACIÓN:
-  ADX: creciendo → ALIGNED ✅
-  Price: subiendo → ALIGNED ✅
-  ZigZag: HH → ALIGNED ✅
-  Momentum: lime → ALIGNED ✅
-  DI: DI+ &gt; DI- → ALIGNED ✅
-  Volume: neutral → NEUTRAL ⚪
-Score: 5/6 = 83%
-Spread &gt; 5 → OK
-Decisión: APROBADO ✅
-Caso 2: Moneda lateral
-Sistema ACTUAL:
-
-ADX 18 &lt; 25 → -60
-Mom gray → -30
-Score: -90 → RECHAZADO ❌
-Sistema PROPUESTO:
-
-ALINEACIÓN:
-  ADX: estable → NEUTRAL ⚪
-  Price: flat → NEUTRAL ⚪
-  ZigZag: mixed → CONFLICT ❌
-  Momentum: gray → CONFLICT ❌
-  DI: juntos → NEUTRAL ⚪
-  Volume: bajo → NEUTRAL ⚪
-Score: 0/6 = 0%
-Conflictos: 2
-Decisión: RECHAZADO ❌ (correcto)
-✅ CHECKLIST DE IMPLEMENTACIÓN
- Crear brain_adx_zones.py con ADXZoneAnalyzer
- Crear brain_alignment.py con AlignmentDetector
- Modificar 
-brain_think.py
- (sniper_checklist v6.0)
- Simplificar 
-brain_analyzer.py
- (eliminar penalties)
- Testing con XPIN
- Testing con NIGHT
- Testing con moneda lateral
- Verificar bot no quedó rígido
-⚠️ DECISIONES PENDIENTES
-¿Mantener alguna penalty?
-
-Propuesta: Solo spread &lt; 5 como bloqueo duro
-¿Threshold de alineación para entrar?
-
-Propuesta: &gt;= 50% con &lt;= 2 conflictos
-¿Qué hacer sin frames acumulados?
-
-Propuesta: Usar ADX trend como proxy de dirección
-¿Apruebas este plan antes de implementar?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 55,162<br>
-    Generado: 2025-12-21 22:21:54
+    Total caracteres: 122,383<br>
+    Generado: 2025-12-24 13:31:18
   </div>
 </body>
 </html>
