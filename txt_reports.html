@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-24 13:31:53</div>
+  <div class="meta">Última actualización: 2025-12-24 13:32:22</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -2386,13 +2386,664 @@ def validate_5m_entry_conditions(symbol, direction='BULLISH'):
         print(f"⚠️ Error en validate_5m_entry_conditions: {e}")
         return {'ready': False, 'conditions': {}, 'score': 0, 'missing': ['Error de cálculo']}
 
+Modulo brain frames
 
+"""
+brain_frames.py - Sistema de Frames Temporales (PELÍCULA)
+=========================================================
+Guarda historia de indicadores como "frames" de una película.
+
+Concepto de Joel:
+"Es como un dibujante que apila sus dibujos con secuencia y los 
+mueve rápido para generar el dibujo animado."
+
+Cada frame contiene:
+- ADX, DI+, DI-, Spread
+- Momentum color, age
+- Precio, volumen
+- Grid posición
+- ZigZag estado
+- Timestamp
+
+Los frames se apilan secuencialmente para ver MOVIMIENTO.
+
+Autor: Joel Rodríguez Diarte (concepto)
+Implementación: Claude (Anthropic)
+Fecha: 2025-12-21
+"""
+
+from datetime import datetime
+from collections import deque
+import json
+import os
+
+# ============================================================================
+# CLASE PRINCIPAL: FrameStorage
+# ============================================================================
+
+class FrameStorage:
+    """
+    Almacena frames temporales de indicadores.
+    
+    Permite ver la PELÍCULA del mercado, no solo fotos estáticas.
+    
+    Ejemplo:
+        Frame -5: ADX = 45
+        Frame -4: ADX = 48  (+3)
+        Frame -3: ADX = 52  (+4)
+        Frame -2: ADX = 56  (+4)
+        Frame -1: ADX = 58  (+2)
+        
+        → ADX ACELERANDO → EXPLOSIÓN EN CURSO
+    """
+    
+    def __init__(self, max_frames=20):
+        """
+        Args:
+            max_frames: Máximo de frames a guardar (20 = últimas 20 velas)
+        """
+        self.max_frames = max_frames
+        self.frames = deque(maxlen=max_frames)
+    
+    def add_frame(self, symbol, timeframe, indicators):
+        """
+        Agrega un frame nuevo (un "dibujo" del momento actual)
+        
+        Args:
+            symbol: Par (ej: RAVE/USDT:USDT)
+            timeframe: TF (5m, 15m, 1h, 4h)
+            indicators: Dict con todos los indicadores actuales
+        """
+        frame = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'timeframe': timeframe,
+            
+            # ADX (líneas del indicador)
+            'adx': {
+                'value': indicators.get('adx', {}).get('adx_current', 0),
+                'di_plus': indicators.get('adx', {}).get('di_plus_current', 0),
+                'di_minus': indicators.get('adx', {}).get('di_minus_current', 0),
+                'spread': abs(
+                    indicators.get('adx', {}).get('di_plus_current', 0) -
+                    indicators.get('adx', {}).get('di_minus_current', 0)
+                ),
+                'trend': indicators.get('adx', {}).get('adx_trend', 'unknown')
+            },
+            
+            # Momentum (barras)
+            'momentum': {
+                'color': indicators.get('momentum', {}).get('color_current', 'gray'),
+                'age': indicators.get('momentum', {}).get('consecutive_count', 0),
+                'intensity': indicators.get('momentum', {}).get('intensity', 0)
+            },
+            
+            # &gt;&gt;&gt; NUEVO: OHLC Completo para ver "dibujo" del precio
+            'ohlc': {
+                'open': indicators.get('open', 0),
+                'high': indicators.get('high', 0),
+                'low': indicators.get('low', 0),
+                'close': indicators.get('close', indicators.get('price', 0))
+            },
+            
+            # Precio (legacy - mantener compatibilidad)
+            'price': indicators.get('price', indicators.get('close', 0)),
+            
+            # Volumen
+            'volume': indicators.get('volume', 0),
+            'volume_ratio': indicators.get('volume_ratio', 100),
+            
+            # Grid
+            'grid': {
+                'position_pct': indicators.get('position_in_range', 50),
+                'rompiendo': indicators.get('position_in_range', 50) &gt; 85
+            },
+            
+            # Score
+            'score': indicators.get('score_15m', 0)
+        }
+        
+        self.frames.append(frame)
+    
+    def get_frames(self, n=None):
+        """
+        Obtiene últimos N frames
+        
+        Args:
+            n: Número de frames (None = todos)
+            
+        Returns:
+            list: Lista de frames [más viejo ... más nuevo]
+        """
+        if n is None:
+            return list(self.frames)
+        else:
+            return list(self.frames)[-n:]
+    
+    def get_trajectory(self, indicator_path, n=5):
+        """
+        Obtiene trayectoria de un indicador (la "animación")
+        
+        Args:
+            indicator_path: Ruta al indicador (ej: 'adx.value')
+            n: Frames a analizar
+            
+        Returns:
+            list: Valores históricos [más viejo ... más nuevo]
+            
+        Example:
+            trajectory = storage.get_trajectory('adx.value', 5)
+            # [45, 48, 52, 56, 58] → subiendo
+        """
+        frames = self.get_frames(n)
+        values = []
+        
+        for frame in frames:
+            # Navegar por el path (ej: 'adx.value')
+            parts = indicator_path.split('.')
+            value = frame
+            
+            try:
+                for part in parts:
+                    if isinstance(value, dict):
+                        value = value.get(part, 0)
+                    else:
+                        value = 0
+                        break
+                values.append(value)
+            except:
+                values.append(0)
+        
+        return values
+    
+    def get_frame_count(self):
+        """Retorna cantidad de frames almacenados"""
+        return len(self.frames)
+    
+    def clear(self):
+        """Limpia todos los frames"""
+        self.frames.clear()
+    
+    def get_latest_frame(self):
+        """Obtiene el frame más reciente"""
+        if self.frames:
+            return self.frames[-1]
+        return None
+    
+    def has_enough_frames(self, min_frames=3):
+        """Verifica si hay suficientes frames para análisis"""
+        return len(self.frames) &gt;= min_frames
+
+
+# ============================================================================
+# STORAGE GLOBAL (una instancia por símbolo/timeframe)
+# ============================================================================
+
+_frame_storages = {}
+
+
+def get_frame_storage(symbol, timeframe='15m'):
+    """
+    Obtiene o crea storage para símbolo/timeframe
+    
+    Args:
+        symbol: Par (ej: RAVE/USDT:USDT)
+        timeframe: TF (default '15m')
+        
+    Returns:
+        FrameStorage: Instancia para ese par/tf
+    """
+    key = f"{symbol}_{timeframe}"
+    if key not in _frame_storages:
+        _frame_storages[key] = FrameStorage(max_frames=20)
+    return _frame_storages[key]
+
+
+def get_all_storages():
+    """Retorna todos los storages activos"""
+    return _frame_storages
+
+
+def clear_all_storages():
+    """Limpia todos los storages"""
+    global _frame_storages
+    _frame_storages = {}
+
+
+def load_frames_from_ohlcv(symbol: str, timeframe: str, ohlcv_data: list, num_frames: int = 10):
+    """
+    CARGA INSTANTÁNEA DE FRAMES DESDE OHLCV HISTÓRICO.
+    
+    CONCEPTO DE JOEL:
+    "El Time Ladder debe ser rápido, no en slow motion"
+    
+    Esta función carga los últimos N frames inmediatamente desde los datos
+    OHLCV históricos del exchange, en lugar de esperar múltiples ciclos.
+    
+    Args:
+        symbol: Par (ej: RAVE/USDT:USDT)
+        timeframe: TF (5m, 15m, 1h, 4h)
+        ohlcv_data: Lista de OHLCV [[timestamp, open, high, low, close, volume], ...]
+        num_frames: Cantidad de frames a cargar (default 10)
+        
+    Returns:
+        int: Cantidad de frames cargados
+    """
+    if not ohlcv_data or len(ohlcv_data) &lt; 5:
+        return 0
+    
+    storage = get_frame_storage(symbol, timeframe)
+    
+    # Si ya tiene suficientes frames, no recargar
+    if storage.has_enough_frames(num_frames):
+        return storage.get_frame_count()
+    
+    # Limpiar frames antiguos si los hay
+    storage.clear()
+    
+    # Cargar últimos N candles como frames
+    candles_to_load = ohlcv_data[-num_frames:]
+    
+    for candle in candles_to_load:
+        if len(candle) &gt;= 6:
+            timestamp, open_p, high_p, low_p, close_p, volume = candle[:6]
+            
+            # Crear indicadores simulados para el frame
+            indicators = {
+                'open': open_p,
+                'high': high_p,
+                'low': low_p,
+                'close': close_p,
+                'price': close_p,
+                'volume': volume,
+                'volume_ratio': 100,  # Se calculará después si es necesario
+                'position_in_range': 50,  # Se calculará después
+                
+                # ADX y momentum se llenarán con datos reales cuando se analice
+                'adx': {'adx_current': 0, 'di_plus_current': 0, 'di_minus_current': 0},
+                'momentum': {'color_current': 'gray', 'consecutive_count': 0}
+            }
+            
+            storage.add_frame(symbol, timeframe, indicators)
+    
+    loaded = storage.get_frame_count()
+    if loaded &gt;= 5:
+        print(f"   ⚡ Time Ladder INSTANTÁNEO: {symbol} - {loaded} frames cargados")
+    
+    return loaded
+
+
+# ============================================================================
+# DETECCIÓN DE PATRONES EN PRECIO (TIME LADDER)
+# ============================================================================
+
+def detect_price_pattern(symbol, direction='BULLISH', timeframe='15m'):
+    """
+    Detecta patrón de precio usando Time Ladder.
+    
+    CONCEPTO DE JOEL:
+    "El bot no esperaba el piso y luego el impulso, entraba sin ver ese piso."
+    
+    Esta función ve la PELÍCULA del precio frame a frame para detectar:
+    - LONG: Corrección → Piso → Rebote confirmado → ENTRAR
+    - SHORT: Rally → Techo → Caída confirmada → ENTRAR
+    
+    Args:
+        symbol: Par a analizar
+        direction: 'BULLISH' o 'BEARISH'
+        timeframe: TF para análisis
+        
+    Returns:
+        dict: {
+            'ready': bool - Si el patrón está listo para entrar
+            'pattern': str - Nombre del patrón detectado
+            'phase': str - Fase actual (CORRECCION, PISO, IMPULSO, etc)
+            'reason': str - Razón descriptiva
+            'wait_for': str - Qué esperar si no está listo
+        }
+    """
+    storage = get_frame_storage(symbol, timeframe)
+    
+    # Necesitamos mínimo 5 frames para ver la película
+    if not storage.has_enough_frames(5):
+        return {
+            'ready': False,
+            'pattern': 'INSUFFICIENT_DATA',
+            'phase': 'UNKNOWN',
+            'reason': f'Solo {storage.get_frame_count()} frames, necesita 5',
+            'wait_for': 'Más datos de precio'
+        }
+    
+    # Obtener trayectorias
+    closes = storage.get_trajectory('ohlc.close', 5)
+    lows = storage.get_trajectory('ohlc.low', 5)
+    highs = storage.get_trajectory('ohlc.high', 5)
+    
+    # Fallback si OHLC no está disponible
+    if not closes or closes[-1] == 0:
+        closes = storage.get_trajectory('price', 5)
+        lows = closes.copy()
+        highs = closes.copy()
+    
+    if not closes or len(closes) &lt; 5:
+        return {
+            'ready': False,
+            'pattern': 'NO_PRICE_DATA',
+            'phase': 'UNKNOWN',
+            'reason': 'Sin datos de precio',
+            'wait_for': 'Datos de precio',
+            'structure': None
+        }
+    
+    # ===================================================================
+    # &gt;&gt;&gt; NUEVO: DETECCIÓN DE HH/HL/LL/LH (ESTRUCTURA DE TENDENCIA)
+    # ===================================================================
+    # Esto es como ver el gráfico completo de velas pero con el precio
+    
+    # Identificar swing highs y swing lows (pivots locales)
+    swing_highs = []  # [(idx, price)]
+    swing_lows = []   # [(idx, price)]
+    
+    for i in range(1, len(highs) - 1):
+        # Swing High: precio mayor que vecinos
+        if highs[i] &gt; highs[i-1] and highs[i] &gt;= highs[i+1]:
+            swing_highs.append((i, highs[i]))
+        # Swing Low: precio menor que vecinos  
+        if lows[i] &lt; lows[i-1] and lows[i] &lt;= lows[i+1]:
+            swing_lows.append((i, lows[i]))
+    
+    # Analizar estructura HH/HL/LL/LH
+    structure = {
+        'swing_highs': swing_highs,
+        'swing_lows': swing_lows,
+        'trend': 'LATERAL',
+        'hh_count': 0,
+        'hl_count': 0,
+        'll_count': 0,
+        'lh_count': 0,
+        'last_pivot': 'NONE'
+    }
+    
+    # Contar HH (Higher High) y LH (Lower High)
+    for i in range(1, len(swing_highs)):
+        if swing_highs[i][1] &gt; swing_highs[i-1][1]:
+            structure['hh_count'] += 1
+        else:
+            structure['lh_count'] += 1
+    
+    # Contar HL (Higher Low) y LL (Lower Low)
+    for i in range(1, len(swing_lows)):
+        if swing_lows[i][1] &gt; swing_lows[i-1][1]:
+            structure['hl_count'] += 1
+        else:
+            structure['ll_count'] += 1
+    
+    # Determinar tendencia por estructura
+    alcista_score = structure['hh_count'] + structure['hl_count']
+    bajista_score = structure['ll_count'] + structure['lh_count']
+    
+    if alcista_score &gt; bajista_score + 1:
+        structure['trend'] = 'UPTREND'
+        structure['last_pivot'] = 'HL' if swing_lows and swing_lows[-1][0] &gt; (swing_highs[-1][0] if swing_highs else 0) else 'HH'
+    elif bajista_score &gt; alcista_score + 1:
+        structure['trend'] = 'DOWNTREND'
+        structure['last_pivot'] = 'LL' if swing_lows and swing_lows[-1][0] &gt; (swing_highs[-1][0] if swing_highs else 0) else 'LH'
+    else:
+        structure['trend'] = 'LATERAL'
+    
+    print(f"         📊 Estructura: {structure['trend']} | HH:{structure['hh_count']} HL:{structure['hl_count']} LL:{structure['ll_count']} LH:{structure['lh_count']}")
+    
+    # === ANÁLISIS PARA LONG (BULLISH) ===
+    if direction == 'BULLISH':
+        # Calcular movimientos
+        lowest_idx = lows.index(min(lows)) if lows else -1
+        current_close = closes[-1]
+        previous_close = closes[-2]
+        lowest_low = min(lows) if lows else 0
+        highest_high = max(highs) if highs else 0
+        
+        # &gt;&gt;&gt; NUEVO: BLOQUEAR LONG EN ZONA DE RESISTENCIA
+        # El bot no debe entrar LONG justo en la resistencia (probable rechazo)
+        if highest_high &gt; 0:
+            dist_to_resistance = abs(highest_high - current_close) / highest_high * 100
+            if dist_to_resistance &lt; 1.0:  # Menos de 1% del máximo
+                return {
+                    'ready': False,
+                    'pattern': 'AT_RESISTANCE',
+                    'phase': 'RESISTENCIA',
+                    'reason': f'LONG en zona de RESISTENCIA (a {dist_to_resistance:.2f}% del máximo)',
+                    'wait_for': 'Esperar rechazo o ruptura de resistencia',
+                    'structure': structure
+                }
+        
+        # Detectar fases
+        # FASE 1: Corrección (precio bajando)
+        if closes[-3] &gt; closes[-2] &gt; closes[-1]:
+            return {
+                'ready': False,
+                'pattern': 'CORRECTION_IN_PROGRESS',
+                'phase': 'CORRECCION',
+                'reason': 'Precio bajando - esperar piso',
+                'wait_for': 'Rebote desde piso',
+                'structure': structure
+            }
+        
+        # FASE 2: Piso detectado (mínimo tocado, precio rebotando)
+        if lowest_idx &gt;= 2 and current_close &gt; lowest_low * 1.005:
+            # Verificar que hay rebote confirmado
+            if current_close &gt; previous_close:
+                return {
+                    'ready': True,
+                    'pattern': 'FLOOR_BOUNCE',
+                    'phase': 'IMPULSO',
+                    'reason': f'Rebote desde piso ${lowest_low:.4f} confirmado',
+                    'wait_for': None,
+                    'structure': structure
+                }
+            else:
+                return {
+                    'ready': False,
+                    'pattern': 'FLOOR_TOUCHED',
+                    'phase': 'PISO',
+                    'reason': 'Piso tocado, esperando confirmación de rebote',
+                    'wait_for': 'Vela verde desde piso',
+                    'structure': structure
+                }
+        
+        # FASE 3: Impulso en curso (subiendo)
+        if closes[-2] &lt; closes[-1] and closes[-3] &lt; closes[-2]:
+            # &gt;&gt;&gt; NUEVO: Verificar que el movimiento es FUERTE (no solo subiendo)
+            price_change_pct = ((closes[-1] - closes[-3]) / closes[-3]) * 100
+            
+            if price_change_pct &gt;= 0.5:  # Subida fuerte (&gt;=0.5% en 3 velas)
+                return {
+                    'ready': True,
+                    'pattern': 'IMPULSE_STRONG',
+                    'phase': 'EXPLOSIÓN',
+                    'reason': f'Impulso FUERTE confirmado (+{price_change_pct:.2f}% en 3 velas)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': price_change_pct
+                }
+            else:
+                return {
+                    'ready': True,
+                    'pattern': 'IMPULSE_CONFIRMED',
+                    'phase': 'IMPULSO',
+                    'reason': f'Impulso alcista (+{price_change_pct:.2f}%)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': price_change_pct
+                }
+        
+        # FASE 4: Lateral (sin dirección clara)
+        return {
+            'ready': False,
+            'pattern': 'LATERAL',
+            'phase': 'CONSOLIDACION',
+            'reason': 'Sin patrón claro - lateralizando',
+            'wait_for': 'Dirección definida',
+            'structure': structure
+        }
+    
+    # === ANÁLISIS PARA SHORT (BEARISH) ===
+    else:
+        highest_idx = highs.index(max(highs)) if highs else -1
+        current_close = closes[-1]
+        previous_close = closes[-2]
+        highest_high = max(highs) if highs else 0
+        lowest_low = min(lows) if lows else 0
+        
+        # &gt;&gt;&gt; NUEVO: BLOQUEAR SHORT EN ZONA DE SOPORTE
+        # El bot no debe entrar SHORT justo en el soporte (probable rebote)
+        if lowest_low &gt; 0:
+            dist_to_support = abs(current_close - lowest_low) / lowest_low * 100
+            if dist_to_support &lt; 1.0:  # Menos de 1% del mínimo
+                return {
+                    'ready': False,
+                    'pattern': 'AT_SUPPORT',
+                    'phase': 'SOPORTE',
+                    'reason': f'SHORT en zona de SOPORTE (a {dist_to_support:.2f}% del mínimo)',
+                    'wait_for': 'Esperar rebote o ruptura del soporte',
+                    'structure': structure
+                }
+        
+        # FASE 1: Rally (precio subiendo - contra-tendencia)
+        if closes[-3] &lt; closes[-2] &lt; closes[-1]:
+            return {
+                'ready': False,
+                'pattern': 'RALLY_IN_PROGRESS',
+                'phase': 'RALLY',
+                'reason': 'Precio subiendo - esperar techo',
+                'wait_for': 'Rechazo desde techo',
+                'structure': structure
+            }
+        
+        # FASE 2: Techo detectado (máximo tocado, precio cayendo)
+        if highest_idx &gt;= 2 and current_close &lt; highest_high * 0.995:
+            if current_close &lt; previous_close:
+                return {
+                    'ready': True,
+                    'pattern': 'CEILING_REJECTION',
+                    'phase': 'CAIDA',
+                    'reason': f'Rechazo desde techo ${highest_high:.4f} confirmado',
+                    'wait_for': None,
+                    'structure': structure
+                }
+            else:
+                return {
+                    'ready': False,
+                    'pattern': 'CEILING_TOUCHED',
+                    'phase': 'TECHO',
+                    'reason': 'Techo tocado, esperando confirmación de caída',
+                    'wait_for': 'Vela roja desde techo',
+                    'structure': structure
+                }
+        
+        # FASE 3: Caída en curso
+        if closes[-2] &gt; closes[-1] and closes[-3] &gt; closes[-2]:
+            # &gt;&gt;&gt; NUEVO: Verificar que el movimiento es FUERTE (no solo cayendo)
+            price_change_pct = ((closes[-3] - closes[-1]) / closes[-3]) * 100
+            
+            if price_change_pct &gt;= 0.5:  # Caída fuerte (&gt;=0.5% en 3 velas)
+                return {
+                    'ready': True,
+                    'pattern': 'DROP_STRONG',
+                    'phase': 'EXPLOSIÓN',
+                    'reason': f'Caída FUERTE confirmada (-{price_change_pct:.2f}% en 3 velas)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': -price_change_pct
+                }
+            else:
+                return {
+                    'ready': True,
+                    'pattern': 'DROP_CONFIRMED',
+                    'phase': 'CAIDA',
+                    'reason': f'Caída confirmada (-{price_change_pct:.2f}%)',
+                    'wait_for': None,
+                    'structure': structure,
+                    'price_momentum': -price_change_pct
+                }
+        
+        # FASE 4: Lateral
+        return {
+            'ready': False,
+            'pattern': 'LATERAL',
+            'phase': 'CONSOLIDACION',
+            'reason': 'Sin patrón claro - lateralizando',
+            'wait_for': 'Dirección definida',
+            'structure': structure
+        }
+
+
+# ============================================================================
+# TESTING
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 60)
+    print("BRAIN FRAMES - Testing Sistema de Película")
+    print("=" * 60)
+    
+    # Simular frames de RAVE
+    storage = get_frame_storage('RAVE/USDT:USDT', '15m')
+    
+    # Agregar frames simulados (como si pasaran los minutos)
+    test_frames = [
+        {'adx': {'adx_current': 45, 'di_plus_current': 30, 'di_minus_current': 10, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 8, 'intensity': 0.6},
+         'price': 0.50, 'volume': 50000, 'position_in_range': 70},
+         
+        {'adx': {'adx_current': 48, 'di_plus_current': 32, 'di_minus_current': 9, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 9, 'intensity': 0.7},
+         'price': 0.52, 'volume': 55000, 'position_in_range': 75},
+         
+        {'adx': {'adx_current': 52, 'di_plus_current': 35, 'di_minus_current': 8, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 10, 'intensity': 0.7},
+         'price': 0.55, 'volume': 60000, 'position_in_range': 82},
+         
+        {'adx': {'adx_current': 56, 'di_plus_current': 37, 'di_minus_current': 6, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 10, 'intensity': 0.8},
+         'price': 0.60, 'volume': 70000, 'position_in_range': 88},
+         
+        {'adx': {'adx_current': 58, 'di_plus_current': 38, 'di_minus_current': 5, 'adx_trend': 'creciendo'},
+         'momentum': {'color_current': 'lime', 'consecutive_count': 10, 'intensity': 0.8},
+         'price': 0.65, 'volume': 75000, 'position_in_range': 93},
+    ]
+    
+    for frame_data in test_frames:
+        storage.add_frame('RAVE/USDT:USDT', '15m', frame_data)
+    
+    # Mostrar trayectorias
+    print("\n🎬 PELÍCULA RAVE (últimos 5 frames):")
+    print("-" * 40)
+    
+    adx_trajectory = storage.get_trajectory('adx.value', 5)
+    print(f"ADX:      {adx_trajectory}")
+    
+    spread_trajectory = storage.get_trajectory('adx.spread', 5)
+    print(f"Spread:   {spread_trajectory}")
+    
+    mom_age = storage.get_trajectory('momentum.age', 5)
+    print(f"Mom Age:  {mom_age}")
+    
+    price = storage.get_trajectory('price', 5)
+    print(f"Precio:   {price}")
+    
+    position = storage.get_trajectory('grid.position_pct', 5)
+    print(f"Posición: {position}")
+    
+    print("\n" + "-" * 40)
+    print(f"Total frames: {storage.get_frame_count()}")
+    print("✅ Sistema de frames funcionando")
+    print("=" * 60)
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 98,423<br>
-    Generado: 2025-12-24 13:31:53
+    Total caracteres: 122,383<br>
+    Generado: 2025-12-24 13:32:22
   </div>
 </body>
 </html>
