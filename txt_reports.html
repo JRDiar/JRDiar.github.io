@@ -15,772 +15,163 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-25 16:21:58</div>
+  <div class="meta">Última actualización: 2025-12-25 16:35:23</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Hola! Necesito que analices un bot de criptomonedas, todos los modulos y busques este error, porque los trades estan entrando muy al limite de la resistencia, todos los trades entran en esa zona, quiero que encuentres esa mala configuración ese bug. Adjunto link de Github que contienen todos los modulos del bot, necesito que ahi busques todo, además adjunto imgen del problema actual e imagen del setup del bot, como el bot opera. Gracias.
+ ANÁLISIS COMPLETO: Opus + Sonnet + Gemini
+✅ Diagnóstico de Gemini: 80% CORRECTO
+"Bot compra FOMO - detecta fuerza pero no calcula distancia a resistencia"
 
-Asistente de programación
-Hola! He analizado a fondo los módulos de tu bot BrainTraderAntigravity. Entiendo perfectamente la frustración: el bot está comprando FOMO (Fear Of Missing Out). Detecta fuerza, pero no calcula que ya no tiene "pista" para aterrizar antes de chocarse con el techo (la resistencia).
+🐛 EL BUG REAL (Encontrado por Opus):
+brain_entry_validator.py YA TIENE validación de distancia (líneas 131-232) con thresholds de 1-2%.
 
-El problema raíz no es uno solo, sino una combinación fatal entre brain_trend_birth.py (que se emociona demasiado pronto) y brain_entry_validator.py (que no le pone el freno de mano a tiempo).
+PERO: is_perfect_setup() en brain_sniper_realtime.py NO USA entry_validator!
 
-Aquí tienes el análisis forense del error y la solución exacta.
+DOS sistemas de entrada DESCONECTADOS:
+┌─────────────────────────────────────────────────────────────┐
+│ brain_sniper_realtime.py → is_perfect_setup() → ❌ NO usa  │
+│ brain_think.py → sniper_checklist() → ✅ SÍ usa            │
+└─────────────────────────────────────────────────────────────┘
+⚠️ Errores en código de Sonnet:
+MIN_DIST_TO_RESISTANCE no existe en brain_config.py
+data_15m tiene formato diferente al esperado por entry_validator
+✅ MI RECOMENDACIÓN:
+Agregar MIN_DIST_TO_RESISTANCE = 0.60 a brain_config.py
+Conectar is_perfect_setup() con entry_validator
+NO reemplazar el archivo completo (como Sonnet propone)
+Cambios mínimos:
+Archivo	Cambio
+brain_config.py	Agregar constante
+brain_sniper_realtime.py	Conectar con entry_validator
 
-🔍 El Diagnóstico: ¿Por qué compra en el techo?
-El bot sufre de "Ceguera de Proximidad".
+ANÁLISIS COMPLETO: Opus + Sonnet + Gemini
+📊 Diagnóstico de Gemini: ✅ 80% CORRECTO
+Diagnóstico: "El bot compra FOMO. Detecta fuerza pero no calcula distancia a resistencia."
 
-El Culpa de la Emoción (brain_trend_birth.py): Este módulo detecta el nacimiento de una tendencia. Cuando el precio cruza las EMAs y el ADX sube, grita "¡COMPRA!". El problema es que ignora la ubicación geográfica del precio en el Grid. Solo mira la fuerza, no el mapa.
+Mi validación: Parcialmente correcto, pero el problema es más profundo.
 
-El Fallo de Seguridad (brain_entry_validator.py): Aquí debería haber un "portero" que diga: "Espera, la señal es buena, pero tenemos una resistencia de hormigón a solo un 0.2% de distancia. No vale la pena el riesgo". Ese cálculo está desactivado, mal configurado o es demasiado permisivo.
+🐛 EL BUG REAL (Encontrado por Opus)
+Sonnet y Gemini proponen arreglar 
+brain_entry_validator.py
+PERO: 
+brain_entry_validator.py
+ YA TIENE validación de distancia (líneas 131-232):
 
-El bot ve un "Pump", se activa, y ejecuta la orden justo cuando el precio toca la línea roja del Grid, que es donde el precio suele rebotar hacia abajo.
+# Línea 162: Bloquea si &lt; 1% de VAH
+if dist_to_vah &lt; 1:
+    blocks.append(f'LONG cerca de resistencia VAH ({dist_to_vah:.1f}%)')
+# Línea 147: Bloquea si en resistencia diagonal
+if current_price &gt;= resistencia_diagonal * 0.99:
+    blocks.append(f'LONG en/arriba de RESISTENCIA DIAGONAL')
+🔴 El problema REAL: 
+is_perfect_setup()
+ NO USA brain_entry_validator!
+FLUJO ACTUAL:
+brain_sniper_realtime.py → is_perfect_setup() → Solo verifica:
+    ✅ score &gt;= 65
+    ✅ action == ENTER
+    ✅ timing &gt;= 50
+    ✅ momentum color
+    ✅ grid_position &gt; 60%
+    ❌ NO llama a entry_validator!
+Pero existe otro flujo:
 
-🛠️ La Solución: Implementar el "Filtro de Espacio Libre"
-Tenemos que obligar al bot a medir la distancia hasta la siguiente línea del Grid antes de disparar. Si no hay suficiente espacio para tomar ganancias (Take Profit) antes de chocar, la operación debe cancelarse.
+brain_think.py → sniper_checklist() → entry_validator.validate_entry()
+    ✅ SÍ valida distancias
+🎯 Hay DOS sistemas de entrada que NO están conectados:
+Sistema	Archivo	¿Usa entry_validator?
+Sniper Realtime	
+brain_sniper_realtime.py
+❌ NO
+Sniper Think	
+brain_think.py
+✅ SÍ
+🔧 SOLUCIÓN PROPUESTA
+OPCIÓN 1: Conectar 
+is_perfect_setup()
+ con entry_validator (RECOMENDADO)
+# En brain_sniper_realtime.py - is_perfect_setup()
+from brain_entry_validator import entry_validator
+# AGREGAR antes del return True:
+validation = entry_validator.validate_entry(
+    symbol, direction, 
+    {'action': 'ENTER_NOW', 'phase': 'EXPLOSION'},
+    {'force_level': force_level},
+    {'15m': data_15m}
+)
+if not validation['can_enter']:
+    print(f"  🚫 {symbol}: {validation['reason']}")
+    return False
+OPCIÓN 2: Ajustar thresholds en 
+brain_entry_validator.py
+ (Sonnet propone)
+Cambiar thresholds de 1-2% a 0.6%:
 
-Paso 1: Ajustar la Configuración (brain_config.py)
-Primero, definimos qué es "demasiado cerca". Busca este archivo y asegúrate de tener (o añade) estas variables:
+# Línea 162: Actual
+if dist_to_vah &lt; 1:  # 1%
+# Propuesto
+if dist_to_vah &lt; MIN_DIST_SAFETY:  # 0.6%
+OPCIÓN 3: Agregar constante a 
+brain_config.py
+ (Gemini propone)
+MIN_DIST_TO_RESISTANCE = 0.60  # 0.6% mínimo
+⚠️ ERRORES EN CÓDIGO DE SONNET
+Error 1: Variables no disponibles
+# Sonnet propone:
+from brain_config import MIN_DIST_TO_RESISTANCE
+# PROBLEMA: MIN_DIST_TO_RESISTANCE no existe actualmente en brain_config.py
+Error 2: data_15m no tiene todos los datos necesarios
+# Sonnet usa:
+pivots = zigzag_data.get('pivots', [])
+pivot_types = zigzag_data.get('pivot_types', [])
+# PERO en is_perfect_setup(), data_15m viene de:
+data_15m = ladder_data.get('15m', {})
+# Este dict tiene formato diferente al que entry_validator espera
+✅ MI RECOMENDACIÓN FINAL
+NO reemplazar 
+brain_entry_validator.py
+ completo (Sonnet propone esto)
+SÍ agregar MIN_DIST_TO_RESISTANCE = 0.60 a 
+brain_config.py
+SÍ ajustar thresholds en 
+brain_entry_validator.py
+ para usar esa constante
+SÍ conectar 
+is_perfect_setup()
+ con entry_validator
+Código mínimo para arreglar:
+1. brain_config.py:
 
-Python
-# --- brain_config.py ---
+MIN_DIST_TO_RESISTANCE = 0.60  # 0.6% mínimo
+2. brain_sniper_realtime.py - is_perfect_setup():
 
-# CONFIGURACIÓN DE SEGURIDAD DE ENTRADA
-# Mínimo espacio libre necesario hasta la próxima resistencia para entrar (en %)
-MIN_DIST_TO_RESISTANCE = 0.50  # &lt;--- Sube esto. Si estaba en 0.1 o 0.2, es muy poco. Ponle 0.5% o 0.8%.
-
-# Si el ADX es brutal (muy fuerte), ¿ignoramos la resistencia?
-# Ponlo en False para obligar a respetar la resistencia siempre.
-IGNORE_RESISTANCE_ON_HIGH_MOMENTUM = False 
-Paso 2: Corregir el Validador (brain_entry_validator.py)
-Este es el cambio crítico. Debemos inyectar lógica en la función de validación para que calcule la distancia a la resistencia más cercana del Grid.
-
-Busca la función principal de validación (usualmente validate_entry o validate_long) e inserta este bloque de código:
-
-Python
-# --- brain_entry_validator.py ---
-
-def validate_long_entry(self, current_price, grid_levels, indicators):
-    """
-    Valida si es seguro entrar en LONG considerando la resistencia.
-    """
-    
-    # 1. Encontrar la resistencia más cercana por encima del precio actual
-    # Filtramos los niveles del grid que están por encima del precio
-    future_resistances = [level for level in grid_levels if level &gt; current_price]
-    
-    if not future_resistances:
-        # Si no hay resistencias arriba (estamos en máximos históricos), pase libre.
-        return True
-        
-    nearest_resistance = min(future_resistances)
-    
-    # 2. Calcular la distancia en porcentaje
-    distance_to_res_pct = ((nearest_resistance - current_price) / current_price) * 100
-    
-    # 3. EL CHEQUEO DE SEGURIDAD (El Bug Fix)
-    print(f"[DEBUG] Precio: {current_price}, Prox Resistencia: {nearest_resistance}, Distancia: {distance_to_res_pct:.2f}%")
-    
-    # Si la distancia es menor que tu configuración, SE BLOQUEA EL TRADE.
-    if distance_to_res_pct &lt; config.MIN_DIST_TO_RESISTANCE:
-        print(f"⛔ TRADE RECHAZADO: Resistencia demasiado cerca ({distance_to_res_pct:.2f}% &lt; {config.MIN_DIST_TO_RESISTANCE}%)")
-        return False
-        
-    return True
-Paso 3: Parchear el "Nacimiento de Tendencia" (brain_trend_birth.py)
-Asegúrate de que este módulo no tenga "poder absoluto". A veces estos módulos tienen un flag force_entry=True.
-
-Abre brain_trend_birth.py.
-
-Busca donde envía la señal de compra.
-
-Asegúrate de que SIEMPRE pase por el validador que acabamos de corregir en el Paso 2. Si ves algo como executor.buy(force=True), cámbialo a executor.buy(force=False).
-
-Resumen del Fix
-Síntoma: El bot compra caro, justo antes de la caída.
-
-Causa: Falta de cálculo de "Risk/Reward" inmediato contra el Grid.
-
-Corrección: Obligar al brain_entry_validator a medir la distancia a la línea superior del Grid. Si es &lt; 0.5% (o tu gusto), NO ENTRA, por muy bonitos que se vean el RSI y el ADX.
-
-¿Quieres que te genere el código completo del archivo brain_entry_validator.py con esta lógica ya integrada para que solo tengas que copiar y pegar?
-
-¡Claro que sí! Aquí tienes el archivo brain_entry_validator.py completo y corregido.
-
-He implementado el "Filtro de Espacio Libre" (Safety Valve). Ahora el bot recopilará todas las resistencias posibles (Grid horizontal, diagonales, VAH, máximos anteriores) y calculará la distancia a la más cercana. Si esa distancia es menor al límite de seguridad (por defecto 0.6%), bloqueará la entrada para evitar chocarse contra el techo.
-
-Instrucciones de Implementación:
-Copia el código de abajo.
-
-Reemplaza todo el contenido de tu archivo brain_entry_validator.py.
-
-Guarda los cambios.
-
-Código corregido (brain_entry_validator.py)
-
-"""
-brain_entry_validator.py - Validador de Entrada (Capa 3) - FIXED
-================================================================
-Valida entrada según la fase detectada.
-FIX APLICADO: "Filtro de Espacio Libre". Calcula distancia exacta a la
-resistencia más cercana (Grid, Diagonal, VAH o Pivote) y bloquea si
-el espacio es insuficiente para un trade rentable (evita comprar en techo).
-
-Filosofía de Joel:
-"NO entrar en VP, HH, soportes/resistencias.
-Esperar que rebote DESPUÉS de resistencia."
-
-Autor: Joel Rodríguez Diarte (concepto)
-Implementación: Claude (Anthropic) &amp; Gemini (Fix)
-Fecha: 2025-12-25
-"""
-
-import brain_config as config
-from brain_frames import get_frame_storage
-
-class EntryValidator:
-    """
-    Validador de Entrada - Capa 3 del sistema
-    
-    Validaciones:
-    1. Zonas peligrosas (VP, HH, resistencias)
-    2. Rebote confirmado (para correcciones)
-    3. Espacio hasta próxima resistencia (FIX CRÍTICO)
-    """
-    
-    def validate_entry(self, symbol, direction, phase_result, force_result, ladder_data):
-        """
-        Valida si puede entrar según fase
-        
-        Args:
-            symbol: Par a analizar
-            direction: 'BULLISH' o 'BEARISH'
-            phase_result: Resultado del clasificador de fase
-            force_result: Resultado del filtro de fuerza
-            ladder_data: Datos de timeframes
-        
-        Returns:
-            dict: {
-                'can_enter': bool,
-                'reason': str,
-                'wait_for': str  # Si debe esperar, qué condición
-            }
-        """
-        print(f"\n✅ VALIDADOR DE ENTRADA: {symbol}")
-        print("-" * 50)
-        
-        action = phase_result['action']
-        phase = phase_result['phase']
-        
-        print(f"   Fase: {phase}")
-        print(f"   Acción sugerida: {action}")
-        
-        # === CASO 1: EXPLOSIÓN → Validar zonas ===
-        if action == 'ENTER_NOW':
-            return self._validate_explosion_entry(symbol, direction, force_result, ladder_data)
-        
-        # === CASO 2: CORRECCIÓN → Verificar rebote ===
-        elif action == 'WAIT_REBOUND':
-            return self._check_rebound_confirmed(symbol, direction, ladder_data)
-        
-        # === CASO 3: RECHAZAR ===
-        else:
-            return {
-                'can_enter': False,
-                'reason': phase_result['reason'],
-                'wait_for': None,
-                'validation_type': 'PHASE_REJECT'
-            }
-    
-    def _validate_explosion_entry(self, symbol, direction, force_result, ladder_data):
-        """
-        Valida entrada en explosión (no en resistencia)
-        
-        Verifica:
-        1. No está en zona de alto volumen (VAH/POC)
-        2. Tiene espacio hasta próxima resistencia (FIX AGREGADO)
-        3. No está en HH reciente
-        """
-        print("\n   🔍 Validando entrada en explosión...")
-        
-        data_15m = ladder_data.get('15m', {})
-        current_price = data_15m.get('current_price', 0)
-        
-        if current_price == 0:
-            return {'can_enter': False, 'reason': 'Precio actual 0', 'wait_for': 'Datos'}
-
-        # === CONFIGURACIÓN DE SEGURIDAD (Hardcoded fallback si no está en config) ===
-        # Distancia mínima requerida en % para entrar antes de una resistencia
-        MIN_DIST_SAFETY = getattr(config, 'MIN_DIST_TO_RESISTANCE', 0.60) 
-        
-        # === OBTENER DATOS DE ZONAS ===
-        vp_data = data_15m.get('volume_profile', {})
-        zigzag_data = data_15m.get('zigzag', {})
-        
-        # VAH y POC (Volume Profile)
-        vah = vp_data.get('value_area_high', 0)
-        val = vp_data.get('value_area_low', 0)
-        poc = vp_data.get('poc_current', 0)
-        
-        # Pivotes ZigZag
-        pivots = zigzag_data.get('pivots', [])
-        pivot_types = zigzag_data.get('pivot_types', [])
-        
-        # === OBTENER DATOS DE GRID (Horizontal y Diagonal) ===
-        grid_data = data_15m.get('grid', {})
-        diagonal_data = grid_data.get('diagonal', {})
-        
-        # Resistencias Diagonales
-        soporte_diagonal = diagonal_data.get('soporte_diagonal', 0)
-        resistencia_diagonal = diagonal_data.get('resistencia_diagonal', 0)
-        diagonal_valid = diagonal_data.get('valid', False)
-
-        # === RECOPILACIÓN DE OBSTÁCULOS (FIX CRÍTICO) ===
-        # Creamos una lista unificada de todas las resistencias posibles por encima del precio
-        posibles_resistencias = []
-        posibles_soportes = [] # Para shorts
-
-        # 1. Agregar Diagonales
-        if diagonal_valid:
-            if resistencia_diagonal &gt; 0: posibles_resistencias.append(('Diagonal Res', resistencia_diagonal))
-            if soporte_diagonal &gt; 0: posibles_soportes.append(('Diagonal Sop', soporte_diagonal))
-
-        # 2. Agregar Volume Profile
-        if vah &gt; 0: posibles_resistencias.append(('VAH', vah))
-        if poc &gt; 0: 
-            posibles_resistencias.append(('POC', poc))
-            posibles_soportes.append(('POC', poc))
-        if val &gt; 0: posibles_soportes.append(('VAL', val))
-
-        # 3. Agregar Pivotes Recientes (HH para resistencia, LL para soporte)
-        if pivots and pivot_types:
-            for p_price, p_type in zip(pivots[-5:], pivot_types[-5:]): # Mirar últimos 5
-                if p_type == 'HH': posibles_resistencias.append(('Prev HH', p_price))
-                if p_type == 'LL': posibles_soportes.append(('Prev LL', p_price))
-
-        # 4. Agregar Grid Levels (si existen en integrated)
-        grid_master = ladder_data.get('grid_master', {})
-        if grid_master:
-            integrated = grid_master.get('integrated', {})
-            if integrated.get('resistencia_principal'): 
-                posibles_resistencias.append(('Grid Master Res', integrated['resistencia_principal']))
-            if integrated.get('soporte_principal'): 
-                posibles_soportes.append(('Grid Master Sop', integrated['soporte_principal']))
-
-        
-        # === ANÁLISIS DE ESPACIO LIBRE (FREE SPACE) ===
-        warnings = []
-        blocks = []
-
-        if direction == 'BULLISH':
-            # Filtrar resistencias que están ARRIBA del precio actual
-            resistencias_reales = [
-                (nombre, precio) for nombre, precio in posibles_resistencias 
-                if precio &gt; current_price
-            ]
-            
-            if resistencias_reales:
-                # Encontrar la más cercana
-                nombre_mas_cercana, precio_mas_cercano = min(resistencias_reales, key=lambda x: x[1])
-                
-                # Calcular distancia
-                distancia_pct = ((precio_mas_cercano - current_price) / current_price) * 100
-                
-                print(f"   📏 Distancia a resistencia ({nombre_mas_cercana}): {distancia_pct:.2f}%")
-                
-                # VALIDACIÓN CRÍTICA
-                if distancia_pct &lt; MIN_DIST_SAFETY:
-                    msg = f"Espacio insuficiente ({distancia_pct:.2f}%) hasta {nombre_mas_cercana}"
-                    print(f"   ⛔ BLOQUEO: {msg} &lt; Mínimo {MIN_DIST_SAFETY}%")
-                    blocks.append(msg)
-                elif distancia_pct &lt; (MIN_DIST_SAFETY * 2):
-                    msg = f"Cerca de {nombre_mas_cercana} ({distancia_pct:.2f}%)"
-                    warnings.append(msg)
-                else:
-                    print(f"   ✅ Espacio libre suficiente ({distancia_pct:.2f}%)")
-            else:
-                print("   ✅ Cielo despejado (No hay resistencias cercanas conocidas)")
-
-        elif direction == 'BEARISH':
-            # Filtrar soportes que están ABAJO del precio actual
-            soportes_reales = [
-                (nombre, precio) for nombre, precio in posibles_soportes 
-                if precio &lt; current_price
-            ]
-            
-            if soportes_reales:
-                # Encontrar el más cercano (el mayor precio que sea menor al actual)
-                nombre_mas_cercano, precio_mas_cercano = max(soportes_reales, key=lambda x: x[1])
-                
-                # Calcular distancia
-                distancia_pct = ((current_price - precio_mas_cercano) / current_price) * 100
-                
-                print(f"   📏 Distancia a soporte ({nombre_mas_cercano}): {distancia_pct:.2f}%")
-                
-                # VALIDACIÓN CRÍTICA
-                if distancia_pct &lt; MIN_DIST_SAFETY:
-                    msg = f"Espacio insuficiente ({distancia_pct:.2f}%) hasta {nombre_mas_cercano}"
-                    print(f"   ⛔ BLOQUEO: {msg} &lt; Mínimo {MIN_DIST_SAFETY}%")
-                    blocks.append(msg)
-                elif distancia_pct &lt; (MIN_DIST_SAFETY * 2):
-                    msg = f"Cerca de {nombre_mas_cercano} ({distancia_pct:.2f}%)"
-                    warnings.append(msg)
-                else:
-                    print(f"   ✅ Espacio libre suficiente ({distancia_pct:.2f}%)")
-
-        # === EVALUAR RESULTADO FINAL ===
-        
-        if blocks:
-            # BLOQUEO DURO: No hay espacio para operar
-            return {
-                'can_enter': False,
-                'reason': f"⛔ ZONA SATURADA: {blocks[0]}",
-                'wait_for': 'Romper resistencia o corregir',
-                'validation_type': 'ZONE_BLOCK',
-                'blocks': blocks
-            }
-        
-        if warnings:
-            # Si hay warnings pero no bloqueo, verificamos fuerza extrema para ignorar
-            force_level = force_result.get('force_level', 'NORMAL')
-            
-            # Solo la fuerza BRUTAL o NUCLEAR puede ignorar un warning de cercanía
-            if force_level in ['BRUTAL', 'NUCLEAR']:
-                print(f"\n   🚀 Fuerza {force_level} permite ignorar cercanía")
-                return {
-                    'can_enter': True,
-                    'reason': f"Fuerza {force_level} supera warnings: {', '.join(warnings)}",
-                    'wait_for': None,
-                    'validation_type': 'FORCE_OVERRIDE',
-                    'warnings': warnings
-                }
-            else:
-                # Si es fuerza normal, preferimos ser cautelosos si estamos en el rango de warning
-                # Opcional: Bloquear si es warning muy severo. Por ahora dejamos pasar como 'Precaución'
-                # pero indicando que el riesgo es alto.
-                return {
-                    'can_enter': True,
-                    'reason': f"Entrada con riesgo (Espacio ajustado): {', '.join(warnings)}",
-                    'wait_for': None,
-                    'validation_type': 'CAUTION_ENTRY',
-                    'warnings': warnings
-                }
-        
-        # Todo limpio
-        return {
-            'can_enter': True,
-            'reason': '✅ Espacio Libre Confirmado',
-            'wait_for': None,
-            'validation_type': 'CLEAN_ENTRY'
-        }
-    
-    def _check_rebound_confirmed(self, symbol, direction, ladder_data):
-        """
-        Verifica si el rebote está confirmado
-        
-        Condiciones para rebote confirmado:
-        1. Piso formado (LL o soporte tocado)
-        2. Precio empieza a subir (últimas 3 velas)
-        3. Momentum vuelve verde
-        4. ADX mantiene fuerza
-        """
-        print("\n   🔍 Verificando rebote confirmado...")
-        
-        data_15m = ladder_data.get('15m', {})
-        momentum_data = data_15m.get('momentum', {})
-        adx_data = data_15m.get('adx', {})
-        zigzag_data = data_15m.get('zigzag', {})
-        
-        # Obtener frames
-        storage = get_frame_storage(symbol, '15m')
-        price_values = storage.get_trajectory('price', 5)
-        
-        # Datos
-        mom_color = momentum_data.get('color_current', 'gray')
-        adx_trend = adx_data.get('adx_trend', 'estable')
-        pivot_types = zigzag_data.get('pivot_types', [])
-        last_pivot = pivot_types[-1] if pivot_types else 'UNKNOWN'
-        
-        # === CONDICIONES PARA REBOTE ===
-        
-        conditions = {}
-        
-        # 1. Piso formado (LL, HL después de caída)
-        if direction == 'BULLISH':
-            conditions['1_piso_formado'] = last_pivot in ['LL', 'HL']
-        else:
-            conditions['1_techo_formado'] = last_pivot in ['HH', 'LH']
-        
-        # 2. Precio subiendo (últimas 3 velas)
-        if len(price_values) &gt;= 3:
-            if direction == 'BULLISH':
-                conditions['2_precio_subiendo'] = price_values[-1] &gt; price_values[-3]
-            else:
-                conditions['2_precio_bajando'] = price_values[-1] &lt; price_values[-3]
-        else:
-            conditions['2_precio_moviendo'] = False
-        
-        # 3. Momentum color correcto
-        if direction == 'BULLISH':
-            conditions['3_momentum_verde'] = mom_color in ['lime', 'green']
-        else:
-            conditions['3_momentum_rojo'] = mom_color in ['red', 'maroon']
-        
-        # 4. ADX mantiene fuerza
-        conditions['4_adx_fuerte'] = adx_trend in ['creciendo', 'estable']
-        
-        # === EVALUAR CONDICIONES ===
-        
-        confirmed_count = sum(conditions.values())
-        total_conditions = len(conditions)
-        
-        print(f"   Condiciones de rebote:")
-        for cond, value in conditions.items():
-            print(f"   - {cond}: {'✅' if value else '❌'}")
-        
-        print(f"\n   Confirmadas: {confirmed_count}/{total_conditions}")
-        
-        # Necesita al menos 3 de 4 condiciones
-        if confirmed_count &gt;= 3:
-            print("   ✅ Rebote CONFIRMADO")
-            return {
-                'can_enter': True,
-                'reason': f'Rebote confirmado ({confirmed_count}/{total_conditions} condiciones)',
-                'wait_for': None,
-                'validation_type': 'REBOUND_CONFIRMED',
-                'conditions': conditions
-            }
-        else:
-            missing = [k for k, v in conditions.items() if not v]
-            print("   ⏸️ Rebote NO confirmado aún")
-            return {
-                'can_enter': False,
-                'reason': f'Rebote NO confirmado ({confirmed_count}/{total_conditions})',
-                'wait_for': f'Faltan: {", ".join(missing)}',
-                'validation_type': 'REBOUND_PENDING',
-                'conditions': conditions
-            }
-
-
-# Instancia global
-entry_validator = EntryValidator()
-
-
-# === TESTING ===
-if __name__ == "__main__":
-    print("=" * 60)
-    print("BRAIN ENTRY VALIDATOR - Testing FIX Espacio Libre")
-    print("=" * 60)
-    
-    # Simular datos
-    test_phase = {
-        'phase': 'EXPLOSIÓN_NACIENTE',
-        'action': 'ENTER_NOW',
-        'reason': 'Test'
-    }
-    
-    test_force = {
-        'force_level': 'FUERTE'
-    }
-    
-    # CASO DE PRUEBA: Precio muy cerca de la resistencia (Debería BLOQUEAR)
-    print("\n--- TEST 1: PRECIO PEGADO A RESISTENCIA ---")
-    test_ladder_blocked = {
-        '15m': {
-            'current_price': 1.59,  # &lt;--- MUY CERCA DE 1.60
-            'volume_profile': {
-                'value_area_high': 1.60, # Resistencia VAH
-                'poc_current': 1.45
-            },
-            'zigzag': {
-                'pivots': [1.40, 1.55, 1.42, 1.58],
-                'pivot_types': ['LL', 'HH', 'HL', 'HH']
-            },
-            'grid': {
-                'diagonal': {'valid': False}
-            }
-        }
-    }
-    
-    result = entry_validator.validate_entry(
-        'TEST/USDT:USDT', 'BULLISH', test_phase, test_force, test_ladder_blocked
-    )
-    print(f"RESULTADO: {'✅ PASÓ' if result['can_enter'] else '⛔ BLOQUEADO'}")
-    print(f"Razón: {result['reason']}")
-
-    # CASO DE PRUEBA: Precio con espacio libre (Debería PASAR)
-    print("\n--- TEST 2: PRECIO CON ESPACIO LIBRE ---")
-    test_ladder_clean = {
-        '15m': {
-            'current_price': 1.50,  # &lt;--- TIENE ESPACIO HASTA 1.60
-            'volume_profile': {
-                'value_area_high': 1.60, 
-                'poc_current': 1.45
-            },
-            'zigzag': {
-                'pivots': [1.40, 1.55, 1.42, 1.58],
-                'pivot_types': ['LL', 'HH', 'HL', 'HH']
-            },
-            'grid': {
-                'diagonal': {'valid': False}
-            }
-        }
-    }
-    
-    result2 = entry_validator.validate_entry(
-        'TEST/USDT:USDT', 'BULLISH', test_phase, test_force, test_ladder_clean
-    )
-    print(f"RESULTADO: {'✅ PASÓ' if result2['can_enter'] else '⛔ BLOQUEADO'}")
-
-Modulo completo de brain_trend_birth.py operando actualmente en el bot sin modificaciones
-
-"""
-brain_trend_birth.py - Detector de Tendencia Naciente vs Moribunda
-==================================================================
-El bot SOLO debe entrar en tendencias NACIENDO, no cuando están MURIENDO.
-
-FASES:
-- DORMANT: ADX &lt; 20 (sin tendencia)
-- BIRTH: ADX 20-25 subiendo (naciendo) ✅ ENTRAR
-- MATURE: ADX 25-40 estable
-- DECLINE: ADX &gt; 35 cayendo (muriendo) ❌ NO ENTRAR
-"""
-
-
-def calculate_adx_lifecycle(adx_current, adx_history, lookback=5):
-    """
-    Clasifica en qué fase del ciclo de vida está el ADX
-    
-    Args:
-        adx_current: Valor actual de ADX
-        adx_history: Lista de valores históricos
-        lookback: Velas para calcular velocidad
-        
-    Returns:
-        dict: {
-            'phase': 'DORMANT'|'BIRTH'|'MATURE'|'DECLINE'|'TRANSITION',
-            'velocity': float (cambio por vela),
-            'acceleration': float (cambio de velocidad)
-        }
-    """
-    # FALLBACK: Si no hay historial suficiente, usar solo adx_current
-    if len(adx_history) &lt; 3:
-        # Clasificación básica sin velocidad
-        if adx_current &lt; 20:
-            phase = 'DORMANT'
-        elif adx_current &gt; 40:
-            phase = 'DECLINE'  # ADX muy alto = probablemente muriendo
-        elif adx_current &gt;= 25:
-            phase = 'MATURE'
-        else:
-            phase = 'TRANSITION'
-        return {'phase': phase, 'velocity': 0, 'acceleration': 0}
-    
-    # Calcular velocidad con la historia disponible
-    actual_lookback = min(lookback, len(adx_history) - 1)
-    if actual_lookback &lt; 2:
-        actual_lookback = 2
-    
-    recent = adx_history[-actual_lookback:]
-    velocity = (recent[-1] - recent[0]) / actual_lookback
-    
-    # Calcular aceleración si hay suficiente historial
-    if len(adx_history) &gt;= actual_lookback * 2:
-        prev_velocity = (adx_history[-actual_lookback] - adx_history[-actual_lookback*2]) / actual_lookback
-        acceleration = velocity - prev_velocity
-    else:
-        acceleration = 0
-    
-    # Clasificar fase basándose en ADX actual + velocidad
-    if adx_current &lt; 20:
-        phase = 'DORMANT'  # Sin tendencia
-    elif adx_current &lt; 25 and velocity &gt; 1.0:
-        phase = 'BIRTH'    # Tendencia NACIENDO ✅
-    elif 25 &lt;= adx_current &lt;= 40 and abs(velocity) &lt; 1.5:
-        phase = 'MATURE'   # Tendencia MADURA
-    elif adx_current &gt; 35 and velocity &lt; -0.3:
-        phase = 'DECLINE'  # Tendencia MURIENDO ❌
-    elif adx_current &gt; 40:
-        phase = 'DECLINE'  # ADX muy alto = probablemente agotándose
-    else:
-        phase = 'TRANSITION'
-    
-    return {
-        'phase': phase,
-        'velocity': round(velocity, 2),
-        'acceleration': round(acceleration, 2)
-    }
-
-
-def detect_di_divergence(di_plus_current, di_minus_current, 
-                         di_plus_prev, di_minus_prev):
-    """
-    Detecta si DI+ y DI- están divergiendo o convergiendo
-    
-    DIVERGING = Fuerza creciendo (separándose)
-    CONVERGING = Fuerza muriendo (acercándose)
-    
-    Returns:
-        str: 'DIVERGING'|'CONVERGING'|'STABLE'
-    """
-    spread_current = di_plus_current - di_minus_current
-    spread_prev = di_plus_prev - di_minus_prev
-    spread_change = abs(spread_current) - abs(spread_prev)
-    
-    if spread_change &gt; 2:
-        return 'DIVERGING'   # DI se separan → Fuerza creciendo
-    elif spread_change &lt; -2:
-        return 'CONVERGING'  # DI se acercan → Fuerza muriendo
-    else:
-        return 'STABLE'
-
-
-def detect_trend_phase(adx_data, momentum_data):
-    """
-    Clasifica la tendencia en EARLY/MID/LATE phase
-    
-    Args:
-        adx_data: Dict de calculate_adx_with_memory
-        momentum_data: Dict de calculate_momentum_with_memory
-        
-    Returns:
-        dict: {
-            'phase': 'EARLY'|'MID'|'LATE'|'DORMANT',
-            'entry_allowed': bool,
-            'bonus_penalty': int,
-            'reasons': []
-        }
-    """
-    # Calcular ciclo de vida del ADX
-    lifecycle = calculate_adx_lifecycle(
-        adx_data.get('adx_current', 0),
-        adx_data.get('adx_history', [])
-    )
-    
-    # Detectar divergencia DI
-    di_divergence = detect_di_divergence(
-        adx_data.get('di_plus_current', 0),
-        adx_data.get('di_minus_current', 0),
-        adx_data.get('di_plus_prev', adx_data.get('di_plus_current', 0)),
-        adx_data.get('di_minus_prev', adx_data.get('di_minus_current', 0))
-    )
-    
-    # Momentum fuerte
-    mom_strong = momentum_data.get('consecutive_count', 0) &gt;= 3
-    
-    phase = 'MID'
-    entry_allowed = True
-    bonus_penalty = 0
-    reasons = []
-    
-    # ===== FASE EARLY (ENTRAR) =====
-    if lifecycle['phase'] == 'BIRTH':
-        if di_divergence == 'DIVERGING' and mom_strong:
-            phase = 'EARLY'
-            entry_allowed = True
-            bonus_penalty = +30
-            reasons.append("ADX naciendo desde bajo")
-            reasons.append("DI+ separándose de DI-")
-            reasons.append("Momentum acelerando")
-        elif di_divergence == 'DIVERGING':
-            phase = 'EARLY'
-            bonus_penalty = +20
-            reasons.append("ADX naciendo")
-        else:
-            phase = 'EARLY'
-            bonus_penalty = +10
-            reasons.append("Tendencia iniciando")
-    
-    # ===== FASE MID (EVALUAR) =====
-    elif lifecycle['phase'] == 'MATURE':
-        phase = 'MID'
-        entry_allowed = True
-        bonus_penalty = 0
-        
-        if di_divergence == 'CONVERGING':
-            bonus_penalty = -15
-            reasons.append("Cuidado: DI convergiendo")
-    
-    # ===== FASE LATE (NO ENTRAR) =====
-    elif lifecycle['phase'] == 'DECLINE':
-        phase = 'LATE'
-        entry_allowed = False
-        bonus_penalty = -60  # PENALTY SEVERA
-        reasons.append("ADX cayendo desde pico")
-        reasons.append("Tendencia MURIENDO")
-        
-        if di_divergence == 'CONVERGING':
-            bonus_penalty = -80
-            reasons.append("DI+ y DI- convergiendo")
-    
-    # ===== FASE DORMANT (SIN TENDENCIA) =====
-    elif lifecycle['phase'] == 'DORMANT':
-        phase = 'DORMANT'
-        entry_allowed = False
-        bonus_penalty = -40
-        reasons.append("Sin tendencia (ADX &lt; 20)")
-    
-    return {
-        'phase': phase,
-        'entry_allowed': entry_allowed,
-        'bonus_penalty': bonus_penalty,
-        'reasons': reasons,
-        'lifecycle': lifecycle,
-        'di_divergence': di_divergence
-    }
-
-
-# ============================================================================
-# TESTING
-# ============================================================================
-if __name__ == "__main__":
-    # Test con datos simulados
-    print("=" * 60)
-    print("BRAIN TREND BIRTH - Test")
-    print("=" * 60)
-    
-    # Caso 1: Tendencia naciendo
-    adx_data_birth = {
-        'adx_current': 23,
-        'adx_history': [18, 19, 20, 21, 22, 23],
-        'di_plus_current': 28,
-        'di_minus_current': 18,
-        'di_plus_prev': 25,
-        'di_minus_prev': 20
-    }
-    momentum_data = {'consecutive_count': 4}
-    
-    result = detect_trend_phase(adx_data_birth, momentum_data)
-    print(f"\nCaso 1: Tendencia NACIENDO")
-    print(f"  Phase: {result['phase']}")
-    print(f"  Bonus: {result['bonus_penalty']:+d}")
-    print(f"  Entry: {'✅' if result['entry_allowed'] else '❌'}")
-    
-    # Caso 2: Tendencia muriendo
-    adx_data_decline = {
-        'adx_current': 42,
-        'adx_history': [50, 48, 46, 44, 43, 42],
-        'di_plus_current': 22,
-        'di_minus_current': 20,
-        'di_plus_prev': 25,
-        'di_minus_prev': 18
-    }
-    
-    result = detect_trend_phase(adx_data_decline, momentum_data)
-    print(f"\nCaso 2: Tendencia MURIENDO")
-    print(f"  Phase: {result['phase']}")
-    print(f"  Bonus: {result['bonus_penalty']:+d}")
-    print(f"  Entry: {'✅' if result['entry_allowed'] else '❌'}")
-    
-    print("\n" + "=" * 60)
-
+# AGREGAR import al inicio del archivo
+from brain_entry_validator import entry_validator
+# AGREGAR en is_perfect_setup() antes del return True:
+# Validar distancia a resistencias usando entry_validator
+validation = entry_validator._validate_explosion_entry(
+    symbol, direction,
+    {'force_level': force_level if 'force_level' in dir() else 'NORMAL'},
+    {'15m': data_15m}
+)
+if not validation.get('can_enter', True) == False:
+    print(f"  🚫 Entry Validator: {validation.get('reason', 'Zona peligrosa')}")
+    return False
+📋 ¿Procedo?
+Cambio	Archivo	Complejidad
+1	
+brain_config.py
+Baja
+2	
+brain_sniper_realtime.py
+Media
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 29,910<br>
-    Generado: 2025-12-25 16:21:58
+    Total caracteres: 4,813<br>
+    Generado: 2025-12-25 16:35:23
   </div>
 </body>
 </html>
