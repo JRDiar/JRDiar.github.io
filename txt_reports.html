@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-25 16:16:57</div>
+  <div class="meta">Última actualización: 2025-12-25 16:21:52</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -533,11 +533,254 @@ if __name__ == "__main__":
         'TEST/USDT:USDT', 'BULLISH', test_phase, test_force, test_ladder_clean
     )
     print(f"RESULTADO: {'✅ PASÓ' if result2['can_enter'] else '⛔ BLOQUEADO'}")
+
+Modulo completo de brain_trend_birth.py operando actualmente en el bot sin modificaciones
+
+"""
+brain_trend_birth.py - Detector de Tendencia Naciente vs Moribunda
+==================================================================
+El bot SOLO debe entrar en tendencias NACIENDO, no cuando están MURIENDO.
+
+FASES:
+- DORMANT: ADX &lt; 20 (sin tendencia)
+- BIRTH: ADX 20-25 subiendo (naciendo) ✅ ENTRAR
+- MATURE: ADX 25-40 estable
+- DECLINE: ADX &gt; 35 cayendo (muriendo) ❌ NO ENTRAR
+"""
+
+
+def calculate_adx_lifecycle(adx_current, adx_history, lookback=5):
+    """
+    Clasifica en qué fase del ciclo de vida está el ADX
+    
+    Args:
+        adx_current: Valor actual de ADX
+        adx_history: Lista de valores históricos
+        lookback: Velas para calcular velocidad
+        
+    Returns:
+        dict: {
+            'phase': 'DORMANT'|'BIRTH'|'MATURE'|'DECLINE'|'TRANSITION',
+            'velocity': float (cambio por vela),
+            'acceleration': float (cambio de velocidad)
+        }
+    """
+    # FALLBACK: Si no hay historial suficiente, usar solo adx_current
+    if len(adx_history) &lt; 3:
+        # Clasificación básica sin velocidad
+        if adx_current &lt; 20:
+            phase = 'DORMANT'
+        elif adx_current &gt; 40:
+            phase = 'DECLINE'  # ADX muy alto = probablemente muriendo
+        elif adx_current &gt;= 25:
+            phase = 'MATURE'
+        else:
+            phase = 'TRANSITION'
+        return {'phase': phase, 'velocity': 0, 'acceleration': 0}
+    
+    # Calcular velocidad con la historia disponible
+    actual_lookback = min(lookback, len(adx_history) - 1)
+    if actual_lookback &lt; 2:
+        actual_lookback = 2
+    
+    recent = adx_history[-actual_lookback:]
+    velocity = (recent[-1] - recent[0]) / actual_lookback
+    
+    # Calcular aceleración si hay suficiente historial
+    if len(adx_history) &gt;= actual_lookback * 2:
+        prev_velocity = (adx_history[-actual_lookback] - adx_history[-actual_lookback*2]) / actual_lookback
+        acceleration = velocity - prev_velocity
+    else:
+        acceleration = 0
+    
+    # Clasificar fase basándose en ADX actual + velocidad
+    if adx_current &lt; 20:
+        phase = 'DORMANT'  # Sin tendencia
+    elif adx_current &lt; 25 and velocity &gt; 1.0:
+        phase = 'BIRTH'    # Tendencia NACIENDO ✅
+    elif 25 &lt;= adx_current &lt;= 40 and abs(velocity) &lt; 1.5:
+        phase = 'MATURE'   # Tendencia MADURA
+    elif adx_current &gt; 35 and velocity &lt; -0.3:
+        phase = 'DECLINE'  # Tendencia MURIENDO ❌
+    elif adx_current &gt; 40:
+        phase = 'DECLINE'  # ADX muy alto = probablemente agotándose
+    else:
+        phase = 'TRANSITION'
+    
+    return {
+        'phase': phase,
+        'velocity': round(velocity, 2),
+        'acceleration': round(acceleration, 2)
+    }
+
+
+def detect_di_divergence(di_plus_current, di_minus_current, 
+                         di_plus_prev, di_minus_prev):
+    """
+    Detecta si DI+ y DI- están divergiendo o convergiendo
+    
+    DIVERGING = Fuerza creciendo (separándose)
+    CONVERGING = Fuerza muriendo (acercándose)
+    
+    Returns:
+        str: 'DIVERGING'|'CONVERGING'|'STABLE'
+    """
+    spread_current = di_plus_current - di_minus_current
+    spread_prev = di_plus_prev - di_minus_prev
+    spread_change = abs(spread_current) - abs(spread_prev)
+    
+    if spread_change &gt; 2:
+        return 'DIVERGING'   # DI se separan → Fuerza creciendo
+    elif spread_change &lt; -2:
+        return 'CONVERGING'  # DI se acercan → Fuerza muriendo
+    else:
+        return 'STABLE'
+
+
+def detect_trend_phase(adx_data, momentum_data):
+    """
+    Clasifica la tendencia en EARLY/MID/LATE phase
+    
+    Args:
+        adx_data: Dict de calculate_adx_with_memory
+        momentum_data: Dict de calculate_momentum_with_memory
+        
+    Returns:
+        dict: {
+            'phase': 'EARLY'|'MID'|'LATE'|'DORMANT',
+            'entry_allowed': bool,
+            'bonus_penalty': int,
+            'reasons': []
+        }
+    """
+    # Calcular ciclo de vida del ADX
+    lifecycle = calculate_adx_lifecycle(
+        adx_data.get('adx_current', 0),
+        adx_data.get('adx_history', [])
+    )
+    
+    # Detectar divergencia DI
+    di_divergence = detect_di_divergence(
+        adx_data.get('di_plus_current', 0),
+        adx_data.get('di_minus_current', 0),
+        adx_data.get('di_plus_prev', adx_data.get('di_plus_current', 0)),
+        adx_data.get('di_minus_prev', adx_data.get('di_minus_current', 0))
+    )
+    
+    # Momentum fuerte
+    mom_strong = momentum_data.get('consecutive_count', 0) &gt;= 3
+    
+    phase = 'MID'
+    entry_allowed = True
+    bonus_penalty = 0
+    reasons = []
+    
+    # ===== FASE EARLY (ENTRAR) =====
+    if lifecycle['phase'] == 'BIRTH':
+        if di_divergence == 'DIVERGING' and mom_strong:
+            phase = 'EARLY'
+            entry_allowed = True
+            bonus_penalty = +30
+            reasons.append("ADX naciendo desde bajo")
+            reasons.append("DI+ separándose de DI-")
+            reasons.append("Momentum acelerando")
+        elif di_divergence == 'DIVERGING':
+            phase = 'EARLY'
+            bonus_penalty = +20
+            reasons.append("ADX naciendo")
+        else:
+            phase = 'EARLY'
+            bonus_penalty = +10
+            reasons.append("Tendencia iniciando")
+    
+    # ===== FASE MID (EVALUAR) =====
+    elif lifecycle['phase'] == 'MATURE':
+        phase = 'MID'
+        entry_allowed = True
+        bonus_penalty = 0
+        
+        if di_divergence == 'CONVERGING':
+            bonus_penalty = -15
+            reasons.append("Cuidado: DI convergiendo")
+    
+    # ===== FASE LATE (NO ENTRAR) =====
+    elif lifecycle['phase'] == 'DECLINE':
+        phase = 'LATE'
+        entry_allowed = False
+        bonus_penalty = -60  # PENALTY SEVERA
+        reasons.append("ADX cayendo desde pico")
+        reasons.append("Tendencia MURIENDO")
+        
+        if di_divergence == 'CONVERGING':
+            bonus_penalty = -80
+            reasons.append("DI+ y DI- convergiendo")
+    
+    # ===== FASE DORMANT (SIN TENDENCIA) =====
+    elif lifecycle['phase'] == 'DORMANT':
+        phase = 'DORMANT'
+        entry_allowed = False
+        bonus_penalty = -40
+        reasons.append("Sin tendencia (ADX &lt; 20)")
+    
+    return {
+        'phase': phase,
+        'entry_allowed': entry_allowed,
+        'bonus_penalty': bonus_penalty,
+        'reasons': reasons,
+        'lifecycle': lifecycle,
+        'di_divergence': di_divergence
+    }
+
+
+# ============================================================================
+# TESTING
+# ============================================================================
+if __name__ == "__main__":
+    # Test con datos simulados
+    print("=" * 60)
+    print("BRAIN TREND BIRTH - Test")
+    print("=" * 60)
+    
+    # Caso 1: Tendencia naciendo
+    adx_data_birth = {
+        'adx_current': 23,
+        'adx_history': [18, 19, 20, 21, 22, 23],
+        'di_plus_current': 28,
+        'di_minus_current': 18,
+        'di_plus_prev': 25,
+        'di_minus_prev': 20
+    }
+    momentum_data = {'consecutive_count': 4}
+    
+    result = detect_trend_phase(adx_data_birth, momentum_data)
+    print(f"\nCaso 1: Tendencia NACIENDO")
+    print(f"  Phase: {result['phase']}")
+    print(f"  Bonus: {result['bonus_penalty']:+d}")
+    print(f"  Entry: {'✅' if result['entry_allowed'] else '❌'}")
+    
+    # Caso 2: Tendencia muriendo
+    adx_data_decline = {
+        'adx_current': 42,
+        'adx_history': [50, 48, 46, 44, 43, 42],
+        'di_plus_current': 22,
+        'di_minus_current': 20,
+        'di_plus_prev': 25,
+        'di_minus_prev': 18
+    }
+    
+    result = detect_trend_phase(adx_data_decline, momentum_data)
+    print(f"\nCaso 2: Tendencia MURIENDO")
+    print(f"  Phase: {result['phase']}")
+    print(f"  Bonus: {result['bonus_penalty']:+d}")
+    print(f"  Entry: {'✅' if result['entry_allowed'] else '❌'}")
+    
+    print("\n" + "=" * 60)
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 22,036<br>
-    Generado: 2025-12-25 16:16:57
+    Total caracteres: 29,910<br>
+    Generado: 2025-12-25 16:21:52
   </div>
 </body>
 </html>
