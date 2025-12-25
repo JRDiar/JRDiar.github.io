@@ -15,225 +15,292 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-24 19:53:10</div>
+  <div class="meta">Última actualización: 2025-12-25 13:55:02</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Una vez mas el zigzag estaba en rojo, propongo unir zigzag con la malla y el precio OHLC como película, Price Action Time Ladder, las tres cosas unirlas para sacar una conclusión una sola visión y no tener errores, además tener esta lógica, si el precio esta aumentando rápido de minuto a minuto, confirma el long, si el precio disminuye rápido minuto a minuto confirma el short. Vi en otra moneda con perdida que entro en la vela que tenia fuerza pero toco el Volume Profile y reboto, cayo y empezó la corrección, si hay fuerza y esta cerca del Volume Profile y el precio aumenta propongo que entre con traling stop, así no sale con perdida. Obs, siempre time ladder, el bot no debe ser rigido debe adaptarse al mercado, cambiante. Gracias. PD: Analiza bien la imagen, bien profundo el texto leelo al texto que contiene la imagen, las velas los indicadores todo quiero que analices de la imagen y tambien el texto que te escribo aca. quiero un plan completo con el codigo que vas a reemplazar y el código propuesto, Muchas gracias.
+ RESUMEN DE CAMBIOS IMPLEMENTADOS
+1. brain_frames.py - Visión Unificada
+# check_price_velocity() - Verifica velocidad del precio
+# Líneas ~680-760
+def check_price_velocity(symbol, direction, timeframe='15m'):
+    """Si LONG, precio debe estar subiendo. Si SHORT, bajando."""
+    # Usa 15m (no 5m que no tiene frames)
+    # Penalty solo si hay datos reales (frames &gt;= 3)
 
-Plan: Unified Price Action Time Ladder
-📸 Análisis Profundo de la Imagen
-Trade 1: ARIAIP/USDT (Izquierda)
-Aspecto	Observación
-PnL	-2.03% ($-6.77)
-Problema	ZigZag en ROJO = corrección activa
-Entrada	14:57:42 - Ya la subida había pasado
-Salida	Stop Loss tocado
-Texto Joel	"Era momento de corrección para seguir subiendo"
-Error	Bot entró en corrección sin ver zigzag rojo
-Trade 2: CORE/USDT (Derecha)
-Aspecto	Observación
-PnL	-0.33% ($-1.11)
-Problema 1	ADX verde y rojo MUY CERCA
-Problema 2	Momentum DECRECIENDO (divergencia)
-Problema 3	Precio NO subía (lateralizando)
-Salida	Desaceleración + Volumen bajo
-Error	Bot no leyó que precio estaba estancado
-🎯 Propuestas de Joel
-Unir ZigZag + Grid + OHLC en una sola visión
-Velocidad de precio: LONG = precio aumentando, SHORT = precio disminuyendo
-Cerca de VP con fuerza: Entrar con trailing stop activado
-Bot flexible: Time Ladder siempre, adaptarse al mercado
-📋 Cambios Propuestos
-Cambio 1: Verificar Velocidad de Precio Minuto a Minuto
-Archivo: 
-brain_frames.py
- - Agregar nueva función
-
-# NUEVO: Verificar velocidad de precio
-def check_price_velocity(symbol, direction, timeframe='5m'):
-    """
-    Verifica si el precio se mueve en la dirección correcta.
-    LONG: precio debe estar aumentando minuto a minuto
-    SHORT: precio debe estar disminuyendo minuto a minuto
-    """
-    storage = get_frame_storage(symbol, timeframe)
-    closes = storage.get_trajectory('ohlc.close', 5)
-    
-    if not closes or len(closes) &lt; 3:
-        return {'valid': False, 'reason': 'Datos insuficientes'}
-    
-    # Calcular velocidad (cambio por frame)
-    velocity = (closes[-1] - closes[-3]) / closes[-3] * 100
-    
-    if direction == 'BULLISH':
-        if velocity &gt; 0.1:  # Subiendo &gt; 0.1% en 3 frames
-            return {'valid': True, 'velocity': velocity, 'reason': f'Precio subiendo +{velocity:.2f}%'}
-        else:
-            return {'valid': False, 'velocity': velocity, 'reason': f'Precio NO sube ({velocity:.2f}%)'}
-    else:  # BEARISH
-        if velocity &lt; -0.1:  # Bajando &gt; 0.1%
-            return {'valid': True, 'velocity': velocity, 'reason': f'Precio bajando {velocity:.2f}%'}
-        else:
-            return {'valid': False, 'velocity': velocity, 'reason': f'Precio NO baja ({velocity:.2f}%)'}
-Cambio 2: Unificar ZigZag + Grid + OHLC en Una Visión
-Archivo: 
-brain_frames.py
- - Agregar función unificada
-
+# unified_time_ladder_vision() - Combina ZigZag + Grid + OHLC  
+# Líneas ~700-780
 def unified_time_ladder_vision(symbol, direction, zigzag_data, grid_data, timeframe='15m'):
-    """
-    VISIÓN UNIFICADA: ZigZag + Grid + OHLC
-    Joel: "Las tres cosas unirlas para sacar una conclusión"
-    """
-    # 1. Obtener patrón de precio (OHLC)
-    price_pattern = detect_price_pattern(symbol, direction, timeframe)
-    
-    # 2. Verificar ZigZag
-    zigzag_trend = zigzag_data.get('current_trend', 'UNKNOWN')
-    zigzag_color = 'GREEN' if zigzag_trend == 'BULLISH' else 'RED' if zigzag_trend == 'BEARISH' else 'GRAY'
-    
-    # 3. Verificar Grid/Malla
-    grid_position = grid_data.get('position_pct', 50)
-    near_resistance = grid_position &gt; 80
-    near_support = grid_position &lt; 20
-    
-    # 4. Verificar velocidad de precio
-    velocity_check = check_price_velocity(symbol, direction, '5m')
-    
-    # === DECISIÓN UNIFICADA ===
-    issues = []
-    
-    # ZigZag debe alinearse con dirección
-    if direction == 'BULLISH' and zigzag_color == 'RED':
-        issues.append('ZigZag ROJO (corrección activa)')
-    elif direction == 'BEARISH' and zigzag_color == 'GREEN':
-        issues.append('ZigZag VERDE (rally activo)')
-    
-    # Precio debe moverse en dirección correcta
-    if not velocity_check['valid']:
-        issues.append(velocity_check['reason'])
-    
-    # LONG no debe estar en resistencia
-    if direction == 'BULLISH' and near_resistance:
-        issues.append('Cerca de resistencia (grid &gt; 80%)')
-    
-    # SHORT no debe estar en soporte
-    if direction == 'BEARISH' and near_support:
-        issues.append('Cerca de soporte (grid &lt; 20%)')
-    
-    return {
-        'approved': len(issues) == 0,
-        'issues': issues,
-        'price_pattern': price_pattern,
-        'zigzag_color': zigzag_color,
-        'grid_position': grid_position,
-        'velocity': velocity_check
-    }
-Cambio 3: Integrar Visión Unificada en brain_analyzer.py
-Archivo: 
+    """Threshold: score &gt;= 40 para aprobar"""
+2. 
 brain_analyzer.py
- - Después de detect_price_pattern (aprox línea 665)
+ - Penalties y Fuerza
+# Líneas ~679-688 - Penalties reducidas
+if price_pattern['pattern'] in ['CORRECTION_IN_PROGRESS', 'RALLY_IN_PROGRESS']:
+    tf_penalty += 50  # Reducido de 80
+elif price_pattern['pattern'] in ['FLOOR_TOUCHED', 'CEILING_TOUCHED']:
+    tf_penalty += 10  # Reducido de 30
+elif price_pattern['pattern'] == 'LATERAL':
+    tf_penalty += 10  # Reducido de 20
 
-CÓDIGO ACTUAL:
+# Líneas ~725-735 - Visión Unificada RE-HABILITADA
+if unified_vision['approved']:
+    motion_score += 10
+else:
+    penalty = min(25, len(unified_vision['issues']) * 10)  # 10/issue, max 25
+    tf_penalty += penalty
 
-price_pattern = detect_price_pattern(symbol, direction, '15m')
-    print(f"      🎬 Price Pattern: {price_pattern['pattern']} | Fase: {price_pattern['phase']}")
-CÓDIGO PROPUESTO:
+# Líneas ~750-773 - Zona de Peligro
+in_danger_zone = (
+    (direction == 'BULLISH' and grid_position &gt; 75) or  # LONG cerca resistencia
+    (direction == 'BEARISH' and grid_position &lt; 25)     # SHORT cerca soporte
+)
 
-price_pattern = detect_price_pattern(symbol, direction, '15m')
-    print(f"      🎬 Price Pattern: {price_pattern['pattern']} | Fase: {price_pattern['phase']}")
-    
-    # &gt;&gt;&gt; NUEVO: VISIÓN UNIFICADA (ZigZag + Grid + OHLC)
-    from brain_frames import unified_time_ladder_vision, check_price_velocity
-    
-    unified_vision = unified_time_ladder_vision(
-        symbol, direction, 
-        zigzag_data=zigzag_granular,
-        grid_data={'position_pct': data_15m.get('position_in_range', 50)}
-    )
-    
-    if not unified_vision['approved']:
-        for issue in unified_vision['issues']:
-            print(f"      ❌ VISIÓN UNIFICADA: {issue}")
-            tf_penalty += 20  # Penalty por cada issue
-    else:
-        print(f"      ✅ VISIÓN UNIFICADA: Aprobado")
-        motion_score += 15  # Bonus por visión clara
-Cambio 4: Trailing Stop Activado Cerca de VP con Fuerza
-Archivo: 
+if has_strong_force and not in_danger_zone:
+    # Reducir penalties 70%
+elif has_strong_force and in_danger_zone:
+    # NO reducir - cerca de resistencia/soporte
+
+# Líneas ~779-787 - Score Floor con protección
+if has_strong_force and not in_danger_zone and score_15m &lt; 30:
+    score_15m = 30  # Floor solo si NO está en peligro
+3. 
 brain_executor.py
- - En enter_trade (aprox línea 380)
+ - Trailing con Fuerza
+# Líneas ~265-272 - Trailing para TODAS las monedas con fuerza
+force_level = force_result.get('force_level', 'NONE')
+has_force = force_level in ['BRUTAL', 'FUERTE', 'ACTIVA']
+activate_trailing_early = has_force  # Antes: near_vp AND has_force
+4. 
+brain_sniper_realtime.py
+ - is_perfect_setup()
+# Líneas ~76-127 - VERIFICACIONES CRÍTICAS NUEVAS
+@staticmethod
+def is_perfect_setup(symbol: str, score: float, decision: dict) -&gt; bool:
+    # ... score &gt;= 65, action = ENTER ...
+    
+    # NUEVO: Verificar momentum color
+    if direction == 'BULLISH' and mom_color in ['red', 'maroon']:
+        print(f"🚫 {symbol}: Momentum {mom_color} contradice BULLISH")
+        return False
+    elif direction == 'BEARISH' and mom_color in ['lime', 'green']:
+        print(f"🚫 {symbol}: Momentum {mom_color} contradice BEARISH")
+        return False
+    
+    # NUEVO: Verificar grid position
+    if direction == 'BULLISH' and grid_position &gt; 80:
+        print(f"🚫 {symbol}: Grid {grid_position:.0f}% - demasiado alto para LONG")
+        return False
+    elif direction == 'BEARISH' and grid_position &lt; 20:
+        print(f"🚫 {symbol}: Grid {grid_position:.0f}% - demasiado bajo para SHORT")
+        return False
+. 
+brain_sniper_realtime.py
+ - reevaluate_waiting_list()
+# Líneas ~492-550 - Mejorado para analizar TODAS
+def reevaluate_waiting_list(self):
+    """
+    - Analiza TODAS las waiting (no solo top 5)
+    - Promueve si setup mejoró
+    - Remueve si perdió fuerza
+    - Actualiza scores
+    """
+Resumen de protecciones activas:
+Protección	Archivo	Estado
+Momentum color alineado	
+brain_sniper_realtime.py
+✅ BLOQUEA
+Grid position (&gt;80% LONG, &lt;20% SHORT)	
+brain_sniper_realtime.py
+✅ BLOQUEA
+Zona de peligro (&gt;75%)	
+brain_analyzer.py
+✅ NO reduce penalties
+Visión Unificada	
+brain_analyzer.py
+✅ Penalty 10/issue
+Trailing con fuerza	
+brain_executor.py
+✅ Activo
 
-CÓDIGO ACTUAL:
+El bot mejoró muchisimo, tengo una pregunta el bot esta entrando en zonas mejores, como habiamos quedado en un 75% es una zona aceptable el tema es que la moneda ya casi no tiene fuerza en esa zona, por lo menos con las monedas que veo ahora, quiero que bajes el la zona operable de trade a 60% para abajo, quizas tengamos mejores resultados, otra cosa, quiero saber si el bot toma esos 75% de entrada como un numero fijo de condicion o el rango es de 75% para abajo, o sea desde que se genera una zona de soporte y ya se desarrolla la tendencia alcista hasta el 75%? o el 75% es un numero fijo? al parecer el bot siempre entraba en una zona alta, por lo que se entiende que el bot no tiene un rango definido de 20% a 60% de asi por decirlo sino tiene el 75% como condicion unica. Algunas monedas ya no tienen fuerza al 75% quizas ya es un alto más bajo. ALT/USDT:USDT (BULLISH)
+   💰 PnL: -0.20% ($-0.68) | Duración: 23.2 min
+   📊 Precio: $0.011830 (Entry: $0.011840)
+   🛡️ Stop Loss: $0.011603 (a 1.92% del precio)
+   🎯 Breakeven: ❌ No activado
+   🧠 ANÁLISIS EN VIVO:
+      • ADX en 41.1 (Tendencia Fuerte 💪), decreciendo.
+      • Valle VERDE en desarrollo (Impulso alcista) 🟢
+      • Precio en equilibrio (pegado al POC).
+------------------------------------------------------------
 
-trade_data = {
-    'symbol': symbol,
-    'direction': direction,
-    ...
-    'trailing_activated': False,
-CÓDIGO PROPUESTO:
+🔴 AUDIO/USDT:USDT (BULLISH)
+   💰 PnL: -0.36% ($-1.20) | Duración: 18.3 min
+   📊 Precio: $0.029260 (Entry: $0.029330)
+   🛡️ Stop Loss: $0.028743 (a 1.77% del precio)
+   🎯 Breakeven: ❌ No activado
+   🧠 ANÁLISIS EN VIVO:
+      • ADX en 64.3 (Fuerza BRUTAL 🚀), decreciendo.
+      • Valle VERDE en desarrollo (Impulso alcista) 🟢
+      • Precio en DESCUBRIMIENTO (Rompió techo de volumen) 🛸
+------------------------------------------------------------
 
-# Verificar si está cerca del VP con fuerza
-vp_position = analysis_data.get('full_analysis', {}).get('ladder_data', {}).get('15m', {}).get('volume_profile', {}).get('position_vs_poc', 0)
-near_vp = abs(vp_position) &lt; 2.0  # Menos de 2% del POC
-# Si fuerza alta y cerca del VP, activar trailing desde el inicio
-force_level = analysis_data.get('full_analysis', {}).get('force_result', {}).get('force_level', 'NONE')
-activate_trailing_early = near_vp and force_level in ['BRUTAL', 'FUERTE']
-trade_data = {
-    'symbol': symbol,
-    'direction': direction,
-    ...
-    'trailing_activated': activate_trailing_early,  # &lt;&lt;&lt; MODIFICADO
-    'near_vp_entry': near_vp,
-⚠️ Lo que NO se toca
-✅ Time Ladder instantáneo
-✅ DI spread mínimo 15
-✅ ADX muriendo penalty +25
-✅ 4 velas confirmación
-✅ Velas irregulares detection
-✅ Resumen de Cambios
-#	Archivo	Cambio	Efecto
-1	brain_frames.py	check_price_velocity()	LONG=precio sube, SHORT=precio baja
-2	brain_frames.py	unified_time_ladder_vision()	ZigZag+Grid+OHLC unificados
-3	brain_analyzer.py	Integrar visión unificada	Penalty/bonus según visión
-4	brain_executor.py	Trailing early cerca VP	Proteger si fuerza+cerca VP
-¿Apruebas este plan?
+🔴 APEX/USDT:USDT (BULLISH)
+   💰 PnL: -0.69% ($-2.31) | Duración: 13.0 min
+   📊 Precio: $0.485300 (Entry: $0.488100)
+   🛡️ Stop Loss: $0.478338 (a 1.43% del precio)
+   🎯 Breakeven: ❌ No activado
+   🧠 ANÁLISIS EN VIVO:
+      • ADX en 27.0 (Tendencia Moderada 😐), creciendo.
+      • Valle VERDE en desarrollo (Impulso alcista) 🟢
+      • Por encima del POC (+1.68%), buscando techo (a 0.82%).
+------------------------------------------------------------ No me gusta la cantidad de minutos que va perdiendo por esa moneda, quizas tiene que haber un stop de trade, si llega a 10 minutos y el trade no es bueno esperar a que llegue a un dolar y medio para cerrar la operación. Asi no le lleva horas perder tiempo por centavos. Dame un plan completo con codigo propuesto y codigo a reemplazar. Gracias. TRADES ACTIVOS: 3 | 13:50:09
+================================================================================
 
-📋 PLAN COMPLETO: Price Action Time Ladder Unificado
-📸 Análisis de tu Imagen:
-ARIAIP (-2.03%):
+🔴 ALT/USDT:USDT (BULLISH)
+   💰 PnL: -0.54% ($-1.81) | Duración: 27.6 min
+   📊 Precio: $0.011790 (Entry: $0.011840)
+   🛡️ Stop Loss: $0.011603 (a 1.58% del precio)
+   🎯 Breakeven: ❌ No activado
+   🧠 ANÁLISIS EN VIVO:
+      • ADX en 39.8 (Tendencia Fuerte 💪), decreciendo.
+      • Valle VERDE en desarrollo (Impulso alcista) 🟢
+      • Por debajo del POC (-0.51%), en zona de soporte.
+------------------------------------------------------------
 
-ZigZag en ROJO = corrección activa
-Bot entró tarde, la subida ya había pasado
-CORE (-0.33%):
+🔴 AUDIO/USDT:USDT (BULLISH)
+   💰 PnL: -0.15% ($-0.51) | Duración: 22.7 min
+   📊 Precio: $0.029320 (Entry: $0.029330)
+   🛡️ Stop Loss: $0.028743 (a 1.97% del precio)
+   🎯 Breakeven: ❌ No activado
+   🧠 ANÁLISIS EN VIVO:
+      • ADX en 62.8 (Fuerza BRUTAL 🚀), decreciendo.
+      • Valle VERDE en desarrollo (Impulso alcista) 🟢
+      • Precio en DESCUBRIMIENTO (Rompió techo de volumen) 🛸
+------------------------------------------------------------
 
-ADX verde/rojo MUY CERCA
-Momentum DECRECIENDO (divergencia)
-Precio NO subía (lateralizando)
-4 Cambios Propuestos:
-#	Cambio	Efecto
-1	check_price_velocity()	LONG=precio↑, SHORT=precio↓
-2	unified_time_ladder_vision()	ZigZag+Grid+OHLC en UNA visión
-3	Integrar en analyzer	Penalty si visión rechaza
-4	Trailing early cerca VP	Proteger si fuerza+cerca VP
-Nuevas funciones:
-python
-# 1. Velocidad de precio
-check_price_velocity(symbol, direction)
-# → LONG: precio debe aumentar
-# → SHORT: precio debe disminuir
-# 2. Visión unificada
-unified_time_ladder_vision(symbol, direction, zigzag, grid)
-# → ZigZag rojo + LONG = ❌ NO ENTRAR
-# → Precio no sube + LONG = ❌ NO ENTRAR
-¿Apruebas este plan para implementar?
+🔴 APEX/USDT:USDT (BULLISH)
+   💰 PnL: -0.10% ($-0.33) | Duración: 17.3 min
+   📊 Precio: $0.488200 (Entry: $0.488100)
+   🛡️ Stop Loss: $0.478338 (a 2.02% del precio)
+   🎯 Breakeven: ❌ No activado
+   🧠 ANÁLISIS EN VIVO:
+      • ADX en 27.1 (Tendencia Moderada 😐), creciendo.
+      • Valle VERDE en desarrollo (Impulso alcista) 🟢
+      • Por encima del POC (+2.28%), buscando techo (a 0.23%).
+------------------------------------------------------------
+
+Undo changes up to this point
+
+Plan: Bajar Zona a 60% + Salida por Tiempo
+Respuesta a tu pregunta:
+El 75% era un límite máximo, no un rango. El bot podía entrar desde 0% hasta 75%. El problema es que entraba mucho cerca del 75% donde ya no hay fuerza.
+
+Cambios propuestos:
+Parámetro	Antes	Después
+Zona peligro LONG	&gt;75%	&gt;60%
+Zona peligro SHORT	&lt;25%	&lt;40%
+Bloqueo duro LONG	&gt;80%	&gt;65%
+Bloqueo duro SHORT	&lt;20%	&lt;35%
+Exit por tiempo	No existe	10 min + $1.50 loss
+Nueva regla de salida:
+Si trade &gt; 10 minutos
+   Y trade perdiendo &gt;= $1.50
+   → CERRAR automáticamente
+Archivos a modificar:
+brain_analyzer.py - Zona peligro 75% → 60%
+brain_sniper_realtime.py - Bloqueo 80% → 65%
+brain_executor.py - Nuevo exit por tiempo
+Plan: Bajar Zona de Entrada a 60% + Salida por Tiempo
+📊 Problema Actual
+Los trades están entrando en zonas altas (75%) donde la moneda ya casi no tiene fuerza:
+
+ALT: -0.54% después de 27 min
+AUDIO: -0.15% después de 22 min
+APEX: -0.10% después de 17 min
+🎯 Cambios Propuestos
+1. Bajar zona de entrada de 75% a 60%
+Respuesta a tu pregunta: Actualmente el 75% funciona así:
+
+brain_analyzer.py
+: Si grid &gt; 75% para LONG → NO reduce penalties
+brain_sniper_realtime.py
+: Si grid &gt; 80% para LONG → BLOQUEA
+Es un límite máximo, NO un rango. El bot puede entrar desde 0% hasta 75% (or 80%).
+
+Cambio propuesto:
+
+De: 75% → A: 60% (zona de peligro)
+De: 80% → A: 65% (bloqueo duro)
+2. Salida por tiempo + pérdida mínima
+Si después de 10 min:
+
+El trade está perdiendo
+Y la pérdida llega a $1.50+
+→ Cerrar para no perder más tiempo
+🔧 Código a Cambiar
+Archivo 1: 
+brain_analyzer.py
+Líneas ~750-755 - ANTES:
+
+in_danger_zone = (
+    (direction == 'BULLISH' and grid_position &gt; 75) or  # LONG cerca resistencia
+    (direction == 'BEARISH' and grid_position &lt; 25)     # SHORT cerca soporte
+)
+DESPUÉS:
+
+in_danger_zone = (
+    (direction == 'BULLISH' and grid_position &gt; 60) or  # Bajado a 60%
+    (direction == 'BEARISH' and grid_position &lt; 40)     # Subido a 40%
+)
+Archivo 2: 
+brain_sniper_realtime.py
+Líneas ~110-117 - ANTES:
+
+if direction == 'BULLISH' and grid_position &gt; 80:
+    print(f"🚫 {symbol}: Grid {grid_position:.0f}% - demasiado alto para LONG")
+    return False
+elif direction == 'BEARISH' and grid_position &lt; 20:
+    print(f"🚫 {symbol}: Grid {grid_position:.0f}% - demasiado bajo para SHORT")
+    return False
+DESPUÉS:
+
+if direction == 'BULLISH' and grid_position &gt; 65:
+    print(f"🚫 {symbol}: Grid {grid_position:.0f}% - demasiado alto para LONG (max 65%)")
+    return False
+elif direction == 'BEARISH' and grid_position &lt; 35:
+    print(f"🚫 {symbol}: Grid {grid_position:.0f}% - demasiado bajo para SHORT (min 35%)")
+    return False
+Archivo 3: 
+brain_executor.py
+ (NUEVO)
+Agregar en 
+monitor_active_trades()
+:
+
+# === SALIDA POR TIEMPO + PÉRDIDA MÍNIMA ===
+MIN_DURATION_FOR_TIME_EXIT = 10  # minutos
+MAX_LOSS_FOR_TIME_EXIT = 1.50    # dólares
+duration_min = (datetime.now(ARGENTINA_TZ) - trade['entry_time']).total_seconds() / 60
+pnl_dollars = calculate_pnl_dollars(trade)
+if duration_min &gt;= MIN_DURATION_FOR_TIME_EXIT:
+    if pnl_dollars &lt;= -MAX_LOSS_FOR_TIME_EXIT:
+        print(f"⏰ SALIDA POR TIEMPO: {symbol} - {duration_min:.0f}min con ${pnl_dollars:.2f}")
+        self.close_trade(symbol, reason="Tiempo + Pérdida mínima")
+📋 Resumen de Cambios
+Parámetro	Antes	Después
+Zona peligro LONG	&gt;75%	&gt;60%
+Zona peligro SHORT	&lt;25%	&lt;40%
+Bloqueo duro LONG	&gt;80%	&gt;65%
+Bloqueo duro SHORT	&lt;20%	&lt;35%
+Exit por tiempo	No existe	10 min + $1.50 loss
+✅ ¿Procedo con la implementación?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 8,675<br>
-    Generado: 2025-12-24 19:53:10
+    Total caracteres: 11,092<br>
+    Generado: 2025-12-25 13:55:02
   </div>
 </body>
 </html>
