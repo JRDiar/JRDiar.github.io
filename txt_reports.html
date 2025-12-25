@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-25 20:34:40</div>
+  <div class="meta">Última actualización: 2025-12-25 20:43:07</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -248,11 +248,871 @@ Copia y Reemplaza:
 Copia el código del Paso 1 y pégalo completo en brain_grid.py.
 
 Copia el código del Paso 2 y pégalo completo en brain_entry_validator.py.
+
+Ajusta brain_analyzer.py (Importante):
+
+Asegúrate de que en el archivo principal de análisis, cuando llamas a grid_manager.calculate_grid(df), pases ese resultado dentro del objeto ladder_data['15m']['grid'] para que el Validador pueda leerlo.
+
+Con estos cambios, tu bot dejará de comprar "velas verdes gigantes" (que ya están agotadas) y empezará a comprar "velas verdes pequeñas" que nacen en el piso del canal, maximizando el recorrido hasta el techo.
+
+Entiendo perfectamente, esa era mi idea que el bot entre haciendo scalping apenas encontraba fuerza en esa moneda, pero antes que pida eso iguamente el precio ya entraba en esa zona. Estos son los cambios que se hicieron en el bot, es para que entiendas con mas profundidad como funciona. # 📋 CHANGELOG - Cambios Estructurales Diciembre 2025
+
+## BrainTrader Antigravity v5.1
+
+
+
+---
+
+
+
+## 🎬 1. SISTEMA "MOVIE VISION" (Velas como Película)
+
+
+
+### Concepto:
+
+El bot ahora ve las velas de precio como una **película en desarrollo**, analizando la trayectoria del precio en tiempo real en lugar de solo mirar snapshots estáticos.
+
+
+
+### Archivo: `brain_frames.py`
+
+
+
+**Funciones principales:**
+
+- `get_frame_storage()` - Almacena frames de precio por símbolo/timeframe
+
+- `check_price_velocity()` - Calcula velocidad del precio (subiendo/bajando)
+
+- `unified_time_ladder_vision()` - Combina ZigZag + Grid + OHLC en una visión unificada
+
+
+
+**Cambio clave:**
+
+```python
+
+# check_price_velocity ahora usa el timeframe correcto (antes hardcodeado a 5m)
+
+def check_price_velocity(symbol, direction, timeframe='15m'):  # &lt;- FIX
+
+```
+
+
+
+---
+
+
+
+## 📐 2. GRID DIAGONAL (Línea de Tendencia Dinámica)
+
+
+
+### Concepto:
+
+Calcula la **diagonal de tendencia** que conecta los pivots del ZigZag para determinar cuánto espacio le queda a una moneda antes de tocar resistencia/soporte diagonal.
+
+
+
+### Archivo: `brain_grid_master.py`
+
+
+
+**Datos que calcula:**
+
+```python
+
+diagonal_data = {
+
+    'valid': True/False,
+
+    'soporte_diagonal': precio_soporte,
+
+    'resistencia_diagonal': precio_resistencia,
+
+    'slope': pendiente_de_la_linea,
+
+    'angle': angulo_en_grados
+
+}
+
+```
+
+
+
+### Archivo: `brain_entry_validator.py`
+
+
+
+**Validación de distancia a diagonal (líneas 131-152):**
+
+```python
+
+if diagonal_valid and current_price &gt; 0:
+
+    if direction == 'BULLISH' and resistencia_diagonal &gt; 0:
+
+        dist_to_diag_res = abs(current_price - resistencia_diagonal) / current_price * 100
+
+       
+
+        if current_price &gt;= resistencia_diagonal * 0.99:
+
+            blocks.append('LONG en/arriba de RESISTENCIA DIAGONAL')
+
+        elif dist_to_diag_res &lt; 1.5:
+
+            warnings.append('LONG cerca de RESISTENCIA DIAGONAL')
+
+```
+
+
+
+---
+
+
+
+## 💪 3. REGLA "FUERZA PRIORITARIA" (Joel's Golden Rule)
+
+
+
+### Concepto:
+
+Si una moneda tiene **fuerza de mercado clara** (ADX &gt;= 30, spread &gt;= 15), las penalizaciones se reducen 70% para que no sea rechazada y pase al Sniper.
+
+
+
+### Archivo: `brain_analyzer.py` (líneas ~745-770)
+
+
+
+```python
+
+has_strong_force = adx_data['adx_current'] &gt;= 30 and abs(adx_data.get('spread', 0)) &gt;= 15
+
+
+
+if has_strong_force and not in_danger_zone:
+
+    pump_penalty = int(pump_penalty * 0.3)
+
+    lateral_penalty = int(lateral_penalty * 0.3)
+
+    macro_penalty = int(macro_penalty * 0.3)
+
+    tf_penalty = int(tf_penalty * 0.3)
+
+```
+
+
+
+---
+
+
+
+## ⚠️ 4. ZONA DE PELIGRO (Protección de Techos/Pisos)
+
+
+
+### Concepto:
+
+Si el precio está en zona alta (&gt;55% para LONG) o baja (&lt;45% para SHORT), NO se reducen las penalties aunque tenga fuerza.
+
+
+
+### Archivo: `brain_analyzer.py` (líneas ~750-755)
+
+```python
+
+in_danger_zone = (
+
+    (direction == 'BULLISH' and grid_position &gt; 55) or
+
+    (direction == 'BEARISH' and grid_position &lt; 45)
+
+)
+
+```
+
+
+
+### Archivo: `brain_sniper_realtime.py` (líneas ~115-120)
+
+```python
+
+if direction == 'BULLISH' and grid_position &gt; 60:
+
+    return False  # Bloqueo duro
+
+elif direction == 'BEARISH' and grid_position &lt; 40:
+
+    return False
+
+```
+
+
+
+---
+
+
+
+## 🎯 5. SNIPER DUAL TRACK (Análisis Continuo)
+
+
+
+### Concepto:
+
+El Sniper tiene dos tracks simultáneos:
+
+1. **Escaneo de nuevas monedas** (continuo)
+
+2. **Re-análisis de waiting list** (cada N ciclos)
+
+
+
+### Archivo: `brain_sniper_realtime.py`
+
+
+
+**Método `reevaluate_waiting_list()`:**
+
+- Analiza TODAS las waiting (no solo top 5)
+
+- Promueve si setup mejoró
+
+- Remueve si perdió fuerza
+
+- Actualiza scores
+
+
+
+---
+
+
+
+## ✅ 6. VERIFICACIÓN DE MOMENTUM COLOR
+
+
+
+### Archivo: `brain_sniper_realtime.py` (líneas ~104-110)
+
+```python
+
+if direction == 'BULLISH' and mom_color in ['red', 'maroon']:
+
+    print(f"🚫 {symbol}: Momentum {mom_color} contradice BULLISH")
+
+    return False
+
+```
+
+
+
+---
+
+
+
+## ⏰ 7. SALIDA POR TIEMPO + PÉRDIDA MÍNIMA
+
+
+
+### Archivo: `brain_executor.py` (líneas ~543-570)
+
+```python
+
+MIN_DURATION_FOR_TIME_EXIT = 10   # minutos
+
+MAX_LOSS_FOR_TIME_EXIT = 1.50     # dólares
+
+
+
+if duration_min &gt;= MIN_DURATION_FOR_TIME_EXIT and pnl_usd &lt;= -MAX_LOSS_FOR_TIME_EXIT:
+
+    symbols_to_close.append((symbol, f"Time exit"))
+
+```
+
+
+
+---
+
+
+
+## 🔗 8. CONEXIÓN is_perfect_setup() ↔ entry_validator
+
+
+
+### Problema (Gemini + Sonnet + Opus):
+
+`is_perfect_setup()` NO usaba `entry_validator` - dos sistemas desconectados.
+
+
+
+### Archivo: `brain_sniper_realtime.py` (líneas ~128-145)
+
+```python
+
+from brain_entry_validator import entry_validator
+
+
+
+validation = entry_validator._validate_explosion_entry(
+
+    symbol, direction, force_result, ladder_data
+
+)
+
+if not validation.get('can_enter', True):
+
+    return False
+
+```
+
+
+
+---
+
+
+
+## 📏 9. CONSTANTE MIN_DIST_TO_RESISTANCE
+
+
+
+### Archivo: `brain_config.py` (línea ~223)
+
+```python
+
+MIN_DIST_TO_RESISTANCE = 0.60  # 0.6% mínimo hasta próxima resistencia
+
+```
+
+
+
+---
+
+
+
+## 🔄 10. TRAILING STOP TEMPRANO CON FUERZA
+
+
+
+### Archivo: `brain_executor.py` (líneas ~265-272)
+
+```python
+
+has_force = force_level in ['BRUTAL', 'FUERTE', 'ACTIVA']
+
+activate_trailing_early = has_force  # Antes: near_vp AND has_force
+
+```
+
+
+
+---
+
+
+
+## 📊 THRESHOLDS ACTUALES
+
+
+
+| Parámetro | Valor | Archivo |
+
+|-----------|-------|---------|
+
+| Zona peligro LONG | &gt;55% | brain_analyzer.py |
+
+| Zona peligro SHORT | &lt;45% | brain_analyzer.py |
+
+| Bloqueo duro LONG | &gt;60% | brain_sniper_realtime.py |
+
+| Bloqueo duro SHORT | &lt;40% | brain_sniper_realtime.py |
+
+| Fuerza ADX | &gt;=30 | brain_analyzer.py |
+
+| Fuerza spread | &gt;=15 | brain_analyzer.py |
+
+| Dist. mínima resistencia | 0.6% | brain_config.py |
+
+| Exit tiempo + pérdida | 10min + $1.50 | brain_executor.py |
+
+
+
+---
+
+
+
+## 🗓️ Fecha: 25 de Diciembre 2025
+
+## 👥 Colaboración: Joel + Opus + Sonnet + Gemini
+
+
+
+---
+
+
+
+## 🚀 11. DETECCIÓN DE VELOCIDAD DEL PRECIO (Vela a Vela)
+
+
+
+### Concepto:
+
+El bot analiza el movimiento del precio **minuto a minuto** (o vela a vela según timeframe) para detectar si la moneda está subiendo con fuerza real.
+
+
+
+**Ejemplo:**
+
+```
+
+21:00 → BTC = $80,300
+
+21:01 → BTC = $80,900  (+0.75%)
+
+21:02 → BTC = $81,500  (+0.74%)
+
+→ Velocity = +1.5% en 2 min = STRONG_UP
+
+→ Bot: "Precio subiendo con fuerza, ENTRAR"
+
+```
+
+
+
+### Archivo: `brain_frames.py` (líneas 595-686)
+
+
+
+```python
+
+def check_price_velocity(symbol, direction, timeframe='5m'):
+
+    """
+
+    Verifica si el precio se mueve en la dirección correcta AHORA.
+
+   
+
+    Joel: "Si el precio aumenta rápido minuto a minuto, confirma el long.
+
+           Si el precio disminuye rápido minuto a minuto, confirma el short."
+
+    """
+
+    storage = get_frame_storage(symbol, timeframe)
+
+    closes = storage.get_trajectory('ohlc.close', 5)  # Últimos 5 cierres
+
+   
+
+    # Calcular velocidad (cambio entre primer y último frame)
+
+    velocity_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
+
+   
+
+    # Verificar tendencia consistente
+
+    moving_up = all(closes[i] &lt; closes[i+1] for i in range(len(closes)-1))
+
+    moving_down = all(closes[i] &gt; closes[i+1] for i in range(len(closes)-1))
+
+   
+
+    if direction == 'BULLISH':
+
+        if velocity_pct &gt; 0.15:  # +0.15% mínimo
+
+            pattern = 'STRONG_UP' if moving_up else 'MODERATE_UP'
+
+            return {'valid': True, 'velocity': velocity_pct, 'pattern': pattern}
+
+        elif velocity_pct &lt; -0.1:
+
+            return {'valid': False, 'reason': 'Precio BAJANDO (contradice LONG)'}
+
+   
+
+    # Para SHORT es inverso...
+
+```
+
+
+
+### Patrones detectados:
+
+| Patrón | Condición | Acción |
+
+|--------|-----------|--------|
+
+| `STRONG_UP` | velocity &gt; 0.15% + todas velas subiendo | ✅ Confirma LONG |
+
+| `MODERATE_UP` | velocity &gt; 0.15% + algunas velas bajan | ⚠️ Precaución |
+
+| `FLAT` | velocity entre -0.1% y 0.15% | ❌ No confirma |
+
+| `OPPOSITE` | velocity &lt; -0.1% (para LONG) | ❌ Contradice |
+
+
+
+### Uso en Visión Unificada:
+
+```python
+
+# brain_frames.py - unified_time_ladder_vision()
+
+velocity_check = check_price_velocity(symbol, direction, timeframe)
+
+
+
+if not velocity_check['valid']:
+
+    if velocity_check.get('frames_analyzed', 0) &gt;= 3:
+
+        score -= 30  # Penalización por velocidad mala
+
+        issues.append(f"Velocidad: {velocity_check['reason']}")
+
+```
+
+
+
+---
+
+
+
+## 📊 THRESHOLDS ACTUALES
+
+
+
+| Parámetro | Valor | Archivo |
+
+|-----------|-------|---------|
+
+| Zona peligro LONG | &gt;55% | brain_analyzer.py |
+
+| Zona peligro SHORT | &lt;45% | brain_analyzer.py |
+
+| Bloqueo duro LONG | &gt;60% | brain_sniper_realtime.py |
+
+| Bloqueo duro SHORT | &lt;40% | brain_sniper_realtime.py |
+
+| Fuerza ADX | &gt;=30 | brain_analyzer.py |
+
+| Fuerza spread | &gt;=15 | brain_analyzer.py |
+
+| Dist. mínima resistencia | 0.6% | brain_config.py |
+
+| Exit tiempo + pérdida | 10min + $1.50 | brain_executor.py |
+
+| Velocity mínimo LONG | &gt;0.15% | brain_frames.py |
+
+| Velocity mínimo SHORT | &lt;-0.15% | brain_frames.py |
+
+
+
+---
+
+
+
+**🗓️ Última actualización:** 25 de Diciembre 2025
+
+¡Excelente trabajo con la reingeniería! He analizado a profundidad el código que enviaste (v5.1) junto con tu estrategia y el problema de las "compras en el techo".
+
+Tienes una arquitectura muy sólida ahora (Frames, Grid Master, Sniper), PERO hay un "agujero de seguridad" crítico por donde se están colando esos trades en la resistencia.
+
+El culpable es la "Regla de Fuerza Prioritaria" (Joel's Golden Rule) actuando donde no debe.
+
+Aquí está el diagnóstico exacto y la corrección final para tu código.
+
+🕵️‍♂️ El Bug: La "Inmunidad Diplomática" de la Fuerza
+En brain_entry_validator.py, tienes una lógica que dice: "Si la fuerza es BRUTAL, ignora las advertencias".
+
+Python
+
+# brain_entry_validator.py (Líneas ~205)
+if warnings:
+    # Con fuerza BRUTAL, ignorar warnings
+    if force_result.get('force_level') == 'BRUTAL':
+        print(f"\n   ⚠️ Warnings ignorados por fuerza BRUTAL")
+        return {
+            'can_enter': True,  # &lt;--- AQUÍ ESTÁ EL ERROR
+            'reason': f"Fuerza BRUTAL supera warnings...",
+            'validation_type': 'FORCE_OVERRIDE'
+        }
+El problema: Cuando hay un "Pump", la fuerza siempre se marca como BRUTAL o NUCLEAR. Esto le da "inmunidad" al bot para ignorar que está pegado a la resistencia_diagonal. El bot ve la pared, pero la fuerza le dice "atraviesa la pared", y como resultado, compra justo antes del rebote bajista.
+
+🛠️ La Solución: Revocar la Inmunidad en Resistencias
+Debemos modificar brain_entry_validator.py para que la fuerza pueda ignorar muchas cosas (RSI alto, estocástico, etc.), pero NUNCA pueda ignorar la falta de espacio físico (distancia a resistencia).
+
+Paso 1: Modificar brain_entry_validator.py
+Busca la sección donde evalúa los warnings y cámbiala por esto. Vamos a diferenciar entre warnings "suaves" (que la fuerza puede superar) y bloqueos "duros" (espacio físico).
+
+Python
+
+        # === EVALUAR VALIDACIÓN (CORREGIDO) ===
+        
+        # 1. BLOQUEOS DUROS (Nadie pasa, ni con fuerza Nuclear)
+        if blocks:
+            print(f"\n   ❌ BLOQUEADO: {', '.join(blocks)}")
+            return {
+                'can_enter': False,
+                'reason': f"Zona peligrosa (Hard Block): {', '.join(blocks)}",
+                'wait_for': 'Esperar rompa resistencia o retroceda',
+                'validation_type': 'ZONE_BLOCK',
+                'blocks': blocks
+            }
+        
+        # 2. WARNINGS (Evaluación inteligente)
+        if warnings:
+            # Separar warnings de espacio vs otros warnings
+            space_warnings = [w for w in warnings if "cerca de" in w or "Espacio" in w]
+            
+            # Si el warning es por ESPACIO FÍSICO, la fuerza NO debe ignorarlo ciegamente
+            # a menos que sea un rompimiento confirmado (Breakout strategy)
+            if space_warnings:
+                 # Opción: Solo permitir si es 'NUCLEAR' (más fuerte que BRUTAL) o si estamos en modo Breakout
+                 print(f"\n   ⛔ Warning de Espacio detectado: {', '.join(space_warnings)}")
+                 return {
+                    'can_enter': False, # Bloquear por seguridad en tu estrategia de rebote
+                    'reason': f"Sin espacio para maniobra: {', '.join(space_warnings)}",
+                    'wait_for': 'Retroceso a soporte',
+                    'validation_type': 'NO_SPACE'
+                }
+
+            # Para otros warnings (ej: RSI, zonas menores), la fuerza BRUTAL sí ayuda
+            if force_result.get('force_level') in ['BRUTAL', 'NUCLEAR']:
+                print(f"\n   🚀 Warnings menores ignorados por fuerza {force_result.get('force_level')}")
+                return {
+                    'can_enter': True,
+                    'reason': f"Fuerza supera warnings menores: {', '.join(warnings)}",
+                    'wait_for': None,
+                    'validation_type': 'FORCE_OVERRIDE'
+                }
+            else:
+                return {
+                    'can_enter': True,
+                    'reason': f"Entrada con precaución: {', '.join(warnings)}",
+                    'wait_for': None,
+                    'validation_type': 'CAUTION_ENTRY',
+                    'warnings': warnings
+                }
+Paso 2: Ajustar el Grid Horizontal vs Diagonal en brain_analyzer.py
+En analyze_15m, estás calculando position_in_range usando máximos y mínimos simples (Grid Horizontal).
+
+Python
+
+# brain_analyzer.py (Líneas ~580)
+highs_20 = df['high'].iloc[-20:].values
+# ...
+position_in_range = ((price_current - price_min) / (price_max - price_min)) * 100
+En una tendencia alcista fuerte, el precio siempre está creando nuevos máximos, por lo que position_in_range horizontal siempre parecerá estar al 90-100%. Esto confunde al bot.
+
+Corrección: Debes priorizar la posición en el Grid Diagonal (que calculaste en brain_grid_master.py) sobre el horizontal.
+
+En brain_analyzer.py, busca donde se asigna grid_position para la visión unificada y asegúrate de pasar el dato diagonal si existe:
+
+Python
+
+    # En analyze_15m, cerca de la línea 700
+    
+    # Intentar obtener posición DIAGONAL primero (es más precisa para tu estrategia)
+    real_position_pct = 50
+    if diagonal.get('valid', False):
+        real_position_pct = diagonal['price_position_pct']
+    else:
+        # Fallback al horizontal
+        real_position_pct = position_in_range
+
+    unified_vision = unified_time_ladder_vision(
+        symbol, 
+        direction,
+        zigzag_data=zigzag_granular,
+        grid_data={'position_pct': real_position_pct} # &lt;--- USAR LA REAL
+    )
+Paso 3: Refinar brain_sniper_realtime.py
+En la función is_perfect_setup, tienes un bloqueo duro en el 60%.
+
+Python
+
+# brain_sniper_realtime.py
+if direction == 'BULLISH' and grid_position &gt; 60:
+    return False
+Si estás usando el grid_position horizontal (que explicamos arriba que suele estar alto en tendencias), este filtro te va a bloquear casi todos los trades buenos de tendencia, o si el cálculo está mal, dejará pasar los malos.
+
+Asegúrate de que el data_15m que lee el Sniper venga alimentado con la Posición Diagonal del paso anterior.
+
+Resumen de la Optimización
+Para que tu bot opere como la "Película" de la estrategia:
+
+Grid Diagonal es Ley: El bot debe confiar en brain_grid_master para saber dónde está el techo. El techo no es el máximo anterior, es la línea diagonal proyectada.
+
+Sin Espacio = Sin Trade: Modifica el validador para que ni la "Fuerza Nuclear" pueda comprar si estás a menos de 0.6% de la línea diagonal superior.
+
+Setup de Rebote: Tu estrategia es Mean Reversion en tendencia. El bot debe buscar:
+
+Tendencia: Alcista (Slope diagonal &gt; 0)
+
+Posición: Baja en el canal (cerca del soporte diagonal)
+
+Gatillo: Velocidad precio cambiando a positivo.
+
+Con estos ajustes en brain_entry_validator.py y brain_analyzer.py, el bot dejará de comprar picos y empezará a esperar los retrocesos.
+
+Queria que tenga las dos estrategias pero no se puede, lo que pasa es que yo queria algo asi y que el bot lo detecte, pero veo que no se puede, lo que quiero es que sea un bot preciso y que eso lo haga rentable. Yo quiero que el bot vea la fuerza minuto a minuto. El sniper veia la fuerza del precio segun cada vela que pasaba minuto a minuto, entonces el bot sabia que el precio subia con fuerza, por ejemplo BTC 80.300 a las 21:00 hs luego a las 21:01 hs ya BTC estaba a 80:900, y al siguiente minuto 90.300, entonces el bot interpreta que la moneda esta subiendo con fuerza y debe entrar a comprar rapido y salir con la mejor ganancia. Eso queria, queria que opere con mi estrategia y si veia la oportunidad entre en modo scalping, pero el bot entra cuando la moneda no tiene movimiento, esa logica ese codigo no sirve.
+
+Siento tu frustración, pero te aseguro algo: Sí se puede tener las dos estrategias. No tienes que elegir entre "ser preciso" (rebotes) o "ser rápido" (scalping de velocidad). Lo que pasa es que el bot actual está "mezclando" las señales y por eso entra mal (cuando no hay movimiento).
+
+El problema que describes "el bot entra cuando la moneda no tiene movimiento" ocurre porque está mirando indicadores retrasados (ADX, EMAs) en lugar de mirar el precio en tiempo real (Velocidad Pura). El ADX dice "hay tendencia" cuando la vela ya cerró, pero tú quieres entrar mientras la vela crece, minuto a minuto.
+
+Para que el bot funcione como tú quieres (detectando el salto de 80.300 a 80.900 en 1 minuto), necesitamos instalarle un "Velocímetro en Tiempo Real".
+
+Aquí tienes la solución para tener ambos motores funcionando en paralelo:
+
+Motor 1 (Scalping de Velocidad): Se activa SOLO si el precio sube X% en el último minuto (tu ejemplo del BTC). Ignora si está "caro" o "barato", solo le importa que se mueva rápido y tenga espacio.
+
+Motor 2 (Rebote de Canal): Se activa SOLO si toca el piso del canal y gira (la estrategia que vimos antes).
+
+Vamos a arreglar el módulo brain_frames.py para que calcule esa velocidad minuto a minuto y el brain_sniper_realtime.py para que dispare con ella.
+
+Paso 1: El Velocímetro Real (brain_frames.py)
+Este código mide cuánto cambió el precio exactamente en el último minuto o en la vela actual. Reemplaza o ajusta tu función check_price_velocity en brain_frames.py.
+
+Python
+
+"""
+brain_frames.py - Módulo de Visión de Película (Movie Vision)
+=============================================================
+Calcula la velocidad del precio en TIEMPO REAL.
+"""
+import pandas as pd
+
+def check_price_velocity(symbol, direction, timeframe='1m'): # Ojo: Default a 1m para precisión
+    """
+    Mide la aceleración del precio minuto a minuto.
+    Detecta si la vela actual está creciendo agresivamente.
+    """
+    storage = get_frame_storage(symbol, timeframe)
+    
+    # Necesitamos al menos la vela actual y la anterior cerrada
+    if len(storage.df) &lt; 2:
+        return {'valid': False, 'velocity': 0, 'reason': 'Faltan datos'}
+
+    # 1. Obtener precio AHORA (tiempo real) y precio hace 1 minuto (cierre anterior)
+    current_price = storage.get_current_price() # Precio actual tick a tick
+    prev_close = storage.df['close'].iloc[-1]   # Cierre de la vela anterior (hace 1 min)
+    
+    # 2. Calcular Velocidad Instantánea (% de cambio en este minuto)
+    velocity_pct = ((current_price - prev_close) / prev_close) * 100
+    
+    # 3. Calcular Aceleración (comparado con la vela anterior a esa)
+    prev_prev_close = storage.df['close'].iloc[-2]
+    prev_velocity = ((prev_close - prev_prev_close) / prev_prev_close) * 100
+    
+    acceleration = velocity_pct - prev_velocity
+
+    print(f"   🏎️ VELOCIDAD {symbol} ({timeframe}): {velocity_pct:.3f}% (Accel: {acceleration:.3f})")
+
+    # UMBRALES DE SCALPING (Ajustables)
+    # Ejemplo: Si sube más de 0.3% en 1 minuto, es un movimiento BRUTAL en scalping
+    MIN_VELOCITY_TRIGGER = 0.25 
+
+    if direction == 'BULLISH':
+        if velocity_pct &gt; MIN_VELOCITY_TRIGGER:
+            return {
+                'valid': True, 
+                'mode': 'VELOCITY_SCALP', 
+                'velocity': velocity_pct,
+                'reason': f'🚀 EXPLOSIÓN detectada: +{velocity_pct:.2f}% en 1 min'
+            }
+        elif velocity_pct &lt; -0.05:
+            return {'valid': False, 'reason': 'Precio frenado o cayendo'}
+            
+    elif direction == 'BEARISH':
+        if velocity_pct &lt; -MIN_VELOCITY_TRIGGER:
+             return {
+                'valid': True, 
+                'mode': 'VELOCITY_SCALP', 
+                'velocity': velocity_pct,
+                'reason': f'🔻 DESPLOME detectado: {velocity_pct:.2f}% en 1 min'
+            }
+        elif velocity_pct &gt; 0.05:
+            return {'valid': False, 'reason': 'Precio frenado o subiendo'}
+
+    # Si no hay velocidad explosiva, devuelve "NEUTRAL" (para que use la estrategia de canal)
+    return {'valid': False, 'reason': 'Velocidad normal', 'mode': 'NORMAL'}
+Paso 2: El Cerebro Híbrido (brain_sniper_realtime.py)
+Aquí es donde ocurre la magia. El Sniper preguntará: "¿Hay velocidad extrema?".
+
+SÍ: Entra en modo Scalping Rápido (Ignora si el ADX es bajo, entra por acción de precio).
+
+NO: Entra en modo Estrategia Canal (Verifica soportes, resistencias, estructura).
+
+Modifica tu función is_perfect_setup o la lógica principal del Sniper:
+
+Python
+
+# --- brain_sniper_realtime.py ---
+
+def analyze_sniper_opportunity(self, symbol, direction, ladder_data):
+    """
+    Decide qué estrategia usar: VELOCIDAD o ESTRUCTURA.
+    """
+    
+    # 1. CHEQUEO DE VELOCIDAD (Minuto a Minuto) - PRIORIDAD 1
+    # Usamos timeframe de 1 minuto para ver la "película" rápida
+    velocity_check = brain_frames.check_price_velocity(symbol, direction, timeframe='1m')
+    
+    if velocity_check['valid'] and velocity_check['mode'] == 'VELOCITY_SCALP':
+        print(f"\n⚡ MODO SCALPING ACTIVADO para {symbol}")
+        
+        # En modo velocidad, solo verificamos que no nos choquemos CON LA PARED INMEDIATA.
+        # Somos más permisivos con la ubicación, pero estrictos con el espacio libre.
+        
+        # Validar Espacio Libre (Tu validador corregido)
+        validation = entry_validator.validate_entry(symbol, direction, ..., ladder_data)
+        
+        if validation['can_enter']:
+            return {
+                'action': 'ENTER_NOW', 
+                'type': 'SCALP_FAST', 
+                'reason': velocity_check['reason'] + " (Con Espacio Libre)"
+            }
+        else:
+            print(f"   ⛔ Velocidad brutal pero sin espacio: {validation['reason']}")
+            return {'action': 'WAIT', 'reason': 'Velocidad sin pista'}
+
+    # 2. CHEQUEO DE ESTRUCTURA (Tu estrategia de Canal) - PRIORIDAD 2
+    # Si no se mueve rápido, buscamos la entrada perfecta técnica (Soporte Diagonal)
+    
+    print(f"   🐢 MODO ESTRUCTURA (Validando Canal/Grid)...")
+    
+    # Aquí va la lógica que te di antes (Grid Dinámico, Rebote en soporte)
+    grid_analysis = brain_grid.analyze(symbol, ladder_data)
+    
+    if grid_analysis['action'] == 'ENTER_LONG': # Rebote en piso confirmado
+        return {
+            'action': 'ENTER_NOW',
+            'type': 'CHANNEL_BOUNCE',
+            'reason': 'Rebote técnico en soporte diagonal'
+        }
+
+    return {'action': 'WAIT', 'reason': 'Sin velocidad y sin setup técnico'}
+Por qué esto arregla tu problema:
+Adiós a entrar "quieto": Si el precio no se mueve al menos un 0.25% en el último minuto (velocidad), el Modo Scalping no se activa. El bot no comprará monedas "muertas".
+
+Precisión: El Modo Estructura seguirá buscando tus entradas quirúrgicas en el piso del canal para cuando el mercado esté tranquilo.
+
+Rentabilidad: Al entrar por velocidad real (y no por indicador retrasado), capturas el movimiento 80.300 -&gt; 90.300 desde el inicio del impulso, pero el validador de "Espacio Libre" evita que compres justo en el 90.300 si hay una resistencia ahí.
+
+¿Te parece bien este enfoque de "Doble Motor"? Si estás de acuerdo, implementa estos cambios en brain_frames.py primero, ya que es el sensor que le falta a tu bot.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 10,574<br>
-    Generado: 2025-12-25 20:34:40
+    Total caracteres: 35,044<br>
+    Generado: 2025-12-25 20:43:07
   </div>
 </body>
 </html>
