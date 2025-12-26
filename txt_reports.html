@@ -15,562 +15,191 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-26 01:31:10</div>
+  <div class="meta">Última actualización: 2025-12-26 01:43:29</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Informe de Sonnet porque se lleno el chat, este informe sirve para que tenga continuidad el proyecto.
-DOCUMENTO DE CONTINUIDAD - BrainTrader Antigravity
-Versión: v5.2 (Arquitectura Dual Motor)
-Fecha última actualización: 25 Diciembre 2025
-Estado: 🔴 BOT NO OPERA (crítico)
-Colaboradores: Joel + Opus + Sonnet + Gemini
+El chat de Opus:
+PLAN ACTUALIZADO: Time Ladder Puro
+⚠️ Sonnet tiene razón:
+Mi "Breakout Mode" era binario (on/off). No es Time Ladder.
 
-🎯 CONTEXTO DEL PROYECTO
-Qué es BrainTrader
-Bot de trading automatizado para futuros USDT en MEXC. Filosofía "Time Ladder" - analiza el mercado como PELÍCULA (movimiento dinámico) no FOTOS (valores estáticos).
-Problema histórico recurrente
-Bot entra en zonas altas (75-90% del rango) justo antes de resistencias. Resultado: Winrate catastrófico (12.5% en última sesión - 1W/7L).
+✅ Nueva filosofía:
+Velocity REDUCE penalty, NO la elimina
 
-🏗️ ARQUITECTURA ACTUAL (v5.2)
-Sistema de 3 Capas
-1. brain_force_filter.py - Filtra por FUERZA (ADX, spread)
-2. brain_phase_classifier.py - Clasifica FASE (explosión, corrección)  
-3. brain_entry_validator.py - Valida ZONAS (VP, resistencias, espacio)
-Dual Motor (ÚLTIMO CAMBIO - v5.2)
-┌─────────────────────────────────────────────┐
-│        SNIPER DISPATCHER                     │
-├─────────────────────────────────────────────┤
-│ MOTOR 1: VELOCITY SCALP                     │
-│ • Detecta explosiones minuto a minuto       │
-│ • Threshold: +0.25% en 1 vela               │
-│ • Flag: ENABLE_MOTOR_VELOCITY               │
-├─────────────────────────────────────────────┤
-│ MOTOR 2: CHANNEL BOUNCE                     │
-│ • Rebote técnico en soporte diagonal        │
-│ • Solo entra en 0-30% del canal             │
-│ • Flag: ENABLE_MOTOR_CHANNEL                │
-└─────────────────────────────────────────────┘
+Fórmula:
+penalty_final = penalty_base * (1 - velocity_factor)
+Ejemplo:
+- velocity=0% → penalty=-40 (100%)
+- velocity=0.15% → penalty=-20 (50%)
+- velocity=0.30%+ → penalty=-12 (70% max)
+📝 Cambios propuestos:
+Archivo	Cambio
+brain_config.py	VELOCITY=0.12, DIST=0.40, factors nuevos
+brain_entry_validator.py	Scoring gradual (no boolean)
+brain_sniper_realtime.py	Pasar velocity a validator
+brain_frames.py	Threshold 0.12
+🎯 Ejemplo práctico:
+Moneda cerca de VAH (0.5%) con velocity +0.15%
+ANTES v5.2: BLOQUEADO (sin excepciones)
+AHORA v5.2.1: 
+  penalty_base=-40, velocity_factor=50%
+  penalty_final=-20, score=80
+  Score &gt;= 60 → PUEDE ENTRAR ✅
+Ventajas:
+✅ Mantiene FORCE_OVERRIDE=False (seguridad)
+✅ Scores graduales, no booleans
+✅ Filosofía "película" respetada
+✅ Velocity influye pero no domina
+El plan de Opus: 
+PLAN v5.2.1 - Time Ladder Puro
+Debate: Opus + Gemini + Sonnet
+📊 DIAGNÓSTICO COMÚN (Los 3 de acuerdo)
+Problema	Valor Actual	Efecto
+Velocity	0.25%	Muy alto
+Override	FALSE	Bloqueo absoluto
+Keywords	11	Todo es "espacio"
+⚠️ CRÍTICA DE SONNET A MI SOLUCIÓN
+"Breakout Mode es binario. Un switch on/off. No es Time Ladder."
 
-🔥 ÚLTIMA ACTUALIZACIÓN IMPLEMENTADA (25/12/2025)
-Objetivo
-Solucionar entradas en zonas altas mediante arquitectura dual motor.
-Cambios aplicados (4 archivos):
-1. brain_config.py - Flags nuevos
-python# AGREGADO después de línea 223:
-ENABLE_MOTOR_VELOCITY = True
-ENABLE_MOTOR_CHANNEL = True
-VELOCITY_TRIGGER_PCT = 0.25
-VELOCITY_TIMEFRAME = '1m'
-CHANNEL_ZONE_PCT = 30
-CHANNEL_MIN_SPACE_PCT = 0.8
-FORCE_CAN_OVERRIDE_SPACE = False  # CRÍTICO - Revoca inmunidad
-2. brain_entry_validator.py - Inmunidad revocada
-Líneas ~247-266 REEMPLAZADAS con lógica:
-python# Si hay warnings de ESPACIO → Bloquear SIEMPRE
-# Ni fuerza BRUTAL ni NUCLEAR puede ignorar
-if space_warnings and not FORCE_CAN_OVERRIDE_SPACE:
-    return {'can_enter': False, ...}
-3. brain_frames.py - Velocity scalp
-Líneas 595-686 REEMPLAZADAS:
-pythondef check_price_velocity(symbol, direction, timeframe='1m'):
-    # Mide velocidad minuto a minuto
-    # Si velocity &gt; 0.25% → VELOCITY_SCALP mode
-    # Usa closes[-1] (último cierre) vs closes[-2]
-4. brain_sniper_realtime.py - Dispatcher
-Modificado is_perfect_setup() (línea ~88):
-python# Prioridad 1: Velocity scalp
-if ENABLE_MOTOR_VELOCITY:
-    velocity_check = check_price_velocity(symbol, direction, '1m')
-    if mode == 'VELOCITY_SCALP':
-        # Validar espacio → Entrar
+Sonnet tiene razón. Mi propuesta creaba otra excepción binaria:
 
-# Prioridad 2: Channel bounce
-if ENABLE_MOTOR_CHANNEL:
-    # Verificar score, grid diagonal, etc.
+Si velocity → ignorar espacio COMPLETO
+Si no velocity → respetar espacio
+Esto NO es "película", es volver a "fotos".
 
-🐛 BUGS CRÍTICOS DETECTADOS (NO CORREGIDOS)
-Estos bugs causan que el bot NO opere:
-BUG #1: Velocity usa vela cerrada, no precio actual
-python# CÓDIGO ACTUAL (INCORRECTO):
-closes = storage.get_trajectory('ohlc.close', 5)
-velocity_pct = ((closes[-1] - closes[-2]) / closes[-2]) * 100
-
-# PROBLEMA:
-# closes[-1] = último cierre CONFIRMADO (vela cerrada)
-# Para scalping necesitas precio ACTUAL en tiempo real
-
-# FIX NECESARIO:
-from exchange_connection import fetch_ticker
-current_price = float(fetch_ticker(symbol)['last'])
-velocity_pct = ((current_price - closes[-1]) / closes[-1]) * 100
-BUG #2: storage.get_current_price() NO EXISTE
-python# Gemini propuso esto (copiado por Opus):
-current_price = storage.get_current_price()  # ❌ AttributeError
-
-# FIX: Ver BUG #1
-BUG #3: Timeframe 1m no tiene datos
-python# CÓDIGO ACTUAL:
-velocity_check = check_price_velocity(symbol, direction, '1m')
-
-# PROBLEMA:
-# Bot opera en 15m, NO genera frames de 1m
-# Siempre retorna "Datos insuficientes"
-
-# FIX NECESARIO:
-# Intentar 5m → fallback 15m
-velocity_check = check_price_velocity(symbol, direction, '5m')
-if not velocity_check['valid']:
-    velocity_check = check_price_velocity(symbol, direction, '15m')
-BUG #4: force_level 'VELOCITY' inválido
-python# CÓDIGO ACTUAL:
-force_result = {'force_level': 'VELOCITY'}  # ❌ No es válido
-
-# Valores válidos: BRUTAL, FUERTE, ACTIVA, EMERGENTE, DÉBIL
-# FIX NECESARIO:
-force_result = {'force_level': 'BRUTAL'}
-BUG #5: space_warnings puede fallar
-python# CÓDIGO ACTUAL:
-space_warnings = [w for w in warnings if any(x in w.lower() for x in [...])]
-
-# PROBLEMA: Asume que warnings son strings
-# Puede ser lista de dicts → .lower() falla
-
-# FIX NECESARIO:
-for w in warnings:
-    w_str = str(w) if not isinstance(w, str) else w
-    if any(x in w_str.lower() for x in [...]): ...
-
-🔴 PROBLEMA ACTUAL
-Síntoma: Bot NO opera después de actualización v5.2
-Causa probable:
-
-Velocity check SIEMPRE falla (BUG #3 - sin datos 1m)
-Channel motor bloqueado por otra razón
-Resultado: Ambos motores inactivos = 0 trades
-
-Diagnóstico necesario:
-python# Agregar prints debug en is_perfect_setup():
-print(f"DEBUG - Motor Velocity enabled: {ENABLE_MOTOR_VELOCITY}")
-print(f"DEBUG - Velocity check result: {velocity_check}")
-print(f"DEBUG - Motor Channel enabled: {ENABLE_MOTOR_CHANNEL}")
-
-📋 ARCHIVOS MODIFICADOS (UBICACIONES EXACTAS)
-ArchivoLíneas modificadasCambiobrain_config.py~223 (agregado)7 flags nuevosbrain_entry_validator.py~247-266 (reemplazado)Inmunidad revocadabrain_frames.py595-686 (reemplazado)Velocity scalpbrain_sniper_realtime.py~88+ (modificado)Dual motor dispatcher
-
-🎯 TAREA INMEDIATA PARA NUEVO SONNET
-PASO 1: Diagnosticar por qué no opera
-Agregar logging debug en brain_sniper_realtime.py - is_perfect_setup():
-pythonprint(f"\n{'='*60}")
-print(f"DEBUG is_perfect_setup - {symbol}")
-print(f"  ENABLE_MOTOR_VELOCITY: {ENABLE_MOTOR_VELOCITY}")
-print(f"  ENABLE_MOTOR_CHANNEL: {ENABLE_MOTOR_CHANNEL}")
-
-if ENABLE_MOTOR_VELOCITY:
-    velocity_check = check_price_velocity(...)
-    print(f"  Velocity check: {velocity_check}")
+✅ SOLUCIÓN TIME LADDER PURA
+Filosofía:
+NO hay true/false absolutos
+Todo son scores y penalties
+Velocity REDUCE penalty, no la elimina
+Fórmula:
+space_penalty = base_penalty * (1 - velocity_factor)
+Donde:
+- base_penalty = -40 (cerca de resistencia)
+- velocity_factor = min(velocity_pct / 0.30, 0.70)  # Max 70% reducción
+Ejemplos:
+- velocity=0% → penalty=-40 (sin reducción)
+- velocity=0.10% → penalty=-27 (33% reducción)
+- velocity=0.20% → penalty=-13 (67% reducción)  
+- velocity=0.30%+ → penalty=-12 (70% max)
+📝 CAMBIOS PROPUESTOS
+CAMBIO 1: brain_config.py
+# v5.2.1 - Time Ladder Thresholds
+VELOCITY_TRIGGER_PCT = 0.12       # Reducido de 0.25 a 0.12
+MIN_DIST_TO_RESISTANCE = 0.40    # Reducido de 0.60 a 0.40
+FORCE_CAN_OVERRIDE_SPACE = False  # MANTENER False (Sonnet warning)
+# NUEVO: Time Ladder Factors
+VELOCITY_PENALTY_REDUCTION_MAX = 0.70  # Velocity reduce max 70% de penalty
+SPACE_BASE_PENALTY = 40          # Penalty base por cercanía a resistencia
+CAMBIO 2: brain_entry_validator.py - Scoring System
+def _validate_explosion_entry(self, symbol, direction, force_result, ladder_data):
+    """
+    v5.2.1: TIME LADDER - Retorna SCORE, no boolean
     
-if ENABLE_MOTOR_CHANNEL:
-    print(f"  Score: {score}, Action: {decision['action']}")
-    print(f"  Grid position: {grid_position}")
-print(f"{'='*60}\n")
-PASO 2: Corregir BUG #3 (más probable)
-Cambiar en brain_sniper_realtime.py:
-python# ANTES:
-velocity_check = check_price_velocity(symbol, direction, '1m')
-
-# DESPUÉS:
-velocity_check = check_price_velocity(symbol, direction, '5m')
-if not velocity_check.get('valid') and 'insuficientes' in str(velocity_check.get('reason', '')):
-    velocity_check = check_price_velocity(symbol, direction, '15m')
-PASO 3: Si sigue sin operar
-Corregir BUG #1 (velocity con precio actual):
-python# En brain_frames.py - check_price_velocity()
-from exchange_connection import fetch_ticker
-
-try:
-    ticker = fetch_ticker(symbol)
-    current_price = float(ticker['last'])
-except:
-    current_price = closes[-1]  # Fallback
+    Velocity reduce penalty de espacio, no la elimina.
+    """
+    # ... obtener datos de zonas ...
     
-velocity_pct = ((current_price - closes[-1]) / closes[-1]) * 100
-
-📊 THRESHOLDS ACTUALES
-ParámetroValorUbicaciónZona peligro LONG&gt;55%brain_analyzer.pyBloqueo duro LONG&gt;60%brain_sniper_realtime.pyFuerza ADX&gt;=30brain_analyzer.pyVelocity trigger&gt;0.25%brain_config.pyDist. mínima res.0.6%brain_config.pyExit tiempo10min + $1.50brain_executor.py
-
-🧪 TESTING REQUERIDO
-bash# 1. Probar solo velocity
-ENABLE_MOTOR_VELOCITY=True
-ENABLE_MOTOR_CHANNEL=False
-
-# 2. Probar solo channel  
-ENABLE_MOTOR_VELOCITY=False
-ENABLE_MOTOR_CHANNEL=True
-
-# 3. Ver qué motor falla
-
-💡 FILOSOFÍA DEL PROYECTO (IMPORTANTE)
-Time Ladder: Todo es contextual, dinámico, gradual. NO binario.
-Joel dice:
-
-"Ver la película, no fotos"
-"Fuerza primero, luego fase, luego zona"
-"Si precio sube +0.25%/min, ENTRAR RÁPIDO" (scalping)
-"Si toca soporte diagonal, esperar rebote" (channel)
-
-NUNCA:
-
-Penalties acumulativos rígidos
-Thresholds universales fijos
-Buscar perfección en cada indicador
-
-
-🚀 PRÓXIMOS PASOS
-
-URGENTE: Diagnosticar por qué bot no opera (debug logs)
-FIX: Corregir BUG #3 (timeframe 1m → 5m)
-FIX: Corregir BUG #1 (precio actual vs cierre)
-TESTING: Probar cada motor por separado
-VALIDAR: Winrate debe mejorar de 12.5%
-
-
-📞 CONTACTO CON JOEL
-Workflow:
-
-Joel sube código a GitHub Pages
-Sonnet revisa y da prompt quirúrgico
-Opus aprueba/corrige
-Sonnet aplica
-
-Regla de oro: NUNCA aplicar sin ver ACTUAL vs PROPUESTO
-
-FIN DEL DOCUMENTO
-Versión: 1.0
-Última actualización: 25/12/2025
-
-El problema Actual: 
-
-El bot se puso super rígido no hizo una sola operación, que hace que no haga más trades? podrías buscar en todos los módulos, especialmente en los módulos que actualice según esta conversación. Adjunto link actualizado del proyecto en Github. Gracias. Bot detenido por usuario
-
-
-
-================================================================================
-
-📊 RESUMEN SESIÓN
-
-================================================================================
-
-Sin trades ejecutados
-
-
-
---------------------------------------------------------------------------------
-
-🎯 SNIPER STATS FINALES:
-
-
-
-📊 SNIPER STATUS:
-
-   🎯 Priority: 0
-
-   ⏳ Waiting: 8
-
-   ❌ Rejected: 176
-
-   📍 Scan: 367/740 (Ciclo #1)
-
-================================================================================
-
-👋 Bot detenido correctamente
-
-===============================================================================
-
-Asistente de programación
-He analizado los logs y el código actualizado. El diagnóstico es claro: Has creado un "Bot Perfeccionista".
-
-Al combinar la lógica de "Velocidad" (Scalping) con la de "Estructura" (Grid), hemos creado dos filtros muy estrictos que, al sumarse, eliminan el 100% de las oportunidades.
-
-Aquí están las 3 razones exactas de la "rigidez" y cómo solucionarlas:
-
-El Velocímetro es Irreal (brain_frames.py): Puse el umbral en 0.25% por minuto. Eso es una vela "Dios". En un mercado normal, las velas de arranque son de 0.10% - 0.15%. El bot está esperando un milagro para activar el modo Scalping.
-
-La "Zona Muerta" (brain_entry_validator.py): Exigimos un 0.6% de espacio libre hasta la resistencia. Problema: Si la volatilidad es baja, el canal entero mide 0.8%. El precio siempre estará a menos de 0.6% del techo a menos que esté en el suelo absoluto.
-
-El Bloqueo de Ruptura: Si el precio rompe la resistencia con fuerza (lo que queríamos con el scalping), el validador ve "Precio &gt; Resistencia" y lo bloquea por seguridad. ¡Es una contradicción!
-
-🛠️ Solución: Relajar las restricciones y permitir Rupturas
-Vamos a aplicar 3 parches quirúrgicos para que el bot "respire" y vuelva a operar.
-
-1. Ajustar el Velocímetro (brain_frames.py)
-Bajamos la exigencia de velocidad para detectar movimientos "normales" pero fuertes, no solo explosiones nucleares.
-
-Cambio: Busca la función check_price_velocity y ajusta los umbrales.
-
-Python
-# --- brain_frames.py ---
-
-def check_price_velocity(self, symbol, direction, timeframe='1m'):
-    # ... (código anterior de obtención de datos) ...
+    # Obtener velocity del force_result (si existe)
+    velocity_pct = abs(force_result.get('velocity', 0))
     
-    # === CORRECCIÓN DE UMBRALES ===
-    # Antes: 0.25 (Muy difícil) -&gt; Ahora: 0.12 (Movimiento fuerte pero común)
-    MIN_VELOCITY_TRIGGER = 0.12 
+    # Calcular factor de reducción por velocity
+    from brain_config import VELOCITY_PENALTY_REDUCTION_MAX, SPACE_BASE_PENALTY
+    velocity_factor = min(velocity_pct / 0.30, VELOCITY_PENALTY_REDUCTION_MAX)
     
-    # También permitimos acumulación de velocidad en 2 velas
-    # Si la vela actual y la anterior suman fuerza, también vale.
-    cumulative_velocity = velocity_pct + prev_velocity
-
-    if direction == 'BULLISH':
-        # Caso A: Explosión instantánea (&gt; 0.12%)
-        if velocity_pct &gt; MIN_VELOCITY_TRIGGER:
-            return {
-                'valid': True, 
-                'mode': 'VELOCITY_SCALP', 
-                'velocity': velocity_pct,
-                'reason': f'🚀 Aceleración Detectada: +{velocity_pct:.2f}% (1m)'
-            }
-        # Caso B: Arranque sostenido (2 minutos subiendo fuerte, &gt; 0.18% acumulado)
-        elif cumulative_velocity &gt; (MIN_VELOCITY_TRIGGER * 1.5):
-             return {
-                'valid': True, 
-                'mode': 'MOMENTUM_BUILD', 
-                'velocity': cumulative_velocity,
-                'reason': f'🌊 Momentum Creciente: +{cumulative_velocity:.2f}% (2m)'
-            }
-            
-    # ... (Repetir lógica inversa para BEARISH) ...
-2. Permitir Rupturas en el Validador (brain_entry_validator.py)
-Este es el cambio más importante. Le diremos al validador: "Si no hay espacio (estamos cerca del techo), PERO hay mucha velocidad, asume que vamos a ROMPER el techo. Déjalo pasar."
-
-Reemplaza la lógica de validación de espacio con esto:
-
-Python
-# --- brain_entry_validator.py ---
-
-    # Dentro de _validate_explosion_entry o validate_entry
-
-        # === LÓGICA FLEXIBLE DE ESPACIO ===
+    score = 100  # Score base
+    warnings = []
+    blocks = []
+    
+    # === EVALUAR ESPACIO CON TIME LADDER ===
+    
+    if direction == 'BULLISH' and vah &gt; 0:
+        dist_to_vah = abs(current_price - vah) / current_price * 100
         
-        # 1. Definir "Cerca"
-        MIN_DIST_SAFETY = 0.50 # Bajamos de 0.60 a 0.50
-        
-        # 2. Verificar si hay "Excepción por Velocidad" (Ruptura)
-        # Si el Sniper nos manda una señal de VELOCITY_SCALP, ignoramos el techo
-        is_velocity_trade = force_result.get('mode') == 'VELOCITY_SCALP' or \
-                            force_result.get('force_level') in ['NUCLEAR', 'BRUTAL']
-
-        if direction == 'BULLISH':
-            # Filtrar resistencias ARRIBA del precio
-            resistencias_reales = [r for r in posibles_resistencias if r[1] &gt; current_price]
+        if dist_to_vah &lt; 0.3:  # Muy cerca = BLOCK (no negociable)
+            blocks.append(f'En resistencia VAH ({dist_to_vah:.1f}%)')
+        elif dist_to_vah &lt; MIN_DIST_TO_RESISTANCE:
+            # Aplicar penalty REDUCIDA por velocity
+            base_penalty = SPACE_BASE_PENALTY
+            actual_penalty = base_penalty * (1 - velocity_factor)
+            score -= actual_penalty
             
-            if resistencias_reales:
-                nombre_mas_cercana, precio_mas_cercano = min(resistencias_reales, key=lambda x: x[1])
-                distancia_pct = ((precio_mas_cercano - current_price) / current_price) * 100
-                
-                # === EL FIX: Permitir Breakout ===
-                if distancia_pct &lt; MIN_DIST_SAFETY:
-                    if is_velocity_trade:
-                        print(f"   🚀 RUPTURA POTENCIAL: Ignorando techo a {distancia_pct:.2f}% por VELOCIDAD")
-                        return {
-                            'can_enter': True,
-                            'reason': f"Breakout Mode: Fuerza rompe resistencia cercana ({nombre_mas_cercana})",
-                            'validation_type': 'BREAKOUT'
-                        }
-                    else:
-                        # Si NO hay velocidad y estamos cerca del techo, ahí sí bloqueamos
-                        msg = f"Techo cerca ({distancia_pct:.2f}%) y sin velocidad de ruptura."
-                        print(f"   ⛔ BLOQUEO: {msg}")
-                        return {
-                            'can_enter': False,
-                            'reason': msg,
-                            'wait_for': 'Retroceso o Explosión de Volumen'
-                        }
-3. Arreglar el Analizador (brain_analyzer.py)
-El log muestra Rejected: 176. El analizador está tirando las monedas a la basura antes de que el Sniper las vea. Probablemente porque el puntaje baja mucho si está cerca de la resistencia.
-
-Vamos a hacer que el grid_score sea menos castigador.
-
-Python
-# --- brain_analyzer.py ---
-
-def calculate_score(self, ...):
-    # ...
+            if velocity_factor &gt; 0:
+                warnings.append(f'Cerca VAH ({dist_to_vah:.1f}%) - Penalty reducida {velocity_factor*100:.0f}%')
+            else:
+                warnings.append(f'Cerca VAH ({dist_to_vah:.1f}%) - Penalty completa')
     
-    # En la sección de Grid/Posición
-    # Antes: Si position &gt; 70, score -= 30 (Castigo muy duro)
+    # === DECISIÓN FINAL POR SCORE ===
     
-    # Nuevo cálculo de penalización suave
-    grid_penalty = 0
-    if direction == 'BULLISH':
-        if position_pct &gt; 80: # Solo castigar si está MUY arriba
-            grid_penalty = 20
-        elif position_pct &gt; 60:
-            grid_penalty = 10 # Castigo leve
-            
-    # PERO, si el ADX es fuerte, perdonamos la penalización
-    if adx_value &gt; 25 and spread &gt; 10:
-        grid_penalty = 0  # &lt;--- FIX: La fuerza anula la penalización de posición
-        
-    final_score = base_score - grid_penalty
-    # ...
-Resumen de Cambios
-brain_frames.py: Umbral de velocidad bajado de 0.25% a 0.12%. Ahora detectará movimientos humanos.
-
-brain_entry_validator.py: Nueva lógica "Breakout Mode". Si hay velocidad, el bot ignora la pared y compra esperando que la rompa. Si no hay velocidad, respeta la pared.
-
-brain_analyzer.py: Si el ADX es bueno, no penalizamos al token por estar "caro" (posición alta en el grid). Esto permite que pasen al Sniper.
-
-Aplica estos cambios y reinicia. El bot debería pasar de "Rígido" a "Selectivo pero Operativo". Primero llenará la lista de Waiting y cuando una vela de 1m cierre con &gt;0.12%, disparará.
-
-Fin del chat con Gemini
-
-Empieza el chat con Opus.
-
-Esto es lo que escribi y lo que continua es lo que esta pegado arriba, el chat con Gemini, luego de analizar Opus todo dio su opinion y plan.
-
-Ahora tengo toda la información. Voy a responder al análisis de Sonnet:
-
-🔍 MI ANÁLISIS DE LAS CORRECCIONES DE SONNET
-✅ SONNET TIENE RAZÓN EN:
-Error 1: Velocity usa vela cerrada
-
-CORRECTO: Mi código usaba closes[-1] - closes[-2] que son velas cerradas
-SOLUCIÓN DE SONNET: Usar 
-fetch_current_price(symbol)
- - ✅ EXISTE en 
-exchange_connection.py
- línea 130
-Error 2: get_current_price() NO EXISTE
-
-CORRECTO: Eso era código de Gemini, no mío
-SOLUCIÓN: Usar 
-fetch_current_price()
- que SÍ existe
-Error 3: No hay fallback si 1m no tiene datos
-
-CORRECTO: El bot probablemente no guarda frames de 1m
-SOLUCIÓN: Fallback 5m → 15m es correcto
-Error 4: force_level 'VELOCITY' no es válido
-
-CORRECTO: Los valores válidos son 'BRUTAL', 'FUERTE', etc.
-SOLUCIÓN: Usar 'BRUTAL' para velocity scalp
-Error 5: space_warnings puede fallar
-
-CORRECTO: El código actual en línea 253 usa ', '.join(warnings) que asume strings
-SOLUCIÓN: Verificar isinstance antes de procesar
-⚠️ UNA OBSERVACIÓN MENOR:
-Sonnet propone fetch_ticker() pero la función real se llama 
-fetch_current_price()
- - pequeña diferencia de nombre pero importante.
-
-✅ VEREDICTO FINAL
-Corrección de Sonnet	¿Válida?
-Precio actual vs cierre	✅ Sí
-fetch_current_price()	✅ Sí (no fetch_ticker)
-Fallback 5m → 15m	✅ Sí
-Force 'BRUTAL'	✅ Sí
-isinstance seguro	✅ Sí
-PROCEDO con mi plan original + las 5 correcciones de Sonnet.
-
-El plan!
-
-PLAN: Arreglar Rigidez v5.2
-Diagnóstico: Opus + Gemini
-📊 PROBLEMA
-Trades: 0 | Rejected: 176 | Waiting: 8
-Causa: Overcorrección - demasiados filtros estrictos
-🔍 ANÁLISIS OPUS + GEMINI
-✅ Gemini tiene razón en:
-Problema	Config Actual	Efecto
-Velocity muy alto	0.25%	Solo explosiones nucleares pasan
-Space keywords amplio	11 palabras	Casi todo es "space warning"
-FORCE_CAN_OVERRIDE=False	Absoluto	Ni breakouts pasan
-🎯 Mi análisis adicional:
-VELOCITY_TRIGGER_PCT=0.25 es para explosiones muy fuertes
-
-En cripto normal, 0.10-0.15% es un buen movimiento
-0.25% solo pasa en pumps masivos
-space_keywords tiene 11 palabras incluyendo:
-
-'cerca de', 'vah', 'val', 'poc', 'hh', 'll', 'diagonal', 'resistencia', 'soporte'
-Casi cualquier warning cae en esta categoría
-Contradicción: Si velocity detecta explosión (&gt;0.25%), la idea es ROMPER resistencia
-
-Pero entry_validator bloquea porque está "cerca de resistencia"
-El motor velocity NUNCA puede ganar
-✅ SOLUCIÓN PROPUESTA
-CAMBIO 1: brain_config.py - Thresholds más realistas
-# Antes
-VELOCITY_TRIGGER_PCT = 0.25    # Muy alto
-FORCE_CAN_OVERRIDE_SPACE = False  # Muy estricto
-# Después (v5.2.1)
-VELOCITY_TRIGGER_PCT = 0.12    # Movimiento fuerte pero alcanzable
-FORCE_CAN_OVERRIDE_SPACE = True  # Permitir breakouts con fuerza
-# NUEVO: Flag para breakout mode
-ENABLE_BREAKOUT_MODE = True    # Si velocity + cerca de resistencia = ROMPER
-MIN_DIST_TO_RESISTANCE = 0.40  # Reducido de 0.60 a 0.40
-CAMBIO 2: brain_entry_validator.py - Breakout Mode
-# En la sección de space_warnings:
-# NUEVO: Detectar si es trade de VELOCITY (intenta romper)
-is_breakout_attempt = force_result.get('velocity_scalp', False)
-if space_warnings:
-    if is_breakout_attempt and ENABLE_BREAKOUT_MODE:
-        # Si es velocity scalp, permitir breakout
-        print(f"\n   🚀 BREAKOUT MODE: Ignorando espacio por velocidad")
+    if blocks:
+        return {'can_enter': False, 'score': 0, 'reason': blocks[0]}
+    
+    if score &gt;= 60:  # Threshold para entrar
         return {
-            'can_enter': True,
-            'reason': f"Breakout: Velocidad rompe {', '.join(space_warnings)}",
-            'validation_type': 'BREAKOUT'
+            'can_enter': True, 
+            'score': score,
+            'reason': f'Score {score:.0f} (velocity redujo penalty)',
+            'validation_type': 'TIME_LADDER'
         }
-    elif not FORCE_CAN_OVERRIDE_SPACE:
-        # Bloqueo normal si no hay velocity
-        return {'can_enter': False, ...}
-CAMBIO 3: brain_frames.py - Velocity más sensible
-# Detección de explosión
-if velocity_pct &gt; VELOCITY_TRIGGER_PCT:  # 0.12% ahora
-    return {'valid': True, 'mode': 'VELOCITY_SCALP', ...}
-# NUEVO: Detección de momentum creciente (2 velas)
-cumulative = velocity_pct + prev_velocity
-if cumulative &gt; VELOCITY_TRIGGER_PCT * 1.5:  # 0.18%
-    return {'valid': True, 'mode': 'MOMENTUM_BUILD', ...}
-CAMBIO 4: Reducir space_keywords
-# Antes: 11 palabras (muy amplio)
-space_keywords = ['cerca de', 'espacio', 'distancia', 'vah', 'val', 
-                 'diagonal', 'resistencia', 'soporte', 'poc', 'hh', 'll']
-# Después: Solo las críticas (6 palabras)
-space_keywords = ['cerca de resistencia', 'en resistencia', 
-                 'cerca de vah', 'en vah', 
-                 'espacio insuficiente', 'sin espacio']
-📊 RESUMEN DE CAMBIOS
-#	Archivo	Antes	Después
-1	brain_config.py	VELOCITY=0.25	VELOCITY=0.12
-2	brain_config.py	OVERRIDE=False	OVERRIDE=True
-3	brain_config.py	DIST=0.60	DIST=0.40
-4	brain_config.py	-	BREAKOUT_MODE=True
-5	brain_entry_validator.py	Bloqueo absoluto	Breakout exception
-6	brain_entry_validator.py	11 keywords	6 keywords
-7	brain_frames.py	Solo explosión	+ momentum build
-🎯 RESULTADO ESPERADO
+    else:
+        return {
+            'can_enter': False,
+            'score': score,
+            'reason': f'Score {score:.0f} insuficiente (mín 60)',
+            'validation_type': 'LOW_SCORE'
+        }
+CAMBIO 3: brain_sniper_realtime.py - Pasar velocity
+# Al llamar entry_validator, incluir velocity:
+velocity_check = check_price_velocity(symbol, direction, '5m')
+force_result = {
+    'force_level': 'BRUTAL' if velocity_check.get('mode') == 'VELOCITY_SCALP' else 'NORMAL',
+    'velocity': velocity_check.get('velocity', 0),  # Pasar el valor
+    'velocity_scalp': velocity_check.get('mode') == 'VELOCITY_SCALP'
+}
+CAMBIO 4: brain_frames.py - Thresholds
+VELOCITY_TRIGGER_PCT = 0.12  # Reducido
+# Resto igual
+📊 COMPARACIÓN
+Aspecto	Mi Plan Original	Plan Time Ladder
+Breakout?	Si velocity → ignorar	NO existe
+Penalty espacio	0 o 100%	0% a 100% gradual
+Decision	Boolean	Score
+Filosofía	Binario	Película
+🎯 EJEMPLO PRÁCTICO
+Moneda: BEL cerca de VAH (0.5%)
+Velocity: +0.15%
 ANTES v5.2:
-Motor Velocity → Raro detectar 0.25%
-Motor Velocity + Entry Validator → SIEMPRE bloqueado
-Motor Channel → Muy restrictivo
-= 0 trades
-DESPUÉS v5.2.1:
-Motor Velocity → Detecta 0.12% (más común)
-Motor Velocity + Breakout Mode → PUEDE pasar
-Motor Channel → Espacio reducido 0.40%
-= Trades selectivos pero posibles
-✅ ¿PROCEDER?
-Confirma y aplico los 4 cambios quirúrgicos.
+→ Space warning detectado
+→ FORCE_CAN_OVERRIDE = False
+→ BLOQUEADO (sin importar velocity)
+AHORA v5.2.1 Time Ladder:
+→ Space penalty base = -40
+→ Velocity factor = 0.15/0.30 = 0.50 (50%)
+→ Penalty aplicada = -40 * (1-0.50) = -20
+→ Score = 100 - 20 = 80
+→ Score &gt;= 60 → PUEDE ENTRAR ✅
+✅ RESUMEN
+#	Archivo	Cambio
+1	brain_config.py	VELOCITY=0.12, DIST=0.40, nuevos factors
+2	brain_entry_validator.py	Scoring con penalty gradual
+3	brain_sniper_realtime.py	Pasar velocity a validator
+4	brain_frames.py	Threshold 0.12
+Time Ladder puro: La velocity REDUCE la penalty, no la elimina.
+
+¿PROCEDER?
+Esta solución:
+
+✅ Mantiene FORCE_CAN_OVERRIDE=False (seguridad)
+✅ Usa scores, no booleans
+✅ Velocity influye gradualmente
+✅ Sigue la filosofía "película"
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 21,252<br>
-    Generado: 2025-12-26 01:31:10
+    Total caracteres: 6,097<br>
+    Generado: 2025-12-26 01:43:29
   </div>
 </body>
 </html>
