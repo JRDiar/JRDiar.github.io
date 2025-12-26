@@ -15,101 +15,79 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-26 02:02:19</div>
+  <div class="meta">Última actualización: 2025-12-26 02:11:02</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-El chat de Opus:
-
- PLAN FINAL: Time Ladder 100% Puro
-✅ Ajustes de Sonnet aplicados:
-#	Antes	Después
-A	if momentum_contra: return False	penalty -= 25
-B	Validator retorna can_enter + score	Solo score
-C	if grid &gt; 70: return False	penalty = (grid-60) * 1.5
-📊 Arquitectura final:
-TODO ES SCORING
-├─ Analyzer ajustado (momentum, grid)
-├─ Validator (espacio, diagonal)
-└─ Combined = (A × 0.6) + (V × 0.4)
-    └─ if &gt;= 60: ENTER
-🎯 Ejemplo:
-Grid: 75%, Momentum: RED, Cerca VAH, Velocity: +0.18%
-Analyzer: 72 - 25 (mom) - 22 (grid) = 24.5
-Validator: 100 - 16 (space reducida) = 84
-Combined: 48.3 &lt; 60 → RECHAZADO ❌
-✅ Checklist Time Ladder:
- 0 hard blocks (excepto LATERAL)
- UN SOLO threshold (60)
- Todo gradiente, no cliffs
- Velocity influye proporcionalmente
-
-El plan actualizado de Opus!
-
- PLAN v5.2.1 FINAL - Time Ladder 100% Puro
+El chat
+Sonnet tiene razón - HAY DUPLICACIÓN
+⚠️ Penalties duplicadas encontradas:
+Penalty	brain_analyzer.py	Mi plan sniper	Duplicado
+Grid position	in_danger_zone 55%	(grid-60)*1.5	⚠️ SÍ
+Momentum color	Validation → LATERAL	-25 penalty	⚠️ SÍ
+✅ Solución: Dividir responsabilidades
+ANALYZER                        VALIDATOR/SNIPER
+├─ pump_penalty                 ├─ Space penalty (VAH, diagonal)
+├─ lateral_penalty (ADX)        └─ Velocity reduction
+├─ macro_penalty                
+├─ tf_penalty                   ❌ NO grid (analyzer lo hace)
+├─ Grid danger zone (55%)       ❌ NO momentum (analyzer lo hace)
+└─ Momentum validation
+🎯 Plan corregido:
+Analyzer: Mantiene TODAS sus penalties actuales
+Validator: SOLO space + velocity
+Sniper: SOLO combina scores (0 penalties propias)
+Sonnet fix adicional:
+python
+# Velocity reduce incluso cuando dist &lt; 0.15%
+penalty = 60 * (1 - velocity_factor * 0.5)  # Max 50%
+El plan
+PLAN v5.2.1 FINAL - Duplicación Resuelta
 Consensus: Opus + Sonnet + Gemini
-✅ RESPUESTA A SONNET - 3 Ajustes Finales
-Ajuste A: Momentum contradictorio → PENALTY (no block)
-# ANTES (hard block):
-if mom_color in ['red', 'maroon']: return False
-# DESPUÉS (penalty):
-if mom_color in ['red', 'maroon']:
-    penalties['momentum'] = 25  # Penalty fuerte pero no block
-Ajuste B: Validator retorna SOLO score
-# ANTES:
-return {'can_enter': score &gt;= 60, 'score': score}
-# DESPUÉS:
-return {'score': score, 'reason': ...}  # Sin can_enter
-Ajuste C: Grid position → GRADIENTE
-# ANTES (cliff):
-if grid_position &gt; 70: return False
-# DESPUÉS (gradiente):
-if grid_position &gt; 60:
-    grid_penalty = (grid_position - 60) * 1.5  # 70% = -15, 80% = -30
-    score -= grid_penalty
-🏗️ ARQUITECTURA FINAL (0 Hard Blocks)
-┌──────────────────────────────────────────────────────────────┐
-│                   TODO ES SCORING                             │
-├──────────────────────────────────────────────────────────────┤
-│                                                               │
-│  Analyzer Score (0-100)          Validator Score (0-100)     │
-│  ├─ ADX strength: +X             ├─ Space penalty: -X        │
-│  ├─ Momentum color: -X           ├─ Velocity bonus: +X       │
-│  ├─ Grid position: -X            ├─ Diagonal check: -X       │
-│  └─ Pattern bonus: +X            └─ ...                      │
-│           │                                │                  │
-│           └──────────┬─────────────────────┘                  │
-│                      ▼                                        │
-│            Combined = (A × 0.6) + (V × 0.4)                  │
-│                      │                                        │
-│                      ▼                                        │
-│             if combined &gt;= 60: ENTER                          │
-│                                                               │
-└──────────────────────────────────────────────────────────────┘
-📝 CÓDIGO FINAL
-1. brain_config.py
-# ============================================================================
-# TIME LADDER v5.2.1 FINAL - SCORING PURO
-# ============================================================================
+⚠️ PROBLEMA ENCONTRADO: DOBLE PENALTY
+Sonnet detectó duplicación:
+
+Penalty	En Analyzer	En Sniper (plan)	¿Duplicado?
+Grid position	in_danger_zone (55%)	
+(grid-60)*1.5
+⚠️ SÍ
+Momentum color	Validación direction	-25 penalty	⚠️ SÍ
+ADX bajo	lateral_penalty	-	NO
+Space (VAH)	-	Validator	NO
+Velocity	-	Validator	NO
+Si aplicamos ambas, el bot será demasiado restrictivo otra vez.
+
+✅ SOLUCIÓN: DIVIDIR RESPONSABILIDADES
+ANALYZER (brain_analyzer.py)           SNIPER/VALIDATOR
+┌────────────────────────────────┐    ┌────────────────────────────────┐
+│ MANTIENE:                      │    │ MANTIENE SOLO:                 │
+│ • pump_penalty                 │    │ • Space penalty (VAH, diagonal)│
+│ • lateral_penalty (ADX, DI)    │    │ • Velocity reduction           │
+│ • macro_penalty                │    │                                │
+│ • tf_penalty                   │    │ REMOVIDO:                      │
+│ • Joel's Golden Rule (fuerza)  │    │ ❌ momentum penalty (-25)      │
+│ • Grid danger zone (55%)       │    │ ❌ grid penalty gradual        │
+│ • Momentum validation          │    │                                │
+└────────────────────────────────┘    └────────────────────────────────┘
+📝 CÓDIGO FINAL CORREGIDO
+1. brain_config.py (sin cambios)
 # Thresholds
 VELOCITY_TRIGGER_PCT = 0.12
-MIN_DIST_BLOCK = 0.15              # Solo &lt; 0.15% es block real
-MIN_DIST_PENALTY = 0.50            # Penalty gradual
+MIN_DIST_BLOCK = 0.15
+MIN_DIST_PENALTY = 0.50
 # Scoring
 SPACE_BASE_PENALTY = 40
 VELOCITY_PENALTY_REDUCTION_MAX = 0.70
-MOMENTUM_CONTRA_PENALTY = 25       # Momentum contradictorio
-GRID_HIGH_PENALTY_PER_PCT = 1.5    # Por cada % arriba de 60
 # Weights
 SCORE_WEIGHT_ANALYZER = 0.60
 SCORE_WEIGHT_VALIDATOR = 0.40
-SCORE_THRESHOLD_ENTER = 60         # UN SOLO threshold
-2. brain_entry_validator.py - SOLO RETORNA SCORE
+SCORE_THRESHOLD_ENTER = 60
+2. brain_entry_validator.py - Solo space + velocity
 def _validate_explosion_entry(self, symbol, direction, force_result, ladder_data):
     """
-    v5.2.1 FINAL: Retorna SOLO score, no can_enter.
-    El sniper decide con score combinado.
+    v5.2.1: Solo evalúa ESPACIO + VELOCITY.
+    Grid y momentum los maneja el analyzer.
     """
     from brain_config import (
         MIN_DIST_BLOCK, MIN_DIST_PENALTY,
@@ -129,26 +107,26 @@ def _validate_explosion_entry(self, symbol, direction, force_result, ladder_data
     velocity_pct = abs(force_result.get('velocity', 0))
     velocity_factor = min(velocity_pct / 0.30, VELOCITY_PENALTY_REDUCTION_MAX)
     
-    # === ESPACIO A RESISTENCIAS ===
+    # === ESPACIO A VAH ===
     vp_data = data_15m.get('volume_profile', {})
     vah = vp_data.get('value_area_high', 0)
     
     if direction == 'BULLISH' and vah &gt; 0 and current_price &lt; vah:
         dist_pct = ((vah - current_price) / current_price) * 100
         
-        if dist_pct &lt; MIN_DIST_BLOCK:  # &lt; 0.15% = Muy grave
-            penalty = 60  # Penalty máxima pero no block
-            penalties.append(f'EN resistencia: -{penalty}')
+        if dist_pct &lt; MIN_DIST_BLOCK:  # &lt; 0.15%
+            # Sonnet fix: Velocity también reduce esta penalty
+            base_penalty = 60
+            actual_penalty = base_penalty * (1 - velocity_factor * 0.5)  # Max 50% reduction
+            score -= actual_penalty
+            penalties.append(f'EN VAH: -{actual_penalty:.0f}')
+            
         elif dist_pct &lt; MIN_DIST_PENALTY:  # &lt; 0.50%
             base_penalty = SPACE_BASE_PENALTY * (1 - velocity_factor)
+            score -= base_penalty
             penalties.append(f'Cerca VAH: -{base_penalty:.0f}')
-            penalty = base_penalty
-        else:
-            penalty = 0
-        
-        score -= penalty
     
-    # === DIAGONAL (si existe) ===
+    # === ESPACIO A DIAGONAL ===
     grid_data = data_15m.get('grid', {})
     diagonal = grid_data.get('diagonal', {})
     
@@ -159,72 +137,41 @@ def _validate_explosion_entry(self, symbol, direction, force_result, ladder_data
             if dist_diag &lt; MIN_DIST_PENALTY:
                 diag_penalty = 25 * (1 - velocity_factor)
                 score -= diag_penalty
-                penalties.append(f'Diagonal cerca: -{diag_penalty:.0f}')
+                penalties.append(f'Diagonal: -{diag_penalty:.0f}')
     
     score = max(0, min(100, score))
     
-    print(f"   📊 Validator: {score:.0f} | Penalties: {penalties}")
+    print(f"   📊 Validator: {score:.0f} | {penalties}")
     
-    # SOLO retorna score, no can_enter
     return {
         'score': score,
-        'reason': f'Penalties: {penalties}' if penalties else 'Clean',
+        'reason': f'{penalties}' if penalties else 'Clear',
         'velocity_factor': velocity_factor
     }
-3. brain_sniper_realtime.py - TODO EN SCORING
+3. brain_sniper_realtime.py - SIN penalties duplicadas
 @staticmethod
 def is_perfect_setup(symbol: str, analyzer_score: float, decision: dict) -&gt; bool:
     """
-    v5.2.1 FINAL: UN SOLO punto de decisión, TODO es scoring.
+    v5.2.1: NO aplica penalties de grid/momentum (analyzer ya lo hace).
+    Solo combina scores y verifica threshold.
     """
     from brain_config import (
-        ENABLE_MOTOR_VELOCITY, ENABLE_MOTOR_CHANNEL,
         SCORE_WEIGHT_ANALYZER, SCORE_WEIGHT_VALIDATOR,
-        SCORE_THRESHOLD_ENTER, MOMENTUM_CONTRA_PENALTY,
-        GRID_HIGH_PENALTY_PER_PCT
+        SCORE_THRESHOLD_ENTER
     )
     from brain_frames import check_price_velocity
     from brain_entry_validator import entry_validator
     
     full_analysis = decision.get('full_analysis', {})
     ladder_data = full_analysis.get('ladder_data', {})
-    data_15m = ladder_data.get('15m', {})
     direction = decision.get('direction', 'LATERAL')
     
     if direction == 'LATERAL':
         return False
     
-    # === AJUSTAR ANALYZER SCORE CON PENALTIES ADICIONALES ===
+    # === ANALYZER SCORE YA VIENE CON PENALTIES DE GRID/MOMENTUM ===
+    # NO duplicamos here
     adjusted_analyzer = analyzer_score
-    
-    # PENALTY: Momentum contradictorio (NO hard block)
-    mom_color = data_15m.get('momentum_color', 'gray')
-    if direction == 'BULLISH' and mom_color in ['red', 'maroon']:
-        adjusted_analyzer -= MOMENTUM_CONTRA_PENALTY
-        print(f"   📉 Momentum {mom_color}: -{MOMENTUM_CONTRA_PENALTY}")
-    elif direction == 'BEARISH' and mom_color in ['lime', 'green']:
-        adjusted_analyzer -= MOMENTUM_CONTRA_PENALTY
-        print(f"   📉 Momentum {mom_color}: -{MOMENTUM_CONTRA_PENALTY}")
-    
-    # PENALTY: Grid position gradual (NO cliff)
-    grid_data = data_15m.get('grid', {})
-    diagonal = grid_data.get('diagonal', {})
-    
-    if diagonal.get('valid'):
-        grid_position = diagonal.get('price_position_pct', 50)
-    else:
-        grid_position = data_15m.get('position_in_range', 50)
-    
-    if direction == 'BULLISH' and grid_position &gt; 60:
-        grid_penalty = (grid_position - 60) * GRID_HIGH_PENALTY_PER_PCT
-        adjusted_analyzer -= grid_penalty
-        print(f"   📉 Grid {grid_position:.0f}%: -{grid_penalty:.0f}")
-    elif direction == 'BEARISH' and grid_position &lt; 40:
-        grid_penalty = (40 - grid_position) * GRID_HIGH_PENALTY_PER_PCT
-        adjusted_analyzer -= grid_penalty
-        print(f"   📉 Grid {grid_position:.0f}%: -{grid_penalty:.0f}")
-    
-    adjusted_analyzer = max(0, adjusted_analyzer)
     
     # === OBTENER VELOCITY ===
     velocity_check = check_price_velocity(symbol, direction, '5m')
@@ -234,7 +181,7 @@ def is_perfect_setup(symbol: str, analyzer_score: float, decision: dict) -&gt; b
     velocity_value = velocity_check.get('velocity', 0)
     print(f"   🏎️ Velocity: {velocity_value:.3f}%")
     
-    # === VALIDATOR SCORE ===
+    # === VALIDATOR SCORE (solo space + velocity) ===
     force_result = full_analysis.get('force_result', {}).copy()
     force_result['velocity'] = velocity_value
     
@@ -244,60 +191,59 @@ def is_perfect_setup(symbol: str, analyzer_score: float, decision: dict) -&gt; b
     
     validator_score = validation.get('score', 50)
     
-    # === SCORE COMBINADO - UN SOLO THRESHOLD ===
+    # === SCORE COMBINADO ===
     combined = (adjusted_analyzer * SCORE_WEIGHT_ANALYZER) + \
                (validator_score * SCORE_WEIGHT_VALIDATOR)
     
-    print(f"   📊 Analyzer ajustado: {adjusted_analyzer:.0f}")
-    print(f"   📊 Validator: {validator_score:.0f}")
+    print(f"   📊 Analyzer: {adjusted_analyzer:.0f} | Validator: {validator_score:.0f}")
     print(f"   🎯 COMBINED: {combined:.0f} (threshold: {SCORE_THRESHOLD_ENTER})")
     
-    # === UN SOLO PUNTO DE DECISIÓN ===
+    # === DECISIÓN ===
     if combined &gt;= SCORE_THRESHOLD_ENTER:
         print(f"   ✅ APROBADO: {combined:.0f} &gt;= {SCORE_THRESHOLD_ENTER}")
         return True
     else:
-        print(f"   ❌ Score insuficiente: {combined:.0f} &lt; {SCORE_THRESHOLD_ENTER}")
+        print(f"   ❌ Score bajo: {combined:.0f} &lt; {SCORE_THRESHOLD_ENTER}")
         return False
-✅ CHECKLIST TIME LADDER 100%
- Momentum: penalty -25, no block
- Grid position: gradiente 1.5 por %, no cliff
- Validator: retorna solo score
- UN SOLO threshold (60 en sniper)
- Space penalty reducida por velocity
- Diagonal check integrado
- 0 hard blocks (excepto LATERAL)
-📊 EJEMPLO COMPLETO
+📊 DIVISIÓN DE RESPONSABILIDADES FINAL
+Módulo	Penalties que maneja
+brain_analyzer.py	pump, lateral, macro, tf, grid danger, momentum validation
+brain_entry_validator.py	VAH space, diagonal space, velocity reduction
+brain_sniper_realtime.py	Solo combina scores (0 penalties propias)
+✅ FIXES INCLUIDOS
+Sonnet fix #1: Velocity reduce penalty EN VAH (dist &lt; 0.15%) hasta 50%
+Sonnet fix #2: NO hay momentum penalty en sniper (analyzer already does it)
+Sonnet fix #3: NO hay grid penalty en sniper (analyzer has danger zone)
+Validator retorna solo score (no can_enter)
+🎯 EJEMPLO FINAL
 Moneda: XYZ
-- Grid: 75% (alto para BULLISH)
-- Momentum: RED (contradice)
+- Grid: 75% (ya penalizada en analyzer)
+- Momentum: RED (ya validada en analyzer → LATERAL)
 - Cerca VAH: 0.35%
 - Velocity: +0.18%
-Analyzer original: 72
-├─ Momentum penalty: -25 → 47
-├─ Grid penalty: (75-60)*1.5 = -22.5 → 24.5
-└─ Adjusted: 24.5
-Validator:
-├─ Base: 100
-├─ Space 0.35%: velocity factor = 0.18/0.30 = 0.60
-├─ Penalty: 40 * (1-0.60) = 16 → 84
-└─ Score: 84
-Combined: (24.5 × 0.6) + (84 × 0.4) = 14.7 + 33.6 = 48.3
+Analyzer score (después de todas SUS penalties): 45
+Validator score:
+  - Base: 100
+  - Space 0.35%: velocity 0.18/0.30 = 60%
+  - Penalty: 40 * (1-0.60) = 16
+  - Score: 84
+Combined: (45 × 0.6) + (84 × 0.4) = 27 + 33.6 = 60.6
 Threshold: 60
-→ RECHAZADO (momentum + grid alto mataron el score) ❌
-🎯 RESULTADO
-Este plan es 100% Time Ladder:
-
-Sin hard blocks ocultos
-Todo es scoring gradual
-Un solo punto de decisión
-Velocity influye proporcionalmente
-¿Proceder con implementación?
+→ PUEDE ENTRAR (barely) ✅
+✅ CHECKLIST
+ Sin duplicación de penalties
+ Analyzer: grid, momentum, ADX, lateral
+ Validator: solo space + velocity
+ Sniper: solo combina scores
+ Velocity reduce incluso dist &lt; 0.15%
+ Time Ladder 100% puro
+¿PROCEDER?
+Plan final sin duplicaciones.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 10,449<br>
-    Generado: 2025-12-26 02:02:19
+    Total caracteres: 8,328<br>
+    Generado: 2025-12-26 02:11:02
   </div>
 </body>
 </html>
