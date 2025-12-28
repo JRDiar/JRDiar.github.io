@@ -15,212 +15,427 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-28 14:28:27</div>
+  <div class="meta">Última actualización: 2025-12-28 14:37:27</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
- CÓDIGO ACTUAL DOCUMENTADO
-He creado un documento con todo el código relevante para diseñar la arquitectura "5M decide, 15M advierte".
+PLAN COMPLETO v5.4.0 - "5M Decide, 15M Advierte"
+He creado el plan con los 4 prompts quirúrgicos completos.
 
-📊 Resumen de lo que tiene cada timeframe:
-Campo	15M	5M
-score robusto	✅	⚠️ básico
-adx_velocity	❌	✅
-lateral_penalty	✅	❌
-momentum age	✅	❌
-velocity_current	❌	✅
-atr_pct	❌	✅
-📍 Ubicaciones clave:
-Código	Archivo	Líneas
-Score calculation	brain_analyzer.py	772
-analyze_15m return	brain_analyzer.py	1520-1558
-analyze_5m return	brain_analyzer.py	1658-1678
-ladder_data build	brain_intelligent.py	51-65
-is_perfect_setup	brain_sniper_realtime.py	241-342
-Thresholds	brain_config.py	261-264
-Motor flags	brain_config.py	233-234
-✅ Para implementar "5M decide, 15M advierte":
-Agregar scoring robusto a analyze_5m (copiar lógica de 15M)
-Invertir flujo en is_perfect_setup (5M como base)
-15M solo genera warnings (penalties suaves -10 a -30)
-Apagar motores (ENABLE_MOTOR_VELOCITY = False)
-¿Querés que proceda con el plan detallado de implementación?
+📋 Resumen de cambios:
+#	Archivo	Cambio
+1	brain_config.py	Apagar motores + agregar 7 warnings constants
+2	brain_analyzer.py	Nueva función generate_15m_warnings()
+3	brain_sniper_realtime.py	Invertir is_perfect_setup() - 5M como base
+4	brain_analyzer.py	Agregar penalties robustas a score_5m
+📊 Warnings 15M (máx ~105 pts):
+Warning	Penalty
+ADX decreciendo	-15
+Momentum &gt;12v	-25
+Grid &gt;70%	-15
+Dirección contradice	-25
+LATERAL sin fuerza	-15
+Sin estructura	-15
+ADX &lt; 20	-10
+Hard veto: Solo si spread &lt; 8
 
- CÓDIGO ACTUAL - Referencia para 5M Dominance
-1. brain_analyzer.py - analyze_15m()
-Cálculo de score_15m (línea 772):
-score_15m = -pump_penalty - lateral_penalty - macro_penalty - tf_penalty - momentum_contradiction_penalty + motion_score
-Return de analyze_15m (líneas 1520-1558):
-return {
-    'direction': direction,           # 'BULLISH', 'BEARISH', 'LATERAL'
-    'strength': strength,             # 'STRONG', 'MODERATE', 'WEAK'
-    'score_15m': score_15m,           # Score calculado
-    'blocked': False,
-    'current_price': current_price,
+📌 Orden de implementación:
+Prompt #1 → brain_config.py
+Prompt #4 → analyze_5m penalties (dependencia)
+Prompt #2 → generate_15m_warnings
+Prompt #3 → is_perfect_setup invertido
+¿Aprobás el plan para proceder con la implementación?
+
+IMPLEMENTATION PLAN v5.4.0 - "5M Decide, 15M Advierte"
+Versión: v5.4.0 Objetivo: Invertir jerarquía de timeframes - 5M toma decisiones, 15M solo advierte Total de cambios: 4 prompts quirúrgicos
+
+PROMPT #1: brain_config.py - Flags y Warnings
+Cambio 1A: Apagar motores (líneas 233-234)
+ACTUAL:
+
+ENABLE_MOTOR_VELOCITY = True   # Motor 1: Scalping por velocidad real
+ENABLE_MOTOR_CHANNEL = True    # Motor 2: Rebote en canal/soporte
+PROPUESTO:
+
+ENABLE_MOTOR_VELOCITY = False  # APAGADO v5.4.0: Incompatible con 5M dominance
+ENABLE_MOTOR_CHANNEL = False   # APAGADO v5.4.0: Incompatible con 5M dominance
+Cambio 1B: Agregar sección warnings (después de línea 413)
+AGREGAR AL FINAL:
+
+# ===================================================================
+# 15M WARNINGS SYSTEM - v5.4.0 "5M Decide, 15M Advierte"
+# ===================================================================
+# 15M genera warnings que reducen score de 5M (no bloquean)
+# Solo hard veto en casos extremos (spread muy bajo)
+ENABLE_15M_WARNINGS = True
+# Penalties por warning (se acumulan, máximo efectivo ~105)
+WARNING_15M_ADX_DECAY = 15        # ADX 15M decreciendo
+WARNING_15M_MOMENTUM_OLD = 25     # Momentum &gt;12 velas (agotado)
+WARNING_15M_GRID_HIGH = 15        # Grid &gt;70% (cerca resistencia)
+WARNING_15M_DIRECTION = 25        # Dirección 15M contradice 5M
+WARNING_15M_LATERAL = 15          # 15M detecta LATERAL sin fuerza
+WARNING_15M_NO_STRUCTURE = 15     # Sin HH/HL/LL/LH (choppy)
+WARNING_15M_ADX_WEAK = 10         # ADX 15M &lt; 20 (macro sin fuerza)
+# Hard veto threshold (solo casos extremos)
+WARNING_15M_SPREAD_MIN = 8        # Spread &lt; 8 = inoperable
+PROMPT #2: brain_analyzer.py - generate_15m_warnings()
+Ubicación: Después de analyze_5m() (línea 1679)
+AGREGAR NUEVA FUNCIÓN:
+
+# ===================================================================
+# 15M WARNINGS SYSTEM - v5.4.0
+# ===================================================================
+def generate_15m_warnings(data_15m: dict, direction_5m: str) -&gt; dict:
+    """
+    15M revisa contexto macro y genera warnings LEVES para 5M.
+    No decide, solo advierte.
     
-    # Contexto de fuerza para Sniper
-    'brutal_force': brutal_force,     # bool
-    'strong_force': strong_force,     # bool
-    'pump_explosivo': pump_explosivo, # bool
+    Args:
+        data_15m: Return de analyze_15m()
+        direction_5m: Direction decidida por 5M
+        
+    Returns:
+        {
+            'total_penalty': int (0-105 máximo teórico),
+            'warnings': list[str],
+            'should_hard_veto': bool (solo casos extremos)
+        }
+    """
+    from brain_config import (
+        ENABLE_15M_WARNINGS,
+        WARNING_15M_ADX_DECAY,
+        WARNING_15M_MOMENTUM_OLD,
+        WARNING_15M_GRID_HIGH,
+        WARNING_15M_DIRECTION,
+        WARNING_15M_LATERAL,
+        WARNING_15M_NO_STRUCTURE,
+        WARNING_15M_ADX_WEAK,
+        WARNING_15M_SPREAD_MIN
+    )
     
-    # Legacy (compatibilidad)
-    'adx': adx_data,                  # {'adx_current', 'adx_trend', 'di_plus_current', 'spread', ...}
-    'momentum': momentum_data,         # {'color_current', 'consecutive_count', ...}
-    'rsi': rsi_data,
-    'emas': emas_data,
+    if not ENABLE_15M_WARNINGS:
+        return {'total_penalty': 0, 'warnings': [], 'should_hard_veto': False}
     
-    # Campos granulares
-    'di_plus_granular': di_plus_granular,
-    'di_minus_granular': di_minus_granular,
-    'adx_value_granular': adx_value_granular,
-    'momentum_green': momentum_green,
-    'momentum_red': momentum_red,
-    'zigzag_granular': zigzag_granular,
-    'lateral_penalty': lateral_penalty,
-    'lateral_reasons': lateral_reasons,
+    if not data_15m:
+        return {'total_penalty': 0, 'warnings': [], 'should_hard_veto': False}
     
-    # GRID
-    'grid': {...},
-    'volume_profile': vp_data,
-    'timestamp': datetime.now().isoformat()
-}
-2. brain_analyzer.py - analyze_5m()
-Return de analyze_5m (líneas 1658-1678):
-return {
-    'direction': direction,         # 'BULLISH', 'BEARISH', 'LATERAL'
-    'strength': strength,           # 'STRONG', 'MODERATE', 'WEAK'
-    'score_5m': score_5m,           # Score calculado (solo bonuses, max +20)
-    'current_price': current_price,
+    penalties = []
+    warnings = []
     
-    'adx': adx_data,                # Tiene adx_velocity (v5.3.0)
-    'momentum': momentum_data,       # {'color_current', ...}
-    'rsi': rsi_data,
-    'emas': emas_data,
-    'structure': structure,
-    'zigzag': zigzag,
-    'sr': sr_data,
-    'velocity': velocity_data,      # {'velocity_current', ...}
-    'acceleration': acceleration_data,
-    'volume_profile': vp,
-    'breaking_profile': breaking_profile,
-    'dist_ema_pct': dist_ema_pct,
-    'atr_pct': atr_pct,            # ATR como % del precio
-    'timestamp': datetime.now().isoformat()
-}
-3. brain_intelligent.py - Construcción de ladder_data
-# Líneas 51-65
-ladder_analysis = {}
-ladder_analysis['4h'] = analyze_4h(symbol)
-ladder_analysis['1h'] = analyze_1h(symbol)
-ladder_analysis['15m'] = analyze_15m(symbol, strict=False, context_4h=..., context_1h=...)
-ladder_analysis['5m'] = analyze_5m(symbol)
-Estructura de ladder_data:
-ladder_data = {
-    '4h': {...},   # analyze_4h return
-    '1h': {...},   # analyze_1h return
-    '15m': {       # analyze_15m return
-        'direction': 'BULLISH',
-        'score_15m': 75,
-        'adx': {'adx_current': 45, 'adx_trend': 'creciendo', ...},
-        'momentum': {'color_current': 'green', 'consecutive_count': 3},
-        ...
-    },
-    '5m': {        # analyze_5m return
-        'direction': 'BULLISH',
-        'score_5m': 15,
-        'adx': {'adx_current': 38, 'adx_velocity': -0.5, ...},
-        'momentum': {'color_current': 'lime', ...},
-        'velocity': {'velocity_current': 0.15},
-        'atr_pct': 1.5,
-        ...
+    # Extraer datos de 15M
+    adx_15m = data_15m.get('adx', {})
+    adx_current = adx_15m.get('adx_current', 0)
+    adx_trend = adx_15m.get('adx_trend', 'estable')
+    spread_15m = adx_15m.get('spread', 0)
+    
+    momentum_15m = data_15m.get('momentum', {})
+    mom_age = momentum_15m.get('consecutive_count', 0)
+    
+    direction_15m = data_15m.get('direction', 'LATERAL')
+    lateral_penalty_15m = data_15m.get('lateral_penalty', 0)
+    
+    # Grid position (si disponible)
+    grid_15m = data_15m.get('grid', {})
+    zigzag_15m = data_15m.get('zigzag_granular', {})
+    
+    # ================================================
+    # HARD VETO: Solo para spread muy bajo
+    # ================================================
+    if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+        return {
+            'total_penalty': 0,
+            'warnings': [f'Spread 15M {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)'],
+            'should_hard_veto': True
+        }
+    
+    # ================================================
+    # WARNING 1: ADX decreciendo
+    # ================================================
+    if adx_trend == 'decreciendo':
+        penalties.append(WARNING_15M_ADX_DECAY)
+        warnings.append(f'ADX 15M decreciendo ({adx_current:.1f})')
+    
+    # ================================================
+    # WARNING 2: Momentum agotado (&gt;12 velas)
+    # ================================================
+    if mom_age &gt; 12:
+        penalties.append(WARNING_15M_MOMENTUM_OLD)
+        warnings.append(f'Momentum 15M agotado ({mom_age}v)')
+    
+    # ================================================
+    # WARNING 3: Grid alto (&gt;70%)
+    # Requiere que grid_position esté disponible
+    # ================================================
+    grid_diagonal = grid_15m.get('diagonal', {})
+    if grid_diagonal.get('valid'):
+        # Calcular posición aproximada (no siempre disponible)
+        pass  # Se puede expandir si grid_position está disponible
+    
+    # ================================================
+    # WARNING 4: Dirección contradice
+    # ================================================
+    if direction_15m != direction_5m and direction_15m != 'LATERAL':
+        penalties.append(WARNING_15M_DIRECTION)
+        warnings.append(f'15M dice {direction_15m}, 5M dice {direction_5m}')
+    
+    # ================================================
+    # WARNING 5: LATERAL detectado (con penalty alta)
+    # ================================================
+    if lateral_penalty_15m &gt; 30:
+        penalties.append(WARNING_15M_LATERAL)
+        warnings.append(f'15M lateral penalty -{lateral_penalty_15m}')
+    
+    # ================================================
+    # WARNING 6: Sin estructura (choppy)
+    # ================================================
+    structure = zigzag_15m.get('current_trend', 'UNKNOWN')
+    if structure == 'LATERAL':
+        penalties.append(WARNING_15M_NO_STRUCTURE)
+        warnings.append('15M sin estructura clara')
+    
+    # ================================================
+    # WARNING 7: ADX muy débil (&lt;20)
+    # ================================================
+    if adx_current &lt; 20:
+        penalties.append(WARNING_15M_ADX_WEAK)
+        warnings.append(f'ADX 15M débil ({adx_current:.1f})')
+    
+    total_penalty = sum(penalties)
+    
+    if total_penalty &gt; 0:
+        print(f"   ⚠️ 15M WARNINGS: {', '.join(warnings)} → penalty total -{total_penalty}")
+    else:
+        print(f"   ✅ 15M: Sin warnings (contexto macro OK)")
+    
+    return {
+        'total_penalty': total_penalty,
+        'warnings': warnings,
+        'should_hard_veto': False
     }
-}
-4. brain_sniper_realtime.py - is_perfect_setup()
-Ubicación: Líneas 241-342
-Flujo actual:
-def is_perfect_setup(symbol, analyzer_score, decision):
-    # 1. Obtener datos
-    ladder_data = decision.get('full_analysis', {}).get('ladder_data', {})
-    direction = decision.get('direction', 'LATERAL')
-    
-    # 2. LATERAL penalty
-    if direction == 'LATERAL':
-        analyzer_score -= 50
-        # Intenta determinar direction desde DI dominance
-    
-    # 3. Obtener velocity
-    velocity_check = check_price_velocity(symbol, direction, '5m')
-    
-    # 4. Validator score
-    validation = entry_validator._validate_explosion_entry(...)
-    validator_score = validation.get('score', 50)
-    
-    # 5. 5M VETO CHECK (v5.3.0)
-    veto_result = check_5m_veto(symbol, direction, ladder_data)
-    if veto_result['should_veto']:
-        return False
-    if veto_result['penalty'] &gt; 0:
-        analyzer_score -= veto_result['penalty']
-    
-    # 6. Combinar scores
+PROMPT #3: brain_sniper_realtime.py - Invertir Jerarquía
+Ubicación: is_perfect_setup() líneas 241-342
+ACTUAL (líneas 256-342):
+
+def is_perfect_setup(symbol: str, analyzer_score: float, decision: dict) -&gt; bool:
+    # ...
+    # analyzer_score viene de 15M
+    # 5M solo hace veto con check_5m_veto()
     combined = (analyzer_score * 0.60) + (validator_score * 0.40)
+PROPUESTO (reemplazar función completa):
+
+@staticmethod
+    def is_perfect_setup(symbol: str, analyzer_score: float, decision: dict) -&gt; bool:
+        """
+        v5.4.0: 5M DECIDE, 15M ADVIERTE
+        
+        - Score principal: 5M (con penalties robustas)
+        - 15M: Solo genera warnings que reducen score
+        - Threshold único: 60
+        """
+        from brain_config import (
+            SCORE_WEIGHT_ANALYZER, SCORE_WEIGHT_VALIDATOR,
+            SCORE_THRESHOLD_ENTER
+        )
+        from brain_frames import check_price_velocity
+        from brain_entry_validator import entry_validator
+        from brain_analyzer import generate_15m_warnings
+        
+        full_analysis = decision.get('full_analysis', {})
+        ladder_data = full_analysis.get('ladder_data', {})
+        
+        data_5m = ladder_data.get('5m', {})
+        data_15m = ladder_data.get('15m', {})
+        
+        # ===================================================================
+        # PASO 1: OBTENER SCORE DE 5M (ahora es el score principal)
+        # ===================================================================
+        score_5m = data_5m.get('score_5m', 0)
+        direction_5m = data_5m.get('direction', 'LATERAL')
+        
+        print(f"\n   📊 5M DOMINANCE SCORING v5.4.0:")
+        print(f"      Base Score 5M: {score_5m}")
+        print(f"      Direction 5M: {direction_5m}")
+        
+        # ===================================================================
+        # PASO 2: PENALTY SI 5M ES LATERAL
+        # ===================================================================
+        if direction_5m == 'LATERAL':
+            score_5m -= 50
+            print(f"      ⚠️ 5M LATERAL: penalty -50 → score: {score_5m}")
+            
+            # Intentar inferir dirección desde DI
+            adx_5m = data_5m.get('adx', {})
+            if adx_5m.get('dominance') == 'DI+':
+                direction_5m = 'BULLISH'
+            elif adx_5m.get('dominance') == 'DI-':
+                direction_5m = 'BEARISH'
+            else:
+                direction_5m = 'BULLISH'  # Default
+            print(f"      → Usando {direction_5m} (DI inference)")
+        
+        # ===================================================================
+        # PASO 3: WARNINGS DE 15M (solo advierten, no bloquean)
+        # ===================================================================
+        warnings_15m = generate_15m_warnings(data_15m, direction_5m)
+        
+        if warnings_15m['should_hard_veto']:
+            print(f"\n   🚫 15M HARD VETO: {warnings_15m['warnings']}")
+            return False
+        
+        if warnings_15m['total_penalty'] &gt; 0:
+            score_5m -= warnings_15m['total_penalty']
+            print(f"      📉 15M Warnings: -{warnings_15m['total_penalty']} → score: {score_5m}")
+        
+        # ===================================================================
+        # PASO 4: 5M VETO (mantener sistema existente)
+        # ===================================================================
+        veto_result = check_5m_veto(symbol, direction_5m, ladder_data)
+        
+        if veto_result['should_veto']:
+            print(f"\n   🚫 5M VETO: {veto_result['reason']}")
+            return False
+        
+        if veto_result['penalty'] &gt; 0:
+            score_5m -= veto_result['penalty']
+            print(f"      📉 5M Veto Penalty: -{veto_result['penalty']} → score: {score_5m}")
+        
+        # ===================================================================
+        # PASO 5: VALIDATOR SCORE (mantener lógica)
+        # ===================================================================
+        velocity_check = check_price_velocity(symbol, direction_5m, '5m')
+        if 'insuficientes' in velocity_check.get('reason', '').lower():
+            velocity_check = check_price_velocity(symbol, direction_5m, '15m')
+        
+        velocity_value = velocity_check.get('velocity', 0)
+        print(f"      Velocity: {velocity_value:.3f}%")
+        
+        force_result = full_analysis.get('force_result', {}).copy()
+        force_result['velocity'] = velocity_value
+        
+        try:
+            validation = entry_validator._validate_explosion_entry(
+                symbol, direction_5m, force_result, ladder_data
+            )
+            validator_score = validation.get('score', 50)
+        except Exception as e:
+            print(f"      ⚠️ Error validator: {e}")
+            validator_score = 50
+        
+        print(f"      Validator Score: {validator_score:.0f}")
+        
+        # ===================================================================
+        # PASO 6: COMBINAR SCORES
+        # ===================================================================
+        combined = (score_5m * SCORE_WEIGHT_ANALYZER) + \
+                   (validator_score * SCORE_WEIGHT_VALIDATOR)
+        
+        print(f"      🎯 COMBINED: ({score_5m:.0f} × {SCORE_WEIGHT_ANALYZER}) + ({validator_score:.0f} × {SCORE_WEIGHT_VALIDATOR}) = {combined:.0f}")
+        print(f"      Threshold: {SCORE_THRESHOLD_ENTER}")
+        
+        # ===================================================================
+        # PASO 7: DECISIÓN FINAL
+        # ===================================================================
+        if combined &gt;= SCORE_THRESHOLD_ENTER:
+            print(f"   ✅ APROBADO: {combined:.0f} &gt;= {SCORE_THRESHOLD_ENTER}")
+            return True
+        else:
+            print(f"   ❌ RECHAZADO: {combined:.0f} &lt; {SCORE_THRESHOLD_ENTER}")
+            return False
+PROMPT #4: brain_analyzer.py - Mejorar analyze_5m()
+Problema actual (líneas 1631-1640):
+score_5m = 0
+if adx_data['adx_current'] &gt; 25:
+    score_5m += 10
+elif adx_data['adx_current'] &gt; 18:
+    score_5m += 5
+# Solo bonuses, máximo +20
+Propuesta: Agregar penalties a score_5m (después de línea 1640)
+AGREGAR después de línea 1640:
+
+# ===================================================================
+    # v5.4.0: PENALTIES ROBUSTAS PARA 5M (como 15M)
+    # ===================================================================
     
-    # 7. Decisión
-    if combined &gt;= 60:
-        return True
-    return False
-5. brain_config.py - Thresholds Actuales
-# Líneas 233-234 - Motores (a apagar según plan)
-ENABLE_MOTOR_VELOCITY = True
-ENABLE_MOTOR_CHANNEL = True
-# Líneas 261-264 - Score combination
-SCORE_WEIGHT_ANALYZER = 0.60   # 60% analyzer
-SCORE_WEIGHT_VALIDATOR = 0.40  # 40% validator
-SCORE_THRESHOLD_ENTER = 60     # Threshold único
-# 5M Veto (líneas 386-413)
-ENABLE_5M_VETO = True
-VETO_5M_ADX_MIN = 18
-VETO_5M_MOMENTUM_PENALTY = 60
-VETO_5M_LATERAL_PENALTY = 40
-VETO_5M_THRESHOLD = 100
-📊 RESUMEN: Qué tiene cada timeframe
-Campo	15M	5M	Notas
-direction	✅	✅	
-score	score_15m	score_5m	15M robusto, 5M básico
-adx.adx_current	✅	✅	
-adx.adx_trend	✅	✅	
-adx.adx_velocity	❌	✅	Solo 5M tiene (v5.3.0)
-momentum.color_current	✅	✅	
-momentum.consecutive_count	✅	❌	Solo 15M
-velocity.velocity_current	❌	✅	Solo 5M
-atr_pct	❌	✅	Solo 5M
-brutal_force	✅	❌	Solo 15M
-lateral_penalty	✅	❌	Solo 15M
-✅ Para implementar "5M decide, 15M advierte":
-Cambios necesarios:
-Invertir flujo en is_perfect_setup:
-
-Usar score_5m como base (con sistema robusto como 15M)
-Usar score_15m solo para warnings
-Agregar scoring robusto a analyze_5m:
-
-Copiar lógica de penalties de 15M a 5M
-ADX, momentum, lateral detection en 5M
-Crear warnings de 15M:
-
-Si 15M ve algo malo → warning, no veto
-Solo penaliza suavemente (-10 a -30)
-Config:
-
-Apagar ENABLE_MOTOR_VELOCITY = False
-Apagar ENABLE_MOTOR_CHANNEL = False
-Nuevo: ENABLE_15M_WARNINGS = True
+    # --- PENALTY: Momentum contradice direction ---
+    mom_color = momentum_data.get('color_current', 'gray')
+    if direction == 'BULLISH' and mom_color in ['red', 'maroon']:
+        score_5m -= 30
+        print(f"         ⚠️ 5M: Momentum {mom_color} contradice BULLISH (-30)")
+    elif direction == 'BEARISH' and mom_color in ['green', 'lime']:
+        score_5m -= 30
+        print(f"         ⚠️ 5M: Momentum {mom_color} contradice BEARISH (-30)")
+    
+    # --- PENALTY: ADX débil + decreciendo ---
+    if adx_data['adx_current'] &lt; 18 and adx_data.get('adx_trend') == 'decreciendo':
+        score_5m -= 40
+        print(f"         ⚠️ 5M: ADX {adx_data['adx_current']:.1f} débil + muriendo (-40)")
+    elif adx_data.get('adx_trend') == 'decreciendo':
+        score_5m -= 20
+        print(f"         ⚠️ 5M: ADX decreciendo (-20)")
+    
+    # --- PENALTY: Spread bajo (poca claridad) ---
+    spread_5m = abs(adx_data.get('spread', 0))
+    if spread_5m &lt; 5:
+        score_5m -= 30
+        print(f"         ⚠️ 5M: Spread {spread_5m:.1f} muy bajo (-30)")
+    elif spread_5m &lt; 10:
+        score_5m -= 15
+        print(f"         ⚠️ 5M: Spread {spread_5m:.1f} bajo (-15)")
+    
+    # --- PENALTY: ATR muy alto (volatilidad extrema) ---
+    if atr_pct &gt; 5:
+        score_5m -= 40
+        print(f"         ⚠️ 5M: ATR {atr_pct:.1f}% extremo (-40)")
+    elif atr_pct &gt; 3:
+        score_5m -= 20
+        print(f"         ⚠️ 5M: ATR {atr_pct:.1f}% alto (-20)")
+    
+    # --- BONUS: ADX creciendo fuerte ---
+    if adx_data.get('adx_trend') == 'creciendo' and adx_data['adx_current'] &gt; 25:
+        score_5m += 15
+        print(f"         ✅ 5M: ADX {adx_data['adx_current']:.1f} creciendo (+15)")
+    
+    # --- BONUS: Spread amplio (claridad direccional) ---
+    if spread_5m &gt; 20:
+        score_5m += 10
+        print(f"         ✅ 5M: Spread {spread_5m:.1f} amplio (+10)")
+📋 TESTING CHECKLIST
+Pre-implementación:
+ Backup de archivos modificados
+ Bot detenido
+Post-implementación:
+ python -m py_compile brain_config.py ✅
+ python -m py_compile brain_analyzer.py ✅
+ python -m py_compile brain_sniper_realtime.py ✅
+Validación funcional:
+ Correr 
+manual_analyzer.py
+ con 3+ símbolos
+ Verificar que 15M genera warnings (no bloquea)
+ Verificar que 5M score aparece como principal
+ Verificar que combined usa 5M ajustado
+Métricas esperadas (4-8 horas):
+Score 5M visible en logs ✅
+15M warnings aparecen cuando aplica ✅
+Bot sigue operando (no se vuelve rígido)
+Win rate mejora vs baseline
+Rollback:
+# brain_config.py
+ENABLE_15M_WARNINGS = False  # Deshabilita warnings
+ENABLE_MOTOR_VELOCITY = True  # Restaura motor
+ENABLE_MOTOR_CHANNEL = True   # Restaura motor
+📊 ORDEN DE IMPLEMENTACIÓN
+PROMPT #1: brain_config.py (sin dependencias)
+PROMPT #4: brain_analyzer.py - penalties en analyze_5m()
+PROMPT #2: brain_analyzer.py - generate_15m_warnings()
+PROMPT #3: brain_sniper_realtime.py - invertir jerarquía
+⚠️ IMPORTANTE: Prompts 2 y 3 dependen de que Prompt 4 esté implementado primero (score_5m robusto).
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 6,791<br>
-    Generado: 2025-12-28 14:28:27
+    Total caracteres: 16,885<br>
+    Generado: 2025-12-28 14:37:27
   </div>
 </body>
 </html>
