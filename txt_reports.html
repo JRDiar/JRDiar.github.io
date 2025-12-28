@@ -15,259 +15,351 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-27 22:50:40</div>
+  <div class="meta">Última actualización: 2025-12-27 23:14:51</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-DOCUMENTO DE CONTINUIDAD - BrainTrader v5.2.3 Time Ladder
-🎯 CONTEXTO DEL PROYECTO
-Bot: Trading automatizado para futuros USDT en MEXC
-Objetivo: Sistema 100% Time Ladder (scoring gradual, sin hard blocks)
-Problema histórico: Bot se volvía rígido (0 trades) o entraba en zonas altas perdiendo
-
-🧬 FILOSOFÍA TIME LADDER (CORE CONCEPT)
-Concepto de Joel: Ver el mercado como PELÍCULA (movimiento dinámico), no FOTOS (valores estáticos)
-Principios fundamentales:
-
-TODO es scoring gradual - No hay valores absolutos que bloqueen
-Penalties se acumulan - Cada problema resta puntos, no bloquea
-Un solo threshold de decisión - Score &gt;= 60 para operar
-Contexto importa - Fuerza brutal puede compensar problemas menores
-Gradientes, no cliffs - Penalties proporcionales a la severidad
-
-Anti-patrones eliminados:
-python# ❌ ANTES (hard block):
-if spread &lt; 5:
-    return False
-
-# ✅ AHORA (Time Ladder):
-if spread &lt; 10:
-    penalty = (10 - spread) * 3
-    score -= penalty
-# Continúa evaluando
-```
 
----
-
-## 🏗️ ARQUITECTURA ACTUAL
-
-### Flujo de decisión:
-```
-Symbol
-  ↓
-brain_force_filter.py → Evalúa fuerza (ADX, spread)
-  ↓ spread_penalty
-brain_analyzer.py → Análisis 15M (momentum, grid, etc)
-  ↓ score_15m con penalties
-brain_sniper_realtime.py → Scoring combinado
-  ↓ (analyzer*0.6) + (validator*0.4)
-brain_entry_validator.py → Valida espacio (VAH, diagonal)
-  ↓ validator_score
-DECISIÓN: combined_score &gt;= 60 → OPERA
-Archivos clave y responsabilidades:
-brain_config.py - Constantes calibradas:
-
-VELOCITY_TRIGGER_PCT = 0.12 (reducido de 0.25)
-MOMENTUM_CONTRA_PENALTY = 20 (reducido de 40)
-SCORE_THRESHOLD_ENTER = 60 (único threshold)
-SCORE_WEIGHT_ANALYZER = 0.60
-SCORE_WEIGHT_VALIDATOR = 0.40
-
-brain_force_filter.py - Penalties de fuerza:
-
-Spread &lt; 15: penalty = (15 - spread) * 2
-Retorna spread_penalty al analyzer
-
-brain_analyzer.py - Scoring principal 15M:
-
-Spread &lt; 10: penalty = (10 - spread) * 3
-DI contradictorio: penalty = (diff + 1) * 1.5
-Momentum opuesto: penalty = 20
-Momentum contradictorio: penalty = 20
-Contra 4H trend: penalty = 30
-LATERAL: penalty = 50 (no cambia direction)
-Único hard block legítimo: if score_15m &lt; 0: return blocked
-
-brain_entry_validator.py - Valida espacio:
-
-VAH/VAL distance &lt; 0.50%: penalty reducida por velocity
-Diagonal close: penalty reducida por velocity
-Retorna solo score (no can_enter boolean)
-
-brain_sniper_realtime.py - Decisión final:
-
-Combina scores: (analyzer * 0.6) + (validator * 0.4)
-LATERAL: aplica penalty -50, reasigna direction por dominancia DI
-Threshold único: &gt;= 60
-
-brain_executor.py - Ejecución:
-
-Eliminados checks redundantes (score &lt; 40, etc)
-Solo warning si llega LATERAL
-
-brain_grid.py - Grid diagonal:
-
-Lateral (ancho &lt; 2 ATRs): penalty = 50, status = 'LATERAL_WARNING'
-NO retorna 'BLOQUEADO'
-
-
-🔄 TRANSFORMACIÓN: Hard Blocks → Penalties
-Conversión sistemática realizada:
-CondiciónAntes (Hard Block)Ahora (Penalty)CalibraciónSpread &lt; 15return BLOCKED_NO_SPREAD(15-x)*2Spread 5 = -20Spread &lt; 5return BLOCKED(10-x)*3Spread 3 = -21DI wrongreturn False(diff+1)*1.5diff 10 = -16.5Momentum opuestoreturn False-20FijoMomentum contradicedirection = LATERAL-20FijoContra 4H trendreturn BLOCKED-30FijoDirection LATERALreturn False-50 + reasignarSeveraGrid lateralstatus BLOQUEADO-50Severa
-Penalties eliminadas (redundantes):
-
-Momentum blocks en force_filter (líneas 129-155) - Ya había penalty en analyzer
-Score &lt; 40 en executor (línea 117) - Conflicto con threshold 60
-
-Hard block legítimo mantenido:
-python# brain_analyzer.py línea ~1506
-if score_15m &lt; 0:
-    return {'blocked': True, 'verdict': 'BLOCKED_NEGATIVE_SCORE'}
-```
-**Razón:** No es arbitrario. Es el resultado del scoring completo.
-
----
-
-## 🎚️ CALIBRACIÓN DE PENALTIES
-
-**Problema inicial:** Penalties originales demasiado altas, se acumulaban hasta -200
-
-**Solución:** Reducción 50% en v5.2.2:
-- Spread penalties: divididos a la mitad
-- DI penalty: de `*3` a `*1.5`
-- Momentum: de 40 a 20
-- Contra 4H: de 60 a 30
-
-**Resultado:** Scores típicos ahora en rango -50 a +80 (operables)
-
----
-
-## 🐛 BUGS ENCONTRADOS Y CORREGIDOS
-
-### Por Opus:
-1. **Duplicación de penalties** - Grid y momentum penalizados 2 veces (analyzer + sniper)
-2. **Force level inválido** - 'VELOCITY' no existe, cambiado a 'BRUTAL'
-3. **División por cero** - No verificaba `entry_price &gt; 0`
-4. **fetch_ticker()** - Función no existe, es `fetch_current_price()`
-
-### Por mí (Sonnet):
-1. **Velocity usa vela cerrada** - Debía usar precio actual para scalping
-2. **Sin fallback timeframe** - 1m no tiene datos, necesita 5m → 15m
-3. **space_warnings crash** - No verificaba isinstance antes de .lower()
-4. **Doble threshold** - Executor usaba 40, sniper 60 (conflicto eliminado)
-
----
-
-## 🎯 ESTADO ACTUAL v5.2.3
-
-### ✅ Completado (100% Time Ladder):
-- Todos los hard blocks convertidos a penalties graduales
-- Sistema de scoring combinado funcional
-- Un solo threshold de decisión (60)
-- Calibración de penalties balanceada
-- Eliminados checks redundantes
-
-### ⚠️ Pendiente verificar:
-- **Performance real** - Necesita testing en vivo
-- **Ajuste fino de penalties** - Pueden necesitar ±25% según winrate
-- **Velocity reduction factor** - Actualmente 0.70 max, puede ajustarse
-
-### 🚫 Hard blocks que DEBEN mantenerse:
-1. `score_15m &lt; 0` en analyzer - Legítimo (scoring decidió)
-2. Error técnico (sin datos, precio = 0, etc) - Protección necesaria
-
----
-
-## 📊 EJEMPLO DE SCORING ACTUAL
-
-Symbol típico con problemas moderados:
-```
-Spread 7: penalty (10-7)*3 = -9
-DI contradictorio 5pts: penalty (5+1)*1.5 = -9
-Momentum verde pero BULLISH: penalty 0
-ADX 28 creciendo: bonus +10
-Velocity 0.15%: bonus +15
-Grid 65%: warning -10
-
-Score analyzer: 100 -9 -9 -10 +10 +15 = 97
-Score validator: 85 (espacio OK)
-Combined: (97*0.6) + (85*0.4) = 92.2
-Threshold: 60
-→ OPERA ✅
-```
-
-Symbol con problemas severos:
-```
-Spread 3: penalty (10-3)*3 = -21
-DI contradictorio 12pts: penalty (12+1)*1.5 = -19.5
-Direction LATERAL: penalty -50
-Momentum opuesto: penalty -20
-Contra 4H: penalty -30
-
-Score: 100 -21 -19.5 -50 -20 -30 = -40.5
-→ BLOQUEADO por score &lt; 0 ✅ (correcto)
-
-🔧 INFORMACIÓN TÉCNICA PARA DEBUGGING
-Penalties se aplican en:
-
-brain_force_filter.py → spread_penalty (retornado)
-brain_analyzer.py → score_15m -= penalties (acumuladas)
-brain_sniper_realtime.py → analyzer_score -= lateral_penalty
-brain_entry_validator.py → score -= space_penalty
-
-Score combinado en sniper:
-pythoncombined = (adjusted_analyzer * 0.6) + (validator_score * 0.4)
-if combined &gt;= 60:
-    return True
-Logging para debugging:
-pythonprint(f"📊 Analyzer: {analyzer_score}")
-print(f"📊 Validator: {validator_score}")
-print(f"🎯 COMBINED: {combined} (threshold: 60)")
-
-🚀 PRÓXIMOS PASOS SUGERIDOS
-
-Testing en vivo - Correr bot 4-8 horas, monitorear:
-
-¿Opera? (si no, penalties muy altas)
-¿Winrate? (si &lt;50%, penalties muy bajas)
-
-
-Ajuste fino - Según resultados:
-
-Penalties muy restrictivas → reducir 25%
-Bot opera mucho mal → aumentar 25%
-
-
-Optimización avanzada (después):
-
-Velocity reduction factor dinámico
-Penalties contextuales según volatilidad
-Machine learning de thresholds
-
-
-
-
-💡 REGLAS DE ORO PARA CONTINUAR
-
-NUNCA agregar hard blocks - Solo penalties graduales
-UN SOLO threshold - 60 en scoring combinado
-Penalties proporcionales - Severidad → multiplicador
-Verificar duplicación - Antes de agregar penalty, buscar si ya existe
-Mantener logging - Para debugging de scores
-Score &lt; 0 es legítimo - No eliminar ese check
-
-Workflow establecido:
-Joel → GitHub Pages → Claude revisa → Genera prompt → Sonnet aplica → Opus QA
-
-FIN DEL DOCUMENTO - v5.2.3 Time Ladder PurePara ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.
-
-
+⚠️ VERIFICACIÓN COMPLETA - ENCONTRÉ PROBLEMAS
+🔴 ERRORES CRÍTICOS EN LOS PROMPTS:
+PROMPT #1 - LATERAL Penalty:
+
+Problema	En Prompt	En Código Real
+Archivo incorrecto	brain_analyzer.py	brain_sniper_realtime.py:100
+Línea incorrecta	~1350	95-118
+Campo grid	grid['range_pct']	grid['ancho_pct'] o ancho_atr
+Código real (sniper_realtime.py:100):
+
+python
+if direction == 'LATERAL':
+    lateral_direction_penalty = 50
+    analyzer_score -= lateral_direction_penalty
+PROMPT #2 - ADX Decreciendo:
+
+Problema	En Prompt	En Código Real
+Penalty actual	-30	-60 (línea 872)
+adx_velocity	✅ Existe	adx_velocity en línea 210
+Código real (analyzer.py:871-874):
+
+python
+elif adx_trend == 'decreciendo':
+    score_15m -= 60  # ← YA ES 60, NO 30
+    adx_rejected = True
+PROMPT #3 - Velocity System:
+
+✅ OK - brain_frames.py es correcto
+✅ OK - Código nuevo, no hay conflicto
+PROMPT #4 - Zombie Exit:
+
+Problema	En Prompt	En Código Real
+Variable PnL	current_pnl_pct	pnl_pct (línea 534)
+Variable USD	position_value	self.capital_per_trade (línea 557)
+Fórmula PnL USD	/100	Ya calculado correctamente
+Código real (executor.py:557):
+
+python
+pnl_usd = (self.capital_per_trade * pnl_pct / 100) * SIMULATE_LEVERAGE
+PROMPT #5 - Constantes:
+
+✅ OK - Solo agregar al final de brain_config.py
+📋 PROMPTS CORREGIDOS:
+PROMPT #1 CORREGIDO:
+
+Archivo: brain_sniper_realtime.py (no analyzer)
+Línea: 99-118
+Campo grid: usar ancho_pct o ancho_atr
+PROMPT #2 CORREGIDO:
+
+Penalty actual ya es -60 (no -30 como decía)
+Solo agregar lógica de velocidad de colapso
+PROMPT #4 CORREGIDO:
+
+Usar pnl_pct (no current_pnl_pct)
+Usar self.capital_per_trade (no position_value)
+pnl_usd ya existe en línea 557
+¿Querés que actualice el plan de implementación con las correcciones?
+
+odo verificado ✅
+El plan está listo para implementar. ¿Querés que empiece con el Prompt #5 (Constantes) que es el que no tiene dependencias?
+
+PLAN DE IMPLEMENTACIÓN v5.2.5 (CORREGIDO)
+Time Ladder Optimizado - 5 Cambios
+✅ VERIFICADO contra código real el 27/12/2025
+
+📋 RESUMEN DE CAMBIOS
+#	Archivo	Cambio	Estado
+1	
+brain_sniper_realtime.py
+LATERAL penalty contextual	✅ Verificado
+2	
+brain_analyzer.py
+ADX colapso velocity	✅ Verificado
+3	
+brain_frames.py
+Sistema velocity RAM	✅ Nuevo código
+4	
+brain_executor.py
+Zombie exit	✅ Verificado
+5	
+brain_config.py
+Nuevas constantes	✅ Agregar al final
+📝 PROMPT #1: LATERAL Penalty Contextual (CORREGIDO)
+Archivo: 
+brain_sniper_realtime.py
+ (NO brain_analyzer.py) Líneas: 99-118
+
+Código actual verificado:
+# Líneas 99-118 en brain_sniper_realtime.py
+lateral_direction_penalty = 0
+if direction == 'LATERAL':
+    lateral_direction_penalty = 50
+    print(f"   ⚠️ {symbol}: Direction LATERAL - penalty -{lateral_direction_penalty}")
+    analyzer_score -= lateral_direction_penalty
+    
+    # Reasignar direction por dominancia DI
+    data_15m = ladder_data.get('15m', {})
+    adx_data = data_15m.get('adx', {})
+    
+    if adx_data.get('dominance') == 'DI+':
+        direction = 'BULLISH'
+    elif adx_data.get('dominance') == 'DI-':
+        direction = 'BEARISH'
+    else:
+        direction = 'BULLISH'
+Código propuesto CORREGIDO:
+# LATERAL handling - Time Ladder v5.2.5 contextual
+lateral_direction_penalty = 0
+if direction == 'LATERAL':
+    from brain_config import (
+        LATERAL_BASE_PENALTY,
+        LATERAL_VELOCITY_REDUCTION_HIGH,
+        LATERAL_VELOCITY_REDUCTION_MED,
+        LATERAL_NARROW_CHANNEL_AGGRAVATE
+    )
+    from brain_frames import calculate_velocity_3m, update_price_memory
+    
+    # Base penalty más severo (win rate 38.5%)
+    lateral_penalty = LATERAL_BASE_PENALTY  # 70
+    
+    # Actualizar memoria y obtener velocity
+    current_price = ladder_data.get('15m', {}).get('current_price', 0)
+    update_price_memory(symbol, current_price)
+    velocity_3m = calculate_velocity_3m(symbol)
+    
+    # Contexto 1: Velocity alta reduce penalty
+    if velocity_3m &gt; 0.15:
+        lateral_penalty -= LATERAL_VELOCITY_REDUCTION_HIGH  # -25
+        print(f"      ✅ Velocity alta {velocity_3m:.2f}% reduce penalty LATERAL")
+    elif velocity_3m &gt; 0.08:
+        lateral_penalty -= LATERAL_VELOCITY_REDUCTION_MED  # -15
+    
+    # Contexto 2: Canal estrecho agrava (usar ancho_pct del grid)
+    grid_data = ladder_data.get('15m', {}).get('grid', {})
+    canal_ancho = grid_data.get('ancho_pct', 100)  # ← CORREGIDO: ancho_pct
+    if canal_ancho &lt; 2:
+        lateral_penalty += LATERAL_NARROW_CHANNEL_AGGRAVATE  # +20
+        print(f"      ⚠️ Canal estrecho ({canal_ancho:.1f}%) agrava penalty")
+    
+    lateral_direction_penalty = lateral_penalty
+    print(f"   ⚠️ {symbol}: Direction LATERAL - penalty -{lateral_penalty}")
+    analyzer_score -= lateral_penalty
+    
+    # Reasignar direction por dominancia DI (sin cambios)
+    data_15m = ladder_data.get('15m', {})
+    adx_data = data_15m.get('adx', {})
+    
+    if adx_data.get('dominance') == 'DI+':
+        direction = 'BULLISH'
+        print(f"      → Usando BULLISH (DI+ domina)")
+    elif adx_data.get('dominance') == 'DI-':
+        direction = 'BEARISH'
+        print(f"      → Usando BEARISH (DI- domina)")
+    else:
+        direction = 'BULLISH'
+        print(f"      → Sin dominancia, usando BULLISH default")
+📝 PROMPT #2: ADX Colapso Velocity (CORREGIDO)
+Archivo: 
+brain_analyzer.py
+ Líneas: 871-874
+
+Código actual verificado:
+# Líneas 871-874 - Penalty ACTUAL es -60, NO -30
+elif adx_trend == 'decreciendo':
+    score_15m -= 60  # ← YA ES 60
+    adx_rejected = True
+    print(f"      ❌ BLOQUEADOR: ADX {adx_current:.1f} decreciendo (fuerza muriendo)")
+Código propuesto CORREGIDO:
+# ADX muriendo - Penalty v5.2.5 con velocidad de colapso
+elif adx_trend == 'decreciendo':
+    from brain_config import (
+        ADX_DECREASING_BASE_PENALTY,
+        ADX_COLLAPSING_FAST_PENALTY,
+        ADX_COLLAPSING_MED_PENALTY
+    )
+    
+    base_penalty = ADX_DECREASING_BASE_PENALTY  # 50
+    
+    # Agravar si colapsa rápido (adx_velocity ya existe en línea 210)
+    if adx_velocity &lt; -2:  # Cayendo &gt; 2 puntos/frame
+        base_penalty = ADX_COLLAPSING_FAST_PENALTY  # 70
+        print(f"      🚨 ADX colapsando RÁPIDO ({adx_velocity:.1f}pts/frame)")
+    elif adx_velocity &lt; -1:
+        base_penalty = ADX_COLLAPSING_MED_PENALTY  # 60
+        print(f"      ⚠️ ADX colapsando moderado ({adx_velocity:.1f}pts/frame)")
+    
+    score_15m -= base_penalty
+    adx_rejected = True
+    print(f"      ❌ ADX {adx_current:.1f} decreciendo → PENALTY -{base_penalty}")
+NOTA: adx_velocity ya existe en línea 210 de brain_analyzer.py
+
+📝 PROMPT #3: Velocity Detection (Sin cambios)
+Archivo: 
+brain_frames.py
+ Ubicación: Agregar al final del archivo
+
+Código nuevo completo:
+# ===================================================================
+# VELOCITY DETECTION SYSTEM (Time Ladder v5.2.5)
+# ===================================================================
+import time
+class PriceMemory:
+    """Memoria en RAM de precios para calcular velocity real."""
+    
+    def __init__(self):
+        self.history = {}  # {symbol: [(timestamp, price), ...]}
+    
+    def update(self, symbol, current_price):
+        """Agregar precio actual a memoria"""
+        timestamp = time.time()
+        
+        if symbol not in self.history:
+            self.history[symbol] = []
+        
+        self.history[symbol].append((timestamp, current_price))
+        
+        # Mantener solo últimos 5 minutos
+        cutoff = timestamp - (5 * 60)
+        self.history[symbol] = [
+            (t, p) for t, p in self.history[symbol] if t &gt; cutoff
+        ]
+    
+    def get_velocity(self, symbol, minutes=3):
+        """Calcula cambio % en últimos N minutos."""
+        if symbol not in self.history or len(self.history[symbol]) &lt; 2:
+            return 0.0
+        
+        now = time.time()
+        target_time = now - (minutes * 60)
+        
+        current_price = self.history[symbol][-1][1]
+        
+        past_price = None
+        for timestamp, price in self.history[symbol]:
+            if timestamp &gt;= target_time:
+                past_price = price
+                break
+        
+        if past_price is None or past_price == 0:
+            return 0.0
+        
+        velocity = ((current_price - past_price) / past_price) * 100
+        return velocity
+# Instancia global
+_price_memory = PriceMemory()
+def calculate_velocity_3m(symbol):
+    """Función helper para usar desde sniper."""
+    return _price_memory.get_velocity(symbol, minutes=3)
+def update_price_memory(symbol, current_price):
+    """Actualizar memoria con precio actual."""
+    _price_memory.update(symbol, current_price)
+📝 PROMPT #4: Zombie Exit (CORREGIDO)
+Archivo: 
+brain_executor.py
+ Ubicación: Línea ~545 (después de duration_min)
+
+Variables CORRECTAS verificadas:
+pnl_pct (línea 534) - NO current_pnl_pct
+pnl_usd (línea 557) - Ya calculado
+self.capital_per_trade - NO position_value
+duration_min (línea 544) - ✅ Correcto
+Código propuesto CORREGIDO:
+# Después de línea 544: duration_min = ...
+# ===================================================================
+# ZOMBIE EXIT: Cerrar trades estancados (v5.2.5)
+# ===================================================================
+from brain_config import MAX_ZOMBIE_DURATION_MIN, MIN_PROFIT_TO_KEEP_USD
+if duration_min &gt; MAX_ZOMBIE_DURATION_MIN:  # 20 min
+    # pnl_usd ya está calculado en línea 557
+    # Pero necesitamos verificar ANTES del time exit existente
+    
+    # Calcular PnL USD aquí (antes de línea 557)
+    zombie_pnl_usd = (self.capital_per_trade * pnl_pct / 100) * SIMULATE_LEVERAGE
+    
+    if abs(zombie_pnl_usd) &lt; MIN_PROFIT_TO_KEEP_USD:  # &lt; $0.40
+        reason = f"💀 Zombie exit: {duration_min:.1f}min, PnL ${zombie_pnl_usd:.2f} (estancado)"
+        print(f"\n   {reason}")
+        
+        symbols_to_close.append((symbol, reason))
+        continue  # Siguiente trade
+Ubicación exacta:
+Insertar DESPUÉS de línea 544 (duration_min = ...) y ANTES de línea 546 (comentario NUEVO: SALIDA POR TIEMPO)
+
+📝 PROMPT #5: Nuevas Constantes (Sin cambios)
+Archivo: 
+brain_config.py
+ Ubicación: Al final de sección de scoring
+
+Código a agregar:
+# ===================================================================
+# TIME LADDER v5.2.5 - Penalties Contextuales
+# ===================================================================
+# LATERAL penalties (base + contextuales)
+LATERAL_BASE_PENALTY = 70
+LATERAL_VELOCITY_REDUCTION_HIGH = 25  # Si velocity &gt; 0.15%
+LATERAL_VELOCITY_REDUCTION_MED = 15   # Si velocity &gt; 0.08%
+LATERAL_NARROW_CHANNEL_AGGRAVATE = 20 # Si canal &lt; 2%
+# ADX decreciendo penalties
+ADX_DECREASING_BASE_PENALTY = 50
+ADX_COLLAPSING_FAST_PENALTY = 70  # Si velocity &lt; -2 pts/frame
+ADX_COLLAPSING_MED_PENALTY = 60   # Si velocity &lt; -1 pts/frame
+# Zombie exit
+MAX_ZOMBIE_DURATION_MIN = 20
+MIN_PROFIT_TO_KEEP_USD = 0.40
+# Velocity bonuses (futuro)
+VELOCITY_HIGH_BONUS = 25   # Si velocity &gt; 0.40% en 3min
+VELOCITY_MED_BONUS = 15    # Si velocity &gt; 0.20% en 3min
+VELOCITY_NEGATIVE_PENALTY = 20
+📋 ORDEN DE IMPLEMENTACIÓN
+#5 Constantes → Sin dependencias
+#3 Velocity system → Sin dependencias
+#2 ADX colapso → Usa constantes
+#1 LATERAL contextual → Usa velocity + constantes
+#4 Zombie exit → Usa constantes
+✅ CHECKLIST VERIFICADO
+ 
+brain_sniper_realtime.py
+ tiene LATERAL handling en líneas 99-118
+ 
+brain_analyzer.py
+ tiene adx_velocity en línea 210
+ 
+brain_analyzer.py
+ ADX penalty actual es -60 (línea 872)
+ 
+brain_grid.py
+ tiene ancho_pct (línea 143) NO range_pct
+ 
+brain_executor.py
+ usa pnl_pct y self.capital_per_trade
+ 
+brain_executor.py
+ tiene duration_min en línea 544
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 7,608<br>
-    Generado: 2025-12-27 22:50:40
+    Total caracteres: 11,415<br>
+    Generado: 2025-12-27 23:14:51
   </div>
 </body>
 </html>
