@@ -15,2007 +15,259 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-27 22:12:32</div>
+  <div class="meta">Última actualización: 2025-12-27 22:50:40</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-🔴 ENTRADA - IN/USDT:USDT
-⏰ 20:26:52
+DOCUMENTO DE CONTINUIDAD - BrainTrader v5.2.3 Time Ladder
+🎯 CONTEXTO DEL PROYECTO
+Bot: Trading automatizado para futuros USDT en MEXC
+Objetivo: Sistema 100% Time Ladder (scoring gradual, sin hard blocks)
+Problema histórico: Bot se volvía rígido (0 trades) o entraba en zonas altas perdiendo
+
+🧬 FILOSOFÍA TIME LADDER (CORE CONCEPT)
+Concepto de Joel: Ver el mercado como PELÍCULA (movimiento dinámico), no FOTOS (valores estáticos)
+Principios fundamentales:
+
+TODO es scoring gradual - No hay valores absolutos que bloqueen
+Penalties se acumulan - Cada problema resta puntos, no bloquea
+Un solo threshold de decisión - Score &gt;= 60 para operar
+Contexto importa - Fuerza brutal puede compensar problemas menores
+Gradientes, no cliffs - Penalties proporcionales a la severidad
+
+Anti-patrones eliminados:
+python# ❌ ANTES (hard block):
+if spread &lt; 5:
+    return False
+
+# ✅ AHORA (Time Ladder):
+if spread &lt; 10:
+    penalty = (10 - spread) * 3
+    score -= penalty
+# Continúa evaluando
+```
 
-📊 Dirección: LATERAL
-💵 Precio: $0.07175000
-🛑 Stop Loss: $0.07043260
-⭐ Score Brain: 85/100
+---
+
+## 🏗️ ARQUITECTURA ACTUAL
 
-🧠 Setup óptimo confirmado
+### Flujo de decisión:
+```
+Symbol
+  ↓
+brain_force_filter.py → Evalúa fuerza (ADX, spread)
+  ↓ spread_penalty
+brain_analyzer.py → Análisis 15M (momentum, grid, etc)
+  ↓ score_15m con penalties
+brain_sniper_realtime.py → Scoring combinado
+  ↓ (analyzer*0.6) + (validator*0.4)
+brain_entry_validator.py → Valida espacio (VAH, diagonal)
+  ↓ validator_score
+DECISIÓN: combined_score &gt;= 60 → OPERA
+Archivos clave y responsabilidades:
+brain_config.py - Constantes calibradas:
+
+VELOCITY_TRIGGER_PCT = 0.12 (reducido de 0.25)
+MOMENTUM_CONTRA_PENALTY = 20 (reducido de 40)
+SCORE_THRESHOLD_ENTER = 60 (único threshold)
+SCORE_WEIGHT_ANALYZER = 0.60
+SCORE_WEIGHT_VALIDATOR = 0.40
+
+brain_force_filter.py - Penalties de fuerza:
+
+Spread &lt; 15: penalty = (15 - spread) * 2
+Retorna spread_penalty al analyzer
+
+brain_analyzer.py - Scoring principal 15M:
 
-❌ SALIDA - AR/USDT:USDT
-⏰ 20:24:52
+Spread &lt; 10: penalty = (10 - spread) * 3
+DI contradictorio: penalty = (diff + 1) * 1.5
+Momentum opuesto: penalty = 20
+Momentum contradictorio: penalty = 20
+Contra 4H trend: penalty = 30
+LATERAL: penalty = 50 (no cambia direction)
+Único hard block legítimo: if score_15m &lt; 0: return blocked
+
+brain_entry_validator.py - Valida espacio:
+
+VAH/VAL distance &lt; 0.50%: penalty reducida por velocity
+Diagonal close: penalty reducida por velocity
+Retorna solo score (no can_enter boolean)
+
+brain_sniper_realtime.py - Decisión final:
+
+Combina scores: (analyzer * 0.6) + (validator * 0.4)
+LATERAL: aplica penalty -50, reasigna direction por dominancia DI
+Threshold único: &gt;= 60
+
+brain_executor.py - Ejecución:
+
+Eliminados checks redundantes (score &lt; 40, etc)
+Solo warning si llega LATERAL
+
+brain_grid.py - Grid diagonal:
+
+Lateral (ancho &lt; 2 ATRs): penalty = 50, status = 'LATERAL_WARNING'
+NO retorna 'BLOQUEADO'
+
+
+🔄 TRANSFORMACIÓN: Hard Blocks → Penalties
+Conversión sistemática realizada:
+CondiciónAntes (Hard Block)Ahora (Penalty)CalibraciónSpread &lt; 15return BLOCKED_NO_SPREAD(15-x)*2Spread 5 = -20Spread &lt; 5return BLOCKED(10-x)*3Spread 3 = -21DI wrongreturn False(diff+1)*1.5diff 10 = -16.5Momentum opuestoreturn False-20FijoMomentum contradicedirection = LATERAL-20FijoContra 4H trendreturn BLOCKED-30FijoDirection LATERALreturn False-50 + reasignarSeveraGrid lateralstatus BLOQUEADO-50Severa
+Penalties eliminadas (redundantes):
+
+Momentum blocks en force_filter (líneas 129-155) - Ya había penalty en analyzer
+Score &lt; 40 en executor (línea 117) - Conflicto con threshold 60
+
+Hard block legítimo mantenido:
+python# brain_analyzer.py línea ~1506
+if score_15m &lt; 0:
+    return {'blocked': True, 'verdict': 'BLOCKED_NEGATIVE_SCORE'}
+```
+**Razón:** No es arbitrario. Es el resultado del scoring completo.
+
+---
+
+## 🎚️ CALIBRACIÓN DE PENALTIES
+
+**Problema inicial:** Penalties originales demasiado altas, se acumulaban hasta -200
+
+**Solución:** Reducción 50% en v5.2.2:
+- Spread penalties: divididos a la mitad
+- DI penalty: de `*3` a `*1.5`
+- Momentum: de 40 a 20
+- Contra 4H: de 60 a 30
 
-📈 PnL: -0.60% | $-2.01
-⏱️ Duración: 10.2 min
-🔚 Razón: Time exit: 10min @ $-2.01
+**Resultado:** Scores típicos ahora en rango -50 a +80 (operables)
 
-🟢 ENTRADA - AR/USDT:USDT
-⏰ 20:14:37
+---
 
-📊 Dirección: BULLISH
-💵 Precio: $3.64400000
-🛑 Stop Loss: $3.57112000
-⭐ Score Brain: 78/100
+## 🐛 BUGS ENCONTRADOS Y CORREGIDOS
 
-🧠 Setup óptimo confirmado
+### Por Opus:
+1. **Duplicación de penalties** - Grid y momentum penalizados 2 veces (analyzer + sniper)
+2. **Force level inválido** - 'VELOCITY' no existe, cambiado a 'BRUTAL'
+3. **División por cero** - No verificaba `entry_price &gt; 0`
+4. **fetch_ticker()** - Función no existe, es `fetch_current_price()`
 
-❌ SALIDA - ETC/USDT:USDT
-⏰ 20:12:40
+### Por mí (Sonnet):
+1. **Velocity usa vela cerrada** - Debía usar precio actual para scalping
+2. **Sin fallback timeframe** - 1m no tiene datos, necesita 5m → 15m
+3. **space_warnings crash** - No verificaba isinstance antes de .lower()
+4. **Doble threshold** - Executor usaba 40, sniper 60 (conflicto eliminado)
 
-📈 PnL: -0.49% | $-1.63
-⏱️ Duración: 15.3 min
-🔚 Razón: Time exit: 15min @ $-1.63
+---
 
-🔴 ENTRADA - ETC/USDT:USDT
-⏰ 19:57:25
+## 🎯 ESTADO ACTUAL v5.2.3
 
-📊 Dirección: LATERAL
-💵 Precio: $12.03400000
-🛑 Stop Loss: $11.77372000
-⭐ Score Brain: 63/100
+### ✅ Completado (100% Time Ladder):
+- Todos los hard blocks convertidos a penalties graduales
+- Sistema de scoring combinado funcional
+- Un solo threshold de decisión (60)
+- Calibración de penalties balanceada
+- Eliminados checks redundantes
 
-🧠 Setup óptimo confirmado
+### ⚠️ Pendiente verificar:
+- **Performance real** - Necesita testing en vivo
+- **Ajuste fino de penalties** - Pueden necesitar ±25% según winrate
+- **Velocity reduction factor** - Actualmente 0.70 max, puede ajustarse
 
-✅ SALIDA - TONCOIN/USDT:USDT
-⏰ 19:55:27
+### 🚫 Hard blocks que DEBEN mantenerse:
+1. `score_15m &lt; 0` en analyzer - Legítimo (scoring decidió)
+2. Error técnico (sin datos, precio = 0, etc) - Protección necesaria
 
-📈 PnL: +0.31% | $+1.03
-⏱️ Duración: 71.1 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
+---
 
-✅ SALIDA - XAI/USDT:USDT
-⏰ 19:10:44
+## 📊 EJEMPLO DE SCORING ACTUAL
 
-📈 PnL: +0.37% | $+1.25
-⏱️ Duración: 46.2 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
+Symbol típico con problemas moderados:
+```
+Spread 7: penalty (10-7)*3 = -9
+DI contradictorio 5pts: penalty (5+1)*1.5 = -9
+Momentum verde pero BULLISH: penalty 0
+ADX 28 creciendo: bonus +10
+Velocity 0.15%: bonus +15
+Grid 65%: warning -10
 
-🔴 ENTRADA - HBAR/USDT:USDT
-⏰ 19:12:41
+Score analyzer: 100 -9 -9 -10 +10 +15 = 97
+Score validator: 85 (espacio OK)
+Combined: (97*0.6) + (85*0.4) = 92.2
+Threshold: 60
+→ OPERA ✅
+```
 
-📊 Dirección: LATERAL
-💵 Precio: $0.11493000
-🛑 Stop Loss: $0.11230800
-⭐ Score Brain: 20/100
+Symbol con problemas severos:
+```
+Spread 3: penalty (10-3)*3 = -21
+DI contradictorio 12pts: penalty (12+1)*1.5 = -19.5
+Direction LATERAL: penalty -50
+Momentum opuesto: penalty -20
+Contra 4H: penalty -30
 
-🧠 Setup óptimo confirmado
+Score: 100 -21 -19.5 -50 -20 -30 = -40.5
+→ BLOQUEADO por score &lt; 0 ✅ (correcto)
 
-🔴 ENTRADA - TONCOIN/USDT:USDT
-⏰ 18:44:20
+🔧 INFORMACIÓN TÉCNICA PARA DEBUGGING
+Penalties se aplican en:
 
-📊 Dirección: LATERAL
-💵 Precio: $1.62400000
-🛑 Stop Loss: $1.58270000
-⭐ Score Brain: 60/100
+brain_force_filter.py → spread_penalty (retornado)
+brain_analyzer.py → score_15m -= penalties (acumuladas)
+brain_sniper_realtime.py → analyzer_score -= lateral_penalty
+brain_entry_validator.py → score -= space_penalty
 
-🧠 Setup óptimo confirmado
+Score combinado en sniper:
+pythoncombined = (adjusted_analyzer * 0.6) + (validator_score * 0.4)
+if combined &gt;= 60:
+    return True
+Logging para debugging:
+pythonprint(f"📊 Analyzer: {analyzer_score}")
+print(f"📊 Validator: {validator_score}")
+print(f"🎯 COMBINED: {combined} (threshold: 60)")
 
-✅ SALIDA - MAV/USDT:USDT
-⏰ 18:40:21
+🚀 PRÓXIMOS PASOS SUGERIDOS
 
-📈 PnL: +0.18% | $+0.61
-⏱️ Duración: 89.4 min
-🔚 Razón: Emergencia: ADX colapsó (17.8)
+Testing en vivo - Correr bot 4-8 horas, monitorear:
 
-🔴 ENTRADA - XAI/USDT:USDT
-⏰ 18:24:31
+¿Opera? (si no, penalties muy altas)
+¿Winrate? (si &lt;50%, penalties muy bajas)
 
-📊 Dirección: LATERAL
-💵 Precio: $0.01603000
-🛑 Stop Loss: $0.01573880
-⭐ Score Brain: 30/100
 
-🧠 Setup óptimo confirmado
+Ajuste fino - Según resultados:
 
-✅ SALIDA - STORJ/USDT:USDT
-⏰ 18:19:59
+Penalties muy restrictivas → reducir 25%
+Bot opera mucho mal → aumentar 25%
 
-📈 PnL: +6.37% | $+21.25
-⏱️ Duración: 24.6 min
-🔚 Razón: Stop loss
 
-🟢 ENTRADA - STORJ/USDT:USDT
-⏰ 17:55:23
+Optimización avanzada (después):
 
-📊 Dirección: BULLISH
-💵 Precio: $0.12080000
-🛑 Stop Loss: $0.11838400
-⭐ Score Brain: 78/100
+Velocity reduction factor dinámico
+Penalties contextuales según volatilidad
+Machine learning de thresholds
 
-🧠 Setup óptimo confirmado
 
-❌ SALIDA - PIPE/USDT:USDT
-⏰ 17:51:24
 
-📈 PnL: -1.38% | $-4.61
-⏱️ Duración: 10.2 min
-🔚 Razón: Time exit: 10min @ $-4.61
 
-🔴 ENTRADA - PIPE/USDT:USDT
-⏰ 17:41:13
+💡 REGLAS DE ORO PARA CONTINUAR
 
-📊 Dirección: LATERAL
-💵 Precio: $0.06359000
-🛑 Stop Loss: $0.06221040
-⭐ Score Brain: 3/100
+NUNCA agregar hard blocks - Solo penalties graduales
+UN SOLO threshold - 60 en scoring combinado
+Penalties proporcionales - Severidad → multiplicador
+Verificar duplicación - Antes de agregar penalty, buscar si ya existe
+Mantener logging - Para debugging de scores
+Score &lt; 0 es legítimo - No eliminar ese check
 
-🧠 Setup óptimo confirmado
+Workflow establecido:
+Joel → GitHub Pages → Claude revisa → Genera prompt → Sonnet aplica → Opus QA
 
-❌ SALIDA - NB/USDT:USDT
-⏰ 17:39:16
+FIN DEL DOCUMENTO - v5.2.3 Time Ladder PurePara ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.
 
-📈 PnL: -0.45% | $-1.50
-⏱️ Duración: 24.1 min
-🔚 Razón: Time exit: 24min @ $-1.75
 
-❌ SALIDA - BULLA/USDT:USDT
-⏰ 17:11:09
-
-📈 PnL: -1.85% | $-6.15
-⏱️ Duración: 28.5 min
-🔚 Razón: Time exit: 28min @ $-5.47
-
-🔴 ENTRADA - NB/USDT:USDT
-⏰ 17:15:12
-
-📊 Dirección: LATERAL
-💵 Precio: $0.00399000
-🛑 Stop Loss: $0.00391020
-⭐ Score Brain: 3/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - MAV/USDT:USDT
-⏰ 17:11:01
-
-📊 Dirección: LATERAL
-💵 Precio: $0.02748000
-🛑 Stop Loss: $0.02694020
-⭐ Score Brain: 98/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - BIT/USDT:USDT
-⏰ 17:03:15
-
-📈 PnL: +0.25% | $+0.82
-⏱️ Duración: 18.5 min
-🔚 Razón: Stop loss
-
-🟢 ENTRADA - BIT/USDT:USDT
-⏰ 16:44:43
-
-📊 Dirección: BULLISH
-💵 Precio: $0.00529600
-🛑 Stop Loss: $0.00519008
-⭐ Score Brain: 48/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - BULLA/USDT:USDT
-⏰ 16:42:42
-
-📊 Dirección: LATERAL
-💵 Precio: $0.03414000
-🛑 Stop Loss: $0.03324160
-⭐ Score Brain: 15/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - DOT/USDT:USDT
-⏰ 16:30:48
-
-📈 PnL: -0.11% | $-0.36
-⏱️ Duración: 12.2 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-✅ SALIDA - SEI/USDT:USDT
-⏰ 16:30:46
-
-📈 PnL: +0.44% | $+1.46
-⏱️ Duración: 125.6 min
-🔚 Razón: Emergencia: ADX colapsó (16.8)
-
-🟢 ENTRADA - DOT/USDT:USDT
-⏰ 16:18:39
-
-📊 Dirección: BULLISH
-💵 Precio: $1.83500000
-🛑 Stop Loss: $1.79830000
-⭐ Score Brain: 30/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - BTR/USDT:USDT
-⏰ 16:14:39
-
-📈 PnL: -0.63% | $-2.10
-⏱️ Duración: 24.5 min
-🔚 Razón: Time exit: 24min @ $-2.10
-
-🔴 ENTRADA - BTR/USDT:USDT
-⏰ 15:50:08
-
-📊 Dirección: LATERAL
-💵 Precio: $0.02854000
-🛑 Stop Loss: $0.02801820
-⭐ Score Brain: 98/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - AIXBT/USDT:USDT
-⏰ 15:46:04
-
-📈 PnL: +0.49% | $+1.62
-⏱️ Duración: 23.8 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - AUDIO/USDT:USDT
-⏰ 15:28:15
-
-📊 Dirección: LATERAL
-💵 Precio: $0.02911000
-🛑 Stop Loss: $0.02849840
-⭐ Score Brain: 3/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - ZRC/USDT:USDT
-⏰ 15:24:21
-
-📈 PnL: -0.42% | $-1.39
-⏱️ Duración: 21.6 min
-🔚 Razón: ADX decreciendo (11.9)
-
-🔴 ENTRADA - AIXBT/USDT:USDT
-⏰ 15:22:15
-
-📊 Dirección: LATERAL
-💵 Precio: $0.03290000
-🛑 Stop Loss: $0.03339350
-⭐ Score Brain: 58/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - STORJ/USDT:USDT
-⏰ 15:16:15
-
-📈 PnL: +0.08% | $+0.28
-⏱️ Duración: 23.8 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - ZRC/USDT:USDT
-⏰ 15:02:44
-
-📊 Dirección: LATERAL
-💵 Precio: $0.00383100
-🛑 Stop Loss: $0.00375830
-⭐ Score Brain: 0/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - SPX/USDT:USDT
-⏰ 15:00:46
-
-📈 PnL: +0.31% | $+1.04
-⏱️ Duración: 29.5 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-✅ SALIDA - US/USDT:USDT
-⏰ 14:50:25
-
-📈 PnL: +0.49% | $+1.62
-⏱️ Duración: 224.0 min
-🔚 Razón: Emergencia: ADX colapsó (17.6)
-
-🔴 ENTRADA - SPX/USDT:USDT
-⏰ 14:31:17
-
-📊 Dirección: LATERAL
-💵 Precio: $0.51420000
-🛑 Stop Loss: $0.49901600
-⭐ Score Brain: 43/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - JOE/USDT:USDT
-⏰ 14:29:18
-
-📈 PnL: -0.32% | $-1.08
-⏱️ Duración: 36.7 min
-🔚 Razón: Time exit: 37min @ $-1.62
-
-🔴 ENTRADA - SEI/USDT:USDT
-⏰ 14:25:07
-
-📊 Dirección: LATERAL
-💵 Precio: $0.11420000
-🛑 Stop Loss: $0.11211200
-⭐ Score Brain: 90/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - QTUM/USDT:USDT
-⏰ 14:21:07
-
-📈 PnL: -0.23% | $-0.77
-⏱️ Duración: 24.4 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - QTUM/USDT:USDT
-⏰ 13:56:41
-
-📊 Dirección: LATERAL
-💵 Precio: $1.29700000
-🛑 Stop Loss: $1.27204000
-⭐ Score Brain: 18/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - JOE/USDT:USDT
-⏰ 13:52:34
-
-📊 Dirección: LATERAL
-💵 Precio: $0.06180000
-🛑 Stop Loss: $0.06076000
-⭐ Score Brain: 3/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - NTRN/USDT:USDT
-⏰ 13:46:35
-
-📈 PnL: -0.46% | $-1.53
-⏱️ Duración: 11.8 min
-🔚 Razón: Time exit: 12min @ $-1.53
-
-🔴 ENTRADA - NTRN/USDT:USDT
-⏰ 13:34:45
-
-📊 Dirección: LATERAL
-💵 Precio: $0.02615000
-🛑 Stop Loss: $0.02561720
-⭐ Score Brain: 113/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - DAM/USDT:USDT
-⏰ 13:28:57
-
-📈 PnL: -1.16% | $-3.88
-⏱️ Duración: 10.3 min
-🔚 Razón: Time exit: 10min @ $-3.88
-
-❌ SALIDA - DUSK/USDT:USDT
-⏰ 13:26:51
-
-📈 PnL: -0.42% | $-1.38
-⏱️ Duración: 10.4 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🟢 ENTRADA - DAM/USDT:USDT
-⏰ 13:18:41
-
-📊 Dirección: BULLISH
-💵 Precio: $0.02405000
-🛑 Stop Loss: $0.02356900
-⭐ Score Brain: 18/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - FLUX1/USDT:USDT
-⏰ 13:16:38
-
-📈 PnL: -1.04% | $-3.46
-⏱️ Duración: 19.1 min
-🔚 Razón: Time exit: 19min @ $-3.46
-
-🔴 ENTRADA - DUSK/USDT:USDT
-⏰ 13:16:30
-
-📊 Dirección: LATERAL
-💵 Precio: $0.04817000
-🛑 Stop Loss: $0.04685380
-⭐ Score Brain: 43/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - GAIB/USDT:USDT
-⏰ 13:05:44
-
-📈 PnL: -0.78% | $-2.61
-⏱️ Duración: 12.3 min
-🔚 Razón: Time exit: 12min @ $-2.61
-
-🟢 ENTRADA - FLUX1/USDT:USDT
-⏰ 12:57:33
-
-📊 Dirección: BULLISH
-💵 Precio: $0.10590000
-🛑 Stop Loss: $0.10378200
-⭐ Score Brain: 70/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - XVG/USDT:USDT
-⏰ 12:55:50
-
-📈 PnL: +1.21% | $+4.04
-⏱️ Duración: 19.0 min
-🔚 Razón: Stop loss
-
-🔴 ENTRADA - GAIB/USDT:USDT
-⏰ 12:53:29
-
-📊 Dirección: BEARISH
-💵 Precio: $0.03320000
-🛑 Stop Loss: $0.03386400
-⭐ Score Brain: 110/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - OGN/USDT:USDT
-⏰ 12:47:27
-
-📈 PnL: -0.68% | $-2.25
-⏱️ Duración: 111.2 min
-🔚 Razón: Time exit: 111min @ $-2.25
-
-🟢 ENTRADA - XVG/USDT:USDT
-⏰ 12:36:48
-
-📊 Dirección: BULLISH
-💵 Precio: $0.00520200
-🛑 Stop Loss: $0.00509796
-⭐ Score Brain: 48/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - XTZ/USDT:USDT
-⏰ 12:34:50
-
-📈 PnL: -0.46% | $-1.53
-⏱️ Duración: 38.2 min
-🔚 Razón: Time exit: 38min @ $-1.53
-
-🔴 ENTRADA - XTZ/USDT:USDT
-⏰ 11:56:37
-
-📊 Dirección: LATERAL
-💵 Precio: $0.47950000
-🛑 Stop Loss: $0.46922400
-⭐ Score Brain: 133/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - ZEN/USDT:USDT
-⏰ 11:50:33
-
-📈 PnL: -1.20% | $-4.00
-⏱️ Duración: 23.3 min
-🔚 Razón: Time exit: 23min @ $-4.00
-
-🔴 ENTRADA - ZEN/USDT:USDT
-⏰ 11:27:18
-
-📊 Dirección: LATERAL
-💵 Precio: $9.17400000
-🛑 Stop Loss: $9.02580000
-⭐ Score Brain: 0/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - JST/USDT:USDT
-⏰ 11:25:16
-
-📈 PnL: -0.08% | $-0.26
-⏱️ Duración: 27.0 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - US/USDT:USDT
-⏰ 11:06:25
-
-📊 Dirección: LATERAL
-💵 Precio: $0.01026000
-🛑 Stop Loss: $0.01006460
-⭐ Score Brain: 20/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - ONG/USDT:USDT
-⏰ 11:04:39
-
-📈 PnL: -0.46% | $-1.52
-⏱️ Duración: 55.8 min
-🔚 Razón: Time exit: 56min @ $-1.52
-
-🔴 ENTRADA - JST/USDT:USDT
-⏰ 10:58:16
-
-📊 Dirección: LATERAL
-💵 Precio: $0.03833000
-🛑 Stop Loss: $0.03755360
-⭐ Score Brain: 23/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - OGN/USDT:USDT
-⏰ 10:56:13
-
-📊 Dirección: LATERAL
-💵 Precio: $0.02960000
-🛑 Stop Loss: $0.02891000
-⭐ Score Brain: 33/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - ICX/USDT:USDT
-⏰ 10:52:13
-
-📈 PnL: +0.19% | $+0.63
-⏱️ Duración: 77.9 min
-🔚 Razón: Emergencia: ADX colapsó (17.8)
-
-✅ SALIDA - B3/USDT:USDT
-⏰ 10:52:11
-
-📈 PnL: +0.23% | $+0.76
-⏱️ Duración: 84.0 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - ONG/USDT:USDT
-⏰ 10:08:53
-
-📊 Dirección: LATERAL
-💵 Precio: $0.08985000
-🛑 Stop Loss: $0.08808240
-⭐ Score Brain: 30/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - CHEEMS/USDT:USDT
-⏰ 10:05:38
-
-📈 PnL: +0.25% | $+0.82
-⏱️ Duración: 35.4 min
-🔚 Razón: Stop loss
-
-🔴 ENTRADA - ICX/USDT:USDT
-⏰ 09:34:16
-
-📊 Dirección: LATERAL
-💵 Precio: $0.05310000
-🛑 Stop Loss: $0.05203800
-⭐ Score Brain: 43/100
-
-🧠 Setup óptimo confirmado
-
-🟢 ENTRADA - CHEEMS/USDT:USDT
-⏰ 09:30:11
-
-📊 Dirección: BULLISH
-💵 Precio: $0.00000094
-🛑 Stop Loss: $0.00000092
-⭐ Score Brain: 20/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - B3/USDT:USDT
-⏰ 09:28:10
-
-📊 Dirección: LATERAL
-💵 Precio: $0.00087200
-🛑 Stop Loss: $0.00085652
-⭐ Score Brain: 40/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - FLOW/USDT:USDT
-⏰ 09:26:12
-
-📈 PnL: -2.36% | $-7.85
-⏱️ Duración: 14.6 min
-🔚 Razón: Time exit: 15min @ $-6.34
-
-❌ SALIDA - DGRAM/USDT:USDT
-⏰ 09:26:10
-
-📈 PnL: -0.43% | $-1.42
-⏱️ Duración: 22.8 min
-🔚 Razón: ADX decreciendo (21.3)
-
-❌ SALIDA - DIA/USDT:USDT
-⏰ 09:15:42
-
-📈 PnL: -0.39% | $-1.30
-⏱️ Duración: 10.3 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - FLOW/USDT:USDT
-⏰ 09:11:34
-
-📊 Dirección: LATERAL
-💵 Precio: $0.11040000
-🛑 Stop Loss: $0.11205600
-⭐ Score Brain: 113/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - BAT/USDT:USDT
-⏰ 09:09:34
-
-📈 PnL: -0.41% | $-1.36
-⏱️ Duración: 12.3 min
-🔚 Razón: Time exit: 12min @ $-1.52
-
-🟢 ENTRADA - DIA/USDT:USDT
-⏰ 09:05:24
-
-📊 Dirección: BULLISH
-💵 Precio: $0.28190000
-🛑 Stop Loss: $0.27626200
-⭐ Score Brain: 10/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - DGRAM/USDT:USDT
-⏰ 09:03:21
-
-📊 Dirección: BEARISH
-💵 Precio: $0.00093900
-🛑 Stop Loss: $0.00095778
-⭐ Score Brain: 103/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - POND/USDT:USDT
-⏰ 08:57:24
-
-📈 PnL: -0.49% | $-1.63
-⏱️ Duración: 27.2 min
-🔚 Razón: Time exit: 27min @ $-1.63
-
-🟢 ENTRADA - BAT/USDT:USDT
-⏰ 08:57:17
-
-📊 Dirección: BULLISH
-💵 Precio: $0.22000000
-🛑 Stop Loss: $0.21560000
-⭐ Score Brain: 98/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - CC/USDT:USDT
-⏰ 08:47:09
-
-📈 PnL: +0.19% | $+0.65
-⏱️ Duración: 6.7 min
-🔚 Razón: Stop loss
-
-✅ SALIDA - SAFE/USDT:USDT
-⏰ 08:46:35
-
-📈 PnL: +1.21% | $+4.03
-⏱️ Duración: 294.4 min
-🔚 Razón: Emergencia: ADX colapsó (16.9)
-
-🟢 ENTRADA - CC/USDT:USDT
-⏰ 08:40:26
-
-📊 Dirección: BULLISH
-💵 Precio: $0.10260000
-🛑 Stop Loss: $0.10054800
-⭐ Score Brain: 98/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - 42/USDT:USDT
-⏰ 08:38:27
-
-📈 PnL: +0.02% | $+0.08
-⏱️ Duración: 10.3 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - 42/USDT:USDT
-⏰ 08:28:08
-
-📊 Dirección: LATERAL
-💵 Precio: $0.04432000
-🛑 Stop Loss: $0.04342380
-⭐ Score Brain: 53/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - AIN/USDT:USDT
-⏰ 08:15:33
-
-📈 PnL: +0.36% | $+1.21
-⏱️ Duración: 6.2 min
-🔚 Razón: Stop loss
-
-❌ SALIDA - WET/USDT:USDT
-⏰ 08:15:31
-
-📈 PnL: -0.62% | $-2.08
-⏱️ Duración: 31.4 min
-🔚 Razón: Time exit: 31min @ $-2.08
-
-🟢 ENTRADA - AIN/USDT:USDT
-⏰ 08:09:24
-
-📊 Dirección: BULLISH
-💵 Precio: $0.05500000
-🛑 Stop Loss: $0.05390000
-⭐ Score Brain: 33/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - IP/USDT:USDT
-⏰ 08:03:21
-
-📈 PnL: +0.52% | $+1.75
-⏱️ Duración: 58.7 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - WET/USDT:USDT
-⏰ 07:44:10
-
-📊 Dirección: LATERAL
-💵 Precio: $0.20561000
-🛑 Stop Loss: $0.20146840
-⭐ Score Brain: 93/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - RTX/USDT:USDT
-⏰ 07:42:13
-
-📈 PnL: +0.18% | $+0.59
-⏱️ Duración: 11.9 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - RTX/USDT:USDT
-⏰ 07:30:18
-
-📊 Dirección: LATERAL
-💵 Precio: $2.80500000
-🛑 Stop Loss: $2.84707500
-⭐ Score Brain: 35/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - GUN/USDT:USDT
-⏰ 07:14:47
-
-📈 PnL: -0.52% | $-1.74
-⏱️ Duración: 41.8 min
-🔚 Razón: Time exit: 42min @ $-1.74
-
-🔴 ENTRADA - IP/USDT:USDT
-⏰ 07:04:36
-
-📊 Dirección: LATERAL
-💵 Precio: $1.52600000
-🛑 Stop Loss: $1.49842000
-⭐ Score Brain: 13/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - PIEVERSE/USDT:USDT
-⏰ 07:00:37
-
-📈 PnL: -0.97% | $-3.24
-⏱️ Duración: 19.5 min
-🔚 Razón: Time exit: 19min @ $-3.24
-
-🔴 ENTRADA - PIEVERSE/USDT:USDT
-⏰ 06:41:05
-
-📊 Dirección: LATERAL
-💵 Precio: $0.47380000
-🛑 Stop Loss: $0.46432400
-⭐ Score Brain: 33/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - IDEX/USDT:USDT
-⏰ 06:37:11
-
-📈 PnL: -0.31% | $-1.03
-⏱️ Duración: 48.1 min
-🔚 Razón: ADX decreciendo (23.2)
-
-🔴 ENTRADA - GUN/USDT:USDT
-⏰ 06:32:57
-
-📊 Dirección: LATERAL
-💵 Precio: $0.01151000
-🛑 Stop Loss: $0.01128960
-⭐ Score Brain: 98/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - PEOPLE/USDT:USDT
-⏰ 06:30:58
-
-📈 PnL: +0.85% | $+2.82
-⏱️ Duración: 126.6 min
-🔚 Razón: Emergencia: ADX colapsó (17.0)
-
-🔴 ENTRADA - IDEX/USDT:USDT
-⏰ 05:49:03
-
-📊 Dirección: LATERAL
-💵 Precio: $0.00969000
-🛑 Stop Loss: $0.00952560
-⭐ Score Brain: 5/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - PHA/USDT:USDT
-⏰ 05:47:05
-
-📈 PnL: -1.26% | $-4.19
-⏱️ Duración: 12.1 min
-🔚 Razón: Time exit: 12min @ $-4.00
-
-🟢 ENTRADA - PHA/USDT:USDT
-⏰ 05:34:56
-
-📊 Dirección: BULLISH
-💵 Precio: $0.03663000
-🛑 Stop Loss: $0.03589740
-⭐ Score Brain: 95/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - APEX/USDT:USDT
-⏰ 05:12:55
-
-📈 PnL: -1.26% | $-4.20
-⏱️ Duración: 10.1 min
-🔚 Razón: Time exit: 10min @ $-4.13
-
-🔴 ENTRADA - APEX/USDT:USDT
-⏰ 05:02:47
-
-📊 Dirección: LATERAL
-💵 Precio: $0.48470000
-🛑 Stop Loss: $0.49197050
-⭐ Score Brain: 68/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - TRU/USDT:USDT
-⏰ 05:01:35
-
-📈 PnL: +0.50% | $+1.67
-⏱️ Duración: 35.1 min
-🔚 Razón: Stop loss
-
-🟢 ENTRADA - TRU/USDT:USDT
-⏰ 04:26:27
-
-📊 Dirección: BULLISH
-💵 Precio: $0.01199000
-🛑 Stop Loss: $0.01175020
-⭐ Score Brain: 5/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - 4/USDT:USDT
-⏰ 04:24:30
-
-📈 PnL: +0.34% | $+1.13
-⏱️ Duración: 167.0 min
-🔚 Razón: Emergencia: ADX colapsó (15.0)
-
-🔴 ENTRADA - PEOPLE/USDT:USDT
-⏰ 04:24:22
-
-📊 Dirección: LATERAL
-💵 Precio: $0.00946000
-🛑 Stop Loss: $0.00925120
-⭐ Score Brain: 60/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - ARPA/USDT:USDT
-⏰ 03:56:19
-
-📈 PnL: -0.08% | $-0.27
-⏱️ Duración: 203.7 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - SAFE/USDT:USDT
-⏰ 03:52:09
-
-📊 Dirección: LATERAL
-💵 Precio: $0.14050000
-🛑 Stop Loss: $0.13759200
-⭐ Score Brain: 28/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - NOBODY/USDT:USDT
-⏰ 03:44:25
-
-📈 PnL: -0.10% | $-0.34
-⏱️ Duración: 25.4 min
-🔚 Razón: Stop loss
-
-🔴 ENTRADA - NOBODY/USDT:USDT
-⏰ 03:19:01
-
-📊 Dirección: BEARISH
-💵 Precio: $0.01970000
-🛑 Stop Loss: $0.02009400
-⭐ Score Brain: 48/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - USUAL/USDT:USDT
-⏰ 03:16:59
-
-📈 PnL: -0.19% | $-0.64
-⏱️ Duración: 174.4 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - 4/USDT:USDT
-⏰ 01:37:29
-
-📊 Dirección: LATERAL
-💵 Precio: $0.02073000
-🛑 Stop Loss: $0.02016840
-⭐ Score Brain: 45/100
-
-🧠 Setup óptimo confirmado
-
-🟢 ENTRADA - TLM/USDT:USDT
-⏰ 00:57:32
-
-📊 Dirección: BULLISH
-💵 Precio: $0.00208900
-🛑 Stop Loss: $0.00204722
-⭐ Score Brain: 18/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - TLM/USDT:USDT
-⏰ 01:31:22
-
-📈 PnL: -0.57% | $-1.91
-⏱️ Duración: 33.8 min
-🔚 Razón: Time exit: 34min @ $-2.07
-
-✅ SALIDA - USTC/USDT:USDT
-⏰ 00:55:35
-
-📈 PnL: +0.15% | $+0.50
-⏱️ Duración: 95.9 min
-🔚 Razón: Emergencia: ADX colapsó (16.2)
-
-✅ SALIDA - PLUME/USDT:USDT
-⏰ 00:30:41
-
-📈 PnL: +1.74% | $+5.80
-⏱️ Duración: 133.3 min
-🔚 Razón: Emergencia: ADX colapsó (16.3)
-
-🟢 ENTRADA - USUAL/USDT:USDT
-⏰ 00:22:32
-
-📊 Dirección: BULLISH
-💵 Precio: $0.02601000
-🛑 Stop Loss: $0.02548980
-⭐ Score Brain: 5/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - STX/USDT:USDT
-⏰ 00:00:40
-
-📈 PnL: +0.43% | $+1.44
-⏱️ Duración: 51.0 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🟢 ENTRADA - USTC/USDT:USDT
-⏰ 23:19:41
-
-📊 Dirección: BULLISH
-💵 Precio: $0.00665000
-🛑 Stop Loss: $0.00651700
-⭐ Score Brain: 33/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - PUMPFUN/USDT:USDT
-⏰ 23:15:50
-
-📈 PnL: -0.49% | $-1.64
-⏱️ Duración: 37.8 min
-🔚 Razón: Time exit: 38min @ $-1.64
-
-✅ SALIDA - KAITO/USDT:USDT
-⏰ 22:44:15
-
-📈 PnL: +1.80% | $+6.01
-⏱️ Duración: 10.4 min
-🔚 Razón: Stop loss
-
-🟢 ENTRADA - STX/USDT:USDT
-⏰ 23:09:38
-
-📊 Dirección: BULLISH
-💵 Precio: $0.25410000
-🛑 Stop Loss: $0.24901800
-⭐ Score Brain: 3/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - PUMPFUN/USDT:USDT
-⏰ 22:38:03
-
-📊 Dirección: LATERAL
-💵 Precio: $0.00182600
-🛑 Stop Loss: $0.00178654
-⭐ Score Brain: 70/100
-
-🧠 Setup óptimo confirmado
-
-❌ SALIDA - ME/USDT:USDT
-⏰ 22:15:26
-
-📈 PnL: -1.10% | $-3.66
-⏱️ Duración: 10.4 min
-🔚 Razón: Time exit: 10min @ $-3.66
-
-🔴 ENTRADA - PLUME/USDT:USDT
-⏰ 22:17:25
-
-📊 Dirección: LATERAL
-💵 Precio: $0.01897000
-🛑 Stop Loss: $0.01863960
-⭐ Score Brain: 98/100
-
-🧠 Setup óptimo confirmado
-
-🟢 ENTRADA - KAITO/USDT:USDT
-⏰ 22:33:53
-
-📊 Dirección: BULLISH
-💵 Precio: $0.59380000
-🛑 Stop Loss: $0.58192400
-⭐ Score Brain: 23/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - ASR/USDT:USDT
-⏰ 22:34:02
-
-📈 PnL: +3.12% | $+10.39
-⏱️ Duración: 147.6 min
-🔚 Razón: Emergencia: ADX colapsó (17.6)
-
-❌ SALIDA - BMT/USDT:USDT
-⏰ 22:15:23
-
-📈 PnL: -0.54% | $-1.79
-⏱️ Duración: 113.0 min
-🔚 Razón: Time exit: 113min @ $-1.79
-
-🔴 ENTRADA - ME/USDT:USDT
-⏰ 22:05:03
-
-📊 Dirección: LATERAL
-💵 Precio: $0.20930000
-🛑 Stop Loss: $0.20531000
-⭐ Score Brain: 33/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - M/USDT:USDT
-⏰ 22:02:50
-
-📈 PnL: +0.71% | $+2.38
-⏱️ Duración: 23.4 min
-🔚 Razón: Stop loss
-
-🟢 ENTRADA - M/USDT:USDT
-⏰ 21:39:24
-
-📊 Dirección: BULLISH
-💵 Precio: $1.44220000
-🛑 Stop Loss: $1.41335600
-⭐ Score Brain: 10/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - EPT/USDT:USDT
-⏰ 21:35:15
-
-📈 PnL: +0.06% | $+0.21
-⏱️ Duración: 37.4 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🔴 ENTRADA - EPT/USDT:USDT
-⏰ 20:57:51
-
-📊 Dirección: LATERAL
-💵 Precio: $0.00159000
-🛑 Stop Loss: $0.00155526
-⭐ Score Brain: 28/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - B/USDT:USDT
-⏰ 20:55:52
-
-📈 PnL: +0.17% | $+0.58
-⏱️ Duración: 45.5 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-🟢 ENTRADA - BMT/USDT:USDT
-⏰ 20:22:27
-
-📊 Dirección: BULLISH
-💵 Precio: $0.02423000
-🛑 Stop Loss: $0.02374540
-⭐ Score Brain: 105/100
-
-🧠 Setup óptimo confirmado
-
-🔴 ENTRADA - B/USDT:USDT
-⏰ 20:10:22
-
-📊 Dirección: LATERAL
-💵 Precio: $0.17270000
-🛑 Stop Loss: $0.16924600
-⭐ Score Brain: 20/100
-
-🧠 Setup óptimo confirmado
-
-🤖 BOT PHASE 4.0 INICIADO
-⏰ 19:51:17
-💰 $1000 | 1x
-
-🧠 BRAIN ANTICIPATORIO
-📊 Análisis contextual multi-timeframe
-🎯 Entrada inteligente + salida 5 señales
-✅ Protección breakeven activa
-
-🔴 ENTRADA - ASR/USDT:USDT
-⏰ 20:06:24
-
-📊 Dirección: LATERAL
-💵 Precio: $1.66800000
-🛑 Stop Loss: $1.64052000
-⭐ Score Brain: 53/100
-
-🧠 Setup óptimo confirmado
-
-✅ SALIDA - HBAR/USDT:USDT
-⏰ 20:42:56
-
-📈 PnL: +0.24% | $+0.81
-⏱️ Duración: 90.2 min
-🔚 Razón: Salida inteligente (Req:2): Desaceleración, Volumen bajo
-
-AUDIO/USDT:USDT (LATERAL)
-   💰 PnL: +0.26% ($+0.86) | Duración: 316.1 min
-   📊 Precio: $0.029000 (Entry: $0.029110)
-   🛡️ Stop Loss: $0.029023 (a 0.08% del precio)
-   🎯 Breakeven: ✅ Activado (SL en Entry)
-   🧠 ANÁLISIS EN VIVO:
-      • ADX en 39.5 (Tendencia Fuerte 💪), decreciendo.
-      • Valle ROJO en formación (Retroceso/Bajista) 🔴 ⚠️ SQUEEZE ACTIVO (Posible explosión inminente).
-      • Precio en equilibrio (pegado al POC).
-------------------------------------------------------------
-
-🟢 HBAR/USDT:USDT (LATERAL)
-   💰 PnL: +0.12% ($+0.41) | Duración: 91.7 min
-   📊 Precio: $0.114650 (Entry: $0.114930)
-   🛡️ Stop Loss: $0.112308 (a -2.04% del precio)
-   🎯 Breakeven: ❌ No activado
-   🧠 ANÁLISIS EN VIVO:
-      • ADX en 21.1 (Tendencia Moderada 😐), decreciendo.
-      • Caída fuerte MAROON (Clímax bajista) 🔴⚡
-      • Precio en equilibrio (pegado al POC).
-------------------------------------------------------------
-
-🔴 IN/USDT:USDT (LATERAL)
-   💰 PnL: -0.20% ($-0.68) | Duración: 17.5 min
-   📊 Precio: $0.071810 (Entry: $0.071750)
-   🛡️ Stop Loss: $0.070433 (a -1.92% del precio)
-   🎯 Breakeven: ❌ No activado
-   🧠 ANÁLISIS EN VIVO:
-      • ADX en 19.6 (Mercado Muerto (Rango) 😴), decreciendo.
-      • Valle ROJO en formación (Retroceso/Bajista) 🔴
-      • Precio en equilibrio (pegado al POC).
-------------------------------------------------------------
-
-=====================================================================   
-✅ PELÍCULA APRUEBA: NO_MOVIE
-======================================================================   
-
-   🎬 PELÍCULA APRUEBA: NO_MOVIE
-
-⚡ FILTRO DE FUERZA: MEME/USDT:USDT
---------------------------------------------------
-   ADX: 31.5 | Trend: creciendo
-   DI+: 28.9 | DI-: 14.1 | Spread: 14.8
-   Direction: BULLISH | Momentum: green
-   ⚠️ Spread bajo (14.8 &lt; 15): penalty -0
-   ADX Zona: TENDENCIA (31.5) ✅
-   Spread: 14.8 ✅ (min: 10)
-   Velocidad ADX: +1.7/frame ✅
-   Dirección: ASCENDING ✅
-   ADX Trend: creciendo ✅
-
-   NIVEL: BRUTAL (4/4 componentes)
-   VEREDICTO: ✅ HAY FUERZA
-
-✅ FILTRO DE FUERZA: BRUTAL (4/4)
-  📐 Grid ajuste: +20 → Total: 103.5
-
-🔍 REPORTE INTELIGENTE: MEME/USDT:USDT
-   - Acción: ENTER (Conf: 100)
-   - Razones: ☄️ FÍSICA: Inercia suficiente (ADX 31.5 &gt; Req 30)
-     ...y 3 más.
-   ⚠️ MEME/USDT:USDT: Direction LATERAL - penalty -50
-      → Usando BULLISH (DI+ domina) con confianza baja
-
-   📊 SCORING BREAKDOWN (Time Ladder v5.2.1):
-      Analyzer Score: 50
-   🏎️ VELOCIDAD MEME/USDT:USDT: 0.000%/vela (Accel: -0.992)
-      Precio actual: 0.001018 | Último cierre: 0.001018
-      Velocity: 0.000%
-
-   🔍 Validando espacio (Time Ladder v5.2.1)...
-   🏎️ Velocity: 0.000% → Factor: 0.00
-   📊 VALIDATOR BREAKDOWN:
-      Base: 100
-      = Validator Score: 100
-      Validator Score: 100
-      🎯 COMBINED: (50 × 0.6) + (100 × 0.4) = 70
-      Threshold: 60
-   ✅ APROBADO: 70 &gt;= 60
-  🎯 PRIORITY: MEME/USDT:USDT (Score: 100.0)
-  🎯 MEME/USDT:USDT → PRIORITY (Score: 100, Force: BRUTAL)
-
-🧠 ORCHESTRATING INTELLIGENCE: MERL/USDT:USDT
-   Scanning patterns &amp; structure...
-   ✨ PATTERN FOUND: DOUBLE_TOP in 15m (Conf: 95)
-📊 4H | MERL/USDT:USDT | BEARISH STRONG | ADX:28.3 DI+:13.4 DI-:38.6 | Mom:4v | Estructura:INDETERMINADO
-
-🎬 PELÍCULA (MOVIMIENTO):
-   ADX: [39 → 34 → 32 → 34 → 41]
-   Velocidad: +0.5 pts/frame
-   Fase: TREND_BUILDING
-   ✅ Tendencia desarrollándose (+10)
-   Mom: [6v → 8v → 3v → 1v → 8v]
-   Fase: SUSTAINING
-   ✅ Momentum SOSTENIDO (+20)
-   🎯 Veredicto: TREND_DEVELOPING (65%)
-⚠️  LATERALIZACIÓN | MERL/USDT:USDT | Penalty: -25 | Razones: DI spread mmuy bajo: 3.0
-         📊 Estructura: LATERAL | HH:0 HL:0 LL:0 LH:0
-      🎬 Price Pattern: DROP_STRONG | Fase: EXPLOSIÓN
-      ✅ Caída FUERTE confirmada (-7.95% en 3 velas) (+25 bonus)
-         📊 Estructura: LATERAL | HH:0 HL:0 LL:0 LH:0
-   🏎️ VELOCIDAD MERL/USDT:USDT: 0.000%/vela (Accel: 4.146)
-      Precio actual: 0.370140 | Último cierre: 0.370140
-      🎯 VISIÓN UNIFICADA: ✅ APROBADO - Score: 55/100
-      ✅ Visión unificada APRUEBA (+10 bonus)
-      ❌ BLOQUEADOR: ADX 41.5 decreciendo (fuerza muriendo)
-      🚫 Score CLAMPEADO a máx 30 por ADX débil
-      ✅ Spread 10.7 &gt;= 10 (claridad direccional)
-      ⚠️ ADX 41.5 decreciendo → PENALTY -50
-         (No es bloqueo duro, continúa evaluación)
-      ❌ Momentum maroon 8v (agotamiento)
-      📊 DEBUG: ADX=41.5(decreciendo), Spread=10.7, Mom=maroon 8v, Score15m=-110
-      ℹ️ Grid diagonal: datos insuficientes
-      ✅ Movimiento amplio: Rango 11.0%
-      ⚠️ Volumen 25% bajo en desarrollo (8v)
-      ⚠️ Volumen DECRECIENDO (-73%)
-      ✅ Cambio diario BAJISTA: -13.0% (momentum SHORT sano)
-      🎯 15M | MERL/USDT:USDT | BEARISH STRONG | ADX:41.5 Spread:10.7 Mom:8v | Score15M:-120
-      🚫 BLOQUEO DURO: Score final -120 &lt; 0
-         Razón: Acumulación de penalties supera bonuses
-         Moneda no cumple criterios mínimos
-         ⚡ 5M | MERL/USDT:USDT | BULLISH | Precio:$0.370140 | Vel:-0.001490 | Score5M:10
-   🌐 GRID: WAIT | ⚠️ Comprando TECHO | ⚠️ Sin fuerza (ADX 0.0)
-      📊 4H: BEARISH (spread 25.2)
-      📊 1H: BEARISH (spread 31.8)
-      🎯 DIRECCIÓN: BEARISH (confianza 72%)
-         Votos: BULL 0 vs BEAR 72
-
-🎬 MOVIE ENGINE ANALYSIS...
-
-======================================================================   
-🎬 MOVIE ENGINE: MERL/USDT:USDT (BEARISH)
-======================================================================   
-
-📹 5M - Detalle fino:
-   ⚠️ Pocos frames (0)
-
-📹 1H - Contexto 48h:
-   ⚠️ Pocos frames (0)
-
-📹 4H - Estructura:
-   ⚠️ Pocos frames (0)
-
-🧩 INTEGRANDO CORTOMETRAJES...
-   Coherencia: NO_MOVIE_DATA
-   Veredicto: APPROVE_DEFAULT
-   Confianza: 50%
-
-🎯 DIRECTOR DECIDE...
-   Should Enter: True
-   Archetype: NO_MOVIE
-   Razón: Sin película completa - Sistema normal decide
-
-📊 THRESHOLD DINÁMICO: 55
-
-======================================================================
-✅ PELÍCULA APRUEBA: NO_MOVIE
-======================================================================
-
-   🎬 PELÍCULA APRUEBA: NO_MOVIE
-
-⚡ FILTRO DE FUERZA: MERL/USDT:USDT
---------------------------------------------------
-   ADX: 0.0 | Trend: estable
-   DI+: 0.0 | DI-: 0.0 | Spread: 0.0
-   Direction: BEARISH | Momentum: gray
-   ⚠️ Spread bajo (0.0 &lt; 15): penalty -30
-   ADX Zona: FUERTE (41.5) ✅
-   Spread: 0.0 ❌ (min: 10)
-   Velocidad ADX: +0.4/frame ❌
-   Dirección: STABLE ❌
-   ADX Trend: estable ❌ RESIDUAL
-   ⚠️ ADX NO creciendo = sin movimiento activo
-
-   NIVEL: RESIDUAL (1/4 componentes)
-   VEREDICTO: ❌ SIN FUERZA
-
-🚫 BLOQUEADO POR FILTRO DE FUERZA
-   Nivel: RESIDUAL
-   ADX Zona: FUERTE
-   Razón: Sin fuerza suficiente para operar
-   ⚠️ MERL/USDT:USDT: Direction LATERAL - penalty -50
-      → Sin dominancia DI, usando BULLISH default
-
-   📊 SCORING BREAKDOWN (Time Ladder v5.2.1):
-      Analyzer Score: -50
-   🏎️ VELOCIDAD MERL/USDT:USDT: 0.000%/vela (Accel: 4.146)
-      Precio actual: 0.370140 | Último cierre: 0.370140
-      Velocity: 0.000%
-
-   🔍 Validando espacio (Time Ladder v5.2.1)...
-      Validator Score: 0
-      🎯 COMBINED: (-50 × 0.6) + (0 × 0.4) = -30
-      Threshold: 60
-   ❌ RECHAZADO: -30 &lt; 60
-  ❌ REJECTED: MERL/USDT:USDT
-
-🧠 ORCHESTRATING INTELLIGENCE: MET/USDT:USDT
-   Scanning patterns &amp; structure...
-   ✨ PATTERN FOUND: DOUBLE_TOP in 15m (Conf: 75)
-📊 4H | MET/USDT:USDT | BULLISH WEAK | ADX:24.1 DI+:20.9 DI-:11.2 | Mom:1v | Estructura:INDETERMINADO
-
-🎬 PELÍCULA (MOVIMIENTO):
-   ADX: [32 → 25 → 21 → 14 → 23]
-   Velocidad: -2.1 pts/frame
-   Fase: FORCE_WEAK
-   ❌ Fuerza muriendo (-30)
-   Mom: [6v → 3v → 4v → 8v → 3v]
-   Fase: RESET
-   🎯 Veredicto: NO_FORCE (80%)
-   ⚠️ Momentum red contradice BULLISH: -20
-         📊 Estructura: LATERAL | HH:0 HL:0 LL:0 LH:0
-      🎬 Price Pattern: LATERAL | Fase: CONSOLIDACION
-      ⚠️ ESPERANDO: Sin patrón claro - lateralizando
-         Esperar: Dirección definida
-      ⚠️ Sin dirección clara - Penalty -10
-         📊 Estructura: LATERAL | HH:0 HL:0 LL:0 LH:0
-   🏎️ VELOCIDAD MET/USDT:USDT: 0.000%/vela (Accel: 0.079)
-      Precio actual: 0.254200 | Último cierre: 0.254200
-      🎯 VISIÓN UNIFICADA: ❌ RECHAZADO - Score: 15/100
-      ❌ VISIÓN: Precio: Sin patrón claro - lateralizando
-      ❌ VISIÓN: ZigZag LATERAL
-      ❌ VISIÓN: Velocidad: Velocidad plana (0.00%)
-      ⚠️ Visión rechaza (-25 penalty)
-      ⚠️ ADX 23.3 &lt; 25 pero creciendo (-30)
-      ✅ Spread 10.8 &gt;= 10 (claridad direccional)
-      ⚠️ LONG con momentum red: penalty -20
-      ⚪ Momentum red 3v (desarrollo)
-      ⚠️ Precio desacelerando (current: 0.000%, avg: 0.283%)
-      📊 DEBUG: ADX=23.3(creciendo), Spread=10.8, Mom=red 3v, Score15m=-135    
-      ℹ️ Grid diagonal: datos insuficientes
-      ⚠️ Lateral en PISO del rango (21%)
-      ⚪ Volumen 7% bajo PERO momentum 3v NASCENT (normal)
-      ⚠️ Volumen decreciendo (-94%) pero NASCENT
-      🎯 15M | MET/USDT:USDT | BULLISH MODERATE | ADX:23.3 Spread:10.8 Mom:3v | Score15M:-157
-      🚫 BLOQUEO DURO: Score final -157 &lt; 0
-         Razón: Acumulación de penalties supera bonuses
-         Moneda no cumple criterios mínimos
-         ⚡ 5M | MET/USDT:USDT | LATERAL | Precio:$0.254200 | Vel:0.000000 | Score5M:5
-   🌐 GRID: WAIT | ⚠️ Sin fuerza (ADX 0.0)
-
-Bot detenido por usuario
-
-================================================================================
-📊 RESUMEN SESIÓN
-================================================================================
-Total trades: 70
-Wins: 32 | Losses: 38
-Win rate: 45.7%
-Avg PnL: -0.02%
-Total PnL: $-5.06
-
---------------------------------------------------------------------------------
-🎯 SNIPER STATS FINALES:
-
-📊 SNIPER STATUS:
-   🎯 Priority: 7
-   ⏳ Waiting: 55
-   ❌ Rejected: 34
-   📍 Scan: 408/737 (Ciclo #6)
-
-   🏆 TOP PRIORITY:
-      1. YEE/USDT:USDT - Score: 100.0
-      2. DOT/USDT:USDT - Score: 100.0
-      3. ENS/USDT:USDT - Score: 100.0
-================================================================================
-👋 Bot detenido correctamente
-=======================================================================
-
-Propuesta Gemini: 
-
-Necesito que analices los trades, veo que el bot entra en el trade ya sin fuerza en zonas de resistencias y esta muchos minutos, el bot debería detectar la fuerza y no lo hace, especialmente cuando el precio sube minuto a minuto y va cambiando de valor rápidamente, de la misma manera debería ser para short, lo que hace es entrar en zona ya sin fuerza y pierde muchos minutos con dolares de perdida o centavos de ganancia. Mi idea es que el sniper no espere minuto a minuto para analizar el precio debería almacenarlo en una memoria en el disco, y verificar el precio, si encuentra que en tres minutos subió rápidamente, analiza el grid, hasta donde esta la resistencia, y entrar a hacer trades, lo mismo para short, hasta donde esta el soporte, hay que corregir ese error que entra en zonas ya agotadas, además veo que entra en zonas que lateraliza, vi buenos resultados en zonas que lateraliza, podrías sacar un promedio de que tan bueno fue entrar en zonas de lateralización según el bo? además tanto para short y long, en telegram debería decir también si es bullish o berish pero con fuerza por eso entra en zona de soporte o si es un trade normal, tenemos que entender que interpreta el bot en cada operación, el output es el telegram, analiza todos los errores que tuvo, hace un cuadro estadístico de lateral, bullish y verish, identifica todos los problemas del bot, como yo digo, el bot entra en zonas de soportes o resistencias ya sin fuerza, la operación queda abierta por muchísimos minutos, el sniper debería analizar siempre el precio que mantiene el bot, si esta 20 minutos y su ganancia son 30 centavos tiene que cerrar el trade para operar esa moneda con mejor setup, aunque si arreglamos que el bot detecte realmente la fuerza en las monedas el bot no debería entrar mas en esas operaciones, digo que el bot cierre con 30 centavos para que por lo menos cierre con la operación para cubrir la comisión por abrir esa operación y no afectar el pnl, ya que si tenemos muchas operaciones negativas de unos dólares eso va a afectar a las ganancias del bot, dame tu mejor estrategia, dame una solución optima para estos errores. Adjunto link de Github del bot actualizado con los módulos y otro con los resultados del trade. Gracias. Link de los resultados del bot: https://jrdiar.github.io/txt_reports.html?v=20251227204747
-
-Asistente de programación
-Hola. He realizado la auditoría completa del código y el análisis de comportamiento basado en tu descripción y los módulos subidos.
-
-Tienes razón. El diagnóstico es claro: El bot es lento reaccionando y obstinado manteniendo.
-
-El problema de la "Fuerza Retardada": El bot usa indicadores que promedian el pasado (EMAs, ADX). Cuando estos indicadores dicen "Compra", el precio ya subió y se chocó contra la resistencia.
-
-El problema del "Zombie Trade": El bot se queda 20-40 minutos en una operación muerta (lateral o con pérdida flotante) esperando un milagro, bloqueando capital y acumulando comisiones.
-
-El problema de la "Memoria Corta": El bot mira la vela actual, pero no recuerda si hace 3 minutos el precio estaba un 1% más abajo (lo que indicaría una explosión real).
-
-A continuación, presento el Plan de Optimización "Velocity &amp; Grid" y el código corregido.
-
-📊 1. Análisis Estadístico y Diagnóstico de Errores
-Basado en la lógica del código y los resultados que describes:
-
-Escenario de Mercado	Comportamiento del Bot	Resultado	Causa del Error
-Lateral (Rango)	Excelente. Compra abajo, vende arriba.	✅ Profit	El código actual brilla aquí porque los indicadores osciladores funcionan bien.
-Bullish (Explosión)	Malo. Entra cuando la vela verde ya cerró (en el techo).	❌ Atrapado	Detecta la fuerza tarde. No mide la distancia restante a la resistencia.
-Bearish (Desplome)	Peligroso. Intenta cazar cuchillos cayendo.	❌ Stoploss	Entra en "sobreventa" sin confirmar que la caída se frenó (Velocity negativa).
-Zombie (Estancado)	Pésimo. Se queda abierto &gt;20 min ganando centavos.	⚠️ Pérdida/Empate	Falta de "Time-Based Exit" (Salida por tiempo).
-Conclusión: Debemos conservar la lógica Lateral (que ya funciona) y agregar un motor de "Detección de Velocidad" que actúe antes de que se agote el movimiento.
-
-🛠️ SOLUCIÓN 1: Memoria de Precio (Brain Frames)
-Vamos a modificar brain_frames.py para que tenga una "Memoria Volátil" de los últimos 3 a 5 minutos. Esto permite calcular la aceleración real.
-
-Archivo: brain_frames.py Busca o reemplaza la clase/función de almacenamiento y agrega esto:
-
-Python
-"""
-brain_frames.py - Módulo de Memoria y Velocidad
-"""
-import pandas as pd
-import numpy as np
-
-# Estructura para almacenar la historia reciente en memoria RAM (más rápido que disco para scalping)
-class PriceMemory:
-    def __init__(self):
-        self.history = {}  # {symbol: [{'time': timestamp, 'price': float}]}
-
-    def update(self, symbol, current_price, current_time):
-        if symbol not in self.history:
-            self.history[symbol] = []
-        
-        # Agregar nuevo punto
-        self.history[symbol].append({'time': current_time, 'price': current_price})
-        
-        # Mantener solo los últimos 5 minutos (limpieza)
-        # Asumiendo que update se llama cada ~10-30 segundos
-        if len(self.history[symbol]) &gt; 30: 
-            self.history[symbol].pop(0)
-
-    def get_velocity(self, symbol, minutes=3):
-        """Calcula cambio porcentual en los últimos X minutos"""
-        if symbol not in self.history or len(self.history[symbol]) &lt; 2:
-            return 0.0
-            
-        data = self.history[symbol]
-        current = data[-1]
-        
-        # Buscar el punto más cercano a X minutos atrás
-        target_time = current['time'] - (minutes * 60) # timestamp en segundos
-        
-        # Encontrar el registro más antiguo dentro de la ventana de tiempo
-        past_record = data[0] 
-        
-        velocity = ((current['price'] - past_record['price']) / past_record['price']) * 100
-        return velocity
-
-# Instancia Global
-price_memory = PriceMemory()
-
-def check_price_velocity(symbol, current_price, timestamp):
-    """
-    Función puente para ser llamada desde el Sniper
-    """
-    price_memory.update(symbol, current_price, timestamp)
-    
-    vel_1m = price_memory.get_velocity(symbol, 1)
-    vel_3m = price_memory.get_velocity(symbol, 3)
-    
-    return {
-        'velocity_1m': vel_1m,
-        'velocity_3m': vel_3m,
-        'is_explosive': abs(vel_3m) &gt; 0.40  # Si movió &gt; 0.4% en 3 min es FUERTE
-    }
-🛠️ SOLUCIÓN 2: El Sniper Híbrido (Estrategia)
-Aquí está el cerebro nuevo. Diferencia entre "Trade de Rebote" (tu trade lateral que funciona bien) y "Trade de Velocidad" (para no entrar tarde).
-
-Archivo: brain_sniper_realtime.py
-
-Python
-"""
-brain_sniper_realtime.py - Lógica Híbrida Lateral/Velocidad
-"""
-from brain_frames import check_price_velocity
-import time
-
-def analyze_sniper_opportunity(self, symbol, direction, ladder_data):
-    current_price = ladder_data['15m']['current_price']
-    current_time = time.time()
-    
-    # 1. Obtener Datos del Grid (CRÍTICO: ¿Cuánto espacio queda?)
-    grid = ladder_data['15m'].get('grid', {})
-    resistencia = grid.get('resistencia_diagonal', 0)
-    soporte = grid.get('soporte_diagonal', 0)
-    
-    if resistencia == 0 or soporte == 0:
-        return False # Sin mapa no operamos
-        
-    # 2. Calcular Velocidad (Usando la nueva memoria)
-    velocity_data = check_price_velocity(symbol, current_price, current_time)
-    vel_3m = velocity_data['velocity_3m']
-    
-    distancia_resistencia = ((resistencia - current_price) / current_price) * 100
-    distancia_soporte = ((current_price - soporte) / current_price) * 100
-
-    # === ESTRATEGIA 1: VELOCIDAD (SCALPING PURO) ===
-    # Si el precio sube rápido, entramos SOLO si hay espacio.
-    if velocity_data['is_explosive']:
-        
-        # FILTRO DE ZONA AGOTADA (Tu pedido principal)
-        if direction == 'BULLISH':
-            if vel_3m &gt; 0: # Subiendo
-                if distancia_resistencia &lt; 0.6: # Menos de 0.6% hasta el techo
-                    print(f"⛔ {symbol}: Velocidad fuerte pero SIN ESPACIO ({distancia_resistencia:.2f}% a Resistencia)")
-                    return False
-                else:
-                    return {
-                        'action': 'ENTER_NOW',
-                        'type': '🚀 VELOCITY_LONG',
-                        'reason': f'Explosión +{vel_3m:.2f}% en 3m con espacio ({distancia_resistencia:.2f}%)'
-                    }
-        
-        elif direction == 'BEARISH':
-            if vel_3m &lt; 0: # Bajando
-                if distancia_soporte &lt; 0.6:
-                    print(f"⛔ {symbol}: Caída fuerte pero SIN ESPACIO ({distancia_soporte:.2f}% a Soporte)")
-                    return False
-                else:
-                    return {
-                        'action': 'ENTER_NOW',
-                        'type': '🔻 VELOCITY_SHORT',
-                        'reason': f'Desplome {vel_3m:.2f}% en 3m con espacio ({distancia_soporte:.2f}%)'
-                    }
-
-    # === ESTRATEGIA 2: ESTRUCTURA (LATERAL/REBOTE) ===
-    # Si no hay velocidad explosiva, usamos la lógica clásica de rebote
-    # (Aquí es donde tu bot actual funciona bien)
-    
-    # ... (Tu código existente de validación de indicadores ADX, RSI, etc.) ...
-    # Solo agregar validación final de resistencia:
-    
-    if direction == 'BULLISH' and distancia_resistencia &lt; 0.4:
-        return False # No comprar en lateral si está pegado al techo
-        
-    return { 'action': 'ENTER_NOW', 'type': '🐢 STRUCTURAL_LONG', 'reason': 'Setup técnico validado' }
-🛠️ SOLUCIÓN 3: El "Matador de Zombies" (Salida Inteligente)
-El bot debe cerrar operaciones que no cumplen la expectativa de tiempo/ganancia.
-
-Archivo: brain_executor.py Busca el bucle donde monitorea las posiciones abiertas (monitor_active_trades) y agrega esto:
-
-Python
-# --- Dentro del bucle de monitoreo de trades ---
-
-def check_zombie_exit(trade_data, current_pnl_usd, current_pnl_pct):
-    """
-    Regla: Si pasaron 20 mins y la ganancia es miserable o negativa, SALIR.
-    Liberar al bot para buscar otra oportunidad.
-    """
-    duration_minutes = (time.time() - trade_data['entry_time']) / 60
-    
-    # Configuración
-    MAX_TIME_ZOMBIE = 20 # minutos
-    MIN_PROFIT_TO_STAY = 0.40 # dólares (para cubrir fees y un café)
-    
-    if duration_minutes &gt; MAX_TIME_ZOMBIE:
-        # Si estamos perdiendo o ganando muy poco (menos de 30-40 centavos)
-        if current_pnl_usd &lt; MIN_PROFIT_TO_STAY:
-            return {
-                'should_close': True,
-                'reason': f'💀 ZOMBIE KILL: {duration_minutes:.1f}m abiertos y PNL ${current_pnl_usd:.2f} (Estancado)'
-            }
-            
-    return {'should_close': False}
-
-# USO:
-zombie_check = check_zombie_exit(trade, pnl_usd, pnl_pct)
-if zombie_check['should_close']:
-    close_position(symbol, reason=zombie_check['reason'])
-🛠️ SOLUCIÓN 4: Telegram Informativo
-Modifica telegram_notifications.py para que el mensaje de entrada sea transparente.
-
-Python
-def send_entry_notification(symbol, direction, entry_price, strategy_type, grid_data):
-    """
-    Envia alerta con el TIPO de estrategia.
-    """
-    emoji = "🚀" if "VELOCITY" in strategy_type else "🐢"
-    
-    msg = f"{emoji} **NUEVO TRADE: {symbol}**\n"
-    msg += f"Dirección: #{direction}\n"
-    msg += f"Estrategia: {strategy_type}\n" # &lt;--- CLAVE: Dice si es Velocidad o Estructura
-    msg += f"Precio: {entry_price}\n"
-    msg += f"Distancia Resistencia: {grid_data['dist_res']:.2f}%\n"
-    msg += f"Distancia Soporte: {grid_data['dist_sop']:.2f}%\n"
-    
-    send_msg(msg)
-Resumen de la Optimización
-Arreglo del "Entra tarde": Con brain_frames.py midiendo la velocidad de 3 minutos, el bot detecta el "pump" cuando está ocurriendo, no cuando termina.
-
-Arreglo del "Entra en techo": El brain_sniper_realtime.py ahora tiene prohibido entrar por Velocidad si distancia_resistencia &lt; 0.6%. Esto es lo que elimina las entradas en zonas agotadas.
-
-Arreglo del "Trade Eterno": El brain_executor.py mata cualquier operación que lleve 20 minutos y no haya generado al menos $0.40 USD.
-
-Estadística Lateral: El código mantiene la lógica de rebote para mercados laterales (Estrategia "Tortuga"), pero la separa de la lógica de ruptura (Estrategia "Cohete"), permitiéndote ver en Telegram cuál de las dos está fallando o ganando.
-
-Instrucciones: Copia y pega estos bloques en sus respectivos archivos. Reinicia el bot. Ahora verás en los logs "VELOCITY_LONG" o "STRUCTURAL_LONG", y si una operación se estanca, verás "ZOMBIE KILL".
-
-Propuesta Opus: 
-
- ANÁLISIS COMPLETO - 70 TRADES
-🚨 RESUMEN CRÍTICO
-Métrica	Valor
-Win Rate	45.7% (32/70)
-PnL Total	$-5.06
-LATERAL Trades	55.7% (39/70) → 38.5% win rate
-BULLISH Trades	38.6% (27/70) → 55.6% win rate
-🔴 BUGS ENCONTRADOS
-1. Trades con Score 0-20 (debajo del threshold 60):
-
-ZEN: Score 0 → -$4.00
-ZRC: Score 0 → -$1.39
-PIPE: Score 3 → -$4.61
-NB: Score 3 → -$1.50
-FIX YA APLICADO (v5.2.4 sniper_3layer threshold)
-2. LATERAL es PERDEDOR:
-
-Win rate LATERAL: 38.5%
-Win rate BULLISH: 55.6%
-RECOMENDACIÓN: Volver a BLOQUEAR LATERAL
-3. ADX colapsó después de entrar (9 trades):
-
-El bot entra y ADX cae a 15-17
-RECOMENDACIÓN: ADX debe estar CRECIENDO para entrar
-🎯 PLAN ÓPTIMO
-Prioridad	Acción	Impacto
-1	✅ Fix threshold sniper_3layer	APLICADO
-2	Bloquear LATERAL otra vez	+17% win rate
-3	ADX debe crecer para entrar	Evita 9 trades malos
-4	Stagnation exit (20min + &lt;0.1%)	Cierra trades estancados
-5	Memoria de precios (tu idea)	Detecta velocidad real
-📱 TELEGRAM MEJORADO
-Agregar a notificaciones:
-
-💪 Fuerza: BRUTAL/FUERTE/MODERADA
-📈 Velocity: +0.8%/3min
-🎯 Distancia a resistencia: 2.4%
-Revisar el reporte completo en el archivo adjunto.
-
-¿Qué querés que implemente primero?
-
-Bloquear LATERAL otra vez (impacto inmediato)
-ADX creciendo obligatorio (evita entradas débiles)
-Stagnation exit (cierra trades que no se mueven)
-Memoria de precios (tu idea de detectar velocidad)
-
-ANÁLISIS COMPLETO DEL BOT - Sesión 27/12/2025
-📈 RESUMEN EJECUTIVO
-Métrica	Valor
-Total Trades	70
-Wins	32 (45.7%)
-Losses	38 (54.3%)
-PnL Total	$-5.06
-PnL Promedio	-0.02%
-Duración Promedio	~35 min
-🚨 PROBLEMAS CRÍTICOS ENCONTRADOS
-1. 🔴 ENTRADAS CON SCORE BAJO (BUG CRÍTICO)
-El bot entró con scores que VIOLAN el threshold de 60:
-
-Symbol	Score	Direction	Resultado
-ZEN/USDT	0	LATERAL	-1.20%
-ZRC/USDT	0	LATERAL	-0.42%
-PIPE/USDT	3	LATERAL	-1.38%
-NB/USDT	3	LATERAL	-0.45%
-JOE/USDT	3	LATERAL	-0.32%
-AUDIO/USDT	3	LATERAL	+0.26%
-IDEX/USDT	5	LATERAL	-0.31%
-TRU/USDT	5	BULLISH	+0.50%
-DIA/USDT	10	BULLISH	-0.39%
-IP/USDT	13	LATERAL	+0.52%
-⚠️ DIAGNÓSTICO: El fix de 
-sniper_3layer
- que aplicamos recién (v5.2.4) debería solucionar esto.
-
-2. 🔴 DOMINANCIA DE TRADES LATERAL
-Direction	Cantidad	% del Total	Win Rate	PnL Promedio
-LATERAL	39	55.7%	38.5%	-0.18%
-BULLISH	27	38.6%	55.6%	+0.22%
-BEARISH	4	5.7%	50.0%	+0.11%
-📊 CONCLUSIÓN:
-
-LATERAL: 38.5% win rate → PERDEDOR
-BULLISH: 55.6% win rate → GANADOR
-El bot NO debería operar LATERAL
-3. 🔴 DURACIÓN EXCESIVA DE TRADES
-Trades con duración &gt;60 min (deberían cerrarse antes):
-
-Symbol	Duración	PnL	Direction
-SAFE/USDT	294 min	+$4.03	LATERAL
-US/USDT	224 min	+$1.62	LATERAL
-ARPA/USDT	204 min	-$0.27	LATERAL
-USUAL/USDT	174 min	-$0.64	BULLISH
-4/USDT	167 min	+$1.13	LATERAL
-ASR/USDT	148 min	+$10.39	LATERAL
-PLUME/USDT	133 min	+$5.80	LATERAL
-SEI/USDT	126 min	+$1.46	LATERAL
-PEOPLE/USDT	127 min	+$2.82	LATERAL
-OGN/USDT	111 min	-$2.25	LATERAL
-📊 CONCLUSIÓN: Trades LATERAL duran más pero con resultados mixtos.
-
-4. 🔴 ZONAS AGOTADAS (Sin Fuerza)
-Trades que entraron con ADX débil/decreciendo:
-
-MAV/USDT: Salida por "ADX colapsó (17.8)"
-SEI/USDT: Salida por "ADX colapsó (16.8)"
-ICX/USDT: Salida por "ADX colapsó (17.8)"
-USTC/USDT: Salida por "ADX colapsó (16.2)"
-PLUME/USDT: Salida por "ADX colapsó (16.3)"
-PEOPLE/USDT: Salida por "ADX colapsó (17.0)"
-4/USDT: Salida por "ADX colapsó (15.0)"
-SAFE/USDT: Salida por "ADX colapsó (16.9)"
-ASR/USDT: Salida por "ADX colapsó (17.6)"
-📊 CONCLUSIÓN: Si el bot detecta ADX bajo al SALIR, debería haberlo detectado al ENTRAR.
-
-🎯 RECOMENDACIONES DE OPTIMIZACIÓN
-PRIORIDAD 1: Reforzar validación de entrada
-PROBLEMA: Bot entra con score 0-20 cuando threshold es 60
-CAUSA: sniper_3layer bypasaba threshold
-FIX APLICADO: v5.2.4 agregó verificación threshold en sniper_3layer ✅
-PRIORIDAD 2: Bloqueo total de LATERAL
-Acción	Impacto Estimado
-Bloquear LATERAL	+10-15% win rate
-ACTUAL: LATERAL aplica penalty -50
-RECOMENDACIÓN: Convertir LATERAL a HARD BLOCK nuevamente
-RAZÓN: Win rate 38% vs 56% de BULLISH
-PRIORIDAD 3: Salida por tiempo estancado
-ACTUAL: Time exit de 10-30 min perdiendo
-PROBLEMA: Trades duran &gt;60 min con PnL mínimo
-PROPUESTA: Si trade está &gt;20 min con PnL &lt; +0.1%:
-- Cerrar inmediatamente
-- Razón: "Stagnation exit"
-PRIORIDAD 4: Validación ADX estricta al entrar
-PROBLEMA: Bot entra y ADX colapsa después
-SOLUCIÓN: Verificar ADX TENDENCIA antes de entrar
-- Si ADX decreciendo → NO ENTRAR
-- Si ADX &lt; 20 → NO ENTRAR
-PRIORIDAD 5: Memoria de precio (tu idea)
-TU IDEA: "El sniper debería almacenar precio en disco 
-y detectar si en 3 min subió rápidamente"
-IMPLEMENTACIÓN:
-1. Crear price_memory.json con {symbol: [prices últimos 5 min]}
-2. Calcular velocity = (price[now] - price[-3min]) / price[-3min]
-3. Si velocity &gt; +1% en 3 min → FUERZA EXPLOSIVA
-4. Combinar con distancia a resistencia
-5. Entrar SOLO si: velocity alta + espacio a resistencia &gt; 1%
-📊 TOP 5 MEJORES TRADES
-Symbol	PnL	Duration	Direction	Score
-STORJ/USDT	+$21.25	25 min	BULLISH	78
-ASR/USDT	+$10.39	148 min	LATERAL	53
-KAITO/USDT	+$6.01	10 min	BULLISH	23
-PLUME/USDT	+$5.80	133 min	LATERAL	98
-XVG/USDT	+$4.04	19 min	BULLISH	48
-📊 PATRÓN: Trades BULLISH ganan más rápido (10-25 min)
-
-📊 TOP 5 PEORES TRADES
-Symbol	PnL	Duration	Direction	Score
-FLOW/USDT	-$7.85	15 min	LATERAL	113
-BULLA/USDT	-$6.15	29 min	LATERAL	15
-PIPE/USDT	-$4.61	10 min	LATERAL	3
-PHA/USDT	-$4.19	12 min	BULLISH	95
-APEX/USDT	-$4.20	10 min	LATERAL	68
-📊 PATRÓN: 4/5 peores trades son LATERAL
-
-🎯 PLAN DE ACCIÓN INMEDIATO
-#	Acción	Dificultad	Impacto
-1	✅ Fix sniper_3layer threshold	APLICADO	ALTO
-2	Bloquear LATERAL completamente	FÁCIL	ALTO
-3	Stagnation exit (20min + &lt;0.1%)	MEDIO	MEDIO
-4	ADX debe estar CRECIENDO	FÁCIL	ALTO
-5	Memoria de precios para velocity	COMPLEJO	ALTO
-6	Telegram: Indicar fuerza + direction	FÁCIL	BAJO
-📱 MEJORA TELEGRAM
-ACTUAL:
-
-🔴 ENTRADA - IN/USDT:USDT
-📊 Dirección: LATERAL
-⭐ Score Brain: 85/100
-PROPUESTO:
-
-🔴 ENTRADA - IN/USDT:USDT
-📊 Dirección: LATERAL ⚠️ (RIESGO)
-⭐ Score Brain: 85/100
-💪 Fuerza: MODERADA (ADX 25.3 ↗️)
-📈 Velocity: +0.8%/3min
-🎯 Target: $0.0735 (distancia 2.4%)
-🛡️ Resistencia más cercana: $0.0740
-
-Propuesta GPT 4.1
-
-
-¡Por supuesto! Aquí tienes un plan de acción concreto, con ejemplos de código actual y propuestas de mejora para los puntos críticos del bot. No modificaré nada aún, solo te muestro el plan y los snippets sugeridos.
-
-🟢 Plan de Mejora con Código Propuesto
-1. Validación de Fuerza Antes de Entrar (brain_force_filter.py / brain_analyzer.py)
-Código Actual (Ejemplo):
-
-# ...existing code...
-# Validar que la fuerza esté CRECIENDO, no solo presente
-if adx_current &gt; 25 and adx_trend == 'creciendo':
-    fuerza = True
-else:
-    fuerza = False
-# Penalizar si adx_trend es 'decreciendo'
-# ...existing code...
-
-Código Propuesto:
-
-# ...existing code...
-# Validar que la fuerza esté CRECIENDO, no solo presente
-if adx_current &gt; 25 and adx_trend == 'creciendo':
-    fuerza = True
-else:
-    fuerza = False
-# Penalizar si adx_trend es 'decreciendo'
-# ...existing code...
-
-2. Memoria de Precio y Aceleración (brain_frames.py / brain_executor.py)
-Código Actual (Ejemplo):
-
-# ...existing code...
-precio_actual = get_current_price(symbol)
-# ...existing code...
-
-Código Propuesto:
-
-# ...existing code...
-# Almacenar historial de precios en disco
-frame = {
-    'timestamp': datetime.now(),
-    'precio': precio_actual,
-    'adx': adx_current,
-    # ...otros indicadores...
-}
-save_frame_to_disk(symbol, frame)
-
-# Analizar aceleración en los últimos 3 minutos antes de operar
-frames = load_last_frames(symbol, minutes=3)
-if is_accelerating(frames):
-    # Permitir entrada
-else:
-    # Rechazar entrada
-# ...existing code...
-
-3. Cierre Automático de Trades Poco Rentables (brain_executor.py)
-Código Actual (Ejemplo):
-
-# ...existing code...
-if trade_open and profit &lt; 0.3:
-    # Mantener trade abierto
-# ...existing code...
-
-Código Propuesto:
-
-# ...existing code...
-# Cerrar trade si lleva &gt;20 minutos y ganancia &lt; $0.30
-if trade_open and profit &lt; 0.3 and trade_duration &gt; 20:
-    close_trade(symbol)
-    send_telegram(f"Trade cerrado por baja rentabilidad: {profit}$ en {trade_duration}min")
-# ...existing code...
-
-4. Output Mejorado en Telegram (telegram_notifications.py)
-Código Actual (Ejemplo):
-
-def send_telegram(message):
-    # ...existing code...
-
-Código Propuesto:
-
-def send_telegram_trade_context(symbol, direction, fuerza, zona, motivo, profit=None):
-    mensaje = (
-        f"🧠 Trade {symbol}\n"
-        f"Dirección: {direction}\n"
-        f"Fuerza: {fuerza}\n"
-        f"Zona: {zona}\n"
-        f"Motivo: {motivo}\n"
-    )
-    if profit is not None:
-        mensaje += f"Ganancia: {profit}$\n"
-    send_telegram(mensaje)
-
-5. Penalización en Lateralización (brain_phase_classifier.py)
-Código Actual (Ejemplo):
-
-# ...existing code...
-if fase == 'LATERAL':
-    score -= 10
-# ...existing code...
-
-Código Propuesto:
-
-# ...existing code...
-if fase == 'LATERAL':
-    # Penalizar solo si la estadística histórica es negativa
-    if get_lateral_stats(symbol)['avg_profit'] &lt; 0:
-        score -= 20
-    else:
-        score -= 5
-# ...existing code...
-
-Resumen
-Validar fuerza creciente antes de operar.
-Usar memoria de precio y aceleración para filtrar entradas.
-Cerrar trades poco rentables automáticamente.
-Mejorar el output de Telegram con contexto completo.
-Penalizar lateralización según estadística real.
-¿Quieres que implemente alguno de estos cambios en el código real? ¿O prefieres revisar primero algún módulo específico?
-
-GPT-4.1 • 1x
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 51,461<br>
-    Generado: 2025-12-27 22:12:32
+    Total caracteres: 7,608<br>
+    Generado: 2025-12-27 22:50:40
   </div>
 </body>
 </html>
