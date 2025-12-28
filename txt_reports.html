@@ -15,351 +15,374 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-27 23:14:51</div>
+  <div class="meta">Última actualización: 2025-12-28 00:25:33</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
+INVESTIGACIÓN COMPLETA: 5M vs 15M
+🚨 HALLAZGO CRÍTICO
+5M NO tiene poder de veto. 15M domina 100%.
 
-⚠️ VERIFICACIÓN COMPLETA - ENCONTRÉ PROBLEMAS
-🔴 ERRORES CRÍTICOS EN LOS PROMPTS:
-PROMPT #1 - LATERAL Penalty:
-
-Problema	En Prompt	En Código Real
-Archivo incorrecto	brain_analyzer.py	brain_sniper_realtime.py:100
-Línea incorrecta	~1350	95-118
-Campo grid	grid['range_pct']	grid['ancho_pct'] o ancho_atr
-Código real (sniper_realtime.py:100):
+Lo que encontré en el código:
+1. analyze_5m() línea 1563:
 
 python
-if direction == 'LATERAL':
-    lateral_direction_penalty = 50
-    analyzer_score -= lateral_direction_penalty
-PROMPT #2 - ADX Decreciendo:
-
-Problema	En Prompt	En Código Real
-Penalty actual	-30	-60 (línea 872)
-adx_velocity	✅ Existe	adx_velocity en línea 210
-Código real (analyzer.py:871-874):
+def analyze_5m(symbol):
+    """5M: Data para ejecución - NO rechaza"""  # ← CLAVE
+2. Score 5M (línea 2121):
 
 python
-elif adx_trend == 'decreciendo':
-    score_15m -= 60  # ← YA ES 60, NO 30
-    adx_rejected = True
-PROMPT #3 - Velocity System:
+score = score + min(score_5m_value, 20)  # Max +20 BONUS
+5M solo SUMA puntos, nunca RESTA ni BLOQUEA.
 
-✅ OK - brain_frames.py es correcto
-✅ OK - Código nuevo, no hay conflicto
-PROMPT #4 - Zombie Exit:
+📊 En tu caso MAV:
+Timeframe	Lo que vio	Efecto en decisión
+5M	ADX caótico, ROJO	score_5m = 0 (no suma)
+15M	ADX OK, VERDE	score_15m = 60+ (PASA)
+Resultado	BOT ENTRÓ	15M dominó, 5M ignorado
+💡 Solución necesaria:
+Dar poder de PENALTY a 5M cuando detecta:
 
-Problema	En Prompt	En Código Real
-Variable PnL	current_pnl_pct	pnl_pct (línea 534)
-Variable USD	position_value	self.capital_per_trade (línea 557)
-Fórmula PnL USD	/100	Ya calculado correctamente
-Código real (executor.py:557):
+Direction = LATERAL → penalty -40
+ADX &lt; 18 → penalty -30
+Momentum opuesto al trade → penalty -50
+📋 Reporte completo en el archivo adjunto
+Incluye:
+
+Arquitectura actual detallada
+Dónde se combina 5M + 15M
+Por qué 5M es ignorado
+3 opciones de solución con código
+¿Querés que prepare un PROMPT #6 para darle poder de veto a 5M?
+
+
+
+ INVESTIGACIÓN: Arquitectura 5M vs 15M
+Conclusión Principal: 5M NO tiene poder de veto. 15M domina completamente.
+
+📊 ANÁLISIS DE LA IMAGEN MAV
+MAV 5M vs 15M
+Review
+MAV 5M vs 15M
+
+Lo que muestra la imagen:
+Timeframe	ADX	Momentum	Estado
+5M	Caótico, lateral	Valle ROJO formándose	⚠️ PELIGRO
+15M	Aparentemente OK	Verde/subiendo	✅ "Parece bien"
+El bot eligió 15M y entró → Trade malo porque 5M ya mostraba el colapso.
+
+🏗️ ARQUITECTURA ACTUAL
+Función 
+analyze_5m()
+ - Línea 1563
+def analyze_5m(symbol):
+    """5M: Data para ejecución - NO rechaza"""  # ← CLAVE: "NO rechaza"
+Lo que hace:
+
+Calcula ADX, momentum, RSI, velocity
+Genera score_5m (máximo 25 puntos posibles)
+Detecta direction (BULLISH/BEARISH/LATERAL)
+PERO NO TIENE PODER DE BLOQUEO
+Score 5M - Línea 1631
+score_5m = 0
+if adx_data['adx_current'] &gt; 25:
+    score_5m += 10  # Max +10
+elif adx_data['adx_current'] &gt; 18:
+    score_5m += 5
+if velocity_data.get('velocity_current', 0) &gt; 0:
+    score_5m += 5   # Max +5
+if 30 &lt;= rsi_data['rsi_current'] &lt;= 70:
+    score_5m += 5   # Max +5
+# TOTAL MÁXIMO: 20 puntos
+🔗 CÓMO SE COMBINA 5M CON 15M
+Línea 2115-2121 (calculate_setup_score):
+# 15M puede aportar hasta 25 puntos
+if analysis_15m and 'score_15m' in analysis_15m:
+    score = int(score + min(int(score_15m_value), 25))  # ← MAX 25
+# 5M solo puede aportar hasta 20 puntos (BONUS, no decisión)
+if analysis_5m and 'score_5m' in analysis_5m:
+    score = int(score + min(int(score_5m_value), 20))   # ← MAX 20
+🚨 PROBLEMA CRÍTICO:
+5M solo SUMA puntos, nunca RESTA ni BLOQUEA
+
+Si 5M detecta	Efecto en decisión
+ADX colapsando	NADA - solo no suma bonus
+Direction LATERAL	NADA - solo entra en lista de direcciones
+Momentum rojo	NADA - score_5m será bajo pero no penalty
+📍 DÓNDE SE USA 5M
+1. brain_sniper_realtime.py:127
+velocity_check = check_price_velocity(symbol, direction, '5m')
+if 'insuficientes' in velocity_check.get('reason', '').lower():
+    velocity_check = check_price_velocity(symbol, direction, '15m')  # ← FALLBACK a 15M!
+Problema: Si 5M no tiene datos, usa 15M como fallback.
+
+2. brain_think.py:425
+def validate_zone_layer(symbol, tf='5m'):  # Usa 5M para zonas
+Problema: Solo para detectar zonas S/R, NO para decisión final.
+
+3. brain_think.py:809-811
+# Si hay ladder con datos de 15m, usar sistema 3 capas primero
+if ladder.get('15m'):
+    result_3layer = sniper_3layer(symbol, direction, ladder)
+Problema: Sistema 3 capas prioriza 15M, ignora conflictos con 5M.
+
+🎯 RESPUESTAS A TUS PREGUNTAS
+1. ¿Cómo usa el bot actualmente el análisis de 5M?
+RESPUESTA: Solo como BONUS de puntos (+20 max) y para velocity check.
+
+NO tiene poder de decisión
+NO puede rechazar trades
+NO puede vetar lo que dice 15M
+2. ¿Dónde se combinan los scores de 5M y 15M?
+RESPUESTA: En calculate_setup_score() línea 2115-2121:
+
+score_final = score_15m (max 25) + score_5m (max 20) + otros_bonus
+3. ¿5M tiene poder de influir en la decisión o solo es informativo?
+RESPUESTA: 99% INFORMATIVO
+
+Puede sumar hasta +20 puntos
+Pero si detecta CAOS → simplemente no suma
+NO PUEDE RESTAR ni BLOQUEAR
+🔴 EL BUG EN EL CASO MAV
+Situación MAV:
+├── 5M: ADX caótico, momentum ROJO, LATERAL
+│   └── score_5m = 0 (no suma bonus, pero NO RESTA)
+│
+├── 15M: ADX OK, momentum verde, BULLISH
+│   └── score_15m = 60+ (pasa threshold)
+│
+└── BOT DECIDE: ENTRAR ✅ (basado en 15M)
+    └── RESULTADO: Trade malo ❌
+El bot entró porque 15M "parecía bien", ignorando que 5M ya mostraba el colapso 15-20 minutos antes.
+
+💡 SOLUCIÓN PROPUESTA
+Opción A: Dar poder de VETO a 5M
+# En brain_sniper_realtime.py, ANTES de decidir:
+# Verificar conflicto 5M vs 15M
+data_5m = ladder_data.get('5m', {})
+direction_5m = data_5m.get('direction', 'UNKNOWN')
+adx_5m = data_5m.get('adx', {}).get('adx_current', 0)
+# Si 5M es LATERAL o ADX &lt; 18, aplicar penalty SEVERA
+if direction_5m == 'LATERAL':
+    analyzer_score -= 40
+    print(f"   ⚠️ 5M LATERAL detectado - penalty -40")
+if adx_5m &lt; 18:
+    analyzer_score -= 30
+    print(f"   ⚠️ 5M ADX débil ({adx_5m:.1f}) - penalty -30")
+Opción B: Requerir alineación 5M + 15M
+# Ambos timeframes deben coincidir en dirección
+if direction_5m != direction_15m and direction_5m != 'LATERAL':
+    analyzer_score -= 50
+    print(f"   🚨 Conflicto 5M ({direction_5m}) vs 15M ({direction_15m})")
+Opción C: 5M puede BLOQUEAR si detecta colapso
+# Si 5M detecta momentum opuesto al trade → BLOCK
+mom_5m = data_5m.get('momentum', {}).get('color_current', 'gray')
+if direction == 'BULLISH' and mom_5m in ['red', 'maroon']:
+    return False  # BLOCK: 5M viene contra el trade
+📋 RESUMEN EJECUTIVO
+Aspecto	Estado Actual	Problema
+5M Score	Max +20 bonus	Solo suma, nunca resta
+5M Direction	Se registra	No afecta decisión
+5M ADX	Se calcula	No tiene penalty si bajo
+5M Momentum	Se calcula	No bloquea si opuesto
+Decisión final	15M domina	5M es ignorado
+Conclusión: El bot necesita dar PODER DE VETO a 5M cuando detecta condiciones de colapso o lateralización que 15M aún no ve.
+
+5 Minutos deberia tener el control total del grid en 48 hs, tambien del precio que reemplazaria las velas y le da una vision al sniper para ver el contexto de la moneda, tiene que tener el control total, 15 minutos es contraproducente que tome decisiones en el bot porque es muy lento. Podrias analizar en profundidad que más afecta 15 minutos en el bot? Gracias.
+
+AUDITORÍA PROFUNDA: Uso de 15M en el Bot
+📊 Hallazgos principales:
+Área	Referencias 15M	5M	Dominancia
+brain_force_filter.py	14	0	15M 100%
+brain_think.py	34	3	15M 90%
+brain_intelligent.py	18	2	15M 90%
+brain_analyzer.py	100+	5	15M 95%
+Total core	166+	~10	15M DOMINA
+🔴 Puntos críticos donde 15M controla:
+1. Force Filter (CRÍTICO)
 
 python
-pnl_usd = (self.capital_per_trade * pnl_pct / 100) * SIMULATE_LEVERAGE
-PROMPT #5 - Constantes:
+# brain_force_filter.py - LEE SOLO 15M
+data_15m = ladder_data.get('15m', {})
+# 5M NO SE USA para determinar fuerza
+2. Sistema 3 Capas (CRÍTICO)
 
-✅ OK - Solo agregar al final de brain_config.py
-📋 PROMPTS CORREGIDOS:
-PROMPT #1 CORREGIDO:
+python
+# brain_think.py - DEFAULT 15M
+def validate_adx_layer(symbol, tf='15m'):
+def validate_momentum_layer(symbol, tf='15m'):
+3. Direction del trade (CRÍTICO)
 
-Archivo: brain_sniper_realtime.py (no analyzer)
-Línea: 99-118
-Campo grid: usar ancho_pct o ancho_atr
-PROMPT #2 CORREGIDO:
+python
+# brain_intelligent.py - USA 15M
+direction_15m = ladder_analysis.get('15m', {}).get('direction')
+4. Scoring (CRÍTICO)
 
-Penalty actual ya es -60 (no -30 como decía)
-Solo agregar lógica de velocidad de colapso
-PROMPT #4 CORREGIDO:
+python
+# brain_analyzer.py - 100+ líneas para score_15m
+# score_5m solo tiene 5 líneas y max +20
+📋 Módulos a modificar para 5M Dominant:
+Prioridad	Archivo	Cambios
+🔴 ALTA	brain_force_filter.py	data_15m → data_5m
+🔴 ALTA	brain_think.py	Defaults '5m'
+🔴 ALTA	brain_intelligent.py	Direction de 5M
+🟡 MEDIA	brain_sniper_realtime.py	Sin fallback 15M
+🟡 MEDIA	brain_analyzer.py	score_5m robusto
+Arquitectura propuesta:
+ANTES: 4H → 1H → 15M (DECIDE) → 5M (bonus)
+DESPUÉS: 4H → 1H → 5M (DECIDE) → 15M (contexto)
+El reporte completo está en el archivo adjunto. ¿Querés que prepare los prompts para la migración a 5M Dominant?
 
-Usar pnl_pct (no current_pnl_pct)
-Usar self.capital_per_trade (no position_value)
-pnl_usd ya existe en línea 557
-¿Querés que actualice el plan de implementación con las correcciones?
+ AUDITORÍA PROFUNDA: Uso de 15M en el Bot
+Total referencias 15M: 431+ en todo el codebase En módulos de decisión: 68+
 
-odo verificado ✅
-El plan está listo para implementar. ¿Querés que empiece con el Prompt #5 (Constantes) que es el que no tiene dependencias?
+📊 RESUMEN EJECUTIVO
+Área	Usos de 15M	Usos de 5M	Dominancia
+Decisión entrada	Exclusivo 15M	Solo bonus	15M 100%
+Force Filter	15M	-	15M 100%
+Sistema 3 Capas	15M	-	15M 100%
+Scoring principal	score_15m (~100 líneas)	score_5m (+20 max)	15M 95%
+Validation layers	Default 15M	Zone layer solo	15M 90%
+🔴 MÓDULOS AFECTADOS POR 15M
+1. brain_force_filter.py (14 referencias)
+# Líneas 82-128 - TODO el force filter usa SOLO 15M
+data_15m = ladder_data.get('15m', {})
+adx_data = data_15m.get('adx', {})
+momentum_data = data_15m.get('momentum', {})
+direction = data_15m.get('direction', 'LATERAL')
+Impacto: El filtro de fuerza IGNORA 5M completamente. Si 5M ve caos pero 15M tiene fuerza → BOT ENTRA.
 
-PLAN DE IMPLEMENTACIÓN v5.2.5 (CORREGIDO)
-Time Ladder Optimizado - 5 Cambios
-✅ VERIFICADO contra código real el 27/12/2025
+2. brain_think.py (34 referencias)
+Sistema 3 Capas - EXCLUSIVO 15M:
+# Línea 184 - ADX layer default 15M
+def validate_adx_layer(symbol, tf='15m'):
+# Línea 239 - Momentum layer default 15M
+def validate_momentum_layer(symbol, tf='15m', direction='BULLISH'):
+# Línea 314 - Structure layer default 15M
+def validate_structure_layer(symbol, tf='15m', ...):
+# Línea 811 - Decisión principal usa 15M
+if ladder.get('15m'):
+    result_3layer = sniper_3layer(symbol, direction, ladder)
+Impacto: Las 3 capas de validación usan 15M por defecto. 5M solo se usa para zone layer (línea 425).
 
-📋 RESUMEN DE CAMBIOS
-#	Archivo	Cambio	Estado
-1	
-brain_sniper_realtime.py
-LATERAL penalty contextual	✅ Verificado
-2	
-brain_analyzer.py
-ADX colapso velocity	✅ Verificado
-3	
-brain_frames.py
-Sistema velocity RAM	✅ Nuevo código
-4	
-brain_executor.py
-Zombie exit	✅ Verificado
-5	
-brain_config.py
-Nuevas constantes	✅ Agregar al final
-📝 PROMPT #1: LATERAL Penalty Contextual (CORREGIDO)
-Archivo: 
-brain_sniper_realtime.py
- (NO brain_analyzer.py) Líneas: 99-118
+Score negativo bloquea - USA 15M:
+# Línea 1058-1061
+score_15m = a15m.get('score_15m', 0)
+if score_15m &lt; 0:
+    reject_reason = f"Score 15M = {score_15m} (negativo)"
+3. brain_intelligent.py (18 referencias)
+# Línea 58 - Analiza 15M
+ladder_analysis['15m'] = analyze_15m(symbol, ...)
+# Línea 68-70 - Lateral penalty de 15M
+a15m = ladder_analysis.get('15m', {})
+lateral_penalty = a15m.get('lateral_penalty', 0)
+# Línea 103 - ADX de 15M
+'adx_val': ladder_analysis.get('15m', {}).get('adx', {}).get('adx_current', 0)
+# Línea 113-117 - Movie Engine usa direction de 15M
+direction_15m = ladder_analysis.get('15m', {}).get('direction', 'LATERAL')
+movie_result = movie_engine.analyze_complete_movie(symbol, direction_15m)
+Impacto: Toda la "inteligencia" del bot lee de 15M. Movie engine recibe direction de 15M.
 
-Código actual verificado:
-# Líneas 99-118 en brain_sniper_realtime.py
-lateral_direction_penalty = 0
-if direction == 'LATERAL':
-    lateral_direction_penalty = 50
-    print(f"   ⚠️ {symbol}: Direction LATERAL - penalty -{lateral_direction_penalty}")
-    analyzer_score -= lateral_direction_penalty
-    
-    # Reasignar direction por dominancia DI
-    data_15m = ladder_data.get('15m', {})
-    adx_data = data_15m.get('adx', {})
-    
-    if adx_data.get('dominance') == 'DI+':
-        direction = 'BULLISH'
-    elif adx_data.get('dominance') == 'DI-':
-        direction = 'BEARISH'
-    else:
-        direction = 'BULLISH'
-Código propuesto CORREGIDO:
-# LATERAL handling - Time Ladder v5.2.5 contextual
-lateral_direction_penalty = 0
-if direction == 'LATERAL':
-    from brain_config import (
-        LATERAL_BASE_PENALTY,
-        LATERAL_VELOCITY_REDUCTION_HIGH,
-        LATERAL_VELOCITY_REDUCTION_MED,
-        LATERAL_NARROW_CHANNEL_AGGRAVATE
-    )
-    from brain_frames import calculate_velocity_3m, update_price_memory
-    
-    # Base penalty más severo (win rate 38.5%)
-    lateral_penalty = LATERAL_BASE_PENALTY  # 70
-    
-    # Actualizar memoria y obtener velocity
-    current_price = ladder_data.get('15m', {}).get('current_price', 0)
-    update_price_memory(symbol, current_price)
-    velocity_3m = calculate_velocity_3m(symbol)
-    
-    # Contexto 1: Velocity alta reduce penalty
-    if velocity_3m &gt; 0.15:
-        lateral_penalty -= LATERAL_VELOCITY_REDUCTION_HIGH  # -25
-        print(f"      ✅ Velocity alta {velocity_3m:.2f}% reduce penalty LATERAL")
-    elif velocity_3m &gt; 0.08:
-        lateral_penalty -= LATERAL_VELOCITY_REDUCTION_MED  # -15
-    
-    # Contexto 2: Canal estrecho agrava (usar ancho_pct del grid)
-    grid_data = ladder_data.get('15m', {}).get('grid', {})
-    canal_ancho = grid_data.get('ancho_pct', 100)  # ← CORREGIDO: ancho_pct
-    if canal_ancho &lt; 2:
-        lateral_penalty += LATERAL_NARROW_CHANNEL_AGGRAVATE  # +20
-        print(f"      ⚠️ Canal estrecho ({canal_ancho:.1f}%) agrava penalty")
-    
-    lateral_direction_penalty = lateral_penalty
-    print(f"   ⚠️ {symbol}: Direction LATERAL - penalty -{lateral_penalty}")
-    analyzer_score -= lateral_penalty
-    
-    # Reasignar direction por dominancia DI (sin cambios)
-    data_15m = ladder_data.get('15m', {})
-    adx_data = data_15m.get('adx', {})
-    
-    if adx_data.get('dominance') == 'DI+':
-        direction = 'BULLISH'
-        print(f"      → Usando BULLISH (DI+ domina)")
-    elif adx_data.get('dominance') == 'DI-':
-        direction = 'BEARISH'
-        print(f"      → Usando BEARISH (DI- domina)")
-    else:
-        direction = 'BULLISH'
-        print(f"      → Sin dominancia, usando BULLISH default")
-📝 PROMPT #2: ADX Colapso Velocity (CORREGIDO)
-Archivo: 
-brain_analyzer.py
- Líneas: 871-874
+4. brain_sniper_realtime.py (3 referencias directas)
+# Línea 106-107 - LATERAL penalty lee 15M
+data_15m = ladder_data.get('15m', {})
+adx_data = data_15m.get('adx', {})
+# Línea 129 - Fallback a 15M si 5M falla
+velocity_check = check_price_velocity(symbol, direction, '15m')
+Impacto: Incluso cuando intenta usar 5M para velocity, si falla usa 15M como backup.
 
-Código actual verificado:
-# Líneas 871-874 - Penalty ACTUAL es -60, NO -30
-elif adx_trend == 'decreciendo':
-    score_15m -= 60  # ← YA ES 60
-    adx_rejected = True
-    print(f"      ❌ BLOQUEADOR: ADX {adx_current:.1f} decreciendo (fuerza muriendo)")
-Código propuesto CORREGIDO:
-# ADX muriendo - Penalty v5.2.5 con velocidad de colapso
-elif adx_trend == 'decreciendo':
-    from brain_config import (
-        ADX_DECREASING_BASE_PENALTY,
-        ADX_COLLAPSING_FAST_PENALTY,
-        ADX_COLLAPSING_MED_PENALTY
-    )
-    
-    base_penalty = ADX_DECREASING_BASE_PENALTY  # 50
-    
-    # Agravar si colapsa rápido (adx_velocity ya existe en línea 210)
-    if adx_velocity &lt; -2:  # Cayendo &gt; 2 puntos/frame
-        base_penalty = ADX_COLLAPSING_FAST_PENALTY  # 70
-        print(f"      🚨 ADX colapsando RÁPIDO ({adx_velocity:.1f}pts/frame)")
-    elif adx_velocity &lt; -1:
-        base_penalty = ADX_COLLAPSING_MED_PENALTY  # 60
-        print(f"      ⚠️ ADX colapsando moderado ({adx_velocity:.1f}pts/frame)")
-    
-    score_15m -= base_penalty
-    adx_rejected = True
-    print(f"      ❌ ADX {adx_current:.1f} decreciendo → PENALTY -{base_penalty}")
-NOTA: adx_velocity ya existe en línea 210 de brain_analyzer.py
+5. brain_analyzer.py - score_15m (~100+ referencias)
+El scoring principal es score_15m, NO score_5m:
 
-📝 PROMPT #3: Velocity Detection (Sin cambios)
-Archivo: 
-brain_frames.py
- Ubicación: Agregar al final del archivo
+# Línea 772 - Score base
+score_15m = -pump_penalty - lateral_penalty - ...
+# Líneas 851-1155 - TODAS las penalties/bonus van a score_15m
+score_15m += 30  # Nascent bonus
+score_15m -= 60  # ADX decreciendo
+score_15m += 10  # Spread OK
+score_15m -= 20  # Momentum opuesto
+# ... y 50+ más
+Impacto: El 95% del scoring va a score_15m. score_5m solo tiene ~5 líneas y máximo +20 puntos.
 
-Código nuevo completo:
-# ===================================================================
-# VELOCITY DETECTION SYSTEM (Time Ladder v5.2.5)
-# ===================================================================
-import time
-class PriceMemory:
-    """Memoria en RAM de precios para calcular velocity real."""
-    
-    def __init__(self):
-        self.history = {}  # {symbol: [(timestamp, price), ...]}
-    
-    def update(self, symbol, current_price):
-        """Agregar precio actual a memoria"""
-        timestamp = time.time()
-        
-        if symbol not in self.history:
-            self.history[symbol] = []
-        
-        self.history[symbol].append((timestamp, current_price))
-        
-        # Mantener solo últimos 5 minutos
-        cutoff = timestamp - (5 * 60)
-        self.history[symbol] = [
-            (t, p) for t, p in self.history[symbol] if t &gt; cutoff
-        ]
-    
-    def get_velocity(self, symbol, minutes=3):
-        """Calcula cambio % en últimos N minutos."""
-        if symbol not in self.history or len(self.history[symbol]) &lt; 2:
-            return 0.0
-        
-        now = time.time()
-        target_time = now - (minutes * 60)
-        
-        current_price = self.history[symbol][-1][1]
-        
-        past_price = None
-        for timestamp, price in self.history[symbol]:
-            if timestamp &gt;= target_time:
-                past_price = price
-                break
-        
-        if past_price is None or past_price == 0:
-            return 0.0
-        
-        velocity = ((current_price - past_price) / past_price) * 100
-        return velocity
-# Instancia global
-_price_memory = PriceMemory()
-def calculate_velocity_3m(symbol):
-    """Función helper para usar desde sniper."""
-    return _price_memory.get_velocity(symbol, minutes=3)
-def update_price_memory(symbol, current_price):
-    """Actualizar memoria con precio actual."""
-    _price_memory.update(symbol, current_price)
-📝 PROMPT #4: Zombie Exit (CORREGIDO)
-Archivo: 
-brain_executor.py
- Ubicación: Línea ~545 (después de duration_min)
+📈 COMPARACIÓN 15M vs 5M EN SCORING
+Aspecto	score_15m	score_5m
+Líneas de código	~100+	~5
+Penalties aplicadas	~20 tipos	0
+Bonuses aplicados	~15 tipos	3 tipos
+Rango de valores	-200 a +150	0 a +20
+Poder de decisión	TOTAL	Bonus marginal
+Puede bloquear	SÍ (si &lt; 0)	NO
+🎯 PUNTOS CRÍTICOS DONDE 15M DOMINA
+A. Entrada de trades (CRÍTICO)
+Flujo actual:
+1. brain_intelligent → analyze_15m()
+2. brain_force_filter → data_15m (ADX, momentum)
+3. brain_think → sniper_3layer usa ladder['15m']
+4. brain_sniper_realtime → score de 15M + bonus 5M
+5. DECISIÓN = Basada en 15M
+B. Force Filter (CRÍTICO)
+# brain_force_filter.py - Solo lee 15M
+has_force = (adx_15m &gt; 22) and (spread_15m &gt; 10) ...
+# 5M NO SE USA para determinar fuerza
+C. Direction (CRÍTICO)
+# La dirección que usa el bot es de 15M
+direction_15m = ladder_analysis.get('15m', {}).get('direction')
+# 5M direction es ignorada para decisiones
+💡 SOLUCIÓN: Migrar a 5M Dominant
+Cambios necesarios:
+Módulo	Cambio
+brain_force_filter.py	Usar data_5m en lugar de data_15m
+brain_think.py	Cambiar defaults de tf='15m' a tf='5m'
+brain_intelligent.py	Direction de 5M, no 15M
+brain_sniper_realtime.py	Eliminar fallback a 15M
+brain_analyzer.py	Crear score_5m robusto con penalties
+Arquitectura propuesta:
+ANTES (15M Dominant):
+┌─────────────────────────────────────┐
+│ 4H → 1H → 15M (DECIDE) → 5M (bonus) │
+└─────────────────────────────────────┘
+DESPUÉS (5M Dominant):
+┌─────────────────────────────────────┐
+│ 4H → 1H → 5M (DECIDE) → 15M (contexto) │
+└─────────────────────────────────────┘
+📋 LISTA COMPLETA DE ARCHIVOS A MODIFICAR
+Prioridad ALTA (decisión):
+brain_force_filter.py (14 refs)
 
-Variables CORRECTAS verificadas:
-pnl_pct (línea 534) - NO current_pnl_pct
-pnl_usd (línea 557) - Ya calculado
-self.capital_per_trade - NO position_value
-duration_min (línea 544) - ✅ Correcto
-Código propuesto CORREGIDO:
-# Después de línea 544: duration_min = ...
-# ===================================================================
-# ZOMBIE EXIT: Cerrar trades estancados (v5.2.5)
-# ===================================================================
-from brain_config import MAX_ZOMBIE_DURATION_MIN, MIN_PROFIT_TO_KEEP_USD
-if duration_min &gt; MAX_ZOMBIE_DURATION_MIN:  # 20 min
-    # pnl_usd ya está calculado en línea 557
-    # Pero necesitamos verificar ANTES del time exit existente
-    
-    # Calcular PnL USD aquí (antes de línea 557)
-    zombie_pnl_usd = (self.capital_per_trade * pnl_pct / 100) * SIMULATE_LEVERAGE
-    
-    if abs(zombie_pnl_usd) &lt; MIN_PROFIT_TO_KEEP_USD:  # &lt; $0.40
-        reason = f"💀 Zombie exit: {duration_min:.1f}min, PnL ${zombie_pnl_usd:.2f} (estancado)"
-        print(f"\n   {reason}")
-        
-        symbols_to_close.append((symbol, reason))
-        continue  # Siguiente trade
-Ubicación exacta:
-Insertar DESPUÉS de línea 544 (duration_min = ...) y ANTES de línea 546 (comentario NUEVO: SALIDA POR TIEMPO)
+Cambiar data_15m → data_5m
+brain_think.py (34 refs)
 
-📝 PROMPT #5: Nuevas Constantes (Sin cambios)
-Archivo: 
-brain_config.py
- Ubicación: Al final de sección de scoring
+Cambiar defaults de funciones
+sniper_3layer debe usar 5M
+brain_intelligent.py (18 refs)
 
-Código a agregar:
-# ===================================================================
-# TIME LADDER v5.2.5 - Penalties Contextuales
-# ===================================================================
-# LATERAL penalties (base + contextuales)
-LATERAL_BASE_PENALTY = 70
-LATERAL_VELOCITY_REDUCTION_HIGH = 25  # Si velocity &gt; 0.15%
-LATERAL_VELOCITY_REDUCTION_MED = 15   # Si velocity &gt; 0.08%
-LATERAL_NARROW_CHANNEL_AGGRAVATE = 20 # Si canal &lt; 2%
-# ADX decreciendo penalties
-ADX_DECREASING_BASE_PENALTY = 50
-ADX_COLLAPSING_FAST_PENALTY = 70  # Si velocity &lt; -2 pts/frame
-ADX_COLLAPSING_MED_PENALTY = 60   # Si velocity &lt; -1 pts/frame
-# Zombie exit
-MAX_ZOMBIE_DURATION_MIN = 20
-MIN_PROFIT_TO_KEEP_USD = 0.40
-# Velocity bonuses (futuro)
-VELOCITY_HIGH_BONUS = 25   # Si velocity &gt; 0.40% en 3min
-VELOCITY_MED_BONUS = 15    # Si velocity &gt; 0.20% en 3min
-VELOCITY_NEGATIVE_PENALTY = 20
-📋 ORDEN DE IMPLEMENTACIÓN
-#5 Constantes → Sin dependencias
-#3 Velocity system → Sin dependencias
-#2 ADX colapso → Usa constantes
-#1 LATERAL contextual → Usa velocity + constantes
-#4 Zombie exit → Usa constantes
-✅ CHECKLIST VERIFICADO
- 
-brain_sniper_realtime.py
- tiene LATERAL handling en líneas 99-118
- 
-brain_analyzer.py
- tiene adx_velocity en línea 210
- 
-brain_analyzer.py
- ADX penalty actual es -60 (línea 872)
- 
-brain_grid.py
- tiene ancho_pct (línea 143) NO range_pct
- 
-brain_executor.py
- usa pnl_pct y self.capital_per_trade
- 
-brain_executor.py
- tiene duration_min en línea 544
+Direction de 5M
+Movie engine con 5M
+brain_sniper_realtime.py (3 refs)
+
+LATERAL penalty de 5M
+Velocity sin fallback a 15M
+Prioridad MEDIA (scoring):
+brain_analyzer.py (100+ refs)
+Crear analyze_5m_full() con penalties
+O renombrar score_15m → score_main
+Prioridad BAJA (display/tools):
+Archivos en /tools/ (50+ refs)
+Solo display, no afectan decisión
+⚠️ RIESGOS DE LA MIGRACIÓN
+5M más ruidoso: Más señales falsas potenciales
+Menos contexto: 15M da visión más amplia
+Grid 48h: Si grid usa 5M, necesita más velas
+Mitigación:
+Usar 4H/1H para contexto macro
+5M para timing de entrada
+15M como validador secundario (no decisor)
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 11,415<br>
-    Generado: 2025-12-27 23:14:51
+    Total caracteres: 12,999<br>
+    Generado: 2025-12-28 00:25:33
   </div>
 </body>
 </html>
