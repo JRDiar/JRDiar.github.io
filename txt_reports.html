@@ -15,678 +15,212 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-28 14:07:47</div>
+  <div class="meta">Última actualización: 2025-12-28 14:28:27</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-PROMPT PARA OPUS: Plan Híbrido 5M Veto → 5M Dominance
+ CÓDIGO ACTUAL DOCUMENTADO
+He creado un documento con todo el código relevante para diseñar la arquitectura "5M decide, 15M advierte".
 
-Opus,
-Después de analizar tu auditoría completa (431+ refs a 15M), Joel y yo decidimos ir por approach híbrido en vez de migración completa inmediata.
-🎯 Por qué Híbrido y no Migración Completa
-Razones pragmáticas:
+📊 Resumen de lo que tiene cada timeframe:
+Campo	15M	5M
+score robusto	✅	⚠️ básico
+adx_velocity	❌	✅
+lateral_penalty	✅	❌
+momentum age	✅	❌
+velocity_current	❌	✅
+atr_pct	❌	✅
+📍 Ubicaciones clave:
+Código	Archivo	Líneas
+Score calculation	brain_analyzer.py	772
+analyze_15m return	brain_analyzer.py	1520-1558
+analyze_5m return	brain_analyzer.py	1658-1678
+ladder_data build	brain_intelligent.py	51-65
+is_perfect_setup	brain_sniper_realtime.py	241-342
+Thresholds	brain_config.py	261-264
+Motor flags	brain_config.py	233-234
+✅ Para implementar "5M decide, 15M advierte":
+Agregar scoring robusto a analyze_5m (copiar lógica de 15M)
+Invertir flujo en is_perfect_setup (5M como base)
+15M solo genera warnings (penalties suaves -10 a -30)
+Apagar motores (ENABLE_MOTOR_VELOCITY = False)
+¿Querés que proceda con el plan detallado de implementación?
 
-Riesgo técnico:
-
-Cambiar 431 referencias = semanas de trabajo
-Alto riesgo de bugs en producción
-Difícil de revertir si algo sale mal
-
-
-Incertidumbre de 5M:
-
-5M es más ruidoso que 15M
-No sabemos si el bot se va a volver demasiado reactivo
-Necesitamos datos reales antes de comprometernos
-
-
-Problema específico identificado:
-
-El caso MAV mostró que 5M ve colapsos 15-20 min antes que 15M
-No necesitamos que 5M controle TODO
-Solo necesitamos que 5M pueda VETAR cuando detecta peligro
-
-
-
-El problema de MAV no era ruido, era arquitectura:
-Minuto 0:  5M ve ADX colapsando → NO PUEDE VETAR
-Minuto 15: 15M dice "todo ok" → BOT ENTRA
-Minuto 20: 5M sigue viendo colapso → Bot ignora
-Minuto 89: 15M recién detecta "ADX colapsó" → SALE con ganancia mínima
-Solución: Darle poder de veto a 5M mantiene lo bueno de ambos.
-📋 PLAN DE IMPLEMENTACIÓN: 3 Fases
-FASE 1: Híbrido con Veto (AHORA - v5.3.0)
-Objetivo: 5M puede BLOQUEAR entrada aunque 15M diga ok
-Cambios mínimos (~10-15 ubicaciones):
-
-brain_sniper_realtime.py - Agregar lógica de veto 5M
-brain_analyzer.py - Crear penalties de 5M
-brain_config.py - Constantes para thresholds de veto
-
-Mecánica:
-python# 15M hace análisis completo (como siempre)
-score_15m = analyze_15m(...)
-
-# 5M verifica condiciones de veto
-veto_5m = check_5m_veto(...)
-
-if veto_5m['should_veto']:
-    score_final = -100  # Forzar bloqueo
-    reason = veto_5m['reason']
-else:
-    score_final = score_15m  # 15M decide
-Condiciones de veto 5M:
-
-ADX &lt; 18 en 5M → veto (fuerza muriendo)
-Direction LATERAL en 5M → penalty severa -70
-Momentum opuesto al trade en 5M → veto
-ADX velocity &lt; -1.5 en 5M → veto (colapso rápido)
-
-Testing: 4-8 horas en vivo, medir:
-
-¿Se resuelve el problema de entradas tardías?
-¿Win rate mejora?
-¿El bot sigue operando o se vuelve demasiado restrictivo?
-
-
-FASE 2: 5M Co-Decisor (Después de validar Fase 1 - v5.4.0)
-Objetivo: 5M y 15M tienen peso IGUAL en decisión
-Cambios moderados (~30-40 ubicaciones):
-
-brain_analyzer.py - Expandir analyze_5m() con scoring completo
-brain_force_filter.py - Leer ADX/momentum de 5M también
-brain_sniper_realtime.py - Combinar scores 50/50
-
-Mecánica:
-pythonscore_5m = analyze_5m_full(...)   # Nuevo scoring robusto
-score_15m = analyze_15m(...)      # Como antes
-
-# Peso igual
-score_final = (score_5m * 0.5) + (score_15m * 0.5)
-Validar:
-
-5M no genera demasiadas señales falsas
-Combinación mejora win rate vs solo veto
-
-
-FASE 3: 5M Dominance Total (Solo si Fase 2 exitosa - v6.0)
-Objetivo: 5M controla entrada/salida, 15M es solo contexto
-Cambios masivos (431+ ubicaciones):
-
-Reemplazar todos los data_15m → data_5m en decisión
-15M solo para contexto macro (estructura 4H/1H/15M)
-Grid 48h en 5M
-Movie engine con 5M
-
-Mecánica:
-python# 5M decide
-score_5m = analyze_5m_full(...)
-
-# 15M solo contexto (sin poder de decisión)
-context_15m = get_macro_context_15m(...)
-if context_15m['contra_trend_4h']:
-    score_5m -= 30  # Penalty contextual
-
-score_final = score_5m  # 5M domina
-
-🎯 TU TAREA AHORA: FASE 1 - Híbrido con Veto
-Necesito que diseñes los cambios quirúrgicos para:
-1. Función de veto en brain_sniper_realtime.py
-Ubicación: Antes de decidir entrada (después de calcular analyzer_score)
-Lógica:
-pythondef check_5m_veto(symbol, direction, ladder_data):
-    """
-    5M puede vetar entrada si detecta condiciones peligrosas.
+ CÓDIGO ACTUAL - Referencia para 5M Dominance
+1. brain_analyzer.py - analyze_15m()
+Cálculo de score_15m (línea 772):
+score_15m = -pump_penalty - lateral_penalty - macro_penalty - tf_penalty - momentum_contradiction_penalty + motion_score
+Return de analyze_15m (líneas 1520-1558):
+return {
+    'direction': direction,           # 'BULLISH', 'BEARISH', 'LATERAL'
+    'strength': strength,             # 'STRONG', 'MODERATE', 'WEAK'
+    'score_15m': score_15m,           # Score calculado
+    'blocked': False,
+    'current_price': current_price,
     
-    Returns:
-        {
-            'should_veto': bool,
-            'reason': str,
-            'penalty': int
-        }
-    """
-    data_5m = ladder_data.get('5m', {})
+    # Contexto de fuerza para Sniper
+    'brutal_force': brutal_force,     # bool
+    'strong_force': strong_force,     # bool
+    'pump_explosivo': pump_explosivo, # bool
     
-    # Verificar condiciones de veto
-    vetos = []
+    # Legacy (compatibilidad)
+    'adx': adx_data,                  # {'adx_current', 'adx_trend', 'di_plus_current', 'spread', ...}
+    'momentum': momentum_data,         # {'color_current', 'consecutive_count', ...}
+    'rsi': rsi_data,
+    'emas': emas_data,
     
-    # Veto 1: ADX muriendo en 5M
-    adx_5m = data_5m.get('adx', {}).get('adx_current', 0)
-    if adx_5m &lt; 18:
-        vetos.append('ADX 5M débil')
+    # Campos granulares
+    'di_plus_granular': di_plus_granular,
+    'di_minus_granular': di_minus_granular,
+    'adx_value_granular': adx_value_granular,
+    'momentum_green': momentum_green,
+    'momentum_red': momentum_red,
+    'zigzag_granular': zigzag_granular,
+    'lateral_penalty': lateral_penalty,
+    'lateral_reasons': lateral_reasons,
     
-    # Veto 2: Direction LATERAL en 5M
-    direction_5m = data_5m.get('direction', 'UNKNOWN')
-    if direction_5m == 'LATERAL':
-        vetos.append('5M LATERAL')
+    # GRID
+    'grid': {...},
+    'volume_profile': vp_data,
+    'timestamp': datetime.now().isoformat()
+}
+2. brain_analyzer.py - analyze_5m()
+Return de analyze_5m (líneas 1658-1678):
+return {
+    'direction': direction,         # 'BULLISH', 'BEARISH', 'LATERAL'
+    'strength': strength,           # 'STRONG', 'MODERATE', 'WEAK'
+    'score_5m': score_5m,           # Score calculado (solo bonuses, max +20)
+    'current_price': current_price,
     
-    # Veto 3: Momentum opuesto en 5M
-    momentum_5m = data_5m.get('momentum', {})
-    mom_color = momentum_5m.get('color_current', 'gray')
-    if direction == 'BULLISH' and mom_color in ['red', 'maroon']:
-        vetos.append('Momentum 5M contradice LONG')
-    elif direction == 'BEARISH' and mom_color in ['green', 'lime']:
-        vetos.append('Momentum 5M contradice SHORT')
+    'adx': adx_data,                # Tiene adx_velocity (v5.3.0)
+    'momentum': momentum_data,       # {'color_current', ...}
+    'rsi': rsi_data,
+    'emas': emas_data,
+    'structure': structure,
+    'zigzag': zigzag,
+    'sr': sr_data,
+    'velocity': velocity_data,      # {'velocity_current', ...}
+    'acceleration': acceleration_data,
+    'volume_profile': vp,
+    'breaking_profile': breaking_profile,
+    'dist_ema_pct': dist_ema_pct,
+    'atr_pct': atr_pct,            # ATR como % del precio
+    'timestamp': datetime.now().isoformat()
+}
+3. brain_intelligent.py - Construcción de ladder_data
+# Líneas 51-65
+ladder_analysis = {}
+ladder_analysis['4h'] = analyze_4h(symbol)
+ladder_analysis['1h'] = analyze_1h(symbol)
+ladder_analysis['15m'] = analyze_15m(symbol, strict=False, context_4h=..., context_1h=...)
+ladder_analysis['5m'] = analyze_5m(symbol)
+Estructura de ladder_data:
+ladder_data = {
+    '4h': {...},   # analyze_4h return
+    '1h': {...},   # analyze_1h return
+    '15m': {       # analyze_15m return
+        'direction': 'BULLISH',
+        'score_15m': 75,
+        'adx': {'adx_current': 45, 'adx_trend': 'creciendo', ...},
+        'momentum': {'color_current': 'green', 'consecutive_count': 3},
+        ...
+    },
+    '5m': {        # analyze_5m return
+        'direction': 'BULLISH',
+        'score_5m': 15,
+        'adx': {'adx_current': 38, 'adx_velocity': -0.5, ...},
+        'momentum': {'color_current': 'lime', ...},
+        'velocity': {'velocity_current': 0.15},
+        'atr_pct': 1.5,
+        ...
+    }
+}
+4. brain_sniper_realtime.py - is_perfect_setup()
+Ubicación: Líneas 241-342
+Flujo actual:
+def is_perfect_setup(symbol, analyzer_score, decision):
+    # 1. Obtener datos
+    ladder_data = decision.get('full_analysis', {}).get('ladder_data', {})
+    direction = decision.get('direction', 'LATERAL')
     
-    # Veto 4: ADX colapsando rápido en 5M
-    adx_velocity_5m = data_5m.get('adx', {}).get('velocity', 0)
-    if adx_velocity_5m &lt; -1.5:
-        vetos.append('ADX 5M colapsando')
+    # 2. LATERAL penalty
+    if direction == 'LATERAL':
+        analyzer_score -= 50
+        # Intenta determinar direction desde DI dominance
     
-    if vetos:
-        return {
-            'should_veto': True,
-            'reason': ', '.join(vetos),
-            'penalty': 100  # Forzar bloqueo
-        }
+    # 3. Obtener velocity
+    velocity_check = check_price_velocity(symbol, direction, '5m')
     
-    return {'should_veto': False, 'reason': '', 'penalty': 0}
-2. Integración en decisión final
-Ubicación: brain_sniper_realtime.py, después de calcular analyzer_score
-python# Después de línea ~180 (donde se calcula analyzer_score)
-
-# NUEVO: Veto de 5M
-veto_result = check_5m_veto(symbol, direction, ladder_data)
-
-if veto_result['should_veto']:
-    print(f"\n   🚫 5M VETO: {veto_result['reason']}")
-    analyzer_score = -100  # Forzar rechazo
-    # Continuar con el flujo normal, el score negativo lo bloqueará
-3. Constantes en brain_config.py
-python# ===================================================================
-# 5M VETO SYSTEM - v5.3.0 Híbrido
-# ===================================================================
-
-# Thresholds para veto de 5M
-VETO_5M_ADX_MIN = 18          # ADX mínimo en 5M
-VETO_5M_ADX_VELOCITY = -1.5   # Velocity colapso en 5M
-VETO_5M_LATERAL_PENALTY = 70  # Penalty si 5M es LATERAL
-
-# Flags
-ENABLE_5M_VETO = True         # Activar sistema de veto
-
-📊 MÉTRICAS DE ÉXITO FASE 1
-Después de 4-8 horas de testing:
-✅ Éxito si:
-
-Win rate mejora de 45.7% → 50%+
-Trades con "ADX colapsó" bajan de 9 → &lt;3
-Bot sigue operando (no se vuelve rígido)
-Menos trades LATERAL con mal resultado
-
-❌ Fallo si:
-
-Win rate empeora
-Bot deja de operar (0 trades)
-5M genera demasiados falsos positivos
-
-
-🎯 OBJETIVO FINAL (Fase 3)
-5M toma decisión de entrada/salida:
-
-Timing preciso (ve colapsos antes)
-Grid 48h en 5M para contexto completo
-15M/1H/4H solo para estructura macro
-
-15M queda como contexto:
-
-Validar tendencia mayor
-Confirmar estructura de soporte/resistencia
-No puede overridear decisión de 5M
-
-
-❓ TUS PREGUNTAS
-
-¿Te hace sentido el plan de 3 fases?
-¿Ves algún riesgo en Fase 1 que no haya considerado?
-¿Necesitas ver código actual de algún módulo específico para diseñar check_5m_veto()?
-
-Una vez que apruebes el approach, genero los prompts quirúrgicos para implementar Fase 1.
-¿Proceder?Para ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.Quiero que analices todo lo que propone Opus y que siempre todo tenga time ladder, verifica que no tenga bugs los códigos que te pasa, si no ves código que va a implementar pidamoslo, asi sabemos que implementa todo bien. Gracias. Link: https://jrdiar.github.io/txt_reports.html?v=2025122800444712:48 a. m.1 pasoSe obtuvo 📋 Comunicación Claude - Bot Phase 3.5github.ioEvaluó propuestas de Opus sobre gaps críticos y mejoras de código.Perfecto, ahora tengo el análisis de Opus. Déjame revisarlo cuidadosamente:
-
-Opus encontró gaps críticos:
-
-adx_velocity no existe en analyze_5m()
-ADX &lt; 18 puede ser muy agresivo
-LATERAL como veto absoluto es riesgoso
-
-
-Opus mejoró el código:
-
-Combo ADX: bajo + decreciendo (no solo bajo)
-LATERAL como penalty -40, no veto absoluto
-Threshold 100 para activar veto (combinar condiciones)
-Flag ENABLE_5M_VETO como kill switch
-
-
-Opus tiene reservas sobre Fase 2 y 3:
-
-Fase 2: 50/50 puede inflar scores, prefiere 5M solo penalice
-Fase 3: No recomienda por ruido, memoria, pérdida de contexto
-
-
-Opus hace 4 preguntas:
-
-Umbral ADX
-LATERAL veto vs penalty
-Threshold 100
-Kill switch
-
-
-
-Ahora voy a analizar si todo es Time Ladder y si hay bugs adicionales.Perfecto, leí el análisis de Opus. Déjame hacerte mi revisión crítica.
-✅ Lo que Opus hizo BIEN:
-1. Encontró gaps reales:
-
-adx_velocity no existe - CRÍTICO, hubiera crasheado
-ADX &lt; 18 solo - Muy agresivo, causaría rigidez
-LATERAL veto absoluto - Viola Time Ladder
-
-2. Mejoró el código con lógica sólida:
-
-Combo ADX: bajo + decreciendo (más inteligente)
-LATERAL penalty -40 (Time Ladder puro, no hard block)
-Threshold 100 (permite combinación de señales)
-Kill switch ENABLE_5M_VETO (pragmático para emergencias)
-
-⚠️ Mi análisis Time Ladder:
-CÓDIGO MEJORADO DE OPUS - Time Ladder ✅
-python# Combo ADX - NO hard block individual
-if adx_current &lt; 18 and adx_trend == 'decreciendo':
-    penalties.append(50)  # ✅ Penalty, no return False
-
-# LATERAL - NO veto absoluto
-if direction_5m == 'LATERAL':
-    penalties.append(40)  # ✅ Penalty gradual
-
-# Veto solo si ACUMULADO &gt;= 100
-total_penalty = sum(penalties)
-should_veto = total_penalty &gt;= 100  # ✅ Time Ladder
-Esto SÍ es Time Ladder puro:
-
-No hay hard blocks individuales
-Penalties se acumulan
-Threshold único de decisión (100)
-Condiciones se combinan
-
-Comparación con tu código original:
-TU CÓDIGO (tenía hard blocks disfrazados):
-python# Cada condición era veto individual
-if adx_5m &lt; 18:
-    vetos.append(...)  # ❌ Cada append = veto
-OPUS MEJORADO (Time Ladder real):
-python# Condiciones acumulan penalty
-penalties.append(50)  # Solo suma
-should_veto = total &gt;= 100  # Decisión única
-🔍 Bugs adicionales que YO encontré:
-BUG #1: Falta validar si data_5m tiene los campos
-python# Código Opus:
-adx_5m = data_5m.get('adx', {})
-adx_current = adx_5m.get('adx_current', 0)
-
-# ⚠️ Problema: Si adx_5m = {}, adx_current = 0
-# Penalty se activa con valor 0 (falso positivo)
-Mi corrección:
-pythonadx_current = adx_5m.get('adx_current', None)
-if adx_current is None:
-    return {'should_veto': False, ...}  # Sin data, no vetar
-BUG #2: direction_5m puede ser 'UNKNOWN'
-python# Código Opus:
-if direction_5m == 'BEARISH' and direction == 'BULLISH':
-    penalties.append(50)
-
-# ⚠️ Problema: ¿Qué pasa si direction_5m = 'UNKNOWN'?
-# No entra en ningún if, penalty = 0, podría operar sin info
-Mi corrección:
-pythonif direction_5m == 'UNKNOWN':
-    penalties.append(30)  # Penalty por falta de claridad
-BUG #3: Falta el código de adx_velocity
-Opus MENCIONA que hay que agregarlo pero NO DA EL CÓDIGO completo.
-Necesitamos ver:
-
-¿Dónde exactamente agregar velocity en analyze_5m()?
-¿Tiene analyze_5m() acceso a adx_history?
-¿O hay que calcularlo inline?
-
-📋 Mi respuesta a las 4 preguntas de Opus:
-1. Umbral ADX:
-→ B) ADX &lt; 18 + decreciendo (recomendación de Opus es correcta)
-2. LATERAL:
-→ B) Penalty -40 (Time Ladder puro)
-3. Threshold 100:
-→ SÍ, apruebo (permite combinar señales, evita falsos positivos)
-4. Kill switch:
-→ SÍ, fundamental (si Fase 1 falla, revertir en segundos)
-🚨 LO QUE FALTA ANTES DE IMPLEMENTAR:
-Opus, necesitamos ver:
-1. Código COMPLETO de adx_velocity en analyze_5m()
-Mostranos:
-
-Línea ACTUAL de analyze_5m() donde se retorna adx_data
-Línea PROPUESTA con velocity agregado
-¿analyze_5m() tiene acceso a frames históricos o hay que pasar?
-
-2. Código ACTUAL de brain_sniper_realtime.py línea ~180
-Donde se va a integrar check_5m_veto(), mostranos:
-
-5 líneas ANTES
-5 líneas DESPUÉS
-Asegurar que no hay conflicto con código existente
-
-3. Testing de edge cases:
-¿Qué pasa si:
-
-5M no tiene datos (exchange caído)?
-direction_5m = 'UNKNOWN'?
-adx_current = 0 (sin datos)?
-
-Necesitamos manejo de errores para estos casos.
-
-📋 RESUMEN - MI VEREDICTO:
-✅ APROBAR Fase 1 con estas condiciones:
-
-Opus agregue código de adx_velocity (ANTES vs DESPUÉS)
-Agregar manejo de edge cases (sin data, UNKNOWN, etc)
-Mostrar integración completa en sniper_realtime.py
-
-✅ APROBAR respuestas que di a las 4 preguntas
-⚠️ PENDIENTE Fase 2 y 3:
-
-Estoy de acuerdo con Opus: Fase 2 no 50/50, mejor 5M solo penaliza
-Fase 3 mejor no hacerla (o muy a largo plazo)
-
-Opus, mostranos el código faltante antes de generar prompts finales. Gracias.Para ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.Tenemos el plan completo con el código completo, si das el ok, implementa, analiza profundamente todo asi no tenemos errores al implementar esta actualización. Gracias. https://jrdiar.github.io/txt_reports.html?v=2025122800533512:56 a. m.1 pasoSe obtuvo 📋 Comunicación Claude - Bot Phase 3.5github.ioOrchestrated rigorous code review across compliance, bugs, and integration points.Perfecto, ahora tengo el plan completo de Opus con código ACTUAL vs PROPUESTO. Déjame hacer un análisis profundo y exhaustivo antes de dar el OK.
-Voy a revisar:
-
-Time Ladder compliance - ¿Todo es penalty gradual?
-Bugs técnicos - ¿Hay errores de código?
-Edge cases - ¿Están todos cubiertos?
-Integración - ¿El flujo tiene sentido?
-Testing - ¿Los casos de prueba son correctos?
-
-Voy a ser MUY riguroso porque Joel dice "analiza profundamente todo así no tenemos errores al implementar".Dale, leí TODO el plan completo. Voy a hacer análisis exhaustivo antes de dar OK.
-🔬 ANÁLISIS PROFUNDO - LÍNEA POR LÍNEA
-✅ PROMPT #1: brain_calculator.py (adx_velocity)
-Código propuesto:
-pythonif len(adx_history) &gt;= 2:
-    adx_velocity = adx_history[-1] - adx_history[-2]
-else:
-    adx_velocity = 0.0
-Verificación:
-
-✅ Lógica correcta (cambio entre última y penúltima)
-✅ Fallback seguro (0.0 si no hay suficiente historia)
-✅ Se agrega al return existente sin romper nada
-✅ Se agrega también al return vacío (líneas 315-326)
-
-Posible mejora menor (opcional):
-python# Más robusto contra None
-adx_velocity = float(adx_history[-1] - adx_history[-2]) if len(adx_history) &gt;= 2 else 0.0
-VEREDICTO: ✅ APROBAR
-
-✅ PROMPT #2: brain_sniper_realtime.py (check_5m_veto)
-Verificación Time Ladder:
-python# ✅ NO hard blocks individuales
-if adx_current &lt; VETO_5M_ADX_MIN and adx_trend == 'decreciendo':
-    penalties.append(50)  # Solo suma penalty
-
-# ✅ Veto solo si acumulado &gt;= 100
-should_veto = total_penalty &gt;= VETO_5M_THRESHOLD
-PERFECTO Time Ladder. Cada condición solo agrega penalty, no retorna False.
-Verificación edge cases:
-python# ✅ Kill switch
-if not ENABLE_5M_VETO:
-    return {...}
-
-# ✅ Sin datos 5M
-if not data_5m:
-    return {'should_veto': False, ...}
-
-# ✅ ADX None
-if adx_current is None:
-    return {'should_veto': False, ...}
-
-# ✅ Direction UNKNOWN
-if direction_5m == 'UNKNOWN':
-    penalties.append(30)
-TODOS los edge cases están cubiertos.
-⚠️ UN DETALLE menor que encontré:
-python# Línea momentum contradice
-if direction == 'BULLISH' and mom_color in ['red', 'maroon']:
-    penalty = VETO_5M_MOMENTUM_PENALTY  # 60
-¿Qué pasa si mom_color = None?
-Chequeo: En Python, None in ['red', 'maroon'] → False. ✅ Está bien.
-VEREDICTO: ✅ APROBAR
-
-✅ PROMPT #3: Integración en flujo
-Código propuesto:
-pythonveto_result = check_5m_veto(symbol, direction, ladder_data)
-
-if veto_result['should_veto']:
+    # 4. Validator score
+    validation = entry_validator._validate_explosion_entry(...)
+    validator_score = validation.get('score', 50)
+    
+    # 5. 5M VETO CHECK (v5.3.0)
+    veto_result = check_5m_veto(symbol, direction, ladder_data)
+    if veto_result['should_veto']:
+        return False
+    if veto_result['penalty'] &gt; 0:
+        analyzer_score -= veto_result['penalty']
+    
+    # 6. Combinar scores
+    combined = (analyzer_score * 0.60) + (validator_score * 0.40)
+    
+    # 7. Decisión
+    if combined &gt;= 60:
+        return True
     return False
-
-if veto_result['penalty'] &gt; 0:
-    analyzer_score -= veto_result['penalty']
-Verificación de flujo:
-
-Calcula analyzer_score (15M) ✅
-Calcula validator_score ✅
-CHECK 5M VETO ✅
-
-Si veto → return False inmediato
-Si penalty &lt; 100 → resta de analyzer_score
-
-
-Combina scores ✅
-Compara con threshold ✅
-
-Lógica correcta.
-⚠️ POSIBLE BUG que encontré:
-python# Si penalty es 90 (no veto pero alto)
-analyzer_score -= 90
-
-# analyzer_score podría quedar negativo
-# Ejemplo: analyzer_score = 50, penalty = 90
-# Resultado: analyzer_score = -40
-
-# Luego:
-combined = (-40 * 0.6) + (validator * 0.4)
-combined = -24 + (validator * 0.4)
-
-# Si validator = 100
-combined = -24 + 40 = 16
-# 16 &lt; 60 → Rechazado ✅ (correcto)
-Chequeo: ¿Hay algún problema si analyzer_score queda negativo?
-NO. El scoring puede ser negativo y eso está bien (score final será bajo). ✅
-VEREDICTO: ✅ APROBAR
-
-✅ PROMPT #4: brain_config.py (constantes)
-Valores propuestos:
-pythonENABLE_5M_VETO = True
+5. brain_config.py - Thresholds Actuales
+# Líneas 233-234 - Motores (a apagar según plan)
+ENABLE_MOTOR_VELOCITY = True
+ENABLE_MOTOR_CHANNEL = True
+# Líneas 261-264 - Score combination
+SCORE_WEIGHT_ANALYZER = 0.60   # 60% analyzer
+SCORE_WEIGHT_VALIDATOR = 0.40  # 40% validator
+SCORE_THRESHOLD_ENTER = 60     # Threshold único
+# 5M Veto (líneas 386-413)
+ENABLE_5M_VETO = True
 VETO_5M_ADX_MIN = 18
 VETO_5M_MOMENTUM_PENALTY = 60
-VETO_5M_CONFLICT_PENALTY = 50
 VETO_5M_LATERAL_PENALTY = 40
 VETO_5M_THRESHOLD = 100
-Verificación calibración:
+📊 RESUMEN: Qué tiene cada timeframe
+Campo	15M	5M	Notas
+direction	✅	✅	
+score	score_15m	score_5m	15M robusto, 5M básico
+adx.adx_current	✅	✅	
+adx.adx_trend	✅	✅	
+adx.adx_velocity	❌	✅	Solo 5M tiene (v5.3.0)
+momentum.color_current	✅	✅	
+momentum.consecutive_count	✅	❌	Solo 15M
+velocity.velocity_current	❌	✅	Solo 5M
+atr_pct	❌	✅	Solo 5M
+brutal_force	✅	❌	Solo 15M
+lateral_penalty	✅	❌	Solo 15M
+✅ Para implementar "5M decide, 15M advierte":
+Cambios necesarios:
+Invertir flujo en is_perfect_setup:
 
-ADX_MIN = 18: Razonable (con combo "decreciendo")
-MOMENTUM = 60: Severo pero justificado (contradice trade)
-CONFLICT = 50: Razonable (direcciones opuestas)
-LATERAL = 40: Moderado (permite si resto OK)
-THRESHOLD = 100: Requiere 2+ condiciones graves
+Usar score_5m como base (con sistema robusto como 15M)
+Usar score_15m solo para warnings
+Agregar scoring robusto a analyze_5m:
 
-Balance correcto entre restrictivo y permisivo. ✅
-VEREDICTO: ✅ APROBAR
+Copiar lógica de penalties de 15M a 5M
+ADX, momentum, lateral detection en 5M
+Crear warnings de 15M:
 
-📊 TESTING DE CASOS
-Caso 1: MAV Real (ADX colapsando + LATERAL)
-python# 5M detecta:
-adx_current = 17.5, adx_trend = 'decreciendo'
-→ penalty 50 ✅
+Si 15M ve algo malo → warning, no veto
+Solo penaliza suavemente (-10 a -30)
+Config:
 
-direction_5m = 'LATERAL'
-→ penalty 40 ✅
-
-Total: 90 &lt; 100
-→ NO VETO ✅
-→ analyzer_score -= 90
-
-# Si analyzer_score original = 70
-# Ajustado = 70 - 90 = -20
-# combined = (-20 * 0.6) + (validator * 0.4)
-# combined = -12 + validator*0.4
-
-# Si validator = 85
-# combined = -12 + 34 = 22
-# 22 &lt; 60 → RECHAZADO ✅
-Resultado esperado: Bot NO entra (correcto, MAV fue trade malo)
-
-Caso 2: Momentum contradice + LATERAL
-pythondirection = 'BULLISH'
-mom_color_5m = 'red'
-→ penalty 60 ✅
-
-direction_5m = 'LATERAL'
-→ penalty 40 ✅
-
-Total: 100 &gt;= 100
-→ VETO ✅
-→ return False inmediato
-Resultado esperado: Bot NO entra (correcto, señales contradictorias)
-
-Caso 3: Solo LATERAL (resto OK)
-pythondirection_5m = 'LATERAL'
-→ penalty 40
-
-Total: 40 &lt; 100
-→ NO VETO ✅
-→ analyzer_score -= 40
-
-# Si analyzer_score = 90
-# Ajustado = 90 - 40 = 50
-# combined = (50 * 0.6) + (85 * 0.4)
-# combined = 30 + 34 = 64
-# 64 &gt;= 60 → APROBADO ✅
-Resultado esperado: Bot PUEDE entrar si scores buenos (correcto, Time Ladder)
-
-🔍 BUGS ADICIONALES QUE BUSQUÉ:
-1. ¿Variables undefined?
-
-✅ Todas las constantes están en brain_config.py
-✅ Todos los campos se obtienen con .get() y default values
-
-2. ¿Type errors?
-
-✅ adx_velocity es float
-✅ penalties es lista de ints
-✅ sum() de lista vacía = 0 (correcto)
-
-3. ¿Imports faltantes?
-
-✅ check_5m_veto() importa de brain_config
-✅ No necesita otros imports
-
-4. ¿Conflictos con código existente?
-
-✅ Se agrega ANTES de combinar scores
-✅ No modifica lógica existente, solo suma step
-
-5. ¿Race conditions o problemas de threading?
-
-✅ check_5m_veto() es función pura (sin estado)
-✅ Solo lee datos, no modifica
-
-
-⚠️ ÚNICA RECOMENDACIÓN MENOR:
-En check_5m_veto(), agregar logging del resultado:
-python# Al final, antes del return
-if should_veto:
-    print(f"   🚫 5M VETO: {total_penalty} pts")
-elif total_penalty &gt; 0:
-    print(f"   ⚠️ 5M Penalty: {total_penalty} pts (sin veto)")
-else:
-    print(f"   ✅ 5M: Sin problemas detectados")
-Opus ya lo tiene: ✅ Está en el código líneas finales de check_5m_veto()
-
-📋 CHECKLIST FINAL
-
-✅ Time Ladder puro (penalties graduales, threshold único)
-✅ Edge cases manejados (sin data, None, UNKNOWN)
-✅ Kill switch funcional (ENABLE_5M_VETO)
-✅ No bugs de syntax
-✅ No variables undefined
-✅ No type errors
-✅ Integración no rompe flujo existente
-✅ Testing cases correctos
-✅ Logging completo
-✅ Constantes bien calibradas
-✅ Código ACTUAL vs PROPUESTO claro
-
-
-✅ VEREDICTO FINAL:
-APROBAR IMPLEMENTACIÓN COMPLETA.
-Orden de aplicación (como dice Opus):
-
-brain_config.py (constantes)
-brain_calculator.py (adx_velocity)
-brain_sniper_realtime.py (función + integración)
-
-Testing post-implementación:
-
-Correr 4-8 horas
-Monitorear cuántos vetos activa
-Si problemas: ENABLE_5M_VETO = False revierte todo
-
-Expectativas realistas:
-
-Menos trades con "ADX colapsó" (de 9 → esperamos 3-5)
-Win rate mejora moderada (de 45.7% → esperamos 48-52%)
-Bot sigue operando (no se vuelve rígido)
-
-Opus, proceder con implementación. Todo verificado. 🚀
-
-Un motor que tenemos que apagar.
-
-
-✅ v5.2 DUAL MOTOR ARCHITECTURE - IMPLEMENTADO
-4 Archivos Modificados:
-#	Archivo	Cambio	Sonnet Fix
-1	brain_config.py	7 flags nuevos	✅
-2	brain_entry_validator.py	Inmunidad REVOCADA	✅ isinstance
-3	brain_frames.py	Velocity con precio real	✅ fetch_current_price
-4	brain_sniper_realtime.py	Dual motor dispatcher	✅ fallback 5m→15m
-🎛️ Flags para control:
-python
-# Apagar motor que no funcione:
-ENABLE_MOTOR_VELOCITY = True   # Scalping rápido
-ENABLE_MOTOR_CHANNEL = True    # Rebote técnico
-# CRÍTICO - Inmunidad revocada:
-FORCE_CAN_OVERRIDE_SPACE = False  # Ni BRUTAL ignora espacio
-🔒 Protección Absoluta:
-ANTES: force == BRUTAL → ignora warnings → entra en resistencia ❌
-AHORA: space_warnings → SIEMPRE bloquea → sin importar fuerza ✅
-Syntax Check: ✅ Todos los archivos compilados correctamente
-bash
-python bot_main.py
-Si un motor no funciona bien, apágalo en brain_config.py.
-
-brain_config.py
-Open
-brain_entry_validator.py
-Open
-brain_frames.py
-Open
-brain_sniper_realtime.py
-Open
-CHANGELOG_v5.1_DIC2025.md
-Open
+Apagar ENABLE_MOTOR_VELOCITY = False
+Apagar ENABLE_MOTOR_CHANNEL = False
+Nuevo: ENABLE_15M_WARNINGS = True
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 20,433<br>
-    Generado: 2025-12-28 14:07:47
+    Total caracteres: 6,791<br>
+    Generado: 2025-12-28 14:28:27
   </div>
 </body>
 </html>
