@@ -15,185 +15,428 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-28 23:40:24</div>
+  <div class="meta">Última actualización: 2025-12-29 00:16:52</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-CÓDIGO COMPLETO - 5 SECCIONES
-1️⃣ check_price_velocity()
-✅ USA precio real-time (fetch_current_price)
-✅ Detecta vela EN FORMACIÓN
-Threshold: VELOCITY_TRIGGER_PCT (~0.12%)
-2️⃣ Volume Spike
-⚠️ Solo volume_ratio (current/avg20)
-❌ NO hay volume spike detection (&gt;300% súbito)
-Solo en 15M, no en 5M dominance
-3️⃣ Score Final
-Penalties existentes: | ADX&lt;25 dec | -60 | Spread&lt;10 | -(10-s)*6 | | Mom contradiction | -50 | Grid&gt;85% | -40 | | Volume&lt;30% | -20 | Unified max | -25 |
+PLAN COMPLETO v5.4.3 - "TIMING PERFECT + ZONE FIX"
+Implementado: 2025-12-29 Archivos modificados: 3 (
+brain_frames.py
+, 
+brain_analyzer.py
+, 
+brain_calculator.py
+) Total prompts: 9
 
-4️⃣ Score Combination
-python
-combined = (score_5m × 0.6) + (validator × 0.4)
-threshold = 60
-LIT Score 98: Alto score NO garantiza timing. Sin penalty "entrada tardía".
+📋 FASE 1: ZONES FIX (5 Prompts)
+PROMPT #1: Grid Penalties
+Archivo: 
+brain_frames.py
+ líneas 790-812
 
-5️⃣ ZigZag
-❌ Solo pivotes CONFIRMADOS
-❌ NO hay pivot_tentativo ni pivot_forming
-Detecta TARDE (espera % completo)
-🎯 CONCLUSIONES TIMING
-Componente	Estado	Problema
-Velocity	✅ Temprano	OK
-Volume	⚠️ Medio	Sin spike detection
-ZigZag	❌ Tarde	Solo confirmados
-Score	⚠️ Sin timing	Sin penalty tardía
-¿Qué quieres que diseñe primero?
+ANTES:
 
-detect_early_ignition() - Explosión antes del cierre
-volume_spike_alert - Volumen &gt;300%
-pivot_tentativo - Pivot en formación
-penalty_late_entry - Momentum &gt;5v + ADX peak
+if direction == 'BULLISH':
+    if grid_position &gt; 85:
+        score -= 40
+        issues.append(f'LONG en RESISTENCIA (grid {grid_position:.0f}%)')
+        validations['grid']['safe_zone'] = False
+    elif grid_position &gt; 75:
+        score -= 20
+        issues.append(f'Cerca de resistencia ({grid_position:.0f}%)')
+else:  # BEARISH
+    if grid_position &lt; 15:
+        score -= 40
+        issues.append(f'SHORT en SOPORTE (grid {grid_position:.0f}%)')
+        validations['grid']['safe_zone'] = False
+    elif grid_position &lt; 25:
+        score -= 20
+        issues.append(f'Cerca de soporte ({grid_position:.0f}%)')
+DESPUÉS:
 
-CODE REFERENCE - TIMING ANALYSIS
-1. check_price_velocity() - brain_frames.py
-Líneas 595-734
+if direction == 'BULLISH':
+    if grid_position &gt; 90:
+        score -= 80  # v5.4.3: Zona extrema
+        issues.append(f'BULLISH en RESISTENCIA EXTREMA (grid {grid_position:.0f}%)')
+        validations['grid']['safe_zone'] = False
+    elif grid_position &gt; 80:
+        score -= 50  # v5.4.3: Zona peligrosa
+        issues.append(f'BULLISH cerca resistencia (grid {grid_position:.0f}%)')
+        validations['grid']['safe_zone'] = False
+    elif grid_position &gt; 70:
+        score -= 30  # v5.4.3: Zona advertencia
+        issues.append(f'Advertencia resistencia ({grid_position:.0f}%)')
+else:  # BEARISH
+    if grid_position &lt; 10:
+        score -= 80  # v5.4.3: Zona extrema
+        issues.append(f'BEARISH en SOPORTE EXTREMO (grid {grid_position:.0f}%)')
+        validations['grid']['safe_zone'] = False
+    elif grid_position &lt; 20:
+        score -= 50  # v5.4.3: Zona peligrosa
+        issues.append(f'BEARISH cerca soporte (grid {grid_position:.0f}%)')
+        validations['grid']['safe_zone'] = False
+    elif grid_position &lt; 30:
+        score -= 30  # v5.4.3: Zona advertencia
+        issues.append(f'Advertencia soporte ({grid_position:.0f}%)')
+PROMPT #2: Unified Vision Max
+Archivo: 
+brain_analyzer.py
+ líneas 726-728
 
-def check_price_velocity(symbol, direction, timeframe='5m'):
-    """
-    v5.2: Mide velocidad del precio en TIEMPO REAL para scalping.
-    Usa fetch_current_price() para precio actual (no vela cerrada)
-    """
-    
-    # === OBTENER PRECIO ACTUAL EN TIEMPO REAL ===
-    current_price = fetch_current_price(symbol)  # ✅ TEMPRANO
-    
-    # === VELOCIDAD = (precio_ahora - último_cierre) / último_cierre ===
-    velocity_pct = ((current_price - last_close) / last_close) * 100
-    
-    # === THRESHOLDS ===
-    # BULLISH: velocity &gt; VELOCITY_TRIGGER_PCT → EXPLOSIÓN
-    # MODERATE: velocity &gt; 0.10% → Subiendo
-    # FLAT: velocity &lt; 0.10% → Plano
-    # OPPOSITE: velocity &lt; -0.1% → Contradice
-ANÁLISIS:
+ANTES:
 
-✅ USA precio real-time (fetch_current_price)
-✅ Detecta vela EN FORMACIÓN, no solo cerrada
-⚠️ VELOCITY_TRIGGER_PCT no encontrado en config visible
-2. Volume Spike Detection - brain_analyzer.py
-Líneas 1324-1398
-
-volume_avg_20 = df['volume'].iloc[-20:].mean()
-volume_current = float(df['volume'].iloc[-1])
-volume_ratio = volume_current / volume_avg_20
-# FASE NASCENT (mom_age &lt;= 3):
-#   volume &lt; 30% → Neutral (no penalty)
-#   volume &gt; 200% → +25 bonus
-#   volume &gt; 150% → +15 bonus
-# FASE DESARROLLO (4-8v):
-#   volume &lt; 30% → -10 penalty
-#   volume &gt; 200% → +20 bonus
-# FASE MADURA (10+v):
-#   volume &lt; 30% → -20 penalty (problema)
-#   volume &gt; 200% → +15 bonus
-ANÁLISIS:
-
-✅ Volume ratio existe
-⚠️ Solo se calcula en analyze_15m, no en 5m dominance
-⚠️ No hay "volume spike detection" (cambio súbito &gt; 300%)
-3. Score Final - brain_analyzer.py
-Línea 1501
-
-print(f"🎯 15M | {symbol} | Score15M:{score_15m}")
-PENALTIES que se aplican:
-
-Penalty	Valor	Línea
-ADX &lt; 25 decreciendo	-60	867
-ADX &lt; 25 creciendo	-30	864
-ADX decreciendo	-60	872
-Spread &lt; 10	-(10-spread)*6	893-900
-Momentum contradiction	-50	645
-Lateral detection	-25 to -50	unified_vision
-Grid &gt; 75% (BULL)	-20	brain_frames
-Grid &gt; 85% (BULL)	-40	brain_frames
-Volume &lt; 30%	-10 to -20	1355-1372
-Volume decreciendo	-5 to -15	1394-1397
-Pump extensión &gt; 15%	-40	~580
-Unified vision issues	max -25	728
-4. Score Combination - brain_sniper_realtime.py
-Líneas 345-359
-
-# PASO 6: COMBINAR SCORES (5M + Validator)
-combined = (score_5m * SCORE_WEIGHT_ANALYZER) + \
-           (validator_score * SCORE_WEIGHT_VALIDATOR)
-print(f"🎯 COMBINED: ({score_5m} × {SCORE_WEIGHT_ANALYZER}) + 
-      ({validator_score} × {SCORE_WEIGHT_VALIDATOR}) = {combined}")
-print(f"Threshold: {SCORE_THRESHOLD_ENTER}")
-# DECISIÓN FINAL
-if combined &gt;= SCORE_THRESHOLD_ENTER:  # 60
-    return True
 else:
-    return False
-WEIGHTS (brain_config.py):
+    # RE-HABILITADO: Penalty reducida (10 por issue, max 25)
+    penalty = min(25, len(unified_vision['issues']) * 10)
+DESPUÉS:
 
-SCORE_WEIGHT_ANALYZER = 0.6
-SCORE_WEIGHT_VALIDATOR = 0.4
-SCORE_THRESHOLD_ENTER = 60
-CASO LIT (Score 98):
+else:
+    # v5.4.3: Penalty aumentada (15 por issue, max 50)
+    penalty = min(50, len(unified_vision['issues']) * 15)
+PROMPT #3, #4, #5: Penalty Extremo + POC + in_danger_zone
+Archivo: 
+brain_analyzer.py
+ líneas 744-795
 
-Si score_5m = 100 y validator = 100:
-combined = (100 * 0.6) + (100 * 0.4) = 100
-Si combined = 98:
-Posible: score_5m ~100, validator ~95
-O: score_5m ~95, validator ~100
-PROBLEMA LIT: Score 98 → Stop Loss 3.7 min
+ANTES:
 
-Score alto NO garantiza timing correcto
-No hay penalty por "entrada tardía" o "cerca de peak"
-5. ZigZag Pivot Detection - brain_calculator.py
-Líneas 1-97
+# &gt;&gt;&gt;&gt; NUEVO: NO reducir penalties si está en zona de peligro
+# Opción A de Sonnet: 55% zona peligro, 60% bloqueo duro (gap 5%)
+# Joel: "Algunas monedas ya no tienen fuerza al 75%"
+in_danger_zone = (
+    (direction == 'BULLISH' and grid_position &gt; 55) or  # Reducido de 75% a 55%
+    (direction == 'BEARISH' and grid_position &lt; 45)     # Aumentado de 25% a 45%
+)
+if has_strong_force and not in_danger_zone:
+    # ... force reduction logic ...
+DESPUÉS:
 
-def calculate_zigzag(df, percent=None, threshold_pct=None):
+# ================================================================
+# v5.4.3: PENALTY EXTREMO ZONES + POC VALIDATION
+# Joel: "Sin hard blocks, mantener bot dinámico"
+# ================================================================
+# PENALTY EXTREMO (NO hard block - Time Ladder)
+if direction == 'BULLISH' and grid_position &gt; 90:
+    tf_penalty += 100  # Penalty extremo
+    print(f"   🚨 PENALTY EXTREMO: BULLISH grid {grid_position:.0f}% (&gt;90%)")
+elif direction == 'BEARISH' and grid_position &lt; 10:
+    tf_penalty += 100  # Penalty extremo
+    print(f"   🚨 PENALTY EXTREMO: BEARISH grid {grid_position:.0f}% (&lt;10%)")
+# POC VALIDATION
+poc = vp_data.get('poc_current', 0)
+if poc &gt; 0:
+    dist_poc = abs((current_price - poc) / poc) * 100
+    if dist_poc &lt; 0.3:  # MUY pegado
+        tf_penalty += 40
+        print(f"   ⚠️ Pegado POC ({dist_poc:.2f}%): penalty -40")
+    elif dist_poc &lt; 0.5:  # Pegado
+        tf_penalty += 25
+        print(f"   ⚠️ Cerca POC ({dist_poc:.2f}%): penalty -25")
+    else:
+        print(f"   ✅ Distancia POC: {dist_poc:.2f}% (OK)")
+# &gt;&gt;&gt;&gt; NUEVO: in_danger_zone ajustado de 55% a 70% (Prompt #5)
+# Joel: "55% es muy estricto, bloquea zona media"
+in_danger_zone = (
+    (direction == 'BULLISH' and grid_position &gt; 70) or  # Era 55%
+    (direction == 'BEARISH' and grid_position &lt; 30)     # Era 45%
+)
+if has_strong_force and not in_danger_zone:
+    # ... force reduction logic (sin cambios) ...
+📋 FASE 2: TIMING DETECTION (2 Prompts)
+PROMPT #6: detect_early_ignition()
+Archivo: 
+brain_frames.py
+ - FUNCIÓN NUEVA al final (~línea 900+)
+
+# ===================================================================
+# v5.4.3: EARLY IGNITION DETECTION
+# ===================================================================
+def detect_early_ignition(symbol, direction, timeframe='5m'):
     """
-    Calcula los puntos ZigZag y la ESTRUCTURA DE MERCADO (HH, HL, LH, LL).
+    Detecta explosión EN FORMACIÓN (antes de confirmación completa).
+    
+    Joel: "El bot entra tarde cuando ya explotó. Necesita anticipar."
+    
+    Señales tempranas:
+    1. Volume spike &gt;200% promedio (capital entrando)
+    2. Vela actual &gt;0.15% sin cerrar (movimiento iniciando)
+    3. Rompe máximo/mínimo anterior (estructura rompiendo)
+    4. ADX velocity &gt;2 pts/vela (fuerza acelerando)
+    
+    Returns:
+        {
+            'is_igniting': bool,
+            'confidence': str ('HIGH', 'MEDIUM', 'LOW'),
+            'reason': str,
+            'signals': list
+        }
     """
+    from exchange_connection import fetch_current_price
     
-    # 1. Identificar Pivotes (SOLO CONFIRMADOS)
-    for i in range(1, len(close)):
-        change = (close[i] - last_pivot) / last_pivot * 100
-        if abs(change) &gt;= pct:  # Requiere % mínimo
-            direction = 1 if change &gt; 0 else -1
-            pivots.append(i)
-            values.append(close[i])
-            last_pivot = close[i]
+    storage = get_frame_storage(symbol, timeframe)
     
-    # 2. Clasificar Estructura
-    # HH = Higher High, HL = Higher Low
-    # LH = Lower High, LL = Lower Low
-ANÁLISIS:
+    if not storage.has_enough_frames(25):
+        return {'is_igniting': False, 'confidence': 'NONE', 'reason': 'Datos insuficientes'}
+    
+    try:
+        df = storage.df
+    except:
+        return {'is_igniting': False, 'confidence': 'NONE', 'reason': 'Sin DataFrame'}
+    
+    if len(df) &lt; 25:
+        return {'is_igniting': False, 'confidence': 'NONE', 'reason': 'Datos insuficientes'}
+    
+    signals = []
+    confidence_score = 0
+    
+    # ===== SEÑAL 1: VOLUME SPIKE =====
+    try:
+        volume_current = float(df['volume'].iloc[-1])
+        volume_avg = df['volume'].iloc[-20:-1].mean()
+        volume_ratio = volume_current / volume_avg if volume_avg &gt; 0 else 0
+        
+        if volume_ratio &gt; 2.5:
+            signals.append(f'Volume spike x{volume_ratio:.1f}')
+            confidence_score += 40
+        elif volume_ratio &gt; 1.8:
+            signals.append(f'Volume elevado x{volume_ratio:.1f}')
+            confidence_score += 25
+    except:
+        pass
+    
+    # ===== SEÑAL 2: VELA EN FORMACIÓN =====
+    try:
+        current_price = fetch_current_price(symbol)
+        current_open = float(df['open'].iloc[-1])
+        candle_change_pct = ((current_price - current_open) / current_open) * 100
+        
+        if direction == 'BULLISH':
+            if candle_change_pct &gt; 0.20:
+                signals.append(f'Vela verde +{candle_change_pct:.2f}%')
+                confidence_score += 30
+            elif candle_change_pct &gt; 0.10:
+                signals.append(f'Vela subiendo +{candle_change_pct:.2f}%')
+                confidence_score += 15
+        else:  # BEARISH
+            if candle_change_pct &lt; -0.20:
+                signals.append(f'Vela roja {candle_change_pct:.2f}%')
+                confidence_score += 30
+            elif candle_change_pct &lt; -0.10:
+                signals.append(f'Vela bajando {candle_change_pct:.2f}%')
+                confidence_score += 15
+    except:
+        pass
+    
+    # ===== SEÑAL 3: RUPTURA ESTRUCTURA =====
+    try:
+        prev_high = float(df['high'].iloc[-2])
+        prev_low = float(df['low'].iloc[-2])
+        current_price = fetch_current_price(symbol)
+        
+        if direction == 'BULLISH' and current_price &gt; prev_high:
+            signals.append('Rompió máximo anterior')
+            confidence_score += 20
+        elif direction == 'BEARISH' and current_price &lt; prev_low:
+            signals.append('Rompió mínimo anterior')
+            confidence_score += 20
+    except:
+        pass
+    
+    # ===== SEÑAL 4: ADX ACELERANDO =====
+    try:
+        adx_data = storage.get_trajectory('adx.adx_current', 5)
+        if adx_data and len(adx_data) &gt;= 3:
+            adx_velocity = adx_data[-1] - adx_data[-2]
+            if adx_velocity &gt; 2:
+                signals.append(f'ADX acelerando +{adx_velocity:.1f}')
+                confidence_score += 10
+    except:
+        pass
+    
+    # ===== EVALUACIÓN FINAL =====
+    if confidence_score &gt;= 60:
+        confidence = 'HIGH'
+        is_igniting = True
+    elif confidence_score &gt;= 40:
+        confidence = 'MEDIUM'
+        is_igniting = True
+    else:
+        confidence = 'LOW'
+        is_igniting = False
+    
+    return {
+        'is_igniting': is_igniting,
+        'confidence': confidence,
+        'confidence_score': confidence_score,
+        'reason': ', '.join(signals) if signals else 'Sin señales',
+        'signals': signals
+    }
+PROMPT #8: pivot_tentativo
+Archivo: 
+brain_calculator.py
+ líneas 86-138 (dentro de calculate_zigzag, antes del return)
 
-❌ Solo detecta pivotes CONFIRMADOS (requiere % cambio completo)
-❌ NO hay pivot_tentativo ni pivot_forming
-❌ Espera confirmación completa → TARDE
-⚠️ En vela actual, no sabe si es pivot hasta que cierre
-🔍 CONCLUSIONES
-TIMING ISSUES:
-Issue	Estado	Impacto
-Velocity	✅ Temprano	Usa precio real-time
-Volume	⚠️ Medio	Solo en 15M, no detecta spike súbito
-ZigZag	❌ Tarde	Solo pivotes confirmados
-Score	⚠️ No timing	Sin penalty entrada tardía
-FIX PROPUESTOS:
-detect_early_ignition() - Detectar explosión ANTES del cierre
-volume_spike_alert - Detectar volumen &gt; 300% promedio
-pivot_tentativo - Detectar pivot EN FORMACIÓN (no confirmado)
-penalty_late_entry - Si momentum &gt; 5v y ADX decreciendo
+ANTES:
+
+# 3. Resumen de última estructura
+last_structure = "Indefinido"
+if len(pivot_types) &gt;= 2:
+    last_structure = f"{pivot_types[-2]} -&gt; {pivot_types[-1]}"
+return {
+    'pivots': pivots, 
+    'values': values, 
+    'pivot_types': pivot_types, 
+    'last_structure': last_structure
+}
+DESPUÉS:
+
+# 3. Resumen de última estructura
+last_structure = "Indefinido"
+if len(pivot_types) &gt;= 2:
+    last_structure = f"{pivot_types[-2]} -&gt; {pivot_types[-1]}"
+# ===================================================================
+# v5.4.3: PIVOT TENTATIVO (EN FORMACIÓN)
+# Joel: "ZigZag solo detecta pivotes confirmados (tarde)."
+# Agregamos detección de pivotes EN FORMACIÓN (anticipación)
+# ===================================================================
+pivot_tentativo = None
+pivot_tentativo_confidence = 0
+if len(close) &gt; 2:
+    current_price = close[-1]
+    prev_price = close[-2]
+    prev_prev_price = close[-3]
+    
+    # Detectar LL tentativo (bajo más bajo en formación)
+    if current_price &lt; prev_price &lt; prev_prev_price:
+        threshold_change = ((prev_price - current_price) / prev_price) * 100
+        if threshold_change &gt;= pct * 0.5:  # 50% del threshold
+            pivot_tentativo = 'LL_forming'
+            pivot_tentativo_confidence = min(100, int((threshold_change / pct) * 100))
+    
+    # Detectar HH tentativo (alto más alto en formación)
+    elif current_price &gt; prev_price &gt; prev_prev_price:
+        threshold_change = ((current_price - prev_price) / prev_price) * 100
+        if threshold_change &gt;= pct * 0.5:
+            pivot_tentativo = 'HH_forming'
+            pivot_tentativo_confidence = min(100, int((threshold_change / pct) * 100))
+    
+    # Detectar HL tentativo (bajo más alto - fin de caída)
+    elif current_price &gt; prev_price and prev_price &lt; prev_prev_price:
+        threshold_change = ((current_price - prev_price) / prev_price) * 100
+        if threshold_change &gt;= pct * 0.3:  # 30% del threshold (más sensible)
+            pivot_tentativo = 'HL_forming'
+            pivot_tentativo_confidence = min(100, int((threshold_change / pct) * 100))
+    
+    # Detectar LH tentativo (alto más bajo - fin de subida)
+    elif current_price &lt; prev_price and prev_price &gt; prev_prev_price:
+        threshold_change = ((prev_price - current_price) / prev_price) * 100
+        if threshold_change &gt;= pct * 0.3:
+            pivot_tentativo = 'LH_forming'
+            pivot_tentativo_confidence = min(100, int((threshold_change / pct) * 100))
+return {
+    'pivots': pivots, 
+    'values': values, 
+    'pivot_types': pivot_types, 
+    'last_structure': last_structure,
+    'pivot_tentativo': pivot_tentativo,
+    'pivot_tentativo_confidence': pivot_tentativo_confidence
+}
+📋 FASE 3: INTEGRATION (1 Prompt)
+PROMPT #9: penalty_late_entry + ignition bonus
+Archivo: 
+brain_analyzer.py
+ líneas 1500-1556 (después de daily_change, antes de RSI)
+
+CÓDIGO AGREGADO:
+
+# ===================================================================
+# v5.4.3: PENALTY ENTRADA TARDÍA + EARLY IGNITION
+# Joel: "LIT score 98 → stop loss 3.7 min. Scores sin timing."
+# ===================================================================
+late_entry_penalty = 0
+late_entry_reasons = []
+# PENALTY 1: Momentum viejo (&gt;5 velas)
+if mom_age &gt; 7:
+    late_entry_penalty += 50
+    late_entry_reasons.append(f"Momentum {mom_age}v muy viejo")
+elif mom_age &gt; 5:
+    late_entry_penalty += 30
+    late_entry_reasons.append(f"Momentum {mom_age}v viejo")
+# PENALTY 2: ADX peak (alto sin crecer)
+adx_velocity = adx_data.get('adx_velocity', 0)
+if adx_current &gt; 40 and adx_velocity &lt; 0.5:
+    late_entry_penalty += 40
+    late_entry_reasons.append(f"ADX {adx_current:.1f} peaked")
+elif adx_current &gt; 35 and adx_velocity &lt; 1:
+    late_entry_penalty += 25
+    late_entry_reasons.append(f"ADX {adx_current:.1f} sin crecer")
+# PENALTY 3: Pivot confirmado reciente
+try:
+    last_pivot_type = zigzag_granular.get('pivot_types', [])[-1] if zigzag_granular.get('pivot_types') else ''
+    if last_pivot_type in ['HH', 'LL']:
+        late_entry_penalty += 20
+        late_entry_reasons.append(f"Pivot {last_pivot_type} recién confirmado")
+except:
+    pass
+# Aplicar penalty total
+if late_entry_penalty &gt; 0:
+    score_15m -= late_entry_penalty
+    print(f"   ⚠️ ENTRADA TARDÍA: {', '.join(late_entry_reasons)} → penalty -{late_entry_penalty}")
+# BONUS: Early ignition detection
+try:
+    from brain_frames import detect_early_ignition
+    ignition = detect_early_ignition(symbol, direction, '5m')
+    
+    if ignition.get('is_igniting'):
+        if ignition.get('confidence') == 'HIGH':
+            score_15m += 40
+            print(f"   🔥 IGNICIÓN TEMPRANA (HIGH): {ignition.get('reason', '')} → bonus +40")
+        elif ignition.get('confidence') == 'MEDIUM':
+            score_15m += 25
+            print(f"   🔥 Ignición temprana (MEDIUM): {ignition.get('reason', '')} → bonus +25")
+except Exception as e:
+    print(f"   ⚠️ Error ignition detection: {e}")
+📊 RESUMEN DE CAMBIOS
+Prompt	Archivo	Líneas	Tipo
+#1	brain_frames.py	790-812	Modificado
+#2	brain_analyzer.py	726-728	Modificado
+#3,4,5	brain_analyzer.py	744-795	Modificado
+#6	brain_frames.py	900+	Nueva función
+#8	brain_calculator.py	86-138	Modificado
+#9	brain_analyzer.py	1500-1556	Agregado
+✅ VERIFICACIÓN
+python -m py_compile brain_frames.py brain_analyzer.py brain_calculator.py
+# Sin errores ✅
+
+¡Listo! Aquí está el plan completo con todo el código:
+
+📋 Plan Completo v5.4.3 creado en: 
+implementation_plan.md
+
+📊 Resumen del Plan Ejecutado:
+FASE 1: Zone Fixes (5 prompts)
+Prompt	Cambio	Archivo
+#1	Grid penalties: 40/20 → 80/50/30	brain_frames.py
+#2	Unified max: 25 → 50	brain_analyzer.py
+#3	Penalty extremo -100 (Time Ladder)	brain_analyzer.py
+#4	POC validation -40/-25	brain_analyzer.py
+#5	in_danger_zone: 55% → 70%	brain_analyzer.py
+FASE 2: Timing Detection (2 prompts)
+Prompt	Cambio	Archivo
+#6	detect_early_ignition() nueva función	brain_frames.py
+#8	pivot_tentativo (HH/LL en formación)	brain_calculator.py
+FASE 3: Integration (1 prompt)
+Prompt	Cambio	Archivo
+#9	penalty_late_entry + ignition bonus	brain_analyzer.py
+El documento incluye todo el código ANTES y DESPUÉS para cada cambio.
+
+¿Querés que te muestre alguna sección específica del código implementado?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,574<br>
-    Generado: 2025-12-28 23:40:24
+    Total caracteres: 15,162<br>
+    Generado: 2025-12-29 00:16:52
   </div>
 </body>
 </html>
