@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-28 23:13:14</div>
+  <div class="meta">Última actualización: 2025-12-28 23:25:34</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -155,12 +155,247 @@ ENTRADA - ALLO/USDT:USDT
 ⏱️ Duración: 3.9 min
 🔚 Razón: Stop loss
 
+Bot detenido por usuario
 
+================================================================================
+📊 RESUMEN SESIÓN
+================================================================================
+Total trades: 7
+Wins: 2 | Losses: 5
+Win rate: 28.6%
+Avg PnL: +0.38%
+Total PnL: $+8.94
+
+--------------------------------------------------------------------------------
+🎯 SNIPER STATS FINALES:
+
+📊 SNIPER STATUS:
+   🎯 Priority: 9
+   ⏳ Waiting: 45
+   ❌ Rejected: 8
+   📍 Scan: 281/737 (Ciclo #1)
+
+   🏆 TOP PRIORITY:
+      1. TIA/USDT:USDT - Score: 79.5
+      2. G/USDT:USDT - Score: 79.5
+      3. YGG/USDT:USDT - Score: 73.5
+
+PLAN v5.4.2 - FIX ZONE ENTRY
+📊 Analicé tus trades y encontré 5 causas raíz:
+Problema	Ubicación	Impacto
+Grid penalties muy bajas	brain_frames.py	-40 max, insuficiente
+Unified vision max 25	brain_analyzer.py	25 pts no bloquea
+Sin hard block extremos	Sistema	Grid 95% → entra
+POC solo en validator	entry_validator	Ya pasó filtros
+in_danger_zone = 55%	brain_analyzer.py	Muy estricto
+✅ 5 FIXES PROPUESTOS:
+Fix	Cambio
+#1	Grid penalties: 40/20 → 80/50/30
+#2	Unified vision max: 25 → 50
+#3	HARD BLOCK grid &gt;90% (BULL) o &lt;10% (BEAR)
+#4	POC validation en analyze_15m
+#5	in_danger_zone: 55% → 70%
+📊 Resultado esperado:
+ANTES:
+H/USDT BULLISH grid 85% → Score -40 → 60+ → ENTRA ❌
+DESPUÉS:
+H/USDT BULLISH grid 85% → Score -50 → &lt;60 → NO ENTRA ✅
+Grid 95% → HARD BLOCK → NO ENTRA ✅
+¿Aprobás los 5 fixes?
+PLAN COMPLETO v5.4.2 - FIX ZONE ENTRY ISSUES
+📊 EVIDENCIA DEL PROBLEMA
+Trades perdedores (de tu reporte):
+
+Symbol	Direction	Score	PnL	Problema
+H/USDT	BULLISH	95	-1.46%	Entró cerca resistencia
+ALLO/USDT	BEARISH	60	-0.44%	Lateralizó
+HOLO/USDT	BEARISH	73	-0.77%	Entró cerca soporte
+HEMI/USDT	BEARISH	68	-0.47%	Entró cerca soporte
+LIT/USDT	BULLISH	98	-2.19%	Stop loss rápido
+Trade ganador: | LMWR/USDT | BULLISH | 138 | +7.30% | ✅ Rompió limpio |
+
+🔍 5 CAUSAS RAÍZ ENCONTRADAS
+PROBLEMA #1: Grid penalties muy bajas
+Ubicación: 
+brain_frames.py
+ líneas 790-805
+
+# ACTUAL:
+if grid_position &gt; 85:
+    score -= 40  # MUY BAJO
+elif grid_position &gt; 75:
+    score -= 20  # MUY BAJO
+Problema: -40 pts no es suficiente para rechazar. Score 100 - 40 = 60 → APROBADO.
+
+PROBLEMA #2: Unified Vision max penalty = 25
+Ubicación: 
+brain_analyzer.py
+ líneas 727-732
+
+# ACTUAL:
+penalty = min(25, len(unified_vision['issues']) * 10)  # MAX 25!
+Problema: Aunque haya 5 issues, máximo penalty es 25. Insuficiente.
+
+PROBLEMA #3: Force reduction elimina 70% penalties
+Ubicación: 
+brain_analyzer.py
+ líneas 752-768
+
+# ACTUAL:
+if has_strong_force and not in_danger_zone:
+    pump_penalty = int(pump_penalty * 0.3)  # 70% OFF
+Problema: in_danger_zone usa 55/45%, pero grid_position viene de unified_vision que puede tener valor incorrecto o default 50.
+
+PROBLEMA #4: POC validation solo en entry_validator
+Ubicación: 
+brain_entry_validator.py
+
+La validación POC que agregamos hoy solo corre cuando ya pasó todos los filtros. Debería correr en 
+analyze_15m()
+ también.
+
+PROBLEMA #5: Sin HARD BLOCK para zonas extremas
+Ubicación: Todo el sistema
+
+No hay ningún punto donde grid &gt; 90% (BULLISH) o grid &lt; 10% (BEARISH) genere un hard block automático.
+
+✅ 5 FIXES PROPUESTOS
+FIX #1: Aumentar grid penalties en brain_frames.py
+Archivo: 
+brain_frames.py
+ líneas 790-805
+
+ACTUAL:
+
+if direction == 'BULLISH':
+    if grid_position &gt; 85:
+        score -= 40
+    elif grid_position &gt; 75:
+        score -= 20
+else:  # BEARISH
+    if grid_position &lt; 15:
+        score -= 40
+    elif grid_position &lt; 25:
+        score -= 20
+PROPUESTO:
+
+if direction == 'BULLISH':
+    if grid_position &gt; 90:
+        score -= 80  # NEAR HARD BLOCK
+    elif grid_position &gt; 80:
+        score -= 50  # SEVERE
+    elif grid_position &gt; 70:
+        score -= 30  # MODERATE
+else:  # BEARISH
+    if grid_position &lt; 10:
+        score -= 80  # NEAR HARD BLOCK
+    elif grid_position &lt; 20:
+        score -= 50  # SEVERE
+    elif grid_position &lt; 30:
+        score -= 30  # MODERATE
+FIX #2: Aumentar max penalty de unified vision
+Archivo: 
+brain_analyzer.py
+ líneas 727-728
+
+ACTUAL:
+
+penalty = min(25, len(unified_vision['issues']) * 10)
+PROPUESTO:
+
+penalty = min(50, len(unified_vision['issues']) * 15)  # MAX 50, 15 per issue
+FIX #3: HARD BLOCK para zonas extremas en analyze_15m
+Archivo: 
+brain_analyzer.py
+ DESPUÉS de unified_vision (línea ~720)
+
+AGREGAR:
+
+# ================================================================
+# v5.4.2: HARD BLOCK ZONAS EXTREMAS
+# Joel: "No entrar en techo ni en piso absoluto"
+# ================================================================
+if direction == 'BULLISH' and grid_position &gt; 90:
+    print(f"   🚫 HARD BLOCK: BULLISH en grid {grid_position:.0f}% (&gt;90% = techo)")
+    return {
+        'symbol': symbol,
+        'direction': direction,
+        'score_15m': -999,
+        'blocked': True,
+        'block_reason': f'BULLISH en zona de resistencia extrema ({grid_position:.0f}%)',
+        'verdict': 'BLOCKED_EXTREME_ZONE'
+    }
+if direction == 'BEARISH' and grid_position &lt; 10:
+    print(f"   🚫 HARD BLOCK: BEARISH en grid {grid_position:.0f}% (&lt;10% = piso)")
+    return {
+        'symbol': symbol,
+        'direction': direction,
+        'score_15m': -999,
+        'blocked': True,
+        'block_reason': f'BEARISH en zona de soporte extrema ({grid_position:.0f}%)',
+        'verdict': 'BLOCKED_EXTREME_ZONE'
+    }
+FIX #4: Agregar POC validation en analyze_15m también
+Archivo: 
+brain_analyzer.py
+ DESPUÉS del grid block
+
+AGREGAR:
+
+# ================================================================
+# v5.4.2: POC VALIDATION EN ANALYZER
+# Si precio pegado al POC sin velocity, penalizar fuerte
+# ================================================================
+poc = vp_data.get('poc_current', 0)
+if poc &gt; 0:
+    dist_poc = abs((current_price - poc) / poc) * 100
+    if dist_poc &lt; 0.3:  # MUY pegado
+        score_15m -= 40
+        print(f"   ⚠️ Pegado POC ({dist_poc:.2f}%): penalty -40")
+    elif dist_poc &lt; 0.5:  # Pegado
+        score_15m -= 25
+        print(f"   ⚠️ Cerca POC ({dist_poc:.2f}%): penalty -25")
+FIX #5: Hacer in_danger_zone más estricto
+Archivo: 
+brain_analyzer.py
+ líneas 747-750
+
+ACTUAL:
+
+in_danger_zone = (
+    (direction == 'BULLISH' and grid_position &gt; 55) or
+    (direction == 'BEARISH' and grid_position &lt; 45)
+)
+PROPUESTO:
+
+in_danger_zone = (
+    (direction == 'BULLISH' and grid_position &gt; 70) or  # Era 55
+    (direction == 'BEARISH' and grid_position &lt; 30)     # Era 45
+)
+Razón: 55% es demasiado estricto, bloquea zona media. 70% es más lógico. Pero cuando está en danger_zone, NO reducir penalties.
+
+📋 ORDEN DE IMPLEMENTACIÓN
+FIX #3 - Hard block zonas extremas
+FIX #1 - Aumentar grid penalties
+FIX #2 - Aumentar max penalty unified vision
+FIX #4 - POC validation en analyzer
+FIX #5 - Ajustar in_danger_zone
+🔄 ROLLBACK
+# Si algo falla, restaurar:
+# - Grid penalties a 40/20
+# - Unified vision max 25
+# - Quitar hard blocks zonas extremas
+📊 RESULTADO ESPERADO
+Antes	Después
+Grid 85% → -40 pts	Grid 85% → -50 pts
+Grid 95% → -40 pts	Grid 95% → BLOCKED
+POC 0.2% → sin penalty	POC 0.2% → -40 pts
+3 issues → -25 max	3 issues → -45 pts
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,837<br>
-    Generado: 2025-12-28 23:13:14
+    Total caracteres: 11,876<br>
+    Generado: 2025-12-28 23:25:34
   </div>
 </body>
 </html>
