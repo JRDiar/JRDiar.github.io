@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-30 00:24:53</div>
+  <div class="meta">Última actualización: 2025-12-30 00:27:47</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
@@ -2262,11 +2262,490 @@ if __name__ == "__main__":
         print(f"Esperar: {result['wait_for']}")
     print("=" * 60)
 
+Te paso bot main
+
+"""
+BOT MAIN - Bot Phase 5.0
+Orquestador principal: Real-Time Sniper
+"""
+
+import time
+from datetime import datetime
+from brain_config import (
+    CAPITAL_INICIAL, SIMULATE_LEVERAGE, MAX_TRADES_SIMULTANEOUS,
+    MIN_DAILY_CANDLES, ARGENTINA_TZ, ENABLE_TELEGRAM,
+    ENABLE_SNIPER_MODE, SNIPER_MAX_PRIORITY_SIZE, SNIPER_BATCH_SIZE,
+    SNIPER_REEVALUATION_INTERVAL
+)
+from exchange_connection import get_futures_symbols, fetch_ohlcv
+from brain_sniper_realtime import RealtimeSniper  # NUEVO: Sistema Sniper
+from brain_executor import trade_manager
+from sheets_manager import sheets_manager
+from telegram_notifications import notify_bot_start
+from database_manager import db_manager
+import pandas as pd
+import sys
+
+# --- STARTUP MARKER ---
+print("**************************************************")
+print(f"*** BRAIN TRADER v5.0 - REAL-TIME SNIPER - {datetime.now()} ***")
+print("**************************************************")
+# ----------------------
+
+import logging
+from brain_config import LOG_FILE
+
+# Configurar Logging
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+print(f"📝 Logging configurado en: {LOG_FILE}")
+
+# HELPER FUNCTIONS
+# ============================================================================
+
+def _extract_score(score_value, default=0):
+    """
+    Recursively extract integer score from potentially nested dict.
+    
+    Args:
+        score_value: The value to extract (can be int, float, dict, or None)
+        default: Default value if extraction fails
+    
+    Returns:
+        int: Extracted integer score
+    """
+    if score_value is None:
+        return default
+    if isinstance(score_value, (int, float)):
+        return int(score_value)
+    if isinstance(score_value, dict):
+        # Recursively extract from nested dict
+        return _extract_score(score_value.get('score', default), default)
+    # Fallback for any other type
+    return default
+
+def _extract_adx_value(adx_data):
+    """Safely extract ADX value from dict or number."""
+    if isinstance(adx_data, (int, float)):
+        return float(adx_data)
+    if isinstance(adx_data, dict):
+        return float(adx_data.get('adx_current', 0))
+    return 0.0
+
+# ============================================================================
+# CLASE BOT PRINCIPAL
+# ============================================================================
+
+class BrainTradingBot:
+    def __init__(self):
+        self.running = False
+        self.cycle_count = 0
+        self.filtered_symbols = []
+        self.sniper = None
+    
+    def print_banner(self):
+        """Imprime banner de inicio"""
+        print("\n" + "=" * 80)
+        print("🎯 BRAIN TRADING BOT - PHASE 5.0 (REAL-TIME SNIPER)")
+        print("    Sistema Dinámico de Operación Inmediata")
+        print("=" * 80)
+        print(f"💰 Capital: ${CAPITAL_INICIAL} | Apalancamiento: {SIMULATE_LEVERAGE}x")
+        print(f"🎯 Max trades simultáneos: {MAX_TRADES_SIMULTANEOUS}")
+        print(f"🎯 Sniper Priority Queue: {SNIPER_MAX_PRIORITY_SIZE} monedas")
+        print(f"⚡ Análisis continuo en tiempo real")
+        print(f"🎯 Opera apenas encuentra setup perfecto")
+        print("=" * 80 + "\n")
+    
+    def run(self):
+        """Loop principal con Sniper en tiempo real"""
+        self.running = True
+        self.print_banner()
+        
+        # Notificar inicio
+        if ENABLE_TELEGRAM:
+            notify_bot_start(CAPITAL_INICIAL, SIMULATE_LEVERAGE)
+        
+        # Obtener símbolos
+        print("🚀 Obteniendo símbolos del mercado...")
+        self.filtered_symbols = get_futures_symbols()
+        
+        if not self.filtered_symbols:
+            print("❌ No hay símbolos para analizar. Abortando.")
+            return
+        
+        print(f"✅ {len(self.filtered_symbols)} símbolos cargados")
+        
+        # Iniciar Sniper
+        if ENABLE_SNIPER_MODE:
+            self.sniper = RealtimeSniper(
+                trade_manager, 
+                max_priority_size=SNIPER_MAX_PRIORITY_SIZE
+            )
+            self.sniper.start_continuous_analysis(self.filtered_symbols)
+        else:
+            print("❌ SNIPER_MODE desactivado en config. No se puede continuar.")
+            return
+        
+        # Iniciar thread de stop loss
+        trade_manager.start_stop_loss_monitor()
+        
+        print(f"\n{'='*80}")
+        print("✅ SNIPER ACTIVADO - Entrando en modo hunting")
+        print(f"{'='*80}\n")
+        
+        # Loop principal
+        try:
+            while self.running:
+                self.cycle_count += 1
+                now = datetime.now(ARGENTINA_TZ)
+                
+                print(f"\n{'─'*80}")
+                print(f"🔄 CICLO #{self.cycle_count} - {now.strftime('%H:%M:%S')}")
+                print(f"{'─'*80}")
+                
+                # 1. ANALIZAR SIGUIENTE LOTE
+                analyzed = self.sniper.analyze_next_batch(batch_size=SNIPER_BATCH_SIZE)
+                
+                if analyzed &gt; 0:
+                    print(f"📊 Analizadas: {analyzed} monedas")
+                
+                # 2. VERIFICAR SETUP PERFECTO
+                perfect_setup = self.sniper.check_for_perfect_setup()
+                
+                if perfect_setup and trade_manager.can_open_trade():
+                    print(f"\n{'🎯'*40}")
+                    print(f"🎯 SETUP PERFECTO ENCONTRADO: {perfect_setup['symbol']}")
+                    print(f"{'🎯'*40}\n")
+                    
+                    # Entrar al trade inmediatamente
+                    trade_manager.enter_trade(
+                        perfect_setup['symbol'], 
+                        perfect_setup['data']
+                    )
+                
+                # 3. MONITOREAR TRADES ACTIVOS
+                if trade_manager.active_trades:
+                    print(f"\n📈 TRADES ACTIVOS: {len(trade_manager.active_trades)}")
+                    trade_manager.monitor_active_trades()
+                
+                # 4. REEVALUAR WAITING LIST (cada N ciclos)
+                if self.cycle_count % SNIPER_REEVALUATION_INTERVAL == 0:
+                    self.sniper.reevaluate_waiting_list()
+                
+                # 5. LIMPIAR SETUPS ANTIGUOS (cada 20 ciclos)
+                if self.cycle_count % 20 == 0:
+                    self.sniper.queue.cleanup_stale(max_age_minutes=15)
+                
+                # 6. MOSTRAR STATUS (cada 10 ciclos)
+                if self.cycle_count % 10 == 0:
+                    self.sniper.print_status()
+                
+                # 7. ACTUALIZAR STATS (cada 5 min)
+                if now.minute % 5 == 0 and now.second &lt; 10:
+                    try:
+                        trade_manager.update_stats()
+                    except Exception as e:
+                        print(f"⚠️ Error actualizando stats: {e}")
+                
+                # 8. ESPERAR (2 segundos para análisis rápido)
+                time.sleep(2)
+        
+        except KeyboardInterrupt:
+            print("\n\n🛑 Bot detenido por usuario")
+            self.stop()
+    
+    def stop(self):
+        """Detiene el bot"""
+        self.running = False
+        
+        print("\n" + "=" * 80)
+        print("📊 RESUMEN SESIÓN")
+        print("=" * 80)
+        
+        # Stats trades
+        total_trades = len(trade_manager.trade_history)
+        if total_trades &gt; 0:
+            wins = sum(1 for t in trade_manager.trade_history if t['pnl_pct'] &gt; 0)
+            losses = total_trades - wins
+            win_rate = (wins / total_trades) * 100
+            
+            avg_pnl = sum(t['pnl_pct'] for t in trade_manager.trade_history) / total_trades
+            total_pnl_usd = sum(t['pnl_usd'] for t in trade_manager.trade_history)
+            
+            print(f"Total trades: {total_trades}")
+            print(f"Wins: {wins} | Losses: {losses}")
+            print(f"Win rate: {win_rate:.1f}%")
+            print(f"Avg PnL: {avg_pnl:+.2f}%")
+            print(f"Total PnL: ${total_pnl_usd:+.2f}")
+            
+            # Guardar stats en Sheet
+            try:
+                # Calcular best y worst trades
+                best_trade = max(t['pnl_pct'] for t in trade_manager.trade_history)
+                worst_trade = min(t['pnl_pct'] for t in trade_manager.trade_history)
+                
+                sheets_manager.write_stats(
+                    total_trades,
+                    wins,
+                    losses,
+                    win_rate,
+                    avg_pnl,
+                    total_pnl_usd,
+                    best_trade,
+                    worst_trade
+                )
+            except Exception as e:
+                print(f"⚠️ Error guardando stats en Sheets: {e}")
+        else:
+            print("Sin trades ejecutados")
+        
+        # Mostrar Sniper stats finales
+        if self.sniper:
+            print("\n" + "-" * 80)
+            print("🎯 SNIPER STATS FINALES:")
+            self.sniper.print_status()
+        
+        print("=" * 80)
+        print("👋 Bot detenido correctamente")
+        print("=" * 80 + "\n")
+
+
+# ============================================================================
+# PUNTO DE ENTRADA
+# ============================================================================
+
+if __name__ == "__main__":
+    bot = BrainTradingBot()
+    
+    try:
+        bot.run()
+    except Exception as e:
+        print(f"\n❌ ERROR CRÍTICO: {e}")
+        import traceback
+        traceback.print_exc()
+        bot.stop()
+
+Modulo completo brain_direction.py
+
+"""
+brain_direction.py - ÚNICA FUENTE DE VERDAD PARA DIRECCIÓN
+============================================================
+
+PROBLEMA QUE RESUELVE:
+- Antes: Dirección determinada en 8+ lugares diferentes
+- APT/BERA: Entraron SHORT cuando era LONG por snapshot de DI en 1H
+
+SOLUCIÓN:
+- Votación ponderada multi-timeframe
+- 4H domina (40%), con 1H (30%), 15M (15%), Momentum (10%), Estructura (5%)
+- NO usa snapshot único, sino contexto completo
+"""
+
+def determine_direction_contextual(symbol, ladder):
+    """
+    Determina dirección considerando CONTEXTO COMPLETO
+    
+    NO usa snapshot de DI en un momento.
+    USA: Multi-timeframe, momentum, estructura
+    
+    Args:
+        symbol: Par de trading
+        ladder: Dict con datos de todos los timeframes
+        
+    Returns:
+        dict: {
+            'direction': 'BULLISH' o 'BEARISH',
+            'confidence': float 0-1,
+            'votes': {'BULLISH': X, 'BEARISH': Y},
+            'breakdown': {tf: direction for each tf}
+        }
+    """
+    
+    # Obtener datos de timeframes
+    tf_4h = ladder.get('4h', {}) or {}
+    tf_1h = ladder.get('1h', {}) or {}
+    tf_15m = ladder.get('15m', {}) or {}
+    
+    votes = {'BULLISH': 0, 'BEARISH': 0}
+    breakdown = {}
+    
+    # === PASO 1: Tendencia dominante 4H (40% peso) ===
+    adx_4h = tf_4h.get('adx', {}) or {}
+    di_plus_4h = adx_4h.get('di_plus_current', 0)
+    di_minus_4h = adx_4h.get('di_minus_current', 0)
+    spread_4h = abs(di_plus_4h - di_minus_4h)
+    
+    if spread_4h &gt; 10:
+        # Spread fuerte = alta confianza
+        if di_plus_4h &gt; di_minus_4h:
+            direction_4h = 'BULLISH'
+            votes['BULLISH'] += 40 * 0.9
+        else:
+            direction_4h = 'BEARISH'
+            votes['BEARISH'] += 40 * 0.9
+        breakdown['4h'] = direction_4h
+        print(f"      📊 4H: {direction_4h} (spread {spread_4h:.1f})")
+    elif spread_4h &gt; 5:
+        # Spread moderado = confianza media
+        if di_plus_4h &gt; di_minus_4h:
+            direction_4h = 'BULLISH'
+            votes['BULLISH'] += 40 * 0.5
+        else:
+            direction_4h = 'BEARISH'
+            votes['BEARISH'] += 40 * 0.5
+        breakdown['4h'] = direction_4h
+        print(f"      📊 4H: {direction_4h} (spread débil {spread_4h:.1f})")
+    else:
+        direction_4h = None
+        breakdown['4h'] = 'NEUTRAL'
+        print(f"      📊 4H: NEUTRAL (spread {spread_4h:.1f})")
+    
+    # === PASO 2: Validación 1H (30% peso) ===
+    adx_1h = tf_1h.get('adx', {}) or {}
+    di_plus_1h = adx_1h.get('di_plus_current', 0)
+    di_minus_1h = adx_1h.get('di_minus_current', 0)
+    spread_1h = abs(di_plus_1h - di_minus_1h)
+    
+    if spread_1h &gt; 7:
+        if di_plus_1h &gt; di_minus_1h:
+            direction_1h = 'BULLISH'
+            votes['BULLISH'] += 30 * 0.7
+        else:
+            direction_1h = 'BEARISH'
+            votes['BEARISH'] += 30 * 0.7
+        breakdown['1h'] = direction_1h
+        print(f"      📊 1H: {direction_1h} (spread {spread_1h:.1f})")
+    elif spread_1h &gt; 4:
+        if di_plus_1h &gt; di_minus_1h:
+            direction_1h = 'BULLISH'
+            votes['BULLISH'] += 30 * 0.4
+        else:
+            direction_1h = 'BEARISH'
+            votes['BEARISH'] += 30 * 0.4
+        breakdown['1h'] = direction_1h
+        print(f"      📊 1H: {direction_1h} (spread débil {spread_1h:.1f})")
+    else:
+        direction_1h = None
+        breakdown['1h'] = 'NEUTRAL'
+        print(f"      📊 1H: NEUTRAL (spread {spread_1h:.1f})")
+    
+    # === PASO 3: Confirmación 15M DI (15% peso) ===
+    adx_15m = tf_15m.get('adx', {}) or {}
+    di_plus_15m = adx_15m.get('di_plus_current', 0)
+    di_minus_15m = adx_15m.get('di_minus_current', 0)
+    
+    if di_plus_15m &gt; di_minus_15m:
+        direction_15m = 'BULLISH'
+        votes['BULLISH'] += 15
+    else:
+        direction_15m = 'BEARISH'
+        votes['BEARISH'] += 15
+    breakdown['15m'] = direction_15m
+    
+    # === PASO 4: Momentum (10% peso) ===
+    momentum_15m = tf_15m.get('momentum', {}) or {}
+    mom_color = momentum_15m.get('color_current', 'neutral')
+    
+    if mom_color in ['lime', 'green']:
+        momentum_direction = 'BULLISH'
+        votes['BULLISH'] += 10
+    elif mom_color in ['maroon', 'red']:
+        momentum_direction = 'BEARISH'
+        votes['BEARISH'] += 10
+    else:
+        momentum_direction = 'NEUTRAL'
+    breakdown['momentum'] = momentum_direction
+    
+    # === PASO 5: ZigZag Estructura (5% peso) ===
+    zigzag_15m = tf_15m.get('zigzag_granular', {}) or {}
+    pivot_types = zigzag_15m.get('pivot_types', [])
+    
+    if pivot_types and len(pivot_types) &gt;= 2:
+        recent_pivots = pivot_types[-3:] if len(pivot_types) &gt;= 3 else pivot_types
+        hh_hl = sum(1 for p in recent_pivots if p in ['HH', 'HL'])
+        ll_lh = sum(1 for p in recent_pivots if p in ['LL', 'LH'])
+        
+        if hh_hl &gt; ll_lh:
+            structure_direction = 'BULLISH'
+            votes['BULLISH'] += 5
+        elif ll_lh &gt; hh_hl:
+            structure_direction = 'BEARISH'
+            votes['BEARISH'] += 5
+        else:
+            structure_direction = 'NEUTRAL'
+    else:
+        structure_direction = 'NEUTRAL'
+    breakdown['structure'] = structure_direction
+    
+    # === DECISIÓN FINAL ===
+    total_votes = votes['BULLISH'] + votes['BEARISH']
+    
+    if votes['BULLISH'] &gt; votes['BEARISH']:
+        final_direction = 'BULLISH'
+        confidence = votes['BULLISH'] / 100 if total_votes &gt; 0 else 0.5
+    else:
+        final_direction = 'BEARISH'
+        confidence = votes['BEARISH'] / 100 if total_votes &gt; 0 else 0.5
+    
+    # Logging resumen
+    print(f"      🎯 DIRECCIÓN: {final_direction} (confianza {confidence:.0%})")
+    print(f"         Votos: BULL {votes['BULLISH']:.0f} vs BEAR {votes['BEARISH']:.0f}")
+    
+    return {
+        'direction': final_direction,
+        'confidence': confidence,
+        'votes': votes,
+        'breakdown': breakdown,
+        'dominant_4h': direction_4h
+    }
+
+
+def get_simple_direction(ladder):
+    """
+    Versión simplificada para compatibilidad
+    Solo retorna 'BULLISH' o 'BEARISH'
+    """
+    result = determine_direction_contextual('', ladder)
+    return result['direction']
+
+
+# Test standalone
+if __name__ == "__main__":
+    # Test con ladder simulado
+    test_ladder = {
+        '4h': {
+            'adx': {'di_plus_current': 48, 'di_minus_current': 13}
+        },
+        '1h': {
+            'adx': {'di_plus_current': 25, 'di_minus_current': 28}
+        },
+        '15m': {
+            'adx': {'di_plus_current': 22, 'di_minus_current': 18},
+            'momentum': {'color_current': 'lime'},
+            'zigzag_granular': {'pivot_types': ['HL', 'HH', 'HL']}
+        }
+    }
+    
+    print("=" * 60)
+    print("TEST: APT/BERA case (4H BULLISH, 1H BEARISH noise)")
+    print("=" * 60)
+    
+    result = determine_direction_contextual('APT/USDT', test_ladder)
+    
+    print(f"\n✅ Resultado final: {result['direction']}")
+    print(f"   Antes (snapshot 1H): BEARISH ❌")
+    print(f"   Después (contextual): {result['direction']} ✅")
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 82,172<br>
-    Generado: 2025-12-30 00:24:53
+    Total caracteres: 98,714<br>
+    Generado: 2025-12-30 00:27:47
   </div>
 </body>
 </html>
