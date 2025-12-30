@@ -15,838 +15,449 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-30 00:32:49</div>
+  <div class="meta">Última actualización: 2025-12-30 18:38:41</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-# ================================================
-    # WARNING 1: ADX decreciendo
-    # ================================================
-    if adx_trend == 'decreciendo':
-        penalties.append(WARNING_15M_ADX_DECAY)
-        warnings.append(f'ADX 15M decreciendo ({adx_current:.1f})')
+El único trade desde las 00:41 hasta 10:30 de la mañana, necesito que se integre un módulo que mida la tendencia, cuanto subió y cuanto le quedaria por subir así no entra en zonas agotadas, tiene que tener en cuenta el adx, momentum y el alto más alto, si se formó un bajo más bajo, dame un plan bien detallado con código. Gracias. 
+
+Plan: Módulo Detector de Agotamiento de Tendencia
+Concepto: Medir el "fuel" restante de una tendencia para evitar entrar en zonas agotadas.
+
+Componentes de exhaustión (0-100%):
+Componente	Peso	Ejemplo Agotado
+ADX Lifecycle	30%	ADX 45 bajando
+Momentum Age	30%	8+ velas
+Structure (HH/LL)	25%	4+ pivotes
+Move Size	15%	+10% desde pivot
+Fases:
+FRESH (0-30%): ✅ ENTER
+DEVELOPING (30-50%): ⚠️ CAREFUL
+MATURE (50-70%): ⏳ WAIT
+EXHAUSTED (70-100%): ❌ AVOID
+Penalties:
+80%+ exhaustión → -60
+60%+ exhaustión → -40
+40%+ exhaustión → -20
+Archivos a crear/modificar:
+
+NUEVO: brain_trend_exhaustion.py
+MODIFICAR: brain_analyzer.py (integrar penalty)
+¿Aprobás para implementar?
+
+No debería también incluir 5 minutos en la temporalidad a medir la tenencia? 5 minutos es la zona crítica, si ahí entra mal porque ya subió mucho el stop loss lo va a sacar, así como muestro en los gráficos que comparto, qué generalmete son de 5 minutos pero con una temperaturalidad larga, o eso ya está implementado? Si así es, esta andando muy mal porque no acierta nada. Además debería incluir el módulo para short, lo mismo pero con soportes, cuanto le queda por caer, donde esta la resistencia más fuerte? A cuanto esta de la resistencia más cercana, cuanto le queda? Gracias 
+
+Tenés razón en ambos puntos. Voy a actualizar el plan:
+
+Trend Exhaustion Detector Module
+User feedback: (1) Must include 5M timeframe since that's where trades execute, (2) Must include distance to resistance/support to know how much room remains, (3) Must work for SHORT too.
+
+ Plan: Módulo Detector de Agotamiento de Tendencia
+Concepto: Medir el "fuel" restante de una tendencia para evitar entrar en zonas agotadas.
+
+Componentes de exhaustión (0-100%):
+Componente	Peso	Ejemplo Agotado
+ADX Lifecycle	30%	ADX 45 bajando
+Momentum Age	30%	8+ velas
+Structure (HH/LL)	25%	4+ pivotes
+Move Size	15%	+10% desde pivot
+Fases:
+FRESH (0-30%): ✅ ENTER
+DEVELOPING (30-50%): ⚠️ CAREFUL
+MATURE (50-70%): ⏳ WAIT
+EXHAUSTED (70-100%): ❌ AVOID
+Penalties:
+80%+ exhaustión → -60
+60%+ exhaustión → -40
+40%+ exhaustión → -20
+Archivos a crear/modificar:
+
+NUEVO: brain_trend_exhaustion.py
+MODIFICAR: brain_analyzer.py (integrar penalty)
+¿Aprobás para implementar?
+
+No debería también incluir 5 minutos en la temporalidad a medir la tenencia? 5 minutos es la zona crítica, si ahí entra mal porque ya subió mucho el stop loss lo va a sacar, así como muestro en los gráficos que comparto, qué generalmete son de 5 minutos pero con una temperaturalidad larga, o eso ya está implementado? Si así es, esta andando muy mal porque no acierta nada. Además debería incluir el módulo para short, lo mismo pero con soportes, cuanto le queda por caer, donde esta la resistencia más fuerte? A cuanto esta de la resistencia más cercana, cuanto le queda? Gracias 
+
+Plan v2: Exhaustion con 5M + Distancia S/R
+Mejoras incluidas:
+
+✅ 5M como zona crítica (peso mayor que 15M)
+✅ Distancia a resistencia (LONG: cuánto espacio arriba)
+✅ Distancia a soporte (SHORT: cuánto espacio abajo)
+✅ Ratio movido vs restante (si subió 10% y queda 1% → agotado)
+Ejemplo (tu caso VET BEARISH):
+
+Precio: $0.0111
+Ya bajó desde resistencia: X%
+Distancia a soporte: Y%
+
+Si bajó 8% y solo queda 1% hasta soporte:
+→ Exhaustion: 80% → AVOID
+→ El stop loss te va a sacar porque no hay espacio
+
+Componentes:
+Factor	Peso	Ejemplo Agotado
+ADX 5M	25pts	&gt;45 bajando
+Momentum 5M	25pts	8+ velas
+Distancia S/R	30pts	&lt;0.5%
+Move vs Remaining	15pts	Ratio &gt;3x
+
+
+Si esto funciona bien deberíamos dejar el stop loss más lejos y que la tendencia haga lo suyo, un stop loss más permisivo, si hay fuerza hay que dejar que se desarrolle, el bot debería medir hasta donde podría llegar la tendencia y activar un trailing stop en una distancia no tan lejos de los soportes o resistencias por si la tendencia cambia, el bot siempre tiene que estar viendo el precio, si el precio no aumenta, esta lateralizando, salir del trade con ganancias para cubrir mínimamente la comisión de la exchange, si esta negativo, debería cerrar con pérdida mínima, el bot debe entender la estructura de la moneda, donde esta parado, hacia donde me dirijo, que pasa? Donde esta el soporte, porque no aumenta el precio? Hacerlo razonar, tiene todas las herramientas para saber donde esta y hacia donde se dirige, el grdi, la línea diagonal la velas con el precio de apertura y cierre qué le dan la vision de como vería un trader y ahora se agrega este módulo. Que te parece mi idea Opus? 
+
+Tu idea es excelente y filosóficamente correcta. Es exactamente lo que diferencia un bot mecánico de uno inteligente.
+
+🧠 Tu Visión (Resumida)
+Concepto	Implementación
+SL permisivo si hay fuerza	SL dinámico según ATR + fuerza
+Medir hasta dónde puede llegar	Exhaustion module (lo que estamos creando)
+Trailing cerca de S/R	Trailing se aprieta cuando se acerca a zona
+Detectar lateralización	Si precio no avanza en X minutos → salir
+"Razonar" sobre estructura	Unificar grid + diagonal + velas + S/R
+💡 Mi Opinión
+Lo que me gusta:
+
+El bot tiene las herramientas (grid, diagonal, indicadores) pero no las integra para razonar
+Tu idea de "¿por qué no sube?" es clave - el bot debe preguntarse esto
+Lo que propongo:
+
+Implementación en 3 fases:
+FASE 1 (Ahora):
+
+✅ Módulo Exhaustion (mide tendencia + distancia S/R)
+✅ SL dinámico basado en ATR + room disponible
+FASE 2 (Siguiente):
+
+Trailing inteligente: se aprieta cerca de S/R
+Detector de lateralización: si precio no avanza +0.1% en 5 min → alerta
+FASE 3 (Futuro):
+
+"Razonador": módulo que integra todos los datos y genera una narrativa de lo que está pasando
+
+
+¿Procedemos con FASE 1?
+Creo el módulo brain_trend_exhaustion.py + ajusto el SL y trailing. Una vez funcionando, pasamos a FASE 2.
+
+¿Aprobás?
+
+Ahora el bot esta muy rígido, hay que ver porque hizo un solo trade en horas, si vamos a confiar en distancia de desarrollo de trade y fuerza deberíamos darle más flexibilidad. Ahora que te pase todas mis ideas, dame el plan bien detallado con todos los códigos. Gracias Opus. 
+
+Plan Completo: Sistema de Inteligencia de Tendencia
+RESUMEN
+Problema	Solución
+1 trade en 10hrs	SCORE_THRESHOLD 60→50
+Entra agotado	Módulo Exhaustion
+SL mata trades	SL dinámico según room
+Trailing no protege	Trailing cerca de S/R
+No detecta lateral	Exit si no avanza
+Archivos a crear/modificar:
+NUEVO: brain_trend_exhaustion.py
+MODIFICAR: brain_config.py (threshold 50)
+MODIFICAR: brain_analyzer.py (integrar exhaustion)
+MODIFICAR: brain_executor.py (SL + trailing + lateral)
+Flujo del nuevo sistema:
+
+Entrada:
+1. Medir exhaustion (room vs moved)
+2. Si room &lt; 0.5% → AVOID
+3. Si room &gt; 2% → SL amplio (dejar desarrollar)
+
+Durante trade:
+4. Trailing se aprieta cerca de S/R
+5. Si no avanza en 5min + ganancia → salir
+6. Si stagnado 10min + pérdida → salir
+
+¿Aprobás para implementar todo?
+
+
+El plan completo de Opus. 
+
+PLAN COMPLETO: Sistema de Inteligencia de Tendencia
+RESUMEN EJECUTIVO
+Problema	Solución
+Bot muy rígido (1 trade/10hrs)	Reducir penalties 50%
+Entra en zonas agotadas	Módulo Exhaustion
+SL muy ajustado	SL dinámico según room
+Trailing no protege	Trailing cerca de S/R
+No detecta lateralización	Exit si precio no avanza
+FASE 1: REDUCIR RIGIDEZ
+1.1 Archivo: brain_config.py
+# ANTES
+SCORE_THRESHOLD_ENTER = 60
+# DESPUÉS
+SCORE_THRESHOLD_ENTER = 50  # Más flexible
+1.2 Archivo: brain_analyzer.py (penalties)
+# Reducir late_entry_penalty (línea ~1515)
+# ANTES: mom_age &gt; 8 → 25, mom_age &gt; 6 → 15
+# DESPUÉS:
+if mom_age &gt; 10:
+    late_entry_penalty += 15  # Era 25
+elif mom_age &gt; 7:
+    late_entry_penalty += 10  # Era 15
+FASE 2: MÓDULO EXHAUSTION
+2.1 Nuevo Archivo: brain_trend_exhaustion.py
+"""
+BRAIN TREND EXHAUSTION v3
+=========================
+Mide agotamiento de tendencia + distancia a S/R
+"""
+import pandas as pd
+from exchange_connection import fetch_ohlcv
+from brain_calculator import calculate_adx_with_memory, calculate_momentum_with_memory
+def analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=None):
+    """
+    Analiza exhaustión combinando 5M (crítico) + 15M (contexto).
+    """
+    # Fetch si no se proporcionan
+    if df_5m is None:
+        ohlcv = fetch_ohlcv(symbol, '5m', 100)
+        if not ohlcv:
+            return {'exhaustion_pct': 50, 'room_pct': 2, 'penalty': 0, 'phase': 'UNKNOWN'}
+        df_5m = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
-    # ================================================
-    # WARNING 2: Momentum agotado (&gt;12 velas)
-    # ================================================
-    if mom_age &gt; 12:
-        penalties.append(WARNING_15M_MOMENTUM_OLD)
-        warnings.append(f'Momentum 15M agotado ({mom_age}v)')
+    current_price = float(df_5m['close'].iloc[-1])
     
-    # ================================================
-    # WARNING 3: Dirección contradice
-    # ================================================
-    if direction_15m != direction_5m and direction_15m != 'LATERAL':
-        penalties.append(WARNING_15M_DIRECTION)
-        warnings.append(f'15M dice {direction_15m}, 5M dice {direction_5m}')
+    # S/R de últimas 20 velas
+    high_20 = df_5m['high'].rolling(20).max().iloc[-1]
+    low_20 = df_5m['low'].rolling(20).min().iloc[-1]
+    range_20 = high_20 - low_20
     
-    # ================================================
-    # WARNING 4: LATERAL detectado (con penalty alta)
-    # ================================================
-    if lateral_penalty_15m &gt; 30:
-        penalties.append(WARNING_15M_LATERAL)
-        warnings.append(f'15M lateral penalty -{lateral_penalty_15m}')
+    # Indicadores
+    adx_data = calculate_adx_with_memory(df_5m, period=14, lookback=10)
+    mom_data = calculate_momentum_with_memory(df_5m, lookback=10)
     
-    # ================================================
-    # WARNING 5: Sin estructura (choppy)
-    # ================================================
-    structure = zigzag_15m.get('current_trend', 'UNKNOWN')
-    if structure == 'LATERAL':
-        penalties.append(WARNING_15M_NO_STRUCTURE)
-        warnings.append('15M sin estructura clara')
+    adx = adx_data.get('adx_current', 25)
+    adx_vel = adx_data.get('adx_velocity', 0)
+    mom_age = mom_data.get('consecutive_count', 0)
     
-    # ================================================
-    # WARNING 6: ADX muy débil (&lt;20)
-    # ================================================
-    if adx_current &lt; 20:
-        penalties.append(WARNING_15M_ADX_WEAK)
-        warnings.append(f'ADX 15M débil ({adx_current:.1f})')
+    exhaustion_score = 0
+    details = {}
     
-    total_penalty = sum(penalties)
-    
-    if total_penalty &gt; 0:
-        print(f"   ⚠️ 15M WARNINGS: {', '.join(warnings)} → penalty total -{total_penalty}")
+    # === 1. DISTANCIA A S/R (MÁS IMPORTANTE) ===
+    if direction == 'BULLISH':
+        dist_to_resistance = ((high_20 - current_price) / current_price) * 100
+        dist_from_support = ((current_price - low_20) / low_20) * 100
+        room_pct = dist_to_resistance
+        moved_pct = dist_from_support
     else:
-        print(f"   ✅ 15M: Sin warnings (contexto macro OK)")
+        dist_to_support = ((current_price - low_20) / current_price) * 100
+        dist_from_resistance = ((high_20 - current_price) / high_20) * 100
+        room_pct = dist_to_support
+        moved_pct = dist_from_resistance
+    
+    details['room_pct'] = room_pct
+    details['moved_pct'] = moved_pct
+    
+    # Penalty por poco espacio
+    if room_pct &lt; 0.3:
+        exhaustion_score += 40  # Casi bloqueado
+    elif room_pct &lt; 0.5:
+        exhaustion_score += 30
+    elif room_pct &lt; 1.0:
+        exhaustion_score += 20
+    elif room_pct &lt; 2.0:
+        exhaustion_score += 10
+    
+    # === 2. RATIO MOVED/REMAINING ===
+    if room_pct &gt; 0:
+        ratio = moved_pct / room_pct
+        if ratio &gt; 4:
+            exhaustion_score += 25
+        elif ratio &gt; 2:
+            exhaustion_score += 15
+        elif ratio &gt; 1:
+            exhaustion_score += 5
+        details['move_ratio'] = ratio
+    
+    # === 3. ADX LIFECYCLE ===
+    if adx &gt; 45 and adx_vel &lt; 0:
+        exhaustion_score += 15
+        details['adx_phase'] = 'PEAKED'
+    elif adx &gt; 35:
+        exhaustion_score += 8
+        details['adx_phase'] = 'STRONG'
+    elif adx &lt; 20:
+        details['adx_phase'] = 'WEAK'
+    else:
+        details['adx_phase'] = 'DEVELOPING'
+    
+    # === 4. MOMENTUM AGE ===
+    if mom_age &gt;= 8:
+        exhaustion_score += 15
+    elif mom_age &gt;= 5:
+        exhaustion_score += 8
+    
+    # === RESULTADO ===
+    exhaustion_pct = min(100, exhaustion_score)
+    
+    if exhaustion_pct &gt;= 60:
+        phase = 'EXHAUSTED'
+        penalty = -35
+    elif exhaustion_pct &gt;= 40:
+        phase = 'MATURE'
+        penalty = -20
+    elif exhaustion_pct &gt;= 20:
+        phase = 'DEVELOPING'
+        penalty = -10
+    else:
+        phase = 'FRESH'
+        penalty = 0
     
     return {
-        'total_penalty': total_penalty,
-        'warnings': warnings,
-        'should_hard_veto': False
-    }
-
-def analyze_1d(symbol):
-    ohlcv = fetch_ohlcv(symbol, '1d', 100)
-    if not ohlcv or len(ohlcv) &lt; 50:
-        return None
-
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    adx_data = calculate_adx_with_memory(df, period=14, lookback=10)
-    momentum_data = calculate_momentum_with_memory(df, lookback=10)
-    rsi_data = calculate_rsi_with_memory(df, period=14, lookback=10)
-    emas_data = calculate_emas_with_memory(df, periods=[9, 21, 50, 200], lookback=10)
-
-    adx_current = adx_data['adx_current']
-    dominance = adx_data['dominance']
-    momentum_color = momentum_data['color_current']
-    momentum_count = momentum_data['consecutive_count']
-
-    if adx_current &gt;= 25 and dominance == 'DI+' and momentum_color in ['green', 'lime'] and momentum_count &gt;= 5:
-        phase = 'BULLISH'
-        strength = 'STRONG'
-    elif adx_current &gt;= 25 and dominance == 'DI-' and momentum_color in ['red', 'maroon'] and momentum_count &gt;= 5:
-        phase = 'BEARISH'
-        strength = 'STRONG'
-    elif adx_current &lt; 25 and momentum_color in ['green', 'lime']:
-        phase = 'BULLISH'
-        strength = 'WEAK'
-    elif adx_current &lt; 25 and momentum_color in ['red', 'maroon']:
-        phase = 'BEARISH'
-        strength = 'WEAK'
-    else:
-        phase = 'LATERAL'
-        strength = 'WEAK'
-
-    print(f"📅 1D | {symbol} | {phase} {strength} | ADX:{adx_current:.1f}")
-
-    return {
+        'exhaustion_pct': exhaustion_pct,
+        'room_pct': room_pct,
+        'moved_pct': moved_pct,
         'phase': phase,
-        'strength': strength,
-        'adx': adx_data,
-        'momentum': momentum_data,
-        'rsi': rsi_data,
-        'emas': emas_data,
-        'context': f"1D {phase} - ADX {adx_current:.1f}",
-        'timestamp': datetime.now().isoformat()
+        'penalty': penalty,
+        'details': details
     }
-
-def analyze_temporal_context(symbol):
+def get_dynamic_sl_distance(exhaustion_result, base_sl_pct=2.0):
     """
-    Analiza el contexto temporal reciente (últimos 60 min) usando la DB.
-    Busca estabilidad y consistencia.
+    Calcula SL dinámico basado en room disponible.
+    
+    Si hay mucho room → SL más amplio (dejar desarrollar)
+    Si poco room → SL más ajustado (proteger)
     """
-    try:
-        history = db_manager.get_recent_context(symbol, limit_minutes=60)
-        if not history or len(history) &lt; 10:
-            return {'stability': 'DESCONOCIDO', 'bonus': 0}
-        
-        # 1. Verificar cambios de dirección (inestabilidad)
-        directions = [row['direction'] for row in history]
-        flips = 0
-        for i in range(1, len(directions)):
-            if directions[i] != directions[i-1]:
-                flips += 1
-        
-        # 2. Verificar consistencia de ADX
-        adx_values = [row['adx_15m'] for row in history]
-        adx_rising = 0
-        for i in range(1, len(adx_values)):
-            if adx_values[i] &gt; adx_values[i-1]:
-                adx_rising += 1
-        
-        # Evaluación
-        bonus = 0
-        stability = 'ESTABLE'
-        
-        if flips &gt; 3:
-            stability = 'INESTABLE'
-            bonus -= 10  # Penalización por inestabilidad
-        elif flips == 0:
-            stability = 'MUY_ESTABLE'
-            bonus += 10  # Bonus por tendencia sostenida
-            
-        if adx_rising &gt; len(adx_values) * 0.7:
-            bonus += 5  # Bonus si ADX sube la mayoría del tiempo
-            
-        return {'stability': stability, 'bonus': bonus, 'flips': flips}
-        
-    except Exception as e:
-        print(f"⚠️ Error analizando contexto temporal: {e}")
-        return {'stability': 'ERROR', 'bonus': 0}
-
-def analyze_trend_evolution(symbol):
-    """
-    ANÁLISIS DE EVOLUCIÓN (TIME LADDER / ROADMAP)
-    Analiza velas de 1M para detectar tendencias explosivas en tiempo real.
-    Permite 'bypassear' filtros estrictos si la moneda está explotando ahora mismo.
-    """
-    try:
-        # Buscar 30 velas de 1M (media hora de evolución)
-        ohlcv = fetch_ohlcv(symbol, '1m', 30)
-        if not ohlcv or len(ohlcv) &lt; 15:
-            return {'is_explosive': False, 'score': 0, 'reason': 'Sin datos 1M'}
-
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        
-        # 1. Análisis de ADX en 1M (Velocidad de tendencia)
-        adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
-        adx_current = adx_data['adx_current']
-        adx_history = adx_data['adx_history']
-        
-        # 2. Análisis de Precio (Escalera de precios)
-        closes = df['close'].values
-        price_velocity = calculate_velocity(df, lookback=5)
-        
-        # DETECCIÓN DE EXPLOSIÓN
-        is_explosive = False
-        score = 0
-        reason = []
-
-        # Criterio A: ADX Disparándose (Roadmap de fuerza)
-        # Si ADX subió más de 5 puntos en las últimas 5 velas 1M
-        if len(adx_history) &gt;= 5:
-            adx_change = adx_history[-1] - adx_history[0]
-            if adx_change &gt; 3.0 and adx_current &gt; 20:
-                score += 40
-                reason.append(f"ADX 1M disparándose (+{adx_change:.1f})")
-                if adx_current &gt; 25:
-                    is_explosive = True
-
-        # Criterio B: Escalera de Precios (ZigZag alcista agresivo)
-        # Verificar si las últimas 3 velas son verdes y con cuerpos crecientes o fuertes
-        last_3_closes = closes[-3:]
-        last_3_opens = df['open'].values[-3:]
-        is_green_ladder = all(c &gt; o for c, o in zip(last_3_closes, last_3_opens))
-        
-        if is_green_ladder and price_velocity['velocity_current'] &gt; 0:
-            score += 30
-            reason.append("Escalera de precios 1M alcista")
-            if price_velocity['trend'] == 'acelerando':
-                is_explosive = True
-                score += 20
-
-        # Criterio C: Volumen Climático
-        volumes = df['volume'].values
-        vol_avg = volumes[:-1].mean()
-        if volumes[-1] &gt; vol_avg * 2:
-            score += 20
-            reason.append("Volumen 1M climático")
-
-        # Decisión final de explosividad
-        if score &gt;= 70:
-            is_explosive = True
-        
-        return {
-            'is_explosive': is_explosive,
-            'score': score,
-            'adx_1m': adx_current,
-            'reason': ", ".join(reason),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        print(f"⚠️ Error en analyze_trend_evolution: {e}")
-        return {'is_explosive': False, 'score': 0, 'reason': 'Error'}
-
-def analyze_coin_complete(symbol):
-    """
-    Análisis completo multi-timeframe para un símbolo.
-    Ejecuta 5 análisis en cascada: 1D → 4H → 1H → 15M → 5M
+    room = exhaustion_result.get('room_pct', 2.0)
     
-    Returns:
-        dict: Análisis completo con viabilidad y scores
-    """
-    try:
-        # Análisis multi-timeframe en cascada
-        analysis_1d = analyze_1d(symbol) if ENABLE_ANALYSIS_1D else None
-        
-        # 4H (contexto dominante)
-        analysis_4h = analyze_4h(symbol)
-        if not analysis_4h:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'SIN_DATOS'},
-                'analysis_4h': None,
-                'analysis_1h': None,
-                'analysis_15m': None,
-                'analysis_5m': None,
-                'sr_zones': None
-            }
-        
-        # 1H (confirmación)
-        analysis_1h = analyze_1h(symbol)
-        if not analysis_1h:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'CONFIRMACION_FALLO'},
-                'analysis_4h': analysis_4h,
-                'analysis_1h': None,
-                'analysis_15m': None,
-                'analysis_5m': None,
-                'sr_zones': None
-            }
-        
-        # VALIDACIÓN CRÍTICA: 1H contradice 4H → Penalización FUERTE, NO rechazo automático
-        # FILOSOFÍA: Si hay fuerza brutal (ADX&gt;35, Spread&gt;12), puede compensar esta contradicción
-        contradiction_penalty = 0
-        
-        # Extraer direcciones de los análisis
-        direction_4h = analysis_4h.get('direction', 'LATERAL')
-        direction_1h = analysis_1h.get('direction', 'LATERAL')
-        
-        # Diferenciar pullback (ADX 1H bajo) vs reversión (ADX 1H alto)
-        adx_1h_val = analysis_1h.get('adx', {}).get('adx_current', 0)
-
-        if direction_4h == 'BULLISH' and direction_1h == 'BEARISH':
-            if adx_1h_val &gt; 30:
-                # Reversión fuerte: Castigo total
-                contradiction_penalty = 30
-                print(f" ⚠️ {symbol}: 1H Reversal STRONG (ADX {adx_1h_val:.1f}) → Penalty -30")
-            elif adx_1h_val &gt; 20:
-                # Pullback moderado: Castigo medio
-                contradiction_penalty = 15
-                print(f" ⚠️ {symbol}: 1H Pullback Moderate (ADX {adx_1h_val:.1f}) → Penalty -15")
-            else:
-                # Corrección débil (normal): Castigo leve
-                contradiction_penalty = 5
-                print(f" ⚠️ {symbol}: 1H Pullback Weak (ADX {adx_1h_val:.1f}) → Penalty -5")
-                
-        # APLICAR LÓGICA SIMÉTRICA PARA EL CASO INVERSO (BEARISH vs BULLISH)
-        elif direction_4h == 'BEARISH' and direction_1h == 'BULLISH':
-            if adx_1h_val &gt; 30:
-                contradiction_penalty = 30
-                print(f" ⚠️ {symbol}: 1H Reversal STRONG (ADX {adx_1h_val:.1f}) → Penalty -30")
-            elif adx_1h_val &gt; 20:
-                contradiction_penalty = 15
-                print(f" ⚠️ {symbol}: 1H Pullback Moderate (ADX {adx_1h_val:.1f}) → Penalty -15")
-            else:
-                contradiction_penalty = 5
-                print(f" ⚠️ {symbol}: 1H Pullback Weak (ADX {adx_1h_val:.1f}) → Penalty -5")
-        
-        # La contradicción reduce el score, pero si hay fuerza extrema, puede seguir viable
-        
-        # --- NUEVO: ANÁLISIS DE EVOLUCIÓN (TIME LADDER) ---
-        evolution = analyze_trend_evolution(symbol)
-        print(f"      🚀 EVOLUCIÓN 1M | {symbol} | Explosivo: {evolution['is_explosive']} | Score: {evolution['score']} | Razón: {evolution['reason']}")
-        
-        # 15M (timing)
-        analysis_15m = analyze_15m(symbol)
-        
-        # LÓGICA DE BYPASS: Si es explosivo Y 4H es BULLISH, ignoramos el rechazo de 15M
-        bypass_15m = False
-        if not analysis_15m and evolution['is_explosive'] and evolution['score'] &gt;= 70 and analysis_4h.get('direction') == 'BULLISH':
-            # Re-intentar análisis 15M con modo NO estricto
-            analysis_15m = analyze_15m(symbol, strict=False)
-            
-            if analysis_15m:
-                print(f"      ⚡ BYPASS: Análisis 15M exitoso con modo flexible por explosión 1M")
-                bypass_15m = True
-            else:
-                # Si aun así falla, rechazar (protección)
-                print(f"      ⚠️ BYPASS RECHAZADO: Explosión 1M pero 15M inviable incluso flexible")
-                bypass_15m = False
-
-        # --- NUEVO: ESTRUCTURA DE MERCADO (ZIGZAG) ---
-        structure_data = {'last_structure': 'N/A'}
-        if analysis_15m:
-            # Re-fetch si es necesario o usar df existente si pudiéramos, pero aquí fetch es seguro
-            ohlcv_15m_struct = fetch_ohlcv(symbol, '15m', 100)
-            if ohlcv_15m_struct:
-                df_15_struct = pd.DataFrame(ohlcv_15m_struct, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                zigzag_res = calculate_zigzag(df_15_struct, percent=2.0) # 2% para estructura fina
-                structure_data = {
-                    'last_structure': zigzag_res['last_structure'],
-                    'pivot_types': zigzag_res['pivot_types'][-5:] if zigzag_res['pivot_types'] else []
-                }
-
-        if not analysis_15m and not bypass_15m:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'TIMING_FALLO'},
-                'analysis_4h': analysis_4h,
-                'analysis_1h': analysis_1h,
-                'analysis_15m': None,
-                'analysis_5m': None,
-                'sr_zones': None,
-                'evolution': evolution,
-                'structure': structure_data
-            }
-        
-        # 5M (ejecución)
-        analysis_5m = analyze_5m(symbol)
-        if not analysis_5m:
-            return {
-                'viable': False,
-                'score_data': {'score': 0, 'clasificacion': 'EJECUCION_FALLO'},
-                'analysis_4h': analysis_4h,
-                'analysis_1h': analysis_1h,
-                'analysis_15m': analysis_15m,
-                'analysis_5m': None,
-                'sr_zones': None
-            }
-        
-        # Calcular score (sin rechazar por LATERAL)
-        score_data = calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m)
-        
-        # --- NUEVO: AJUSTE POR CONTEXTO TEMPORAL ---
-        # Ensure score is an integer, not a dict
-        score = _extract_score(score_data.get('score', 0), 0)
-        
-        temporal_context = analyze_temporal_context(symbol)
-        score += temporal_context.get('bonus', 0)
-        score += _extract_score(evolution.get('score', 0), 0) / 2  # Sumar bonus por evolución
-        score_data['temporal_stability'] = temporal_context.get('stability', 'DESCONOCIDO')
-        
-        # Aplicar penalización por contradicción 4H/1H
-        score -= contradiction_penalty
-        if contradiction_penalty &gt; 0:
-            print(f"      📉 Score ajustado por contradicción: {score + contradiction_penalty} → {score}")
-        
-        # Asegurar límites 0-100
-        score_data['score'] = int(max(0, min(100, score)))
-        # -------------------------------------------
-        
-        # Viabilidad: Score &gt;= 40 (REDUCIDO otra vez) + Dirección
-        direction_4h = analysis_4h.get('direction', 'LATERAL')
-        
-        # Bloquear LATERAL estrictamente
-        if direction_4h == 'LATERAL':
-            viable = False
-            print(f"      ❌ {symbol}: LATERAL bloqueado (Score: {score})")
-        elif direction_4h in ['BULLISH', 'BEARISH']:
-            viable = score &gt;= 40  # Reducido de 50 → 40
-        else:
-            viable = False
-        
-        # Chequeo BTC CONDICIONAL (no absoluto)
-        if viable and not check_btc_alignment(score=score):
-            viable = False
-            score_data['clasificacion'] = 'BTC_DUMP_PROTECTION'
-        
-        # Calcular triggers si es viable
-        triggers = None
-        if viable:
-            triggers = calculate_triggers(analysis_15m, analysis_5m, analysis_5m['direction'])
-        
-        # RECALCULAR CLASIFICACIÓN FINAL (Fix visual)
-        # El score pudo haber cambiado por penalizaciones/bonificaciones
-        final_valid_score = score_data['score']
-        if final_valid_score &gt;= 90:
-            score_data['clasificacion'] = 'ÓPTIMA'
-        elif final_valid_score &gt;= 80:
-            score_data['clasificacion'] = 'ALTA'
-        elif final_valid_score &gt;= 70:
-            score_data['clasificacion'] = 'BUENA'
-        elif final_valid_score &gt;= 50:
-            score_data['clasificacion'] = 'REGULAR'
-        else:
-            score_data['clasificacion'] = 'POBRE'
-
-        return {
-            'viable': viable,
-            'score_data': score_data,
-            'analysis_4h': analysis_4h,
-            'analysis_1h': analysis_1h,
-            'analysis_15m': analysis_15m,
-            'analysis_5m': analysis_5m,
-            'sr_zones': analysis_15m.get('sr'),
-            'triggers': triggers,
-            'evolution': evolution,
-            'structure': structure_data
-        }
-    
-    except Exception as e:
-        print(f"❌ ERROR analyze_coin_complete({symbol}): {e}")
-        return {
-            'viable': False,
-            'score_data': {'score': 0, 'clasificacion': 'ERROR'},
-            'error_message': str(e)
-        }
-
-def _extract_score(score_value, default=0):
-    """
-    Recursively extract integer score from potentially nested dict.
-    
-    Args:
-        score_value: The value to extract (can be int, float, dict, or None)
-        default: Default value if extraction fails
-    
-    Returns:
-        int: Extracted integer score
-    """
-    if score_value is None:
-        return default
-    if isinstance(score_value, (int, float)):
-        return int(score_value)
-    if isinstance(score_value, dict):
-        # Recursively extract from nested dict
-        return _extract_score(score_value.get('score', default), default)
-    # Fallback for any other type
-    return default
-
-
-def calculate_score(analysis_4h, analysis_1h, analysis_15m, analysis_5m):
-    """Calcula score usando los datos reales de cada timeframe y CONTEXTO."""
-    score = 0  # Initialize as integer
-    
-    # Usar los scores calculados en cada timeframe - ULTRA DEFENSIVE
-    if analysis_4h and 'score_4h' in analysis_4h:
-        score_4h_value = _extract_score(analysis_4h['score_4h'], 0)
-        try:
-            score_4h_value = int(score_4h_value) if score_4h_value is not None else 0
-        except (ValueError, TypeError):
-            score_4h_value = 0
-        score = int(score + min(int(score_4h_value), 30))
-    elif analysis_4h and analysis_4h.get('strength') == 'STRONG':
-        score = int(score + 25)
-    
-    if analysis_1h and 'score_1h' in analysis_1h:
-        score_1h_value = _extract_score(analysis_1h['score_1h'], 0)
-        try:
-            score_1h_value = int(score_1h_value) if score_1h_value is not None else 0
-        except (ValueError, TypeError):
-            score_1h_value = 0
-        score = int(score + min(int(score_1h_value), 25))
-    elif analysis_1h and analysis_1h.get('strength') == 'STRONG':
-        score = int(score + 15)
-    
-    if analysis_15m and 'score_15m' in analysis_15m:
-        score_15m_value = _extract_score(analysis_15m['score_15m'], 0)
-        try:
-            score_15m_value = int(score_15m_value) if score_15m_value is not None else 0
-        except (ValueError, TypeError):
-            score_15m_value = 0
-        score = int(score + min(int(score_15m_value), 25))
-    elif analysis_15m and analysis_15m.get('strength') == 'STRONG':
-        score = int(score + 15)
-    
-    if analysis_5m and 'score_5m' in analysis_5m:
-        score_5m_value = _extract_score(analysis_5m['score_5m'], 0)
-        try:
-            score_5m_value = int(score_5m_value) if score_5m_value is not None else 0
-        except (ValueError, TypeError):
-            score_5m_value = 0
-        score = int(score + min(int(score_5m_value), 20))
-    elif analysis_5m and analysis_5m.get('strength') == 'STRONG':
-        score = int(score + 10)
-    
-    # Bonus por alineación de direcciones
-    directions = []
-    if analysis_4h and 'direction' in analysis_4h:
-        directions.append(analysis_4h['direction'])
-    if analysis_1h and 'direction' in analysis_1h:
-        directions.append(analysis_1h['direction'])
-    if analysis_15m and 'direction' in analysis_15m:
-        directions.append(analysis_15m['direction'])
-    if analysis_5m and 'direction' in analysis_5m:
-        directions.append(analysis_5m['direction'])
-    
-    # Si 3+ direcciones coinciden (excluyendo LATERAL), suma bonus
-    non_lateral = [d for d in directions if d != 'LATERAL']
-    if len(non_lateral) &gt;= 3 and len(set(non_lateral)) == 1:
-        score = int(score + 10)
-    
-    # --- CONTEXTUAL MULTIPLIERS (Phase 4.1) ---
-    multiplier = 1.0
-    
-    # 1. Volatility (ATR)
-    if analysis_15m and 'atr' in analysis_15m and 'current_price' in analysis_15m:
-        atr = analysis_15m['atr']
-        price = analysis_15m['current_price']
-        if price &gt; 0 and (atr / price) &gt; 0.05:
-            multiplier *= 0.9
-            # print(f"⚠️ High Volatility Penalty (ATR &gt; 5%): x0.9")
-
-    # 2. Time/Liquidity (00-06 UTC assumed low volume)
-    try:
-        current_utc_hour = datetime.utcnow().hour
-        if 0 &lt;= current_utc_hour &lt; 6:
-            multiplier *= 0.98  # Reducir penalización
-            # print(f"⚠️ Low Liquidity Hours: x0.95")
-    except Exception:
-        pass # Ignore if time check fails
-
-    # 3. Volume Profile (Price &gt; POC)
-    if analysis_15m and 'volume_profile' in analysis_15m and 'current_price' in analysis_15m:
-        vp = analysis_15m['volume_profile']
-        price = analysis_15m['current_price']
-        poc = vp.get('poc_current', 0)
-        if poc &gt; 0 and price &gt; poc:
-            multiplier *= 1.1
-            # print(f"✅ Price above POC Bonus: x1.1")
-
-    # 4. Session Context (Asia Penalty - REDUCIDA)
-    hour = datetime.now().hour
-    if 2 &lt;= hour &lt;= 8: # Asia Session (aprox)
-        multiplier *= 0.95  # Reducir penalización Asia
-        # print(f"⚠️ Asia Session Penalty: x0.92")
-
-    score = int(score * multiplier)
-
-    # Ensure score is definitely an integer before comparisons
-    score = int(score)
-    
-    # Clasificación
-    clasificacion = 'REGULAR'
-    if score &gt;= 90:
-        clasificacion = 'ÓPTIMA'
-    elif score &gt;= 80:
-        clasificacion = 'ALTA'
-    elif score &gt;= 70:
-        clasificacion = 'BUENA'
-    elif score &gt;= 50:
-        clasificacion = 'BUENA'
+    if room &gt; 3.0:
+        # Mucho espacio → SL amplio, dejar correr
+        return min(base_sl_pct * 1.5, 3.0)
+    elif room &gt; 1.5:
+        # Espacio moderado
+        return base_sl_pct
+    elif room &gt; 0.5:
+        # Poco espacio → SL ajustado
+        return base_sl_pct * 0.7
     else:
-        clasificacion = 'POBRE'
-
-    return {
-        'score': int(score),  # Absolutely ensure it's int
-        'clasificacion': clasificacion
-    }
-
-
-def calculate_triggers(analysis_15m, analysis_5m, direction):
-    entry_price = analysis_5m['current_price']
+        # Casi bloqueado → SL muy ajustado
+        return base_sl_pct * 0.5
+def get_trailing_distance(exhaustion_result, pnl_pct, base_trail=2.0):
+    """
+    Trailing dinámico: se aprieta cerca de S/R.
+    """
+    room = exhaustion_result.get('room_pct', 2.0)
     
-    # --- DYNAMIC RISK MANAGEMENT (Phase 4.1) ---
-    # Use ATR for Stop Loss if available
-    atr_val = analysis_15m.get('atr')
-    
-    # Si atr_val es un dict, extraer atr_current
-    if isinstance(atr_val, dict):
-        atr = atr_val.get('atr_current', 0)
-    elif isinstance(atr_val, (int, float)):
-        atr = float(atr_val)
+    # Base según profit
+    if pnl_pct &gt; 3.0:
+        trail = 1.0
+    elif pnl_pct &gt; 1.5:
+        trail = 1.5
+    elif pnl_pct &gt; 0.5:
+        trail = 2.0
     else:
-        atr = 0
+        trail = 2.5
     
-    # Si no hay ATR en analysis_15m, intentar calcularlo
-    if atr == 0:
-        try:
-            from exchange_connection import fetch_ohlcv
-            import pandas as pd
-            
-            # Inferir symbol del contexto (nota: esto asume que tenemos acceso al symbol)
-            # Como workaround, usaremos los datos ya disponibles si es posible
-            # Si analysis_15m tiene datos suficientes, no necesitamos fetch
-            pass  # Fallback a fixed percentage
-        except:
-            pass
+    # Ajustar según cercanía a S/R
+    if room &lt; 0.5:
+        trail = min(trail, 0.5)  # Muy apretado cerca de S/R
+    elif room &lt; 1.0:
+        trail = min(trail, 1.0)
     
-    if atr &gt; 0:
-        # Multiplicador dinámico: 2.0x ATR es estándar
-        atr_multiplier = 2.0
-        stop_loss_dist = atr * atr_multiplier
-        
-        if direction == 'BULLISH':
-            stop_loss = entry_price - stop_loss_dist
-        else:
-            stop_loss = entry_price + stop_loss_dist
-            
-        # Sanity Check: Ensure SL is not too close (&lt; 0.5%) or too far (&gt; 5%)
-        # If too close, force min 0.5%
-        min_dist = entry_price * 0.015  # 1.5% mínimo
-        if stop_loss_dist &lt; min_dist:
-            if direction == 'BULLISH': stop_loss = entry_price - min_dist
-            else: stop_loss = entry_price + min_dist
-            
-    else:
-        # Fallback: Fixed 2%
-        stop_loss = entry_price * 0.98 if direction == 'BULLISH' else entry_price * 1.02
-
-    # Target: 1.5x Risk (Simple initial target)
-    risk = abs(entry_price - stop_loss)
-    target_dist = risk * 1.5
+    return trail
+FASE 3: INTEGRACIÓN EN brain_analyzer.py
+Ubicación: ~línea 470 (después de calcular indicadores)
+# &gt;&gt;&gt; NUEVO: Análisis de exhaustión
+from brain_trend_exhaustion import analyze_trend_exhaustion
+exhaustion = analyze_trend_exhaustion(symbol, direction, df)
+print(f"   📉 Exhaustion: {exhaustion['exhaustion_pct']:.0f}% | Room: {exhaustion['room_pct']:.2f}%")
+print(f"   Phase: {exhaustion['phase']} | Penalty: {exhaustion['penalty']}")
+# Aplicar penalty
+score_15m += exhaustion['penalty']
+FASE 4: SL DINÁMICO EN brain_executor.py
+Ubicación: ~línea 200 (cálculo de SL)
+# &gt;&gt;&gt; NUEVO: SL dinámico basado en room
+from brain_trend_exhaustion import analyze_trend_exhaustion, get_dynamic_sl_distance
+exhaustion = analyze_trend_exhaustion(symbol, direction)
+dynamic_sl_pct = get_dynamic_sl_distance(exhaustion, base_sl_pct=2.0)
+print(f"   📏 SL Dinámico: {dynamic_sl_pct:.1f}% (room: {exhaustion['room_pct']:.1f}%)")
+if direction == 'BULLISH':
+    stop_loss = entry_price * (1 - dynamic_sl_pct/100)
+else:
+    stop_loss = entry_price * (1 + dynamic_sl_pct/100)
+FASE 5: TRAILING INTELIGENTE EN brain_executor.py
+Ubicación: ~línea 685 (trailing stop logic)
+# &gt;&gt;&gt; NUEVO: Trailing cerca de S/R
+from brain_trend_exhaustion import analyze_trend_exhaustion, get_trailing_distance
+# Calcular exhaustion actual
+exhaustion = analyze_trend_exhaustion(symbol, direction)
+trailing_dist_pct = get_trailing_distance(exhaustion, pnl_pct)
+print(f"   🎯 Trailing: {trailing_dist_pct:.1f}% (room: {exhaustion['room_pct']:.1f}%)")
+FASE 6: DETECTOR LATERALIZACIÓN EN brain_executor.py
+Ubicación: ~línea 550 (monitor_active_trades)
+# &gt;&gt;&gt; NUEVO: Detectar lateralización
+# Si después de 5 min el precio no avanzó 0.1% → alerta
+if duration_min &gt; 5:
+    price_at_entry = trade_data['entry_price']
     
     if direction == 'BULLISH':
-        target_price = entry_price + target_dist
+        price_advance = ((current_price - price_at_entry) / price_at_entry) * 100
     else:
-        target_price = entry_price - target_dist
-
-    rr_ratio = target_dist / risk if risk &gt; 0 else 0
-    tiempo_proyectado_min = 15
-
-    return {
-        'entry_price': entry_price,
-        'stop_loss': stop_loss,
-        'target_price': target_price,
-        'rr_ratio': rr_ratio,
-        'tiempo_proyectado_min': tiempo_proyectado_min,
-        'metodo_target': 'atr_dynamic' if atr &gt; 0 else 'fixed_pct'
-    }
-
-def get_quick_analysis(symbol):
-    return analyze_coin_complete(symbol)
-
-def calculate_adx(df, period=14):
-    adx_data = calculate_adx_with_memory(df, period=period, lookback=10)
-    return adx_data['adx_current']
-
-def calculate_momentum_color(df, ema_period=20):
-    mom_data = calculate_momentum_with_memory(df, lookback=10)
-    return mom_data['color_current']
-
-if __name__ == "__main__":
-    print("Brain Analyzer cargado correctamente.")
-
-coin_memory = {}
-
-def save_analysis_snapshot(symbol, analysis_4h, analysis_1h, analysis_15m):
-    coin_memory[symbol] = {
-        'analysis_4h': analysis_4h,
-        'analysis_1h': analysis_1h,
-        'analysis_15m': analysis_15m
-    }
-
-def get_historical_context(symbol):
-    return coin_memory.get(symbol, None)
-
-def calculate_evolution_score(symbol):
-    return 0
-
-def validate_5m_entry_conditions(symbol, direction='BULLISH'):
-    """
-    Checklist quirúrgico de 5M para entrada precisa.
-    NO rechaza - solo informa qué falta.
+        price_advance = ((price_at_entry - current_price) / price_at_entry) * 100
     
-    Returns:
-        dict: {
-            'ready': bool (True si TODAS las condiciones OK),
-            'conditions': {
-                'momentum_green': {'ok': bool, 'value': str, 'reason': str},
-                'adx_accompanied': {'ok': bool, 'value': str, 'reason': str},
-                'not_in_correction': {'ok': bool, 'value': str, 'reason': str},
-                'above_ema_support': {'ok': bool, 'value': str, 'reason': str}
-            },
-            'score': int (0-100, cuántas condiciones OK),
-            'missing': [lista de condiciones faltantes]
-        }
-    """
-    try:
-        # 1. Fetch Data Fresca (5M)
-        ohlcv = fetch_ohlcv(symbol, '5m', 50)
-        if not ohlcv or len(ohlcv) &lt; 20:
-            return {'ready': False, 'conditions': {}, 'score': 0, 'missing': ['No Data']}
-            
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        current_price = float(df['close'].iloc[-1])
-        
-        # 2. Calcular Indicadores
-        mom_data = calculate_momentum_with_memory(df, lookback=5)
-        adx_data = calculate_adx_with_memory(df, period=14, lookback=5)
-        emas_data = calculate_emas_with_memory(df, periods=[21], lookback=5)
-        
-        # 3. Validar Condiciones
-        conditions = {}
-        missing = []
-        score_count = 0
-        
-        # A. Momentum Green
-        mom_color = mom_data['color_current']
-        if direction == 'BULLISH':
-            mom_ok = mom_color in ['green', 'lime']
-        else:
-            mom_ok = mom_color in ['red', 'maroon']
-            
-        conditions['momentum_green'] = {
-            'ok': mom_ok,
-            'value': mom_color,
-            'reason': f"Momentum is {mom_color}"
-        }
-        if mom_ok: score_count += 1
-        else: missing.append(f"Momentum {mom_color} (Need {direction} colors)")
-
-        # B. ADX Accompanied (Fuerza + Dirección) - FLEXIBLE
-        adx_trend = adx_data['adx_trend']
-        adx_current = adx_data['adx_current']
-        di_trend = adx_data['di_plus_trend'] if direction == 'BULLISH' else adx_data['di_minus_trend']
-        
-        # TIME LADDER: Permitir si ADX alto aunque decrezca (post-impulso normal)
-        adx_ok = (
-            (adx_trend == 'creciendo' and di_trend == 'creciendo') or  # Ideal
-            (adx_current &gt; 25 and di_trend == 'creciendo') or  # ADX alto + DI subiendo
-            (adx_current &gt; 35)  # ADX muy alto = fuerza brutal (bypass)
-        )
-        
-        conditions['adx_accompanied'] = {
-            'ok': adx_ok,
-            'value': f"ADX:{adx_trend} DI:{di_trend}",
-            'reason': "ADX and DI must both be growing"
-        }
-        if adx_ok: score_count += 1
-        else: missing.append(f"ADX/DI not synced (ADX:{adx_trend}, DI:{di_trend})")
-
-        # C. Not in Correction (Velas)
-        closes = df['close'].values[-3:]
-        opens = df['open'].values[-3:]
-        
-        is_correction = True
-        for c, o in zip(closes, opens):
-            if direction == 'BULLISH':
-                if c &gt; o: # Vela verde
-                    is_correction = False
-                    break
-            else:
-                if c &lt; o: # Vela roja
-                    is_correction = False
-                    break
-                    
-        conditions['not_in_correction'] = {
-            'ok': not is_correction,
-            'value': 'Correction' if is_correction else 'Clean',
-            'reason': "Last 3 candles cannot be all against trend"
-        }
-        if not is_correction: score_count += 1
-        else: missing.append("Price in active correction (3 candles against trend)")
-
-        # D. Above EMA Support (Soporte)
-        ema21 = emas_data['emas'].get(21, 0)
-        
-        if ema21 &gt; 0:
-            dist_pct = (current_price - ema21) / ema21 * 100
-            if direction == 'BULLISH':
-                ema_ok = dist_pct &gt; -0.5 # Puede estar apenas abajo (retest)
-            else:
-                ema_ok = dist_pct &lt; 0.5
-        else:
-            dist_pct = 0
-            ema_ok = True # Sin EMA, no penalizar
-            
-        conditions['above_ema_support'] = {
-            'ok': ema_ok,
-            'value': f"{dist_pct:.2f}% vs EMA21",
-            'reason': "Price must hold EMA21 support"
-        }
-        if ema_ok: score_count += 1
-        else: missing.append(f"Lost EMA21 support (Dist: {dist_pct:.2f}%)")
-
-        # Resultado Final
-        final_score = score_count * 25
-        
-        # LÓGICA GRADIENTE (No exigir perfección)
-        # 4/4 = Perfecto (100%)
-        # 3/4 = Suficiente para entrar (75%)
-        # 2/4 = Esperar (50%)
-        # 1/4 o menos = Rechazar
-
-        if score_count &gt;= 3:
-            ready = True
-            status = 'READY'
-        elif score_count == 2:
-            ready = False
-            status = 'WAITING'
-        else:
-            ready = False
-            status = 'REJECT'
-        
-        return {
-            'ready': ready,
-            'status': status,
-            'conditions': conditions,
-            'score': final_score,
-            'missing': missing
-        }
-    except Exception as e:
-        print(f"⚠️ Error en validate_5m_entry_conditions: {e}")
-        return {'ready': False, 'conditions': {}, 'score': 0, 'missing': ['Error de cálculo']}
+    # Si después de 5 min no avanzó 0.1%
+    if price_advance &lt; 0.1 and pnl_pct &gt; 0:
+        print(f"   ⚠️ LATERALIZANDO: +{price_advance:.2f}% en {duration_min:.0f}min")
+        print(f"   Saliendo para proteger comisiones")
+        symbols_to_close.append((symbol, f"Lateralización: +{pnl_pct:.2f}%"))
+        continue
+    
+    # Si negativo y sin avance en 10 min
+    if duration_min &gt; 10 and price_advance &lt; 0 and pnl_pct &lt; -0.3:
+        print(f"   🚨 STAGNADO: No avanza y en pérdida")
+        symbols_to_close.append((symbol, f"Stagnado: {pnl_pct:.2f}%"))
+        continue
+RESUMEN DE CAMBIOS
+Archivo	Cambio
+brain_config.py	SCORE_THRESHOLD 60→50
+brain_trend_exhaustion.py	NUEVO módulo
+brain_analyzer.py	Integrar exhaustion penalty
+brain_executor.py	SL dinámico + trailing S/R + lateralización
+ORDEN DE IMPLEMENTACIÓN
+✅ Crear brain_trend_exhaustion.py
+✅ Modificar brain_config.py (threshold)
+✅ Integrar en brain_analyzer.py
+✅ SL dinámico en brain_executor.py
+✅ Trailing inteligente
+✅ Detector lateralización
+¿Aprobás para implementar todo?
 
 
+
+Espero poder solucionar esto de una vez por todas: 
+Recien detuve el bot
+ Bot detenido por usuario
+
+================================================================================
+📊 RESUMEN SESIÓN
+================================================================================
+Total trades: 4
+Wins: 1 | Losses: 3
+Win rate: 25.0%
+Avg PnL: -0.25%
+Total PnL: $-3.34
+
+--------------------------------------------------------------------------------
+🎯 SNIPER STATS FINALES:
+
+📊 SNIPER STATUS:
+   🎯 Priority: 5
+   ⏳ Waiting: 65
+   ❌ Rejected: 86
+   📍 Scan: 344/739 (Ciclo #4)
+
+   🏆 TOP PRIORITY:
+      1. AGLD/USDT:USDT - Score: 82.5
+      2. QNT/USDT:USDT - Score: 0.0
+      3. FARTCOIN/USDT:USDT - Score: 0.0
+================================================================================
+👋 Bot detenido correctamente
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 31,733<br>
-    Generado: 2025-12-30 00:32:49
+    Total caracteres: 16,534<br>
+    Generado: 2025-12-30 18:38:41
   </div>
 </body>
 </html>
