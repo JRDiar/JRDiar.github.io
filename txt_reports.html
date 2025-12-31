@@ -15,109 +15,97 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-30 22:32:00</div>
+  <div class="meta">Última actualización: 2025-12-30 23:23:30</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Plan Completo: Sistema Trend Exhaustion v5.5
-RESUMEN
-Archivo	Acción	Descripción
-brain_trend_exhaustion.py	CREAR	Nuevo módulo (~200 líneas)
-brain_analyzer.py	MODIFICAR	Integrar análisis exhaustion
-brain_executor.py	MODIFICAR	Trailing inteligente + detector lateralización
-Componentes del módulo:
-Factor	Peso	Mide
-Distancia S/R	30 pts	¿Cuánto room queda?
-Ratio moved/room	25 pts	¿Cuánto recorrió vs queda?
-ADX lifecycle	25 pts	¿Fase de la fuerza?
-Momentum age	20 pts	¿Cuántas velas?
-Fases:
-FRESH (0-30%): ✅ ENTER
-DEVELOPING (30-50%): ⚠️ CAREFUL
-MATURE (50-70%): ⏳ WAIT
-EXHAUSTED (70-100%): ❌ AVOID
-Bonus: Si room &gt; 3%, penalty se reduce 50%
+Plan Completo: Exhaustion como CONTEXTO (Sonnet Approach)
+CONCEPTO CLAVE:
+"Exhaustion NO agrega su propia penalty, sino MULTIPLICA las penalties existentes"
+
+ARCHIVOS:
+Archivo	Acción	Líneas
+brain_trend_exhaustion.py	CREAR	Nuevo módulo
+brain_analyzer.py	MODIFICAR	L468, L536-568, L1517-1546
+MULTIPLICADORES según fase:
+Fase	Room	ADX mult	Momentum mult
+FRESH	&gt;3%	0.2	0.1
+FRESH	&gt;2%	0.4	0.3
+DEVELOPING	-	1.0	1.0
+MATURE	-	1.3	1.3
+EXHAUSTED	-	2.0	2.0
+EJEMPLO CYBER (antes rechazada):
+ACTUAL:   penalty 40 + 15 + 25 = 80 → Score 20 ❌
+PROPUESTO: 40*0.3 + 15*0.1 + 25*0.2 = 19 → Score 81 ✅
 El plan incluye:
+✅ Módulo nuevo completo
+✅ Código ACTUAL de cada sección
+✅ Código PROPUESTO con multiplicadores
+✅ Líneas exactas a modificar
+Revisá el plan y confirmá para implementar.
 
-Código completo del nuevo módulo
-Código ACTUAL que voy a reemplazar
-Código PROPUESTO para cada sección
-Revisá el plan y avisame si aprobás para implementar.
+El plan:
+PLAN v5.5: Exhaustion como CONTEXTO (Sonnet Approach)
+🎯 CONCEPTO CLAVE
+"El módulo exhaustion no debe agregar SU PROPIA penalty, sino actuar como CONTEXTO que multiplica (reduce o agrava) las penalties EXISTENTES de fuerza débil según la fase del ciclo." — Sonnet
 
-PLAN COMPLETO: Sistema Trend Exhaustion v5.5
-📋 RESUMEN EJECUTIVO
-Problema	Solución	Archivo
-CYBER rechazada con room disponible	Medir room antes de penalizar	brain_trend_exhaustion.py (NUEVO)
-ADX/Mom viejos = rechazo automático	Room compensa exhaustion	brain_analyzer.py
-SL fijo no considera S/R	Trailing se aprieta cerca de S/R	brain_executor.py
-No detecta lateralización	Exit si no avanza + PnL	brain_executor.py
-FASE 1: NUEVO MÓDULO brain_trend_exhaustion.py
-Archivo: c:\Users\Joel\Trading automatizado\BraintraderAntigravity\brain_trend_exhaustion.py
+RESUMEN DE CAMBIOS
+Archivo	Acción	Líneas
+brain_trend_exhaustion.py	CREAR	Nuevo módulo
+brain_analyzer.py	MODIFICAR	L468-472, L530-577, L1514-1546
+FASE 1: MÓDULO brain_trend_exhaustion.py (NUEVO)
+Archivo: brain_trend_exhaustion.py
 """
 BRAIN TREND EXHAUSTION v1.0
 ============================
 Joel: "Medir cuánto subió, cuánto le queda, dónde está el S/R"
-Componentes de exhaustión:
-1. Distancia a S/R (30 pts) - ¿Cuánto room queda?
-2. Ratio moved/remaining (25 pts) - ¿Cuánto ya recorrió vs lo que queda?
-3. ADX lifecycle (25 pts) - ¿En qué fase está la fuerza?
-4. Momentum age (20 pts) - ¿Cuántas velas lleva el impulso?
-Fases:
-- FRESH (0-30%): ENTER
-- DEVELOPING (30-50%): CAREFUL  
-- MATURE (50-70%): WAIT
-- EXHAUSTED (70-100%): AVOID
+IMPORTANTE: Este módulo NO aplica su propia penalty.
+Devuelve MULTIPLICADORES para que brain_analyzer ajuste penalties existentes.
 """
 import pandas as pd
 from exchange_connection import fetch_ohlcv
 from brain_calculator import calculate_adx_with_memory, calculate_momentum_with_memory
 def analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=None):
     """
-    Analiza exhaustión combinando 5M (crítico) + 15M (contexto).
-    
-    Args:
-        symbol: Par de trading
-        direction: 'BULLISH' o 'BEARISH'
-        df_5m: DataFrame 5M opcional
-        df_15m: DataFrame 15M opcional
+    Analiza exhaustión y retorna MULTIPLICADORES para adjustar penalties.
     
     Returns:
-        dict con exhaustion_pct, room_pct, phase, penalty, recommendation
+        dict con:
+        - exhaustion_pct (0-100)
+        - room_pct (espacio hasta S/R)
+        - phase (FRESH/DEVELOPING/MATURE/EXHAUSTED)
+        - multipliers: {adx, momentum, late_entry}  &lt;-- NUEVO
     """
     # Fetch si no se proporciona
     if df_5m is None:
         ohlcv = fetch_ohlcv(symbol, '5m', 100)
         if not ohlcv:
-            return {'exhaustion_pct': 50, 'room_pct': 2, 'phase': 'UNKNOWN', 'penalty': 0}
+            return _default_result()
         df_5m = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
     current_price = float(df_5m['close'].iloc[-1])
     
     # === CALCULAR S/R DINÁMICO ===
-    high_50 = df_5m['high'].tail(50).max()  # Resistencia
-    low_50 = df_5m['low'].tail(50).min()    # Soporte
-    high_20 = df_5m['high'].tail(20).max()  # Resistencia reciente
-    low_20 = df_5m['low'].tail(20).min()    # Soporte reciente
+    high_50 = df_5m['high'].tail(50).max()
+    low_50 = df_5m['low'].tail(50).min()
     
     exhaustion_score = 0
     details = {}
     
-    # === 1. DISTANCIA A S/R (30 pts máx) ===
+    # === 1. DISTANCIA A S/R (30 pts) ===
     if direction == 'BULLISH':
         dist_to_resistance = ((high_50 - current_price) / current_price) * 100
         dist_from_support = ((current_price - low_50) / low_50) * 100
         room_pct = dist_to_resistance
         moved_pct = dist_from_support
-        details['target'] = 'RESISTANCE'
-        details['target_price'] = high_50
-    else:  # BEARISH
+        details['target'] = high_50
+    else:
         dist_to_support = ((current_price - low_50) / current_price) * 100
         dist_from_resistance = ((high_50 - current_price) / high_50) * 100
         room_pct = dist_to_support
         moved_pct = dist_from_resistance
-        details['target'] = 'SUPPORT'
-        details['target_price'] = low_50
+        details['target'] = low_50
     
     details['room_pct'] = room_pct
     details['moved_pct'] = moved_pct
@@ -125,336 +113,396 @@ def analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=None):
     # Penalty por poco espacio
     if room_pct &lt; 0.3:
         exhaustion_score += 30
-        details['room_phase'] = 'BLOCKED'
     elif room_pct &lt; 0.8:
         exhaustion_score += 20
-        details['room_phase'] = 'TIGHT'
     elif room_pct &lt; 1.5:
         exhaustion_score += 10
-        details['room_phase'] = 'MODERATE'
     elif room_pct &lt; 3.0:
         exhaustion_score += 5
-        details['room_phase'] = 'GOOD'
-    else:
-        exhaustion_score += 0
-        details['room_phase'] = 'EXCELLENT'
     
-    # === 2. RATIO MOVED/REMAINING (25 pts máx) ===
+    # === 2. RATIO MOVED/REMAINING (25 pts) ===
     if room_pct &gt; 0:
         ratio = moved_pct / room_pct
-        details['move_ratio'] = ratio
-        
+        details['ratio'] = ratio
         if ratio &gt; 5:
             exhaustion_score += 25
-            details['ratio_phase'] = 'VERY_EXHAUSTED'
         elif ratio &gt; 3:
             exhaustion_score += 18
-            details['ratio_phase'] = 'EXHAUSTED'
         elif ratio &gt; 1.5:
             exhaustion_score += 10
-            details['ratio_phase'] = 'BALANCED'
         elif ratio &gt; 0.5:
             exhaustion_score += 5
-            details['ratio_phase'] = 'FRESH'
-        else:
-            exhaustion_score += 0
-            details['ratio_phase'] = 'VERY_FRESH'
     
-    # === 3. ADX LIFECYCLE (25 pts máx) ===
+    # === 3. ADX LIFECYCLE (25 pts) ===
     try:
         adx_data = calculate_adx_with_memory(df_5m, period=14, lookback=10)
         adx_current = adx_data.get('adx_current', 25)
         adx_velocity = adx_data.get('adx_velocity', 0)
-        
-        details['adx_value'] = adx_current
-        details['adx_velocity'] = adx_velocity
+        details['adx'] = adx_current
+        details['adx_vel'] = adx_velocity
         
         if adx_current &gt; 50:
             exhaustion_score += 25
-            details['adx_phase'] = 'OVEREXTENDED'
         elif adx_current &gt; 45 and adx_velocity &lt; 0:
             exhaustion_score += 20
-            details['adx_phase'] = 'PEAKED'
         elif adx_current &gt; 35:
             exhaustion_score += 10
-            details['adx_phase'] = 'STRONG'
         elif adx_current &gt; 25:
             exhaustion_score += 5
-            details['adx_phase'] = 'DEVELOPING'
-        else:
-            exhaustion_score += 0
-            details['adx_phase'] = 'NASCENT'
     except:
-        details['adx_phase'] = 'UNKNOWN'
+        pass
     
-    # === 4. MOMENTUM AGE (20 pts máx) ===
+    # === 4. MOMENTUM AGE (20 pts) ===
     try:
         mom_data = calculate_momentum_with_memory(df_5m, lookback=10)
         mom_age = mom_data.get('consecutive_count', 0)
-        details['momentum_age'] = mom_age
+        details['mom_age'] = mom_age
         
         if mom_age &gt;= 10:
             exhaustion_score += 20
-            details['momentum_phase'] = 'EXHAUSTED'
         elif mom_age &gt;= 7:
             exhaustion_score += 15
-            details['momentum_phase'] = 'OLD'
         elif mom_age &gt;= 4:
             exhaustion_score += 8
-            details['momentum_phase'] = 'DEVELOPING'
         elif mom_age &gt;= 2:
             exhaustion_score += 3
-            details['momentum_phase'] = 'FRESH'
-        else:
-            exhaustion_score += 0
-            details['momentum_phase'] = 'NASCENT'
     except:
-        details['momentum_phase'] = 'UNKNOWN'
+        pass
     
-    # === RESULTADO FINAL ===
+    # === CALCULAR FASE Y MULTIPLICADORES ===
     exhaustion_pct = min(100, exhaustion_score)
     
     if exhaustion_pct &gt;= 70:
         phase = 'EXHAUSTED'
-        penalty = -50
-        recommendation = 'AVOID'
     elif exhaustion_pct &gt;= 50:
         phase = 'MATURE'
-        penalty = -30
-        recommendation = 'WAIT'
     elif exhaustion_pct &gt;= 30:
         phase = 'DEVELOPING'
-        penalty = -15
-        recommendation = 'CAREFUL'
     else:
         phase = 'FRESH'
-        penalty = 0
-        recommendation = 'ENTER'
     
-    # &gt;&gt;&gt; BONUS: Si hay mucho room, reducir penalty
-    if room_pct &gt; 3.0 and penalty &lt; 0:
-        penalty = int(penalty * 0.5)  # Reducir 50% la penalty si hay buen room
-        details['room_bonus'] = True
+    # &gt;&gt;&gt; MULTIPLICADORES según fase + room &lt;&lt;&lt;
+    multipliers = _calculate_multipliers(exhaustion_pct, room_pct, phase)
     
     return {
         'exhaustion_pct': exhaustion_pct,
         'room_pct': room_pct,
         'moved_pct': moved_pct,
         'phase': phase,
-        'penalty': penalty,
-        'recommendation': recommendation,
+        'multipliers': multipliers,
         'details': details
     }
-def get_dynamic_sl_from_exhaustion(exhaustion_result, base_sl_pct=2.0):
+def _calculate_multipliers(exhaustion_pct, room_pct, phase):
     """
-    Calcula SL dinámico basado en room disponible.
-    Más room = SL más amplio (dejar desarrollar)
-    Menos room = SL más ajustado (proteger)
-    """
-    room = exhaustion_result.get('room_pct', 2.0)
+    Calcula multiplicadores para ajustar penalties existentes.
     
-    if room &gt; 4.0:
-        return min(base_sl_pct * 1.5, 3.5)  # MAX 3.5%
-    elif room &gt; 2.0:
-        return base_sl_pct * 1.2  # +20%
-    elif room &gt; 1.0:
-        return base_sl_pct
-    elif room &gt; 0.5:
-        return base_sl_pct * 0.8  # -20%
+    FRESH + room alto = permite entrada temprana (reduce penalties)
+    EXHAUSTED = agrava penalties
+    """
+    # Defaults
+    adx_mult = 1.0
+    momentum_mult = 1.0
+    late_entry_mult = 1.0
+    lateral_mult = 1.0
+    
+    # FRESH + room excelente = OPORTUNIDAD TEMPRANA
+    if exhaustion_pct &lt; 30 and room_pct &gt; 3.0:
+        adx_mult = 0.2        # ADX bajo ESPERADO en fase temprana
+        momentum_mult = 0.1   # Momentum joven NORMAL
+        late_entry_mult = 0.0 # No es late entry
+        lateral_mult = 0.3    # Lateral puede ser acumulación
+    
+    # FRESH + room bueno = entrada con precaución
+    elif exhaustion_pct &lt; 30 and room_pct &gt; 2.0:
+        adx_mult = 0.4
+        momentum_mult = 0.3
+        late_entry_mult = 0.2
+        lateral_mult = 0.5
+    
+    # FRESH pero poco room = cuidado
+    elif exhaustion_pct &lt; 30:
+        adx_mult = 0.7
+        momentum_mult = 0.6
+        late_entry_mult = 0.5
+        lateral_mult = 0.8
+    
+    # DEVELOPING = normal
+    elif exhaustion_pct &lt; 50:
+        # Mantener en 1.0
+        pass
+    
+    # MATURE = más estricto
+    elif exhaustion_pct &lt; 70:
+        adx_mult = 1.3
+        momentum_mult = 1.3
+        late_entry_mult = 1.2
+        lateral_mult = 1.2
+    
+    # EXHAUSTED = muy estricto
     else:
-        return base_sl_pct * 0.6  # -40%
-def get_smart_trailing_distance(exhaustion_result, pnl_pct, base_trail=2.0):
-    """
-    Trailing dinámico: se aprieta cerca de S/R.
-    """
-    room = exhaustion_result.get('room_pct', 2.0)
+        adx_mult = 2.0
+        momentum_mult = 2.0
+        late_entry_mult = 1.5
+        lateral_mult = 1.5
     
-    # Base según profit
-    if pnl_pct &gt; 3.0:
-        trail = 1.0
-    elif pnl_pct &gt; 1.5:
-        trail = 1.5
-    elif pnl_pct &gt; 0.8:
-        trail = 2.0
-    else:
-        trail = 2.5
-    
-    # Ajustar según cercanía a S/R (aprieta cuando se acerca)
-    if room &lt; 0.5:
-        trail = min(trail, 0.5)  # Muy apretado
-    elif room &lt; 1.0:
-        trail = min(trail, 1.0)
-    elif room &lt; 1.5:
-        trail = min(trail, 1.5)
-    
-    return trail
+    return {
+        'adx': adx_mult,
+        'momentum': momentum_mult,
+        'late_entry': late_entry_mult,
+        'lateral': lateral_mult
+    }
+def _default_result():
+    """Resultado por defecto si falla el análisis."""
+    return {
+        'exhaustion_pct': 50,
+        'room_pct': 2.0,
+        'moved_pct': 0,
+        'phase': 'UNKNOWN',
+        'multipliers': {'adx': 1.0, 'momentum': 1.0, 'late_entry': 1.0, 'lateral': 1.0},
+        'details': {}
+    }
 def print_exhaustion_analysis(result, symbol, direction):
     """Imprime análisis visual."""
-    d = result.get('details', {})
-    
-    print(f"\n{'='*50}")
-    print(f"📉 EXHAUSTION ANALYSIS: {symbol} ({direction})")
-    print(f"{'='*50}")
+    m = result.get('multipliers', {})
+    print(f"\n{'='*60}")
+    print(f"📉 EXHAUSTION: {symbol} ({direction})")
     print(f"   Exhaustion: {result['exhaustion_pct']:.0f}% | Phase: {result['phase']}")
     print(f"   Room: {result['room_pct']:.2f}% | Moved: {result['moved_pct']:.2f}%")
-    print(f"   Target: {d.get('target', 'N/A')} @ {d.get('target_price', 0):.6f}")
-    print(f"   ADX: {d.get('adx_phase', 'N/A')} ({d.get('adx_value', 0):.1f})")
-    print(f"   Momentum: {d.get('momentum_phase', 'N/A')} ({d.get('momentum_age', 0)}v)")
-    print(f"   Recommendation: {result['recommendation']} | Penalty: {result['penalty']}")
-    if d.get('room_bonus'):
-        print(f"   ✅ Room Bonus Applied (penalty reduced)")
-    print(f"{'='*50}\n")
+    print(f"   Multipliers: ADX {m.get('adx', 1):.1f} | Mom {m.get('momentum', 1):.1f} | Late {m.get('late_entry', 1):.1f}")
+    print(f"{'='*60}")
 # === TEST ===
 if __name__ == "__main__":
     import sys
     symbol = sys.argv[1] if len(sys.argv) &gt; 1 else 'BTC/USDT:USDT'
-    
     for direction in ['BULLISH', 'BEARISH']:
         result = analyze_trend_exhaustion(symbol, direction)
         print_exhaustion_analysis(result, symbol, direction)
 FASE 2: INTEGRACIÓN EN brain_analyzer.py
-Ubicación: Después de guardar frame (~línea 468)
+2A: Calcular exhaustion TEMPRANO (~L468)
 CÓDIGO ACTUAL (L468-472):
 print(f"   🎬 Frame actualizado con indicadores reales (ADX: {adx_data['adx_current']:.1f}, Mom: {momentum_data['color_current']} {momentum_data['consecutive_count']}v)")
     
     # Analizar MOVIMIENTO (si hay suficientes frames)
     motion_score = 0
     motion_analysis = None
-CÓDIGO PROPUESTO (reemplazar L468-472):
+CÓDIGO PROPUESTO (reemplazar):
 print(f"   🎬 Frame actualizado con indicadores reales (ADX: {adx_data['adx_current']:.1f}, Mom: {momentum_data['color_current']} {momentum_data['consecutive_count']}v)")
     
     # ================================================================
-    # v5.5 NUEVO: ANÁLISIS DE EXHAUSTION (Joel)
-    # "Medir cuánto subió, cuánto le queda, dónde está el S/R"
+    # v5.5 EXHAUSTION COMO CONTEXTO (Sonnet approach)
+    # "Exhaustion no agrega penalty, ajusta MULTIPLICADORES"
     # ================================================================
     from brain_trend_exhaustion import analyze_trend_exhaustion, print_exhaustion_analysis
     
     exhaustion_result = analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=df)
     print_exhaustion_analysis(exhaustion_result, symbol, direction)
     
-    # Aplicar penalty/bonus de exhaustion
-    exhaustion_penalty = exhaustion_result.get('penalty', 0)
-    if exhaustion_penalty != 0:
-        print(f"   📉 Exhaustion penalty: {exhaustion_penalty}")
+    # Obtener multiplicadores para penalties
+    exhaustion_mult = exhaustion_result.get('multipliers', {
+        'adx': 1.0, 'momentum': 1.0, 'late_entry': 1.0, 'lateral': 1.0
+    })
+    exhaustion_phase = exhaustion_result.get('phase', 'UNKNOWN')
+    exhaustion_room = exhaustion_result.get('room_pct', 0)
     
-    # Guardar para uso posterior (trailing, SL)
-    exhaustion_data = {
-        'exhaustion_pct': exhaustion_result['exhaustion_pct'],
-        'room_pct': exhaustion_result['room_pct'],
-        'phase': exhaustion_result['phase'],
-        'recommendation': exhaustion_result['recommendation']
-    }
+    if exhaustion_phase == 'FRESH' and exhaustion_room &gt; 2.0:
+        print(f"   🌱 FASE FRESH + Room {exhaustion_room:.1f}% → Entrada temprana permitida")
+    elif exhaustion_phase == 'EXHAUSTED':
+        print(f"   🚨 FASE EXHAUSTED → Penalties agravadas")
     
     # Analizar MOVIMIENTO (si hay suficientes frames)
     motion_score = 0
     motion_analysis = None
-Ubicación: Antes del return final (~línea 1625)
-CÓDIGO ACTUAL (L1619-1625 aprox):
-score_15m = min(100, max(0, score_15m))
+2B: Aplicar multiplicador a LATERALIZACIÓN (~L536-568)
+CÓDIGO ACTUAL (L536-568):
+if spread_di &lt; 5:
+        lateral_penalty += 40  # v5.4.5: Subido de 25 a 40 (Sonnet/Joel)
+        lateral_reasons.append(f"DI spread muy bajo: {spread_di:.1f}")
+    elif spread_di &lt; 10:
+        lateral_penalty += 10
+        lateral_reasons.append(f"DI spread bajo: {spread_di:.1f}")
     
-    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
+    # ADX bajo o lateral
+    if adx_value_granular['lifecycle'] == 'lateral':
+        lateral_penalty += 20
+        lateral_reasons.append(f"ADX lateral: {adx_value_granular['value']:.1f}")
+    elif adx_value_granular['lifecycle'] == 'dying':
+        lateral_penalty += 25  # Penalty fuerte (aumentado de 15)
+        lateral_reasons.append(f"ADX muriendo: {adx_value_granular['value']:.1f}")
+    
+    # --- 2. Momentum Granular: Detectar momentum agotado O muy joven ---
+    mom_color = momentum_data.get('color_current', 'gray')
+    mom_age = momentum_data.get('consecutive_count', 0)
+    if mom_age &gt; 12:
+        lateral_penalty += 15
+        lateral_reasons.append(f"Momentum agotado: {mom_color} {mom_age}v")
+    elif mom_age &lt; 2:
+        # &gt;&gt;&gt; NUEVO: Momentum muy joven = no confiable
+        # Joel: "El momentum estaba muy pequeño"
+        lateral_penalty += 15
+        lateral_reasons.append(f"Momentum muy joven: {mom_color} {mom_age}v")
 CÓDIGO PROPUESTO (reemplazar):
-# &gt;&gt;&gt; Aplicar exhaustion penalty al score final
-    score_15m += exhaustion_penalty
+# &gt;&gt;&gt; EXHAUSTION MULTIPLIER para lateral
+    lateral_mult = exhaustion_mult.get('lateral', 1.0)
+    momentum_mult = exhaustion_mult.get('momentum', 1.0)
     
-    score_15m = min(100, max(0, score_15m))
+    if spread_di &lt; 5:
+        base_penalty = 40
+        adjusted_penalty = int(base_penalty * lateral_mult)
+        lateral_penalty += adjusted_penalty
+        lateral_reasons.append(f"DI spread muy bajo: {spread_di:.1f} (x{lateral_mult})")
+    elif spread_di &lt; 10:
+        base_penalty = 10
+        adjusted_penalty = int(base_penalty * lateral_mult)
+        lateral_penalty += adjusted_penalty
+        lateral_reasons.append(f"DI spread bajo: {spread_di:.1f}")
     
-    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
-    print(f"      📉 Exhaustion: {exhaustion_data['exhaustion_pct']:.0f}% ({exhaustion_data['phase']}) | Room: {exhaustion_data['room_pct']:.1f}%")
-FASE 3: TRAILING INTELIGENTE EN brain_executor.py
-Ubicación: Trailing stop (~línea 692-716)
-CÓDIGO ACTUAL (L692-706):
-# GESTIÓN 1.5: Trailing Stop Inteligente (Adaptativo)
-                if ENABLE_TRAILING_STOP:
-                    # FIX v5.4.4: Distancia variable según profit (activar desde 0.3%)
-                    if pnl_pct &gt; 3.0:
-                        trailing_dist_pct = 1.0  # Muy apretado para proteger ganancia
-                    elif pnl_pct &gt; 1.5:
-                        trailing_dist_pct = 1.5
-                    elif pnl_pct &gt; 0.8:
-                        trailing_dist_pct = 2.0
-                    elif pnl_pct &gt; 0.3:  # NUEVO: Proteger pequeñas ganancias
-                        trailing_dist_pct = 2.5
-                    else:
-                        trailing_dist_pct = 3.0  # Inicial muy amplio
-                    if pnl_pct &gt; 0.3:  # Reducido de 0.7% a 0.3% - Activar ANTES
-CÓDIGO PROPUESTO (reemplazar L692-706):
-# ================================================================
-                # v5.5: TRAILING STOP CON EXHAUSTION (Joel)
-                # "Trailing se aprieta cerca de S/R"
-                # ================================================================
-                if ENABLE_TRAILING_STOP:
-                    # Obtener exhaustion actual si no existe
-                    if 'exhaustion_data' not in trade_data:
-                        try:
-                            from brain_trend_exhaustion import analyze_trend_exhaustion, get_smart_trailing_distance
-                            exhaustion = analyze_trend_exhaustion(symbol, direction)
-                            trade_data['exhaustion_data'] = exhaustion
-                        except:
-                            trade_data['exhaustion_data'] = {'room_pct': 2.0}
-                    
-                    # Calcular trailing basado en room + profit
-                    exhaustion = trade_data.get('exhaustion_data', {'room_pct': 2.0})
-                    
-                    try:
-                        from brain_trend_exhaustion import get_smart_trailing_distance
-                        trailing_dist_pct = get_smart_trailing_distance(exhaustion, pnl_pct)
-                    except:
-                        # Fallback al sistema anterior
-                        if pnl_pct &gt; 3.0:
-                            trailing_dist_pct = 1.0
-                        elif pnl_pct &gt; 1.5:
-                            trailing_dist_pct = 1.5
-                        elif pnl_pct &gt; 0.8:
-                            trailing_dist_pct = 2.0
-                        elif pnl_pct &gt; 0.3:
-                            trailing_dist_pct = 2.5
-                        else:
-                            trailing_dist_pct = 3.0
-                    
-                    room_pct = exhaustion.get('room_pct', 2.0)
-                    print(f"   🎯 Trailing: {trailing_dist_pct:.1f}% (room: {room_pct:.1f}%)")
-                    if pnl_pct &gt; 0.3:
-FASE 4: DETECTOR DE LATERALIZACIÓN
-Ubicación: monitor_active_trades (~línea 580)
-CÓDIGO PROPUESTO (agregar después de calcular PnL):
-# ================================================================
-                # v5.5: DETECTOR LATERALIZACIÓN (Joel)
-                # "Si no avanza en 5min + ganancia → salir"
-                # ================================================================
-                if duration_min &gt; 5:
-                    price_at_entry = trade_data['entry_price']
-                    
-                    if direction == 'BULLISH':
-                        price_advance = ((current_price - price_at_entry) / price_at_entry) * 100
-                    else:
-                        price_advance = ((price_at_entry - current_price) / price_at_entry) * 100
-                    
-                    # Si después de 5 min no avanzó 0.15% pero tiene ganancia pequeña
-                    if price_advance &lt; 0.15 and 0 &lt; pnl_pct &lt; 0.3:
-                        print(f"   ⚠️ LATERALIZANDO: +{price_advance:.2f}% en {duration_min:.0f}min")
-                        print(f"   💨 Saliendo para cubrir comisiones (+{pnl_pct:.2f}%)")
-                        symbols_to_close.append((symbol, f"Lateralización: +{pnl_pct:.2f}%"))
-                        continue
-                    
-                    # Si negativo y sin avance en 10 min
-                    if duration_min &gt; 10 and price_advance &lt; 0 and pnl_pct &lt; -0.5:
-                        print(f"   🚨 STAGNADO: No avanza y en pérdida ({pnl_pct:.2f}%)")
-                        symbols_to_close.append((symbol, f"Stagnado: {pnl_pct:.2f}%"))
-                        continue
-📊 RESUMEN DE CAMBIOS
-Acción	Archivo	Líneas
-CREAR	brain_trend_exhaustion.py	~200 líneas (nuevo)
-MODIFICAR	brain_analyzer.py L468-472	Agregar análisis exhaustion
-MODIFICAR	brain_analyzer.py L1619-1625	Aplicar penalty + print
-MODIFICAR	brain_executor.py L692-706	Trailing con room
-AGREGAR	brain_executor.py ~L580	Detector lateralización
-¿Aprobás este plan?
+    # ADX bajo o lateral
+    if adx_value_granular['lifecycle'] == 'lateral':
+        base_penalty = 20
+        adjusted_penalty = int(base_penalty * lateral_mult)
+        lateral_penalty += adjusted_penalty
+        lateral_reasons.append(f"ADX lateral: {adx_value_granular['value']:.1f} (x{lateral_mult})")
+    elif adx_value_granular['lifecycle'] == 'dying':
+        base_penalty = 25
+        adjusted_penalty = int(base_penalty * lateral_mult)
+        lateral_penalty += adjusted_penalty
+        lateral_reasons.append(f"ADX muriendo: {adx_value_granular['value']:.1f}")
+    
+    # --- 2. Momentum Granular: Detectar momentum agotado O muy joven ---
+    mom_color = momentum_data.get('color_current', 'gray')
+    mom_age = momentum_data.get('consecutive_count', 0)
+    if mom_age &gt; 12:
+        base_penalty = 15
+        adjusted_penalty = int(base_penalty * momentum_mult)
+        lateral_penalty += adjusted_penalty
+        lateral_reasons.append(f"Momentum agotado: {mom_color} {mom_age}v")
+    elif mom_age &lt; 2:
+        # &gt;&gt;&gt; En FRESH phase, momentum joven es NORMAL
+        base_penalty = 15
+        adjusted_penalty = int(base_penalty * momentum_mult)
+        lateral_penalty += adjusted_penalty
+        if momentum_mult &lt; 1.0:
+            lateral_reasons.append(f"Momentum joven {mom_age}v (reducido x{momentum_mult})")
+        else:
+            lateral_reasons.append(f"Momentum muy joven: {mom_color} {mom_age}v")
+2C: Aplicar multiplicador a LATE ENTRY (~L1517-1546)
+CÓDIGO ACTUAL (L1517-1546):
+# PENALTY 1: Momentum viejo (&gt;5 velas) - v5.4.3b REDUCIDO
+    if mom_age &gt; 8:
+        late_entry_penalty += 25
+        late_entry_reasons.append(f"Momentum {mom_age}v muy viejo")
+    elif mom_age &gt; 6:
+        late_entry_penalty += 15
+        late_entry_reasons.append(f"Momentum {mom_age}v viejo")
+    
+    # PENALTY 2: ADX peak (alto sin crecer) - v5.4.3b REDUCIDO
+    adx_velocity = adx_data.get('adx_velocity', 0)
+    if adx_current &gt; 45 and adx_velocity &lt; 0:
+        late_entry_penalty += 20
+        late_entry_reasons.append(f"ADX {adx_current:.1f} peaked")
+    elif adx_current &gt; 40 and adx_velocity &lt; 0.5:
+        late_entry_penalty += 10
+        late_entry_reasons.append(f"ADX {adx_current:.1f} sin crecer")
+    
+    # PENALTY 3: Pivot confirmado reciente - v5.4.3b REDUCIDO
+    try:
+        last_pivot_type = zigzag_granular.get('pivot_types', [])[-1] if zigzag_granular.get('pivot_types') else ''
+        if last_pivot_type in ['HH', 'LL']:
+            late_entry_penalty += 10
+            late_entry_reasons.append(f"Pivot {last_pivot_type} recién confirmado")
+    except:
+        pass
+    
+    # Aplicar penalty total
+    if late_entry_penalty &gt; 0:
+        score_15m -= late_entry_penalty
+        print(f"   ⚠️ ENTRADA TARDÍA: {', '.join(late_entry_reasons)} → penalty -{late_entry_penalty}")
+CÓDIGO PROPUESTO (reemplazar):
+# &gt;&gt;&gt; EXHAUSTION MULTIPLIERS
+    late_mult = exhaustion_mult.get('late_entry', 1.0)
+    adx_mult = exhaustion_mult.get('adx', 1.0)
+    momentum_mult = exhaustion_mult.get('momentum', 1.0)
+    
+    # PENALTY 1: Momentum viejo (&gt;5 velas) - CON MULTIPLIER
+    if mom_age &gt; 8:
+        base_penalty = 25
+        adjusted = int(base_penalty * momentum_mult)
+        late_entry_penalty += adjusted
+        late_entry_reasons.append(f"Momentum {mom_age}v muy viejo (x{momentum_mult})")
+    elif mom_age &gt; 6:
+        base_penalty = 15
+        adjusted = int(base_penalty * momentum_mult)
+        late_entry_penalty += adjusted
+        late_entry_reasons.append(f"Momentum {mom_age}v viejo (x{momentum_mult})")
+    
+    # PENALTY 2: ADX peak (alto sin crecer) - CON MULTIPLIER
+    adx_velocity = adx_data.get('adx_velocity', 0)
+    if adx_current &gt; 45 and adx_velocity &lt; 0:
+        base_penalty = 20
+        adjusted = int(base_penalty * adx_mult)
+        late_entry_penalty += adjusted
+        late_entry_reasons.append(f"ADX {adx_current:.1f} peaked (x{adx_mult})")
+    elif adx_current &gt; 40 and adx_velocity &lt; 0.5:
+        base_penalty = 10
+        adjusted = int(base_penalty * adx_mult)
+        late_entry_penalty += adjusted
+        late_entry_reasons.append(f"ADX {adx_current:.1f} sin crecer (x{adx_mult})")
+    
+    # PENALTY 3: Pivot confirmado reciente - CON MULTIPLIER
+    try:
+        last_pivot_type = zigzag_granular.get('pivot_types', [])[-1] if zigzag_granular.get('pivot_types') else ''
+        if last_pivot_type in ['HH', 'LL']:
+            base_penalty = 10
+            adjusted = int(base_penalty * late_mult)
+            late_entry_penalty += adjusted
+            late_entry_reasons.append(f"Pivot {last_pivot_type} confirmado (x{late_mult})")
+    except:
+        pass
+    
+    # Aplicar penalty total (ya ajustada por multiplicadores)
+    if late_entry_penalty &gt; 0:
+        score_15m -= late_entry_penalty
+        print(f"   ⚠️ ENTRADA TARDÍA: {', '.join(late_entry_reasons)} → penalty -{late_entry_penalty}")
+        if exhaustion_phase == 'FRESH':
+            print(f"   🌱 Penalties reducidas por fase FRESH (room {exhaustion_room:.1f}%)")
+📊 EJEMPLO: CYBER (Entrada Temprana)
+Con sistema ACTUAL:
+score = 100
+score -= 40  # DI spread bajo (lateral)
+score -= 15  # Momentum joven 2v
+score -= 25  # ADX 18 bajo
+= 20 → RECHAZADO ❌
+Con sistema PROPUESTO:
+exhaustion = 15% (FRESH)
+room = 15%
+multipliers = {adx: 0.2, momentum: 0.1, lateral: 0.3}
+score = 100
+score -= 40 * 0.3 = 12  # DI spread bajo
+score -= 15 * 0.1 = 2   # Momentum joven (NORMAL en FRESH)
+score -= 25 * 0.2 = 5   # ADX bajo (ESPERADO en FRESH)
+= 81 → OPERA ✅
+📊 EJEMPLO: Late Entry (Zona Agotada)
+Con sistema ACTUAL:
+score = 100
+score -= 25  # Momentum 9v viejo
+score -= 20  # ADX peaked
+= 55 → OPERA (MALO) ❌
+Con sistema PROPUESTO:
+exhaustion = 75% (EXHAUSTED)
+room = 0.5%
+multipliers = {adx: 2.0, momentum: 2.0, late_entry: 1.5}
+score = 100
+score -= 25 * 2.0 = 50  # Momentum viejo AGRAVADO
+score -= 20 * 2.0 = 40  # ADX peaked AGRAVADO
+= 10 → RECHAZADO ✅
+¿Aprobás este plan corregido?
+
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 17,760<br>
-    Generado: 2025-12-30 22:32:00
+    Total caracteres: 18,124<br>
+    Generado: 2025-12-30 23:23:30
   </div>
 </body>
 </html>
