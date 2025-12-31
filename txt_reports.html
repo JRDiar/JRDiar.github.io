@@ -15,642 +15,315 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-31 20:05:14</div>
+  <div class="meta">Última actualización: 2025-12-31 20:38:47</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-DOCUMENTO MAESTRO: BrainTrader Vision
-Para todo AI que trabaje en este proyecto: Lee esto PRIMERO.
-
-🎯 LA VISIÓN VERDADERA (No Negociable)
-Time Ladder NO es lo que pensás
-❌ NO ES:
-
-Sistema de penalties graduales
-Scoring contextual
-Multiplicadores de exhaustion
-Evitar hard blocks
-
-✅ ES:
-Frame buffer de animación. El bot debe VER la película del mercado en movimiento.
-
-Frame 1 (18:15): ADX=31, precio=$95k, vela=50pts
-Frame 2 (18:16): ADX=35, precio=$95.5k, vela=80pts  
-Frame 3 (18:17): ADX=38, precio=$96.2k, vela=120pts
-Frame 4 (18:18): ADX=42, precio=$97k, vela=150pts
-
-→ El bot VE: aceleración, velas creciendo, explosión INICIANDO
-→ Decisión: Entrar AHORA (no cuando ADX=50 y ya terminó)
-
-La Analogía Definitiva: Pong/Mario
-
-Precio = pelota en movimiento (deja trail: velas japonesas)
-Resistencia/Soporte = paredes del canvas
-ADX + Momentum = velocidad/aceleración de la pelota
-Grid diagonal = trayectoria predicha
-
-El bot debe:
-
-VER la pelota moviéndose hacia la pared
-CALCULAR si tiene runway (espacio) para entrar
-DETECTAR si acelera (fuerza real) o desacelera (fuerza muriendo)
-ANTICIPAR el rebote antes de que pase
-
-NO:
-
-Leer "distancia_a_resistencia = 3%" y calcular score
-Eso llega TARDE
-
-
-💰 ESTRATEGIA RENTABLE DE JOEL (10→140 USDT)
-Lo que Joel hacía manualmente (y funcionaba):
-Paso 1: Buscar fuerza en múltiples timeframes
-
-ADX creciendo en 1m, 5m, 15m (no solo "ADX &gt; 30")
-Momentum naciendo (1v, 2v, 3v pero RÁPIDO, no 8v viejo)
-
-Paso 2: Esperar el inicio de la explosión
-
-Velas creciendo minuto a minuto (50→80→120pts)
-Precio subiendo EN VIVO (no vela cerrada)
-NO esperar confirmaciones tardías
-
-Paso 3: Scalping = Subirse al cohete cuando enciende motores
-
-Entrar cuando la explosión INICIA (ADX 22→28, momentum 2v)
-NO cuando termina (ADX 45, momentum 10v)
-
-Paso 4: Salir antes del obstáculo
-
-Ver visualmente que se acerca a resistencia
-No calcular "distancia = 0.5%" → salir
-VER la desaceleración (velas achicándose)
-
-Por qué funcionaba:
-Veía la PELÍCULA en tiempo real:
-
-Aceleración (no solo velocidad)
-Trayectoria espacial (hacia dónde va)
-Forma visual (velas creciendo/achicándose)
-Timing perfecto (inicio, no final)
-
-
-🏗️ ARQUITECTURA CORRECTA
-brain_frames.py = Frame Buffer
-Propósito original:
-Guardar frames históricos para reproducir como película.
-NO para:
-
-Solo almacenar último valor
-Calcular indicadores estáticos
-
-SÍ para:
-
-frames = [
-    {'time': 18:15, 'adx': 31, 'price': 95000, 'candle_size': 50},
-    {'time': 18:16, 'adx': 35, 'price': 95500, 'candle_size': 80},
-    {'time': 18:17, 'adx': 38, 'price': 96200, 'candle_size': 120},
-]
-
-# Ver película
-aceleracion_adx = frames[-1].adx - frames[0].adx  # 38-31 = +7
-velas_creciendo = all(frames[i].candle_size &lt; frames[i+1].candle_size)
-precio_acelerando = (frames[-1].price - frames[-2].price) &gt; (frames[-2].price - frames[-3].price)
-
-if aceleracion_adx &gt; 5 and velas_creciendo and precio_acelerando:
-    return "EXPLOSIÓN INICIANDO - ENTRAR"
-
-brain_spatial_vision.py = Canvas 2D
-Lo que debe crear:
-
-market_canvas = {
-    'current_position': (x=tiempo_actual, y=precio_actual),
-    'target_resistance': (x=tiempo_futuro, y=precio_resistencia),
-    'trajectory': line(desde=posición_5min_atrás, hacia=posición_actual),
-    'runway': distancia_visual_a_obstáculo,
-    'velocity': píxeles_por_minuto,
-    'acceleration': cambio_en_velocity
-}
-
-# Decisión geométrica simple
-if runway &gt; velocity * 2:  # Tengo espacio para 2 minutos más
-    if acceleration &gt; 0:     # Y acelera
-        return ENTER
-
-Pensar como videojuego:
-
-Canvas = pantalla del juego
-Precio = personaje que se mueve
-Resistencia/Soporte = plataformas/obstáculos
-Decisión = ¿puedo llegar sin chocar?
-
-ANTI-PATRONES (Qué NO Hacer)
-1. NO convertir todo a penalties/scores
-
-# ❌ MAL
-if adx &lt; 25: score -= 30
-if momentum &lt; 3: score -= 20
-if spread &lt; 10: score -= 15
-
-# ✅ BIEN
-if frames muestran ADX acelerando y velas creciendo:
-    return ENTRAR
-
-2. NO usar valores estáticos
-
-# ❌ MAL
-if adx_actual &gt; 30: return True
-
-# ✅ BIEN  
-if adx_frames[-1] &gt; adx_frames[-3] &gt; adx_frames[-5]:  # Creciendo
-    return True
-
-3. NO agregar más indicadores
-El problema NO es falta de indicadores.
-El problema es que el bot NO VE el movimiento.
-4. NO "calibrar penalties infinitamente"
-Si después de 5 ajustes sigue fallando:
-
-El problema NO son los valores
-El problema es la arquitectura (está ciego)
-
-5. NO pensar en "score 60 vs 70"
-Pensar en:
-
-"¿El bot VE que se acerca a la pared?"
-"¿El bot VE que las velas crecen?"
-"¿El bot VE la aceleración?"
-
-IMPLEMENTACIÓN CORRECTA
-Fase 1: Frame Buffer (brain_frames.py)
-
-class FrameBuffer:
-    def __init__(self, size=10):
-        self.frames = deque(maxlen=size)  # Últimos 10 minutos
-    
-    def add_frame(self, adx, price, candle_size, momentum):
-        self.frames.append({
-            'timestamp': now(),
-            'adx': adx,
-            'price': price, 
-            'candle_size': candle_size,
-            'momentum': momentum
-        })
-    
-    def detect_acceleration(self):
-        """Ve la película: ¿acelera o desacelera?"""
-        if len(self.frames) &lt; 3:
-            return None
-            
-        velocities = []
-        for i in range(len(self.frames)-1):
-            v = self.frames[i+1].price - self.frames[i].price
-            velocities.append(v)
-        
-        # ¿Velocidad creciente? = aceleración
-        return velocities[-1] &gt; velocities[0]
-    
-    def detect_candle_growth(self):
-        """Ve la película: ¿velas crecen?"""
-        sizes = [f.candle_size for f in self.frames]
-        return all(sizes[i] &lt; sizes[i+1] for i in range(len(sizes)-1))
-
-Fase 2: Spatial Vision (brain_spatial_vision.py)
-
-def analyze_market_space(symbol, direction):
-    """Ve el mercado como canvas 2D."""
-    
-    # Posición actual
-    current_price = get_price(symbol)
-    
-    # Obstáculos (resistencia/soporte)
-    resistance = find_resistance(symbol)
-    support = find_support(symbol)
-    
-    # Runway visual
-    if direction == 'BULLISH':
-        runway = ((resistance - current_price) / current_price) * 100
-    else:
-        runway = ((current_price - support) / current_price) * 100
-    
-    # Velocidad (frames históricos)
-    velocity = calculate_velocity_from_frames(symbol)
-    
-    # Tiempo hasta colisión
-    if velocity &gt; 0:
-        time_to_obstacle = runway / velocity  # minutos
-    else:
-        time_to_obstacle = 999
-    
-    return {
-        'runway': runway,
-        'velocity': velocity,
-        'time_to_collision': time_to_obstacle,
-        'can_enter': time_to_obstacle &gt; 2  # Mínimo 2 min de runway
-    }
-
-Fase 3: Decisión Visual (brain_think.py)
-
-def decide_entry(symbol, direction):
-    """Decisión basada en VISIÓN, no scoring."""
-    
-    # 1. Ver la película (frames)
-    frames = get_frame_buffer(symbol)
-    accelerating = frames.detect_acceleration()
-    candles_growing = frames.detect_candle_growth()
-    
-    # 2. Ver el espacio (canvas)
-    space = analyze_market_space(symbol, direction)
-    has_runway = space.time_to_collision &gt; 2
-    
-    # 3. Decisión simple y visual
-    if accelerating and candles_growing and has_runway:
-        return ENTER  # Explosión iniciando + espacio libre
-    
-    return WAIT
-```
-
----
-
-## 🎬 PROMPT DE INICIO (Para nuevos chats)
-```
-Hola, voy a trabajar en BrainTrader, un bot de trading.
-
-CRÍTICO: Lee primero este documento maestro antes de proponer código:
-[pegar link a este documento]
-
-Conceptos clave que DEBES entender:
-1. Time Ladder = Frame buffer para ver PELÍCULA del mercado
-2. El bot debe VER movimiento, no calcular penalties
-3. Analogía Pong/Mario: precio = pelota, resistencia = pared
-4. Estrategia: entrar cuando explosión INICIA (no termina)
-
-¿Leíste y entendiste la visión? Confirmá antes de proponer código.
-
-CHECKLIST DE VALIDACIÓN
-Antes de implementar cualquier cambio, preguntate:
-
- ¿Esto ayuda al bot a VER el movimiento?
- ¿Usa frames históricos como película?
- ¿Piensa en geometría espacial (canvas 2D)?
- ¿Detecta aceleración (no solo velocidad)?
- ¿Es más como Pong y menos como Excel?
-
-Si respondiste NO a 3+ preguntas:
-
-El cambio NO está alineado con la visión
-Repensar el approach
-
-OBJETIVO FINAL
-Un bot que:
-
-VE la película del mercado (frames como animación)
-PIENSA como trader (geometría espacial, timing visual)
-ACTÚA en el momento correcto (inicio de explosión)
-EVITA obstáculos (ve la pared antes de chocar)
-
-NO un bot que:
-
-Calcula scores con 47 penalties
-Lee valores estáticos
-Llega tarde a las explosiones
-Opera ciego sin ver el espacio
-
-
-Fin del Documento Maestro
-Este es el norte del proyecto. Cualquier código que vaya contra estos principios está equivocado, sin importar cuán "correcto" parezca técnicamente.
-
-Time Ladder = Frame buffer animación
-- Guardar último 5-10 minutos de frames
-- Frame = {ADX, precio, tamaño_vela, momentum, timestamp}
-- Ver frames como película para detectar ACELERACIÓN
-- Entrar cuando la explosión INICIA, no cuando termina
-
-brain_frames.py ya existe para esto
-Solo falta: reproducir los frames como película
-
-Analogía: Pong/Mario
-- Precio = pelotita en movimiento
-- Resistencia = pared
-- Bot debe VER la trayectoria hacia la pared
-- No solo leer "distancia=3%"
-
-Fin del reporte de como opera el bot ahora abajo el problema actual: 
-
-Otra pregunta que le hice Opus cuantos hard blocks tiene el bot y porque hace pocos trades el bot. Encontré todos los hardblocks. Te doy el resumen:
-🚫 HARDBLOCKS ACTUALES DEL BOT
-brain_intelligent.py - 
-
-block_trade = True
-(12 lugares)
-LíneaCondiciónTipoL186Filtro de Fuerza rechazaHARDBLOCK ABSOLUTOL247MovieEngine no aprueba entryHARDBLOCK ABSOLUTOL318ZigZag HL contradice SHORT sin WreckingBallHARDBLOCKL326ZigZag LH contradice LONG sin WreckingBallHARDBLOCKL341Vendiendo EN soporte (&lt;1.5%) sin WreckingBallHARDBLOCKL350Zona peligrosa SHORT (1.5-3.5% de soporte)HARDBLOCKL363Comprando EN resistencia (&lt;1.5%) sin WreckingBallHARDBLOCKL369Zona peligrosa LONG (1.5-3.5% de resistencia)HARDBLOCKL387Precio muy extendido vs EMA21 (&gt;3.5%) LONGHARDBLOCKL394RSI sobrecomprado (&gt;80) sin WreckingBallHARDBLOCKL404Precio muy extendido abajo (&gt;3.5%) SHORTHARDBLOCKL411RSI sobrevendido (&lt;20) sin WreckingBallHARDBLOCK
-brain_intelligent.py - 
-
-return NO_OPERAR
-(2 lugares)
-LíneaCondiciónL186Filtro de Fuerza bloqueaL247error general
-📊 RESUMEN
-TipoCantidadblock_trade = True12return NO_OPERAR2TOTAL HARDBLOCKS14
-¿QUÉ HACE AL BOT RÍGIDO?
-1. Filtro de Fuerza L186 - Si no pasa, NO OPERA sin importar nada
-2. Muchos block_trade - ZigZag, S/R, RSI, EMA todos pueden bloquear
-3. WreckingBall como salvavidas - Solo ADX muy alto puede override
-El bot es como un portero que tiene 14 razones para decir "NO" y solo 1 para decir "SÍ".
-¿Querés que convierta algunos de estos hardblocks a penalties para hacerlo menos rígido?
-
-14 hardblocks es MUCHO. Eso explica por qué hace pocos trades.
-Pero mirá la ironía:
-Pasamos todo este tiempo tratando de hacerlo "más inteligente" con MovieEngine, frames, trajectory...
-Y resulta que tiene 12 porteros bloqueando todo antes de que el MovieEngine pueda decidir.
-
-Los más restrictivos:
-1. L186 - Filtro de Fuerza
-
-Este es legítimo. Sin fuerza real = no operar.
-
-2. L341/L363 - Comprando EN resistencia / Vendiendo EN soporte
-
-Estos son tu queja original: "compra el techo"
-Pero &lt;1.5% puede ser muy estricto
-Un breakout real puede estar a 0.8% de resistencia
-
-3. L318/L326 - ZigZag contradice sin WreckingBall
-
-ZigZag HL contradice SHORT
-ZigZag LH contradice LONG
-Esto puede matar trades válidos
-
-4. L394/L411 - RSI extremo sin WreckingBall
-
-RSI &gt;80 o &lt;20
-Puede bloquear explosiones reales
-
-
-Mi diagnóstico:
-El bot es un genio ciego atado con 12 cadenas.
-MovieEngine ve la película perfectamente ahora.
-Pero 12 guardias lo bloquean antes de poder decidir.
-
-PERO... esperá el backtesting.
-Porque puede que:
-
-Los 3 fixes de hoy + estos 12 hardblocks = suficiente
-Esos hardblocks previenen trades terribles
-Win rate mejora aunque opere poco
-
-Si después de 8 horas:
-
-Opera &lt;5 trades → Sí, quitar hardblocks
-Opera 15+ trades con win rate &lt;40% → Los hardblocks están bien, otro problema
-Opera 10-15 trades con win rate &gt;50% → VICTORIA, dejar como está
-
-
-Dejalo correr. Los números te van a decir qué hacer.Ya pasaron horas, el bot no hizo un solo trade, necesito prompt para cambiar los hard blocks por penalties? o que opcición das?4:40 p. m.Evaluó restricciones problemáticas y recomendó convertir selectivamente a penalizaciones.Joel dice que pasaron horas y el bot no hizo ni un solo trade. Esto es crítico. Con 14 hardblocks, el bot está completamente paralizado.
-Necesito darle una solución RÁPIDA y EFECTIVA. No puedo dejarlo esperando más horas sin operar.
-Opciones:
-
-Convertir TODOS los hardblocks a penalties - Muy radical, puede operar mal
-Convertir solo los más restrictivos - Más conservador, mejor approach
-Desactivar temporalmente con flags - Rápido para testing
-
-Mi recomendación: Opción 2 + Flag temporal
-Los hardblocks más problemáticos son:
-
-L318/L326 - ZigZag contradice (puede matar buenos trades)
-L341/L363 - EN resistencia/soporte &lt;1.5% (demasiado estricto)
-L369/L350 - Zona peligrosa 1.5-3.5% (muy conservador)
-L387/L404 - EMA extendido &gt;3.5% (puede matar momentum)
-
-El L186 (Filtro de Fuerza) y L247 (MovieEngine) deberían QUEDARSE porque son legítimos.
-Voy a dar un prompt claro y ejecutable para Opus.0 trades en horas = los hardblocks están matando todo.
-No podés esperar más. Necesitás acción YA.
-
-📋 PROMPT PARA OPUS: Convertir Hardblocks Críticos
-Opus, el bot no operó NADA en horas. Los 14 hardblocks lo paralizan.
-ACCIÓN INMEDIATA: Convertir 8 hardblocks a penalties, mantener 2 legítimos.
-
-MANTENER ESTOS (Legítimos):
-✅ L186 - Filtro de Fuerza → Sin fuerza real no operar
-✅ L247 - MovieEngine veto → Ya tiene penalty -50
-
-CONVERTIR A PENALTIES:
-Grupo 1: ZigZag (L318, L326)
-python# ANTES:
-if zigzag HL contradice SHORT sin WreckingBall:
-    block_trade = True
-
-# DESPUÉS:
-if zigzag HL contradice SHORT sin WreckingBall:
-    score -= 40  # Penalty severa pero no bloqueo
-    print("⚠️ ZigZag HL contradice SHORT: -40")
-Grupo 2: Resistencia/Soporte EXACTO (L341, L363)
-python# ANTES:
-if precio &lt; 1.5% de resistencia sin WreckingBall:
-    block_trade = True
-
-# DESPUÉS:
-if precio &lt; 1.5% de resistencia sin WreckingBall:
-    distance_pct = calcular_distancia()
-    penalty = int(50 * (1.5 - distance_pct))  # Gradual
-    score -= penalty
-    print(f"⚠️ Cerca resistencia {distance_pct:.1f}%: -{penalty}")
-Grupo 3: Zona Peligrosa (L350, L369)
-python# ANTES:
-if 1.5% &lt; distancia &lt; 3.5%:
-    block_trade = True
-
-# DESPUÉS:
-if 1.5% &lt; distancia &lt; 3.5%:
-    score -= 25  # Warning moderado
-    print("⚠️ Zona peligrosa cerca resistencia: -25")
-Grupo 4: EMA Extendido (L387, L404)
-python# ANTES:
-if precio &gt; 3.5% lejos de EMA:
-    block_trade = True
-
-# DESPUÉS:
-if precio &gt; 3.5% lejos de EMA:
-    score -= 30
-    print("⚠️ Precio extendido vs EMA: -30")
-Grupo 5: RSI Extremo (L394, L411)
-python# ANTES:
-if RSI &gt; 80 sin WreckingBall:
-    block_trade = True
-
-# DESPUÉS:
-if RSI &gt; 80 sin WreckingBall:
-    score -= 35
-    print("⚠️ RSI sobrecomprado: -35")
-```
-
----
-
-## VERIFICACIÓN:
-
-**Score típico después:**
-```
-Score base: 100
-ZigZag contradice: -40
-Cerca resistencia 0.8%: -35
-Zona peligrosa: -25
-Total: 100 - 40 - 35 - 25 = 0
-
-NO OPERA (correcto)
-```
-
-**Pero si tiene fuerza:**
-```
-Score base: 100
-WreckingBall bonus: +30
-Cerca resistencia 0.8%: -35
-Total: 100 + 30 - 35 = 95
-
-OPERA (breakout válido)
-
-Opus:
-
-Convertir esos 8 hardblocks a penalties con los valores que puse
-Mantener L186 y L247 como están
-Reiniciar bot
-Reportar primer trade que haga
-
-URGENTE - El bot lleva horas sin operar.Para ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.
-
-
-No le di los promps a Opus (porque el chat se lleno y queria solucionar el problema con el unico resultado que dio el bot sin las modificaciones de hard blocks), quedo asi durante varias horas, hubo un trade solo uno, vi el grafico y el bot entró tarde, ya despúes de la gran subida, empezó a lateralizar ahi salio. Asi que el bot tiene que ser inteligente, preguntarse donde estoy? hasta donde subio el precio? Ese modulo lo tiene, deberiamos mejorarlo y sacar los hardblocks, ahora que tenes un resultado, que opinas?  ENTRADA - HMSTR/USDT:USDT  16:48:29   Dirección: BULLISH  Precio: $0.00021570  Stop Loss: $0.00021031  Score Brain: 80/100   Setup óptimo confirmado
- SALIDA - HMSTR/USDT:USDT  17:00:38   PnL: -0.79% | $-2.63  Duración: 12.2 min  Razón: Time exit: 12min @ $-2.63
-
-Mi opinión: El bot entró tarde porque no respetó exhaustion.
-Lo que veo del trade:
-
-Score 80 = MovieEngine no vetó (80-50 = 30 &lt; 60 hubiera bloqueado)
-Duración 12 min = Lateralizó desde el minuto 1
-Time exit = No tuvo fuerza nunca
-
-Esto significa:
-
-MovieEngine aprobó (should_enter: True)
-brain_trend_exhaustion.py NO detectó exhaustion
-O detectó pero los multiplicadores no bajaron suficiente el score
-
-
-Mi diagnóstico:
-Ya tenés brain_trend_exhaustion.py implementado, pero:
-A) Tiene hardblocks que lo cortan
-python# Buscar en exhaustion.py
+CÓDIGO COMPLETO: 3 FIXES TIME LADDER
+FIX #1: Exhaustion Gradiente (brain_trend_exhaustion.py L55-100)
+FÓRMULA: exhaustion = moved / (moved + room) * 100
+
+python
+# Gradiente continuo 0-100
+total_range = moved_pct + room_pct
+if total_range &gt; 0:
+    base_exhaustion = (moved_pct / total_range) * 100
+else:
+    base_exhaustion = 50
+exhaustion_score = int(base_exhaustion)
+# Bonus por poco room absoluto
 if room_pct &lt; 0.5:
-    return BLOCKED  # ← Esto corta el flujo
-B) O los multiplicadores son muy suaves
-python# Exhaustion detectó pero:
-exhaustion_pct = 75  # EXHAUSTED
-multiplier = 1.5     # Muy bajo
-penalty = 30 * 1.5 = 45
-score = 100 - 45 = 55  # Todavía pasa threshold 60
+    exhaustion_score += 15
+elif room_pct &lt; 1.0:
+    exhaustion_score += 8
+moved	room	Score	Phase
+3.51	2.59	57	MATURE
+5.0	1.0	83	EXHAUSTED
+FIX #2: MovieEngine Sin Bloqueos (brain_movie_engine.py L97-140)
+python
+# Penalties graduales, NO return REJECT
+confidence = 50
+if q5m in poor:
+    confidence -= 35  # 5M pobre
+if p5m in dying:
+    confidence -= 15  # ADX muriendo
+if q1h in poor:
+    confidence -= 20  # 1H pobre
+# Verdict basado en confidence
+if confidence &gt;= 50:
+    verdict = 'APPROVE'
+else:
+    verdict = 'WEAK'  # NO es REJECT
+q5m	q1h	Confidence
+BAD	UNKNOWN	15 (WEAK)
+EXCELLENT	GOOD	95
+FIX #3: ADX Muriendo Penalty (brain_intelligent.py L455+)
+python
+# Penalty gradual por ADX muriendo
+if adx_phase in ['FORCE_WEAK', 'FORCE_DYING']:
+    dying_penalty = 40
+elif adx_phase == 'EXPLOSION_FADING':
+    dying_penalty = 30
+# Extra por velocidad negativa
+if adx_velocity &lt; -1.0:
+    dying_penalty += 15
+elif adx_velocity &lt; -0.5:
+    dying_penalty += 8
+final_score -= dying_penalty
+Phase	Velocity	Penalty
+FORCE_WEAK	-0.92	48
+FORCE_DYING	-1.5	55
+RESULTADO ESPERADO HMSTR:
+Exhaustion: 3.51/(3.51+2.59) = 57% → MATURE (no FRESH)
+MovieEngine: q5m=BAD → confidence 15 → WEAK
+ADX Penalty: FORCE_WEAK + velocity -0.92 = -48
+Score final: 80 - 48 = 32 (no pasa threshold 60)
+¿Aprobás para implementar los 3 fixes?
 
-Lo que necesitás:
-Pedile a Opus:
+El plan completo: 
 
-Ver output de exhaustion para HMSTR
+ PLAN COMPLETO: 3 FIXES TIME LADDER
+Principios Time Ladder:
+❌ NO bloqueos binarios (if X → return FALSE)
+✅ SÍ penalties graduales que se acumulan
+✅ El score FINAL decide, no returns intermedios
+✅ Transición suave FRESH → DEVELOPING → MATURE → EXHAUSTED
+FIX #1: Exhaustion Gradiente
+📍 ARCHIVO: brain_trend_exhaustion.py
+CÓDIGO ACTUAL (L55-100):
+# Penalty por poco espacio
+if room_pct &lt; 0.3:
+    exhaustion_score += 30
+elif room_pct &lt; 0.8:
+    exhaustion_score += 20
+elif room_pct &lt; 1.5:
+    exhaustion_score += 10
+elif room_pct &lt; 3.0:
+    exhaustion_score += 5
+# Ratio moved/remaining
+if room_pct &gt; 0:
+    ratio = moved_pct / room_pct
+    if ratio &gt; 5:
+        exhaustion_score += 25
+    elif ratio &gt; 3:
+        exhaustion_score += 18
+    elif ratio &gt; 1.5:
+        exhaustion_score += 10
+    elif ratio &gt; 0.5:
+        exhaustion_score += 5
+CÓDIGO PROPUESTO (REEMPLAZAR L55-100):
+# === 1. EXHAUSTION GRADIENTE (Time Ladder) ===
+    # Joel: "Ver película = transición suave, no saltos binarios"
+    # 
+    # Fórmula: exhaustion = moved / (moved + room) * 100
+    # - moved=0, room=5 → 0%    (FRESH: todo por delante)
+    # - moved=2, room=2 → 50%   (DEVELOPING: mitad recorrida)
+    # - moved=4, room=1 → 80%   (EXHAUSTED: casi todo gastado)
+    # - moved=5, room=0.1 → 98% (EXHAUSTED: sin espacio)
+    
+    total_range = moved_pct + room_pct
+    if total_range &gt; 0:
+        # Exhaustion base como gradiente continuo
+        base_exhaustion = (moved_pct / total_range) * 100
+    else:
+        base_exhaustion = 50
+    
+    exhaustion_score = int(base_exhaustion)
+    details['base_exhaustion'] = base_exhaustion
+    details['ratio'] = moved_pct / room_pct if room_pct &gt; 0 else 999
+    
+    # === BONUS por poco room absoluto ===
+    # Agregar penalty extra si room es muy pequeño en términos absolutos
+    if room_pct &lt; 0.5:
+        exhaustion_score += 15  # Muy poco espacio absoluto
+    elif room_pct &lt; 1.0:
+        exhaustion_score += 8
+    elif room_pct &lt; 1.5:
+        exhaustion_score += 4
+    
+    # Cap a 100
+    exhaustion_score = min(100, exhaustion_score)
+VERIFICACIÓN:
+moved	room	Formula	Score	Phase
+0.5	5.0	0.5/5.5 = 9%	9	FRESH
+2.0	3.0	2/5 = 40%	40	DEVELOPING
+3.51	2.59	3.51/6.1 = 57%	57	MATURE
+5.0	1.0	5/6 = 83%	83	EXHAUSTED
+5.0	0.3	5/5.3 = 94% + 15 bonus = 100	100	EXHAUSTED
+FIX #2: MovieEngine Sin Bloqueos
+📍 ARCHIVO: brain_movie_engine.py
+CÓDIGO ACTUAL (L97-140):
+def _check_coherence(self, q5m, q1h, q4h, p5m, p1h, p4h):
+    excellent = ['EXCELLENT', 'GOOD']
+    poor = ['POOR', 'BAD', 'DYING']
+    
+    if q5m == 'UNKNOWN' or q1h == 'UNKNOWN':
+        return 'NO_MOVIE_DATA', 'APPROVE_DEFAULT', 50
+    
+    # ... casos ...
+    
+    if q5m in poor and q1h in poor:
+        return 'ALL_WEAK', 'REJECT', 10
+    
+    return 'MIXED', 'APPROVE_DEFAULT', 50
+CÓDIGO PROPUESTO (REEMPLAZAR L97-140):
+def _check_coherence(self, q5m, q1h, q4h, p5m, p1h, p4h):
+        """
+        v5.5: Time Ladder - Sin returns REJECT, solo penalties graduales.
+        Retorna (coherence, verdict, confidence) donde confidence = score penalty.
+        """
+        excellent = ['EXCELLENT', 'GOOD']
+        poor = ['POOR', 'BAD', 'DYING']
+        explosion = ['EXPLOSION_NASCENT', 'EXPLOSION_SUSTAINED', 'EXPLOSION_CLIMAX']
+        dying = ['EXPLOSION_FADING', 'FORCE_DYING', 'FORCE_WEAK']
+        
+        # Empezar con confianza base
+        confidence = 50
+        coherence = 'MIXED'
+        
+        # === PENALTIES GRADUALES (Time Ladder) ===
+        
+        # 5M pobre = penalty fuerte (es el timeframe de entrada)
+        if q5m in poor:
+            confidence -= 35
+            coherence = 'WEAK_5M'
+        
+        # 5M dying phase = penalty adicional
+        if p5m in dying:
+            confidence -= 15
+            if coherence == 'MIXED':
+                coherence = 'DYING_5M'
+        
+        # 1H pobre = penalty moderada
+        if q1h in poor:
+            confidence -= 20
+            if 'WEAK' not in coherence:
+                coherence = 'WEAK_1H'
+        
+        # 5M + 1H ambos pobres = penalty agravada
+        if q5m in poor and q1h in poor:
+            confidence -= 10  # Extra por doble debilidad
+            coherence = 'ALL_WEAK'
+        
+        # === BONUSES POR ALINEACIÓN ===
+        
+        # 5M excelente = bonus
+        if q5m in excellent:
+            confidence += 20
+            coherence = 'GOOD_5M'
+        
+        # Todos alineados = bonus grande
+        if q5m in excellent and q1h in excellent:
+            confidence += 25
+            if q4h in excellent:
+                coherence = 'PERFECT_ALIGNMENT'
+                confidence = 95
+            else:
+                coherence = 'MOSTLY_ALIGNED'
+        
+        # 5M excelente pero 1H muriendo = penalty (caso JCT)
+        if q5m in excellent and q1h in poor:
+            confidence -= 30
+            coherence = 'CONFLICTING'
+        
+        # === CASO ESPECIAL: Sin datos ===
+        if q5m == 'UNKNOWN' and q1h == 'UNKNOWN':
+            confidence = 40  # Penalizar por falta de datos
+            coherence = 'NO_MOVIE_DATA'
+        elif q5m == 'UNKNOWN' or q1h == 'UNKNOWN':
+            # Uno sin datos - usar el que sí tenemos
+            if q5m in poor:
+                confidence -= 30
+                coherence = 'WEAK_5M_PARTIAL'
+            elif q1h in poor:
+                confidence -= 15
+                coherence = 'WEAK_1H_PARTIAL'
+            else:
+                coherence = 'PARTIAL_DATA'
+        
+        # Limitar confianza entre 5 y 95
+        confidence = max(5, min(95, confidence))
+        
+        # Determinar verdict basado en confianza (NO bloqueo duro)
+        if confidence &gt;= 70:
+            verdict = 'STRONG_APPROVE'
+        elif confidence &gt;= 50:
+            verdict = 'APPROVE'
+        elif confidence &gt;= 30:
+            verdict = 'CAUTION'
+        else:
+            verdict = 'WEAK'  # NO es REJECT, sigue el flujo
+        
+        return coherence, verdict, confidence
+VERIFICACIÓN:
+q5m	q1h	Confidence	Verdict
+BAD	UNKNOWN	50-35=15	WEAK (pero no bloquea)
+BAD	BAD	50-35-20-10=0→5	WEAK
+EXCELLENT	GOOD	50+20+25=95	STRONG_APPROVE
+EXCELLENT	BAD	50+20-30=40	CAUTION
+UNKNOWN	UNKNOWN	40	CAUTION
+FIX #3: ADX Muriendo Penalty
+📍 ARCHIVO: brain_intelligent.py
+AGREGAR DESPUÉS DE L455 (después de movie penalty):
+# ================================================================
+    # v5.5: PENALTY POR ADX MURIENDO (Time Ladder)
+    # Joel: "ADX cayendo = fuerza muriendo, no entrar"
+    # ================================================================
+    movie_scenes = movie_result.get('scenes', {})
+    scene_5m = movie_scenes.get('5m', {})
+    adx_phase = scene_5m.get('adx_phase', 'UNKNOWN')
+    adx_quality = scene_5m.get('quality', 'UNKNOWN')
+    adx_traj = scene_5m.get('adx_trajectory', {})
+    adx_velocity = adx_traj.get('velocity', 0)
+    
+    # Penalty gradual basada en fase y velocidad
+    dying_penalty = 0
+    
+    if adx_phase in ['FORCE_WEAK', 'FORCE_DYING']:
+        dying_penalty = 40
+        reasons.append(f"📉 ADX muriendo: -{dying_penalty} (fase: {adx_phase})")
+    elif adx_phase == 'EXPLOSION_FADING':
+        dying_penalty = 30
+        reasons.append(f"📉 ADX fading: -{dying_penalty} (fase: {adx_phase})")
+    
+    # Penalty adicional por velocidad negativa fuerte
+    if adx_velocity &lt; -1.0:
+        extra = 15
+        dying_penalty += extra
+        reasons.append(f"📉 ADX cayendo rápido: -{extra} (velocity: {adx_velocity:.1f})")
+    elif adx_velocity &lt; -0.5:
+        extra = 8
+        dying_penalty += extra
+        reasons.append(f"📉 ADX cayendo: -{extra} (velocity: {adx_velocity:.1f})")
+    
+    # Penalty por calidad BAD aunque fase no sea dying
+    if adx_quality == 'BAD' and dying_penalty == 0:
+        dying_penalty = 25
+        reasons.append(f"📉 ADX calidad mala: -{dying_penalty}")
+    
+    if dying_penalty &gt; 0:
+        final_score -= dying_penalty
+        print(f"  📉 ADX Dying Penalty: -{dying_penalty} → Score {final_score}")
+VERIFICACIÓN:
+ADX Phase	Velocity	Penalty	Score 80 →
+FORCE_WEAK	-0.92	40+8=48	32
+FORCE_DYING	-1.5	40+15=55	25
+EXPLOSION_FADING	-0.3	30	50
+UNKNOWN	-0.5	8	72
+BAD quality	+0.5	25	55
+RESUMEN DE CAMBIOS
+Fix	Archivo	Líneas	Tipo de Cambio
+#1	brain_trend_exhaustion.py	L55-100	REEMPLAZAR con gradiente
+#2	brain_movie_engine.py	L97-140	REEMPLAZAR con penalties
+#3	brain_intelligent.py	L455+	AGREGAR nuevo bloque
+¿Aprobás para implementar?
 
-¿Qué dijo exhaustion_pct?
-¿Qué room_pct calculó?
-¿Qué multiplicadores aplicó?
-
-
-Buscar hardblocks en brain_trend_exhaustion.py
-
-Si tiene return False → convertir a penalty
-
-
-Verificar si se usó
-
-¿Se llamó exhaustion antes de entrar?
-¿O MovieEngine lo salteó?
-
-
-
-
-Mi opinión: NO implementes spatial vision todavía.
-Arreglá exhaustion primero porque:
-
-Ya existe (80% hecho)
-Es más rápido que crear todo nuevo
-Si funciona → proyecto cerrado
-
-Después de arreglarlo, otro backtesting.
-Si sigue entrando tarde → recién ahí spatial vision completo.
-¿Pedimos a Opus el output de exhaustion para HMSTR?Para ejecutar código, habilita la ejecución de código y la creación de archivos en Configuración &gt; Capacidades.
-
-
-INDICADORES ACTUALES
-────────────────────────────────────────
-   ADX: 14.5
-   ADX Velocity: -0.92
-   Dominance: neutral
-   Lifecycle: N/A
-   Momentum Color: lime
-   Momentum Age: 3v
-================================================================================
-🎯 RESUMEN DIAGNÓSTICO
-================================================================================
-   🔴 PROBLEMAS DETECTADOS:
-      ⚡ Velocidad plana    DIAGNÓSTICO HMSTR - Encontré MÚLTIPLES PROBLEMAS
-📊 DATOS CLAVE:
-IndicadorValorProblemaADX 5M18→14 (cayendo)🚨 FORCE_WEAKADX Velocity-0.8 pts/frame🚨 MURIENDOPrice Velocity0.00%🚨 PLANOExhaustionPhase: FRESH🚨 INCORRECTORoom to S/R2.59%-Moved3.51%Ya movió más que room
-🚨 PROBLEMA #1: Exhaustion mal calculada
-
-```
-Exhaustion %: 13%
-```
-
-Phase: FRESH
-HMSTR ya había pumpeado 3.51% y el bot dijo "FRESH"?!
-Si 
-
-```
-moved (3.51%) &gt; room (2.59%)
-```
-
-→ debería serEXHAUSTED, no FRESH.
-
-🚨 PROBLEMA #2: MovieEngine pasó con "NO_MOVIE"
-
-```
-Archetype: NO_MOVIE
-```
-
-Razón: Sin película completa - Sistema normal decide
-should_enter: True
-No tenía frames 4H → aprobó por defecto.
-🚨 PROBLEMA #3: ADX 5M muriendo ignorado
-
-```
-ADX: [18 → 18 → 16 → 15 → 14]
-```
-
-Fase: FORCE_WEAK
-Historia: Fuerza muriendo - Evitar
-Calidad: BAD
-MovieEngine VIO que era malo pero aprobó igual porque no tenía datos 4H.
-🎯 DIAGNÓSTICO FINAL:
-1. Exhaustion está rota - dice FRESH cuando debería decir EXHAUSTED
-2. MovieEngine es muy permisivo - aprueba por defecto si faltan datos
-3. ADX muriendo no vetó - vio FORCE_WEAK pero no restó score
-¿Querés que:
-1. Arregle brain_trend_exhaustion.py - que detecte correctamente cuando 
-
-```
-moved &gt; room
-```
-
-2. MovieEngine sea más estricto - si 5M dice BAD/FORCE_WEAK, restar score aunque falten datos 4H
-¿Cuál primero? Dame prompts quirurgicos el chat esta lleno. Gracias.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 19,788<br>
-    Generado: 2025-12-31 20:05:14
+    Total caracteres: 10,070<br>
+    Generado: 2025-12-31 20:38:47
   </div>
 </body>
 </html>
