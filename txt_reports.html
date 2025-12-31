@@ -15,178 +15,446 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2025-12-30 20:06:08</div>
+  <div class="meta">Última actualización: 2025-12-30 22:32:00</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Respuestas para Sonnet
-PREGUNTA 1: OPPOSITE Threshold
-Historial: Estaba en 0.10% (v5.4.3c), yo lo subí a 0.25% (v5.4.3d) porque Joel dijo "bot muy rígido"
-Acepto: Volver a 0.10%
-PREGUNTA 2: SL por ATR
-calculate_atr YA EXISTE en brain_calculator.py L1012-1050 ✅
-Acepto propuesta de Sonnet: volatilidad últimas 10 velas (más simple)
-Tope máximo: 3.0%
-PREGUNTA 3: Lista de Bonuses
-Total: 46 lugares donde se suma score (desde +2 hasta +40)
+Plan Completo: Sistema Trend Exhaustion v5.5
+RESUMEN
+Archivo	Acción	Descripción
+brain_trend_exhaustion.py	CREAR	Nuevo módulo (~200 líneas)
+brain_analyzer.py	MODIFICAR	Integrar análisis exhaustion
+brain_executor.py	MODIFICAR	Trailing inteligente + detector lateralización
+Componentes del módulo:
+Factor	Peso	Mide
+Distancia S/R	30 pts	¿Cuánto room queda?
+Ratio moved/room	25 pts	¿Cuánto recorrió vs queda?
+ADX lifecycle	25 pts	¿Fase de la fuerza?
+Momentum age	20 pts	¿Cuántas velas?
+Fases:
+FRESH (0-30%): ✅ ENTER
+DEVELOPING (30-50%): ⚠️ CAREFUL
+MATURE (50-70%): ⏳ WAIT
+EXHAUSTED (70-100%): ❌ AVOID
+Bonus: Si room &gt; 3%, penalty se reduce 50%
+El plan incluye:
 
-Bonuses más grandes:
+Código completo del nuevo módulo
+Código ACTUAL que voy a reemplazar
+Código PROPUESTO para cada sección
+Revisá el plan y avisame si aprobás para implementar.
 
-+40 🔥 IGNICIÓN HIGH
-+30 ADX fuerte / Momentum / Volume
-+25 ⭐ CLÍMAX / Ignición MEDIUM
-Problema: Bonuses suman ~+350 posible vs penalties ~-640 Un trade mediocre puede recibir +100 fácil, compensando penalties importantes.
-
-PREGUNTA 4: Volatilidad
-Acepto usar ATR como referencia (más robusto)
-Si velas &gt; 1.5x ATR normal → penalty
-Resumen de acuerdos:
-Fix	Valor
-OPPOSITE	0.25% → 0.10%
-SL	Basado en volatilidad 10 velas, max 3%
-Bonuses	Revisar cuáles reducir
-Volatilidad	Relativo a ATR
-¿Procedo a implementar?
-
- RESPUESTAS A SONNET
-PREGUNTA 1: OPPOSITE Threshold (FIS)
-¿Cuándo cambió de 0.10 a 0.25?
-Historial del cambio:
-
-v5.4.3c (original): 0.10% threshold
-v5.4.3d (yo lo cambié): 0.10 → 0.25
-Por qué lo cambié: Joel dijo "bot muy rígido" y 0.10% bloqueaba demasiados trades porque cualquier micro-movimiento activaba OPPOSITE.
-
-Código actual (brain_frames.py L681, L717):
-
-elif velocity_pct &lt; -0.25:  # BULLISH con precio bajando
-    mode = 'OPPOSITE'
-elif velocity_pct &gt; 0.25:   # BEARISH con precio subiendo
-    mode = 'OPPOSITE'
-Mi voto: Acepto volver a 0.10%
-Sonnet tiene razón: 0.10% en 3min es un movimiento claro en crypto. FIS no debió pasar.
-
-PREGUNTA 2: SL Dinámico por ATR
-¿calculate_atr ya existe?
-SÍ, existe en brain_calculator.py líneas 1012-1050
-
-def calculate_atr(df, period=14):
-    """Calcula Average True Range"""
-    tr1 = high - low
-    tr2 = abs(high - close.shift(1))
-    tr3 = abs(low - close.shift(1))
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/period, adjust=False).mean()
+PLAN COMPLETO: Sistema Trend Exhaustion v5.5
+📋 RESUMEN EJECUTIVO
+Problema	Solución	Archivo
+CYBER rechazada con room disponible	Medir room antes de penalizar	brain_trend_exhaustion.py (NUEVO)
+ADX/Mom viejos = rechazo automático	Room compensa exhaustion	brain_analyzer.py
+SL fijo no considera S/R	Trailing se aprieta cerca de S/R	brain_executor.py
+No detecta lateralización	Exit si no avanza + PnL	brain_executor.py
+FASE 1: NUEVO MÓDULO brain_trend_exhaustion.py
+Archivo: c:\Users\Joel\Trading automatizado\BraintraderAntigravity\brain_trend_exhaustion.py
+"""
+BRAIN TREND EXHAUSTION v1.0
+============================
+Joel: "Medir cuánto subió, cuánto le queda, dónde está el S/R"
+Componentes de exhaustión:
+1. Distancia a S/R (30 pts) - ¿Cuánto room queda?
+2. Ratio moved/remaining (25 pts) - ¿Cuánto ya recorrió vs lo que queda?
+3. ADX lifecycle (25 pts) - ¿En qué fase está la fuerza?
+4. Momentum age (20 pts) - ¿Cuántas velas lleva el impulso?
+Fases:
+- FRESH (0-30%): ENTER
+- DEVELOPING (30-50%): CAREFUL  
+- MATURE (50-70%): WAIT
+- EXHAUSTED (70-100%): AVOID
+"""
+import pandas as pd
+from exchange_connection import fetch_ohlcv
+from brain_calculator import calculate_adx_with_memory, calculate_momentum_with_memory
+def analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=None):
+    """
+    Analiza exhaustión combinando 5M (crítico) + 15M (contexto).
+    
+    Args:
+        symbol: Par de trading
+        direction: 'BULLISH' o 'BEARISH'
+        df_5m: DataFrame 5M opcional
+        df_15m: DataFrame 15M opcional
+    
+    Returns:
+        dict con exhaustion_pct, room_pct, phase, penalty, recommendation
+    """
+    # Fetch si no se proporciona
+    if df_5m is None:
+        ohlcv = fetch_ohlcv(symbol, '5m', 100)
+        if not ohlcv:
+            return {'exhaustion_pct': 50, 'room_pct': 2, 'phase': 'UNKNOWN', 'penalty': 0}
+        df_5m = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    current_price = float(df_5m['close'].iloc[-1])
+    
+    # === CALCULAR S/R DINÁMICO ===
+    high_50 = df_5m['high'].tail(50).max()  # Resistencia
+    low_50 = df_5m['low'].tail(50).min()    # Soporte
+    high_20 = df_5m['high'].tail(20).max()  # Resistencia reciente
+    low_20 = df_5m['low'].tail(20).min()    # Soporte reciente
+    
+    exhaustion_score = 0
+    details = {}
+    
+    # === 1. DISTANCIA A S/R (30 pts máx) ===
+    if direction == 'BULLISH':
+        dist_to_resistance = ((high_50 - current_price) / current_price) * 100
+        dist_from_support = ((current_price - low_50) / low_50) * 100
+        room_pct = dist_to_resistance
+        moved_pct = dist_from_support
+        details['target'] = 'RESISTANCE'
+        details['target_price'] = high_50
+    else:  # BEARISH
+        dist_to_support = ((current_price - low_50) / current_price) * 100
+        dist_from_resistance = ((high_50 - current_price) / high_50) * 100
+        room_pct = dist_to_support
+        moved_pct = dist_from_resistance
+        details['target'] = 'SUPPORT'
+        details['target_price'] = low_50
+    
+    details['room_pct'] = room_pct
+    details['moved_pct'] = moved_pct
+    
+    # Penalty por poco espacio
+    if room_pct &lt; 0.3:
+        exhaustion_score += 30
+        details['room_phase'] = 'BLOCKED'
+    elif room_pct &lt; 0.8:
+        exhaustion_score += 20
+        details['room_phase'] = 'TIGHT'
+    elif room_pct &lt; 1.5:
+        exhaustion_score += 10
+        details['room_phase'] = 'MODERATE'
+    elif room_pct &lt; 3.0:
+        exhaustion_score += 5
+        details['room_phase'] = 'GOOD'
+    else:
+        exhaustion_score += 0
+        details['room_phase'] = 'EXCELLENT'
+    
+    # === 2. RATIO MOVED/REMAINING (25 pts máx) ===
+    if room_pct &gt; 0:
+        ratio = moved_pct / room_pct
+        details['move_ratio'] = ratio
+        
+        if ratio &gt; 5:
+            exhaustion_score += 25
+            details['ratio_phase'] = 'VERY_EXHAUSTED'
+        elif ratio &gt; 3:
+            exhaustion_score += 18
+            details['ratio_phase'] = 'EXHAUSTED'
+        elif ratio &gt; 1.5:
+            exhaustion_score += 10
+            details['ratio_phase'] = 'BALANCED'
+        elif ratio &gt; 0.5:
+            exhaustion_score += 5
+            details['ratio_phase'] = 'FRESH'
+        else:
+            exhaustion_score += 0
+            details['ratio_phase'] = 'VERY_FRESH'
+    
+    # === 3. ADX LIFECYCLE (25 pts máx) ===
+    try:
+        adx_data = calculate_adx_with_memory(df_5m, period=14, lookback=10)
+        adx_current = adx_data.get('adx_current', 25)
+        adx_velocity = adx_data.get('adx_velocity', 0)
+        
+        details['adx_value'] = adx_current
+        details['adx_velocity'] = adx_velocity
+        
+        if adx_current &gt; 50:
+            exhaustion_score += 25
+            details['adx_phase'] = 'OVEREXTENDED'
+        elif adx_current &gt; 45 and adx_velocity &lt; 0:
+            exhaustion_score += 20
+            details['adx_phase'] = 'PEAKED'
+        elif adx_current &gt; 35:
+            exhaustion_score += 10
+            details['adx_phase'] = 'STRONG'
+        elif adx_current &gt; 25:
+            exhaustion_score += 5
+            details['adx_phase'] = 'DEVELOPING'
+        else:
+            exhaustion_score += 0
+            details['adx_phase'] = 'NASCENT'
+    except:
+        details['adx_phase'] = 'UNKNOWN'
+    
+    # === 4. MOMENTUM AGE (20 pts máx) ===
+    try:
+        mom_data = calculate_momentum_with_memory(df_5m, lookback=10)
+        mom_age = mom_data.get('consecutive_count', 0)
+        details['momentum_age'] = mom_age
+        
+        if mom_age &gt;= 10:
+            exhaustion_score += 20
+            details['momentum_phase'] = 'EXHAUSTED'
+        elif mom_age &gt;= 7:
+            exhaustion_score += 15
+            details['momentum_phase'] = 'OLD'
+        elif mom_age &gt;= 4:
+            exhaustion_score += 8
+            details['momentum_phase'] = 'DEVELOPING'
+        elif mom_age &gt;= 2:
+            exhaustion_score += 3
+            details['momentum_phase'] = 'FRESH'
+        else:
+            exhaustion_score += 0
+            details['momentum_phase'] = 'NASCENT'
+    except:
+        details['momentum_phase'] = 'UNKNOWN'
+    
+    # === RESULTADO FINAL ===
+    exhaustion_pct = min(100, exhaustion_score)
+    
+    if exhaustion_pct &gt;= 70:
+        phase = 'EXHAUSTED'
+        penalty = -50
+        recommendation = 'AVOID'
+    elif exhaustion_pct &gt;= 50:
+        phase = 'MATURE'
+        penalty = -30
+        recommendation = 'WAIT'
+    elif exhaustion_pct &gt;= 30:
+        phase = 'DEVELOPING'
+        penalty = -15
+        recommendation = 'CAREFUL'
+    else:
+        phase = 'FRESH'
+        penalty = 0
+        recommendation = 'ENTER'
+    
+    # &gt;&gt;&gt; BONUS: Si hay mucho room, reducir penalty
+    if room_pct &gt; 3.0 and penalty &lt; 0:
+        penalty = int(penalty * 0.5)  # Reducir 50% la penalty si hay buen room
+        details['room_bonus'] = True
     
     return {
-        'atr_current': float(atr.iloc[-1]),
-        'atr_history': atr.tail(10).tolist()
+        'exhaustion_pct': exhaustion_pct,
+        'room_pct': room_pct,
+        'moved_pct': moved_pct,
+        'phase': phase,
+        'penalty': penalty,
+        'recommendation': recommendation,
+        'details': details
     }
-Thresholds 3.0% y 2.0% ATR - ¿de dónde salen?
-Son estimaciones, NO calibrados con datos históricos.
-
-SL 3.75% ¿demasiado amplio?
-Acepto el punto. Propongo tope máximo de 3.0%
-
-Propuesta de Sonnet (volatilidad últimas 10 velas):
-Es más simple y directa. La implemento así:
-
-recent_volatility = (df['high'] - df['low']).tail(10).mean()
-volatility_pct = (recent_volatility / current_price) * 100
-if volatility_pct &gt; 2.5:
-    sl_pct = 3.0  # MAX
-elif volatility_pct &gt; 1.5:
-    sl_pct = 2.5
-else:
-    sl_pct = 2.0
-PREGUNTA 3: Bonuses compensando penalties (US)
-Lista COMPLETA de bonuses (score_15m +=):
-Total: 46 lugares donde se suma score
-
-Línea	Valor	Concepto
-885	+30	(necesita ver contexto)
-912	+10	Bonus menor
-914	+5	Bonus menor
-947	+10	Bonus menor
-1114	+30	ADX fuerte
-1117	+10	ADX moderado
-1126	+15	Fase momentum
-1129	+25	⭐ CLÍMAX
-1132	+10	Fase
-1144	+10	EMA alignment
-1147	+15	EMA bonus
-1150	+5	EMA menor
-1162	+10	Spread
-1165	+15	Spread fuerte
-1168	+5	Spread menor
-1207	+30	Momentum color
-1236	+10	Volume
-1266	+30	Volume explosion
-1269	+15	Volume moderate
-1287	+30	Volume confirmation
-1290	+15	Volume moderate
-1343	+15	Precio acelerando
-1346	+15	Precio momentum
-1378	+25	Explosión confirmada
-1381	+15	Fase
-1395	+20	Volumen creciendo
-1398	+10	Volumen moderado
-1412	+15	Grid favorable
-1415	+5	Grid ok
-1454	+20	Rompimiento arriba
-1460	+5	Bonus leve
-1481	+10	Frame alignment
-1486	+15	Frame strong
-1499	+10	Bonus
-1555	+40	🔥 IGNICIÓN HIGH
-1558	+25	🔥 Ignición MEDIUM
-1566-1576	+2 a +5	Bonuses menores
-TOTAL BONUSES POSIBLES: ~+350
-TOTAL PENALTIES POSIBLES: ~-640
-Problema: Bonuses suman demasiado. Un trade mediocre puede acumular +100 fácil.
-
-Momentum "borde rojo fino" ¿da penalty?
-Depende del código de color detection. Si está en transición (gray→red), probablemente cuenta como "developing" = bonus pequeño, no penalty.
-
-Penalty lateral -25 ¿es suficiente?
-NO es suficiente si bonuses suman +100.
-
-Propuesta:
-
-Aumentar lateral penalty a -40
-O reducir bonuses (dividir todos por 2)
-PREGUNTA 4: Penalty Volatilidad (TRAC)
-2.0% volatilidad promedio ¿es realista?
-Depende del mercado. En bull market, 2% es normal. En lateral, 2% es alto.
-
-¿Ultimas N velas o promedio total?
-Últimas 20 velas es más representativo del estado actual.
-
-Propuesta de Sonnet (relativo al mercado):
-Es mejor pero requiere calcular mediana de mercado en cada análisis (costoso).
-
-Propuesta simplificada:
-
-# Usar ATR como referencia de volatilidad normal
-atr_pct = (atr_current / price) * 100
-candle_avg_pct = ((df['high'] - df['low']).tail(20).mean() / price) * 100
-if candle_avg_pct &gt; atr_pct * 1.5:
-    penalty = -30  # Velas más volátiles que ATR normal
-elif candle_avg_pct &gt; atr_pct * 1.2:
-    penalty = -15
-🎯 RESUMEN DE ACUERDOS
-Fix	Sonnet dice	Opus acepta
-#1 OPPOSITE	0.10%	✅ SÍ, 0.10%
-#2 SL	Volatilidad 10 velas	✅ SÍ, más simple
-#3 Bonuses	Ver lista primero	✅ Lista arriba
-#4 Volatilidad	Relativo a mercado	✅ Usar ATR como ref
-¿Implemento los 4 fixes ahora?
+def get_dynamic_sl_from_exhaustion(exhaustion_result, base_sl_pct=2.0):
+    """
+    Calcula SL dinámico basado en room disponible.
+    Más room = SL más amplio (dejar desarrollar)
+    Menos room = SL más ajustado (proteger)
+    """
+    room = exhaustion_result.get('room_pct', 2.0)
+    
+    if room &gt; 4.0:
+        return min(base_sl_pct * 1.5, 3.5)  # MAX 3.5%
+    elif room &gt; 2.0:
+        return base_sl_pct * 1.2  # +20%
+    elif room &gt; 1.0:
+        return base_sl_pct
+    elif room &gt; 0.5:
+        return base_sl_pct * 0.8  # -20%
+    else:
+        return base_sl_pct * 0.6  # -40%
+def get_smart_trailing_distance(exhaustion_result, pnl_pct, base_trail=2.0):
+    """
+    Trailing dinámico: se aprieta cerca de S/R.
+    """
+    room = exhaustion_result.get('room_pct', 2.0)
+    
+    # Base según profit
+    if pnl_pct &gt; 3.0:
+        trail = 1.0
+    elif pnl_pct &gt; 1.5:
+        trail = 1.5
+    elif pnl_pct &gt; 0.8:
+        trail = 2.0
+    else:
+        trail = 2.5
+    
+    # Ajustar según cercanía a S/R (aprieta cuando se acerca)
+    if room &lt; 0.5:
+        trail = min(trail, 0.5)  # Muy apretado
+    elif room &lt; 1.0:
+        trail = min(trail, 1.0)
+    elif room &lt; 1.5:
+        trail = min(trail, 1.5)
+    
+    return trail
+def print_exhaustion_analysis(result, symbol, direction):
+    """Imprime análisis visual."""
+    d = result.get('details', {})
+    
+    print(f"\n{'='*50}")
+    print(f"📉 EXHAUSTION ANALYSIS: {symbol} ({direction})")
+    print(f"{'='*50}")
+    print(f"   Exhaustion: {result['exhaustion_pct']:.0f}% | Phase: {result['phase']}")
+    print(f"   Room: {result['room_pct']:.2f}% | Moved: {result['moved_pct']:.2f}%")
+    print(f"   Target: {d.get('target', 'N/A')} @ {d.get('target_price', 0):.6f}")
+    print(f"   ADX: {d.get('adx_phase', 'N/A')} ({d.get('adx_value', 0):.1f})")
+    print(f"   Momentum: {d.get('momentum_phase', 'N/A')} ({d.get('momentum_age', 0)}v)")
+    print(f"   Recommendation: {result['recommendation']} | Penalty: {result['penalty']}")
+    if d.get('room_bonus'):
+        print(f"   ✅ Room Bonus Applied (penalty reduced)")
+    print(f"{'='*50}\n")
+# === TEST ===
+if __name__ == "__main__":
+    import sys
+    symbol = sys.argv[1] if len(sys.argv) &gt; 1 else 'BTC/USDT:USDT'
+    
+    for direction in ['BULLISH', 'BEARISH']:
+        result = analyze_trend_exhaustion(symbol, direction)
+        print_exhaustion_analysis(result, symbol, direction)
+FASE 2: INTEGRACIÓN EN brain_analyzer.py
+Ubicación: Después de guardar frame (~línea 468)
+CÓDIGO ACTUAL (L468-472):
+print(f"   🎬 Frame actualizado con indicadores reales (ADX: {adx_data['adx_current']:.1f}, Mom: {momentum_data['color_current']} {momentum_data['consecutive_count']}v)")
+    
+    # Analizar MOVIMIENTO (si hay suficientes frames)
+    motion_score = 0
+    motion_analysis = None
+CÓDIGO PROPUESTO (reemplazar L468-472):
+print(f"   🎬 Frame actualizado con indicadores reales (ADX: {adx_data['adx_current']:.1f}, Mom: {momentum_data['color_current']} {momentum_data['consecutive_count']}v)")
+    
+    # ================================================================
+    # v5.5 NUEVO: ANÁLISIS DE EXHAUSTION (Joel)
+    # "Medir cuánto subió, cuánto le queda, dónde está el S/R"
+    # ================================================================
+    from brain_trend_exhaustion import analyze_trend_exhaustion, print_exhaustion_analysis
+    
+    exhaustion_result = analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=df)
+    print_exhaustion_analysis(exhaustion_result, symbol, direction)
+    
+    # Aplicar penalty/bonus de exhaustion
+    exhaustion_penalty = exhaustion_result.get('penalty', 0)
+    if exhaustion_penalty != 0:
+        print(f"   📉 Exhaustion penalty: {exhaustion_penalty}")
+    
+    # Guardar para uso posterior (trailing, SL)
+    exhaustion_data = {
+        'exhaustion_pct': exhaustion_result['exhaustion_pct'],
+        'room_pct': exhaustion_result['room_pct'],
+        'phase': exhaustion_result['phase'],
+        'recommendation': exhaustion_result['recommendation']
+    }
+    
+    # Analizar MOVIMIENTO (si hay suficientes frames)
+    motion_score = 0
+    motion_analysis = None
+Ubicación: Antes del return final (~línea 1625)
+CÓDIGO ACTUAL (L1619-1625 aprox):
+score_15m = min(100, max(0, score_15m))
+    
+    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
+CÓDIGO PROPUESTO (reemplazar):
+# &gt;&gt;&gt; Aplicar exhaustion penalty al score final
+    score_15m += exhaustion_penalty
+    
+    score_15m = min(100, max(0, score_15m))
+    
+    print(f"      🎯 15M | {symbol} | {direction} {strength} | ADX:{adx_current:.1f} Spread:{spread:.1f} Mom:{momentum_data['consecutive_count']}v | Score15M:{score_15m}")
+    print(f"      📉 Exhaustion: {exhaustion_data['exhaustion_pct']:.0f}% ({exhaustion_data['phase']}) | Room: {exhaustion_data['room_pct']:.1f}%")
+FASE 3: TRAILING INTELIGENTE EN brain_executor.py
+Ubicación: Trailing stop (~línea 692-716)
+CÓDIGO ACTUAL (L692-706):
+# GESTIÓN 1.5: Trailing Stop Inteligente (Adaptativo)
+                if ENABLE_TRAILING_STOP:
+                    # FIX v5.4.4: Distancia variable según profit (activar desde 0.3%)
+                    if pnl_pct &gt; 3.0:
+                        trailing_dist_pct = 1.0  # Muy apretado para proteger ganancia
+                    elif pnl_pct &gt; 1.5:
+                        trailing_dist_pct = 1.5
+                    elif pnl_pct &gt; 0.8:
+                        trailing_dist_pct = 2.0
+                    elif pnl_pct &gt; 0.3:  # NUEVO: Proteger pequeñas ganancias
+                        trailing_dist_pct = 2.5
+                    else:
+                        trailing_dist_pct = 3.0  # Inicial muy amplio
+                    if pnl_pct &gt; 0.3:  # Reducido de 0.7% a 0.3% - Activar ANTES
+CÓDIGO PROPUESTO (reemplazar L692-706):
+# ================================================================
+                # v5.5: TRAILING STOP CON EXHAUSTION (Joel)
+                # "Trailing se aprieta cerca de S/R"
+                # ================================================================
+                if ENABLE_TRAILING_STOP:
+                    # Obtener exhaustion actual si no existe
+                    if 'exhaustion_data' not in trade_data:
+                        try:
+                            from brain_trend_exhaustion import analyze_trend_exhaustion, get_smart_trailing_distance
+                            exhaustion = analyze_trend_exhaustion(symbol, direction)
+                            trade_data['exhaustion_data'] = exhaustion
+                        except:
+                            trade_data['exhaustion_data'] = {'room_pct': 2.0}
+                    
+                    # Calcular trailing basado en room + profit
+                    exhaustion = trade_data.get('exhaustion_data', {'room_pct': 2.0})
+                    
+                    try:
+                        from brain_trend_exhaustion import get_smart_trailing_distance
+                        trailing_dist_pct = get_smart_trailing_distance(exhaustion, pnl_pct)
+                    except:
+                        # Fallback al sistema anterior
+                        if pnl_pct &gt; 3.0:
+                            trailing_dist_pct = 1.0
+                        elif pnl_pct &gt; 1.5:
+                            trailing_dist_pct = 1.5
+                        elif pnl_pct &gt; 0.8:
+                            trailing_dist_pct = 2.0
+                        elif pnl_pct &gt; 0.3:
+                            trailing_dist_pct = 2.5
+                        else:
+                            trailing_dist_pct = 3.0
+                    
+                    room_pct = exhaustion.get('room_pct', 2.0)
+                    print(f"   🎯 Trailing: {trailing_dist_pct:.1f}% (room: {room_pct:.1f}%)")
+                    if pnl_pct &gt; 0.3:
+FASE 4: DETECTOR DE LATERALIZACIÓN
+Ubicación: monitor_active_trades (~línea 580)
+CÓDIGO PROPUESTO (agregar después de calcular PnL):
+# ================================================================
+                # v5.5: DETECTOR LATERALIZACIÓN (Joel)
+                # "Si no avanza en 5min + ganancia → salir"
+                # ================================================================
+                if duration_min &gt; 5:
+                    price_at_entry = trade_data['entry_price']
+                    
+                    if direction == 'BULLISH':
+                        price_advance = ((current_price - price_at_entry) / price_at_entry) * 100
+                    else:
+                        price_advance = ((price_at_entry - current_price) / price_at_entry) * 100
+                    
+                    # Si después de 5 min no avanzó 0.15% pero tiene ganancia pequeña
+                    if price_advance &lt; 0.15 and 0 &lt; pnl_pct &lt; 0.3:
+                        print(f"   ⚠️ LATERALIZANDO: +{price_advance:.2f}% en {duration_min:.0f}min")
+                        print(f"   💨 Saliendo para cubrir comisiones (+{pnl_pct:.2f}%)")
+                        symbols_to_close.append((symbol, f"Lateralización: +{pnl_pct:.2f}%"))
+                        continue
+                    
+                    # Si negativo y sin avance en 10 min
+                    if duration_min &gt; 10 and price_advance &lt; 0 and pnl_pct &lt; -0.5:
+                        print(f"   🚨 STAGNADO: No avanza y en pérdida ({pnl_pct:.2f}%)")
+                        symbols_to_close.append((symbol, f"Stagnado: {pnl_pct:.2f}%"))
+                        continue
+📊 RESUMEN DE CAMBIOS
+Acción	Archivo	Líneas
+CREAR	brain_trend_exhaustion.py	~200 líneas (nuevo)
+MODIFICAR	brain_analyzer.py L468-472	Agregar análisis exhaustion
+MODIFICAR	brain_analyzer.py L1619-1625	Aplicar penalty + print
+MODIFICAR	brain_executor.py L692-706	Trailing con room
+AGREGAR	brain_executor.py ~L580	Detector lateralización
+¿Aprobás este plan?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5,047<br>
-    Generado: 2025-12-30 20:06:08
+    Total caracteres: 17,760<br>
+    Generado: 2025-12-30 22:32:00
   </div>
 </body>
 </html>
