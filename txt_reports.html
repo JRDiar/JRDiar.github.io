@@ -15,11 +15,329 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-01 17:38:55</div>
+  <div class="meta">Última actualización: 2026-01-01 19:57:54</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
+DOCUMENTO MAESTRO: BrainTrader Vision
+Para todo AI que trabaje en este proyecto: Lee esto PRIMERO.
+
+🎯 LA VISIÓN VERDADERA (No Negociable)
+Time Ladder NO es lo que pensás
+❌ NO ES:
+
+Sistema de penalties graduales
+Scoring contextual
+Multiplicadores de exhaustion
+Evitar hard blocks
+
+✅ ES:
+Frame buffer de animación. El bot debe VER la película del mercado en movimiento.
+
+Frame 1 (18:15): ADX=31, precio=$95k, vela=50pts
+Frame 2 (18:16): ADX=35, precio=$95.5k, vela=80pts  
+Frame 3 (18:17): ADX=38, precio=$96.2k, vela=120pts
+Frame 4 (18:18): ADX=42, precio=$97k, vela=150pts
+
+→ El bot VE: aceleración, velas creciendo, explosión INICIANDO
+→ Decisión: Entrar AHORA (no cuando ADX=50 y ya terminó)
+
+La Analogía Definitiva: Pong/Mario
+
+Precio = pelota en movimiento (deja trail: velas japonesas)
+Resistencia/Soporte = paredes del canvas
+ADX + Momentum = velocidad/aceleración de la pelota
+Grid diagonal = trayectoria predicha
+
+El bot debe:
+
+VER la pelota moviéndose hacia la pared
+CALCULAR si tiene runway (espacio) para entrar
+DETECTAR si acelera (fuerza real) o desacelera (fuerza muriendo)
+ANTICIPAR el rebote antes de que pase
+
+NO:
+
+Leer "distancia_a_resistencia = 3%" y calcular score
+Eso llega TARDE
+
+
+💰 ESTRATEGIA RENTABLE DE JOEL (10→140 USDT)
+Lo que Joel hacía manualmente (y funcionaba):
+Paso 1: Buscar fuerza en múltiples timeframes
+
+ADX creciendo en 1m, 5m, 15m (no solo "ADX &gt; 30")
+Momentum naciendo (1v, 2v, 3v pero RÁPIDO, no 8v viejo)
+
+Paso 2: Esperar el inicio de la explosión
+
+Velas creciendo minuto a minuto (50→80→120pts)
+Precio subiendo EN VIVO (no vela cerrada)
+NO esperar confirmaciones tardías
+
+Paso 3: Scalping = Subirse al cohete cuando enciende motores
+
+Entrar cuando la explosión INICIA (ADX 22→28, momentum 2v)
+NO cuando termina (ADX 45, momentum 10v)
+
+Paso 4: Salir antes del obstáculo
+
+Ver visualmente que se acerca a resistencia
+No calcular "distancia = 0.5%" → salir
+VER la desaceleración (velas achicándose)
+
+Por qué funcionaba:
+Veía la PELÍCULA en tiempo real:
+
+Aceleración (no solo velocidad)
+Trayectoria espacial (hacia dónde va)
+Forma visual (velas creciendo/achicándose)
+Timing perfecto (inicio, no final)
+
+
+🏗️ ARQUITECTURA CORRECTA
+brain_frames.py = Frame Buffer
+Propósito original:
+Guardar frames históricos para reproducir como película.
+NO para:
+
+Solo almacenar último valor
+Calcular indicadores estáticos
+
+SÍ para:
+
+frames = [
+    {'time': 18:15, 'adx': 31, 'price': 95000, 'candle_size': 50},
+    {'time': 18:16, 'adx': 35, 'price': 95500, 'candle_size': 80},
+    {'time': 18:17, 'adx': 38, 'price': 96200, 'candle_size': 120},
+]
+
+# Ver película
+aceleracion_adx = frames[-1].adx - frames[0].adx  # 38-31 = +7
+velas_creciendo = all(frames[i].candle_size &lt; frames[i+1].candle_size)
+precio_acelerando = (frames[-1].price - frames[-2].price) &gt; (frames[-2].price - frames[-3].price)
+
+if aceleracion_adx &gt; 5 and velas_creciendo and precio_acelerando:
+    return "EXPLOSIÓN INICIANDO - ENTRAR"
+
+brain_spatial_vision.py = Canvas 2D
+Lo que debe crear:
+
+market_canvas = {
+    'current_position': (x=tiempo_actual, y=precio_actual),
+    'target_resistance': (x=tiempo_futuro, y=precio_resistencia),
+    'trajectory': line(desde=posición_5min_atrás, hacia=posición_actual),
+    'runway': distancia_visual_a_obstáculo,
+    'velocity': píxeles_por_minuto,
+    'acceleration': cambio_en_velocity
+}
+
+# Decisión geométrica simple
+if runway &gt; velocity * 2:  # Tengo espacio para 2 minutos más
+    if acceleration &gt; 0:     # Y acelera
+        return ENTER
+
+Pensar como videojuego:
+
+Canvas = pantalla del juego
+Precio = personaje que se mueve
+Resistencia/Soporte = plataformas/obstáculos
+Decisión = ¿puedo llegar sin chocar?
+
+ANTI-PATRONES (Qué NO Hacer)
+1. NO convertir todo a penalties/scores
+
+# ❌ MAL
+if adx &lt; 25: score -= 30
+if momentum &lt; 3: score -= 20
+if spread &lt; 10: score -= 15
+
+# ✅ BIEN
+if frames muestran ADX acelerando y velas creciendo:
+    return ENTRAR
+
+2. NO usar valores estáticos
+
+# ❌ MAL
+if adx_actual &gt; 30: return True
+
+# ✅ BIEN  
+if adx_frames[-1] &gt; adx_frames[-3] &gt; adx_frames[-5]:  # Creciendo
+    return True
+
+3. NO agregar más indicadores
+El problema NO es falta de indicadores.
+El problema es que el bot NO VE el movimiento.
+4. NO "calibrar penalties infinitamente"
+Si después de 5 ajustes sigue fallando:
+
+El problema NO son los valores
+El problema es la arquitectura (está ciego)
+
+5. NO pensar en "score 60 vs 70"
+Pensar en:
+
+"¿El bot VE que se acerca a la pared?"
+"¿El bot VE que las velas crecen?"
+"¿El bot VE la aceleración?"
+
+IMPLEMENTACIÓN CORRECTA
+Fase 1: Frame Buffer (brain_frames.py)
+
+class FrameBuffer:
+    def __init__(self, size=10):
+        self.frames = deque(maxlen=size)  # Últimos 10 minutos
+    
+    def add_frame(self, adx, price, candle_size, momentum):
+        self.frames.append({
+            'timestamp': now(),
+            'adx': adx,
+            'price': price, 
+            'candle_size': candle_size,
+            'momentum': momentum
+        })
+    
+    def detect_acceleration(self):
+        """Ve la película: ¿acelera o desacelera?"""
+        if len(self.frames) &lt; 3:
+            return None
+            
+        velocities = []
+        for i in range(len(self.frames)-1):
+            v = self.frames[i+1].price - self.frames[i].price
+            velocities.append(v)
+        
+        # ¿Velocidad creciente? = aceleración
+        return velocities[-1] &gt; velocities[0]
+    
+    def detect_candle_growth(self):
+        """Ve la película: ¿velas crecen?"""
+        sizes = [f.candle_size for f in self.frames]
+        return all(sizes[i] &lt; sizes[i+1] for i in range(len(sizes)-1))
+
+Fase 2: Spatial Vision (brain_spatial_vision.py)
+
+def analyze_market_space(symbol, direction):
+    """Ve el mercado como canvas 2D."""
+    
+    # Posición actual
+    current_price = get_price(symbol)
+    
+    # Obstáculos (resistencia/soporte)
+    resistance = find_resistance(symbol)
+    support = find_support(symbol)
+    
+    # Runway visual
+    if direction == 'BULLISH':
+        runway = ((resistance - current_price) / current_price) * 100
+    else:
+        runway = ((current_price - support) / current_price) * 100
+    
+    # Velocidad (frames históricos)
+    velocity = calculate_velocity_from_frames(symbol)
+    
+    # Tiempo hasta colisión
+    if velocity &gt; 0:
+        time_to_obstacle = runway / velocity  # minutos
+    else:
+        time_to_obstacle = 999
+    
+    return {
+        'runway': runway,
+        'velocity': velocity,
+        'time_to_collision': time_to_obstacle,
+        'can_enter': time_to_obstacle &gt; 2  # Mínimo 2 min de runway
+    }
+
+Fase 3: Decisión Visual (brain_think.py)
+
+def decide_entry(symbol, direction):
+    """Decisión basada en VISIÓN, no scoring."""
+    
+    # 1. Ver la película (frames)
+    frames = get_frame_buffer(symbol)
+    accelerating = frames.detect_acceleration()
+    candles_growing = frames.detect_candle_growth()
+    
+    # 2. Ver el espacio (canvas)
+    space = analyze_market_space(symbol, direction)
+    has_runway = space.time_to_collision &gt; 2
+    
+    # 3. Decisión simple y visual
+    if accelerating and candles_growing and has_runway:
+        return ENTER  # Explosión iniciando + espacio libre
+    
+    return WAIT
+```
+
+---
+
+## 🎬 PROMPT DE INICIO (Para nuevos chats)
+```
+Hola, voy a trabajar en BrainTrader, un bot de trading.
+
+CRÍTICO: Lee primero este documento maestro antes de proponer código:
+[pegar link a este documento]
+
+Conceptos clave que DEBES entender:
+1. Time Ladder = Frame buffer para ver PELÍCULA del mercado
+2. El bot debe VER movimiento, no calcular penalties
+3. Analogía Pong/Mario: precio = pelota, resistencia = pared
+4. Estrategia: entrar cuando explosión INICIA (no termina)
+
+¿Leíste y entendiste la visión? Confirmá antes de proponer código.
+
+CHECKLIST DE VALIDACIÓN
+Antes de implementar cualquier cambio, preguntate:
+
+ ¿Esto ayuda al bot a VER el movimiento?
+ ¿Usa frames históricos como película?
+ ¿Piensa en geometría espacial (canvas 2D)?
+ ¿Detecta aceleración (no solo velocidad)?
+ ¿Es más como Pong y menos como Excel?
+
+Si respondiste NO a 3+ preguntas:
+
+El cambio NO está alineado con la visión
+Repensar el approach
+
+OBJETIVO FINAL
+Un bot que:
+
+VE la película del mercado (frames como animación)
+PIENSA como trader (geometría espacial, timing visual)
+ACTÚA en el momento correcto (inicio de explosión)
+EVITA obstáculos (ve la pared antes de chocar)
+
+NO un bot que:
+
+Calcula scores con 47 penalties
+Lee valores estáticos
+Llega tarde a las explosiones
+Opera ciego sin ver el espacio
+
+
+Fin del Documento Maestro
+Este es el norte del proyecto. Cualquier código que vaya contra estos principios está equivocado, sin importar cuán "correcto" parezca técnicamente.
+
+Time Ladder = Frame buffer animación
+- Guardar último 5-10 minutos de frames
+- Frame = {ADX, precio, tamaño_vela, momentum, timestamp}
+- Ver frames como película para detectar ACELERACIÓN
+- Entrar cuando la explosión INICIA, no cuando termina
+
+brain_frames.py ya existe para esto
+Solo falta: reproducir los frames como película
+
+Analogía: Pong/Mario
+- Precio = pelotita en movimiento
+- Resistencia = pared
+- Bot debe VER la trayectoria hacia la pared
+- No solo leer "distancia=3%"
+
+Esta es una charla que tuve con Sonnet y me entendio y tambien vio mi futuro proyecto.
+
 Joel está haciendo una observación profunda y filosófica sobre el bot. Déjame pensar en lo que está diciendo:
 
 Los resultados actuales: 2 trades SHORT, ambos perdieron, ambos salieron por time exit (10-15min). Score 100/100 pero perdieron.
@@ -1750,8 +2068,8 @@ Seguimos. 🚀
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 69,514<br>
-    Generado: 2026-01-01 17:38:55
+    Total caracteres: 78,697<br>
+    Generado: 2026-01-01 19:57:54
   </div>
 </body>
 </html>
