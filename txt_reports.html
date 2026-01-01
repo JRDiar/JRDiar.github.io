@@ -15,17 +15,387 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-01 20:14:17</div>
+  <div class="meta">Última actualización: 2026-01-01 20:19:08</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-asd
+INFORME TÉCNICO COMPLETO GENERADO
+He creado un informe detallado con 7 secciones. Aquí el resumen ejecutivo:
+
+✅ Lo que YA FUNCIONA:
+FrameStorage - Guarda historia de indicadores (20 frames = película)
+MovieEngine - Analiza trayectorias multi-TF (5M, 1H, 4H)
+Exhaustion System - Fórmula gradual: moved / (moved + room) * 100
+Force Filter - Hard-block si no hay fuerza
+Exhaustion Penalty - Se aplica (-50 max) pero es DÉBIL
+
+ Problemas específicos detectados:
+Trade	Exhaust	Score	PnL	Problema
+AKE	100%	87.5	-1.78%	Penalty -50 insuficiente para score base ~137
+DGRAM	21%	100	-3.00%	Exhaust bajo no es garantía. Algo más falló
+ASR	45%	61.5	+2.00%	✅ Balance correcto
+🔧 Gaps y Recomendaciones:
+Hard-block para exhaust &gt; 95% (no solo penalty)
+Penalty exponencial en vez de lineal (80 max, no 50)
+Investigar DGRAM - exhaust 21% con score 100 perdió -3%
+¿Quieres que implemente alguna de estas mejoras?
+
+INFORME TÉCNICO COMPLETO - BRAINTRADER BOT
+Fecha: 2026-01-01 Objetivo: Documentar qué YA FUNCIONA antes de proponer cambios
+
+1. MÓDULOS PRINCIPALES
+Core (Decisión)
+Archivo	Descripción
+brain_intelligent.py
+Orquestador principal. Llama a todos los análisis y toma decisión final. Funciones: 
+decide_intelligently()
+, 
+orchestrate_intelligence()
+, 
+make_pattern_based_decision()
+brain_think.py
+Sistema Sniper 3 Capas. Validación granular: ADX, Momentum, Estructura, Zonas, Contexto. Función: 
+sniper_3layer()
+, 
+sniper_checklist()
+brain_force_filter.py
+Filtro de Fuerza Obligatorio. Si no hay fuerza, NO ENTRAR. Es un hard-block
+brain_movie_engine.py
+Motor de Película. Analiza movimiento en múltiples TFs (5M, 1H, 4H)
+brain_frames.py
+Storage de Frames. Guarda historia de indicadores como película
+brain_trajectory.py
+Analizador de Trayectorias. Calcula velocidad/aceleración de ADX, Momentum
+Análisis de Mercado
+Archivo	Descripción
+brain_analyzer.py
+Análisis por Timeframe. 
+analyze_4h()
+, 
+analyze_1h()
+, 
+analyze_15m()
+, 
+analyze_5m()
+. Calcula ADX, Momentum, RSI, EMAs, ZigZag
+brain_trend_exhaustion.py
+Sistema de Exhaustion. Calcula qué tan "gastada" está una tendencia
+brain_pattern_intelligence.py
+Detección de Patrones. Double Top, Flag, BOS, etc.
+brain_phase_classifier.py
+Clasificador de Fase. Identifica si mercado está en Explosión, Corrección, Lateral
+Indicadores Granulares
+Archivo	Descripción
+brain_adx_value.py
+Análisis granular del valor ADX
+brain_adx_plus.py
+Análisis granular de DI+
+brain_adx_minus.py
+Análisis granular de DI-
+brain_momentum_green.py
+Análisis de barras verdes de momentum
+brain_momentum_red.py
+Análisis de barras rojas de momentum
+brain_zigzag_tti.py
+Cálculo de ZigZag usando TTI library
+Grid / Zonas
+Archivo	Descripción
+brain_grid.py
+Análisis de Grid horizontal
+brain_grid_master.py
+Grid diagonal con trendlines
+brain_grid_indicators.py
+Indicadores para Grid
+Ejecución
+Archivo	Descripción
+brain_executor.py
+Ejecuta trades, gestiona SL/TP
+brain_executor_entry.py
+Lógica de entrada
+brain_watchlist.py
+Gestión de watchlist
+brain_sniper_realtime.py
+Monitoreo en tiempo real
+Infraestructura
+Archivo	Descripción
+bot_main.py
+Loop principal del bot
+exchange_connection.py
+Conexión a MEXC
+database_manager.py
+SQLite para telemetría
+sheets_manager.py
+Google Sheets logging
+telegram_notifications.py
+Notificaciones Telegram
+2. MOVIEENGINE - DETALLE COMPLETO
+¿Cómo funciona?
+El MovieEngine analiza la "película" del mercado viendo trayectorias de indicadores en múltiples timeframes.
+
+Flujo:
+1. _analyze_scene(symbol, '5m')  → Escena de acción inmediata
+2. _analyze_scene(symbol, '1h')  → Contexto 48h
+3. _analyze_scene(symbol, '4h')  → Estructura macro
+4. integrate_scenes()            → Une cortometrajes
+5. make_decision()               → Director decide
+6. calculate_threshold()         → Threshold dinámico
+Clases principales:
+Clase	Función
+MultiTFMotionIntegrator
+Une escenas de múltiples TFs y calcula coherencia
+MovieDirector
+Toma decisión basada en historia integrada
+DynamicThresholdEngine
+Calcula threshold adaptativo según velocidad
+MovieEngine
+Clase principal que orquesta todo
+Datos que analiza:
+# De cada timeframe obtiene:
+- adx_trajectory: valores históricos de ADX
+- momentum_trajectory: valores de momentum age
+- spread_trajectory: valores de spread DI+/DI-
+# Calcula:
+- velocity: cambio por frame
+- phase: EXPLOSION_NASCENT, EXPLOSION_SUSTAINED, FORCE_DYING, etc.
+- quality: EXCELLENT, GOOD, POOR, BAD
+Código clave - _analyze_scene():
+def _analyze_scene(self, symbol, timeframe, description):
+    storage = get_frame_storage(symbol, timeframe)
+    
+    # Obtener trayectorias de últimos 5 frames
+    adx_values = storage.get_trajectory('adx.value', 5)
+    mom_values = storage.get_trajectory('momentum.age', 5)
+    spread_values = storage.get_trajectory('adx.spread', 5)
+    
+    # Analizar movimiento
+    adx_traj = self.analyzer.analyze_adx_motion(adx_values)
+    mom_traj = self.analyzer.analyze_momentum_motion(mom_values)
+    spread_traj = self.analyzer.analyze_spread_motion(spread_values)
+    
+    # Interpretar escena
+    quality, story = self._interpret_scene(adx_traj, mom_traj, spread_traj)
+Fases detectadas:
+Fase	Significado	Quality
+EXPLOSION_NASCENT	ADX acelerando (22→28→35)	EXCELLENT
+EXPLOSION_SUSTAINED	ADX fuerte y estable	GOOD
+EXPLOSION_CLIMAX	ADX máximo (&gt;50)	CAUTION
+EXPLOSION_FADING	ADX cayendo desde alto	POOR
+FORCE_DYING	ADX muriendo (62→52→45)	BAD
+LATERAL	Sin dirección clara	BAD
+3. BRAIN_FRAMES - DETALLE COMPLETO
+¿Qué estructura tiene FrameStorage?
+class FrameStorage:
+    def __init__(self, max_frames=20):
+        self.max_frames = max_frames
+        self.frames = deque(maxlen=max_frames)  # Cola de máximo 20 frames
+¿Qué datos guarda cada frame?
+frame = {
+    'timestamp': datetime.now().isoformat(),
+    'symbol': symbol,
+    'timeframe': timeframe,
+    'adx': {
+        'value': adx_current,
+        'di_plus': di_plus,
+        'di_minus': di_minus,
+        'spread': abs(di_plus - di_minus),
+        'trend': 'creciendo' | 'decreciendo' | 'estable'
+    },
+    'momentum': {
+        'color': 'lime' | 'green' | 'red' | 'maroon' | 'gray',
+        'age': consecutive_count,  # Cuántas velas consecutivas
+        'intensity': intensity
+    },
+    'ohlc': {
+        'open': open_price,
+        'high': high_price,
+        'low': low_price,
+        'close': close_price
+    },
+    'price': current_price,
+    'volume': volume,
+    'volume_ratio': volume_ratio,  # vs promedio
+    'grid': {
+        'position_pct': position_in_range,  # 0-100%
+        'rompiendo': position &gt; 85
+    },
+    'score': score_15m
+}
+Métodos para trayectorias/aceleración:
+def get_trajectory(self, indicator_path, n=5):
+    """
+    Obtiene trayectoria de un indicador (la "animación")
+    
+    Example:
+        trajectory = storage.get_trajectory('adx.value', 5)
+        # [45, 48, 52, 56, 58] → subiendo
+    """
+    values = []
+    frames = self.get_frames(n)
+    for frame in frames:
+        # Navegar ruta anidada ej: 'adx.value'
+        value = frame
+        for key in indicator_path.split('.'):
+            value = value.get(key, 0)
+        values.append(value)
+    return values
+Funciones de detección:
+Función	Descripción
+detect_price_pattern()
+Detecta corrección, piso, impulso usando frames OHLC
+check_price_velocity()
+Mide velocidad del precio en tiempo real
+unified_time_ladder_vision()
+Une ZigZag + Grid + OHLC en una decisión
+load_frames_from_ohlcv()
+Carga instantánea de frames desde datos históricos
+4. BRAIN_INTELLIGENT - FLUJO DE DECISIÓN
+Flujo completo de 
+orchestrate_intelligence()
+:
+1. PERCEPCIÓN
+   └── pattern_engine.detect_all_patterns(symbol)
+   └── analyze_4h(), analyze_1h(), analyze_15m(), analyze_5m()
+2. DETECCIÓN DE LATERALIZACIÓN
+   └── Extrae lateral_penalty de a15m
+3. GRID ANALYSIS  
+   └── grid.analyze() → Detecta bloqueos
+4. VALIDACIÓN MATEMÁTICA
+   └── check_market_force() → Fuerza de mercado
+   └── MovieEngine.analyze_complete_movie() → Película
+5. FILTRO DE FUERZA (OBLIGATORIO)
+   └── force_filter.has_force()
+   └── Si NO hay fuerza → return NO_OPERAR (hard block)
+6. DECISIÓN FINAL
+   └── make_pattern_based_decision()
+       ├── Evalúa Wrecking Ball (fuerza brutal)
+       ├── Evalúa ZigZag (estructura)
+       ├── Evalúa S/R (geografía)
+       ├── Evalúa Fatiga (exhaustion)
+       ├── Evalúa Memoria (telemetría)
+       ├── Aplica Grid score
+       ├── Aplica Movie Engine penalty
+       ├── Aplica Exhaustion penalty  ← NUEVO
+       ├── Aplica ADX Dying penalty
+       └── Return ENTER | WAIT
+¿Calcula runway/espacio libre?
+SÍ, en 
+brain_trend_exhaustion.py
+:
+
+# room_pct = distancia hasta resistencia/soporte
+if direction == 'BULLISH':
+    room_pct = ((high_50 - current_price) / current_price) * 100
+else:
+    room_pct = ((current_price - low_50) / current_price) * 100
+Pero este room_pct no se usa directamente para bloquear. Solo ajusta multiplicadores de penalties.
+
+5. EXHAUSTION SYSTEM
+¿Cómo se calcula?
+# Fórmula base (brain_trend_exhaustion.py L88-91):
+total_range = moved_pct + room_pct
+base_exhaustion = (moved_pct / total_range) * 100
+# Bonuses adicionales:
+if room_pct &lt; 0.5:  exhaustion_score += 15  # Muy poco espacio
+if adx_current &gt; 50: exhaustion_score += 25  # ADX alto
+if mom_age &gt;= 10:    exhaustion_score += 20  # Momentum viejo
+¿Se usa para decisión de entrada?
+SÍ, ahora en 
+brain_intelligent.py
+ L489-509:
+
+exhaustion_pct = a15m.get('exhaustion_pct', 50)
+if exhaustion_pct &lt;= 50:
+    # Bonus: +10 a +0 lineal
+    exhaustion_adjustment = int(10 * (1 - exhaustion_pct / 50))
+    final_score += exhaustion_adjustment
+else:
+    # Penalty: 0 a -50 lineal  
+    exhaustion_penalty = int(50 * (exhaustion_pct - 50) / 50)
+    final_score -= exhaustion_penalty
+¿Se analiza TENDENCIA de exhaustion?
+NO directamente. Se calcula exhaustion_pct en cada análisis pero no se compara con el valor anterior para ver si está subiendo o bajando.
+
+6. ANÁLISIS DE TRADES ESPECÍFICOS
+Trade 1: ❌ AKE - exhaust=100%, score=87.5, PnL=-1.78%
+¿Qué vio el bot?
+
+Force level: BRUTAL (pasó filtro de fuerza)
+Score final: 87.5 (alto, pasó threshold)
+Exhaust: 100% → Penalty: -50 aplicado
+Score pre-penalty probablemente era ~137.5
+¿Qué NO vio?
+
+PROBLEMA: Score base era TAN alto que -50 no bastó
+Si score base = 137.5, después de -50 = 87.5 (aún aprueba)
+¿Qué módulo falló?
+
+make_pattern_based_decision()
+ genera scores muy altos
+Exhaustion penalty de -50 máximo es INSUFICIENTE
+FIX NECESARIO: Penalty más agresiva o hard-block para exhaust&gt;90%
+Trade 2: ❌ DGRAM - exhaust=21%, score=100, PnL=-3.00%
+¿Qué vio el bot?
+
+Force level: BRUTAL
+Exhaustion: 21% (FRESH!) → Debería ser bueno
+Score: 100 (máximo posible)
+¿Qué NO vio?
+
+PROBLEMA: Exhaust bajo NO garantiza buen trade
+Algo más falló (posible pump/dump, mala dirección, etc.)
+Score 100 sugiere que TODOS los chequeos pasaron
+¿Qué módulo falló?
+
+El problema NO es exhaustion (21% es correcto)
+Falta revisar: ¿dirección correcta?, ¿ADX muriendo?, ¿momentum contra?
+MovieEngine debería haber detectado algo
+Posible falla en 
+detect_price_pattern()
+ o 
+check_price_velocity()
+Trade 3: ✅ ASR - exhaust=45%, score=61.5, PnL=+2.00%
+¿Qué vio el bot?
+
+Force level: BRUTAL
+Exhaustion: 45% (DEVELOPING, bueno)
+Score: 61.5 (moderado, pasó threshold de 45-50)
+¿Por qué funcionó?
+
+Entró en zona DEVELOPING (no FRESH extremo, no EXHAUSTED)
+Score moderado = no forzó entrada en situación marginal
+BALANCE CORRECTO entre fuerza + exhaustion + score
+7. CONCLUSIONES Y GAPS
+✅ Lo que YA FUNCIONA:
+FrameStorage guarda historia de indicadores correctamente
+MovieEngine analiza trayectorias multi-TF
+Exhaustion se calcula con fórmula gradual correcta
+Force Filter bloquea trades sin fuerza
+Penalty Exhaustion se aplica (pero es débil)
+❌ Gaps detectados:
+Gap	Descripción	Módulo afectado
+Penalty débil	-50 máximo no bloquea scores altos	
+brain_intelligent.py
+No hard-block	Exhaust 100% debería BLOQUEAR, no solo penalizar	
+brain_intelligent.py
+No trending exhaust	No se analiza si exhaust SUBE o BAJA	Ninguno
+Score inflado	Scores base pueden ser &gt;100, haciendo inútil la penalty	Múltiples
+DGRAM mystery	Exhaust bajo + score 100 = pérdida. Algo más falla	Investigar
+🔧 Recomendaciones inmediatas:
+Hard-block para exhaust &gt; 95%:
+if exhaustion_pct &gt; 95:
+    return {'action': 'WAIT', 'reasons': ['🚨 EXHAUSTED 95%+ - BLOQUEADO']}
+Penalty exponencial, no lineal:
+# Actual: lineal 0 a -50
+exhaustion_penalty = int(50 * (exhaustion_pct - 50) / 50)
+# Propuesto: exponencial
+exhaustion_penalty = int(80 * ((exhaustion_pct - 50) / 50) ** 1.5)
+Investigar caso DGRAM: Correr diagnóstico individual para entender por qué exhaust 21% falló
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3<br>
-    Generado: 2026-01-01 20:14:17
+    Total caracteres: 12,437<br>
+    Generado: 2026-01-01 20:19:08
   </div>
 </body>
 </html>
