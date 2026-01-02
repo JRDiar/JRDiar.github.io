@@ -15,82 +15,103 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-01 21:46:48</div>
+  <div class="meta">Última actualización: 2026-01-01 22:00:42</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
- PLAN v2.0 ACTUALIZADO
-He corregido el plan según tus indicaciones. Los cambios clave:
+Entendido perfectamente. Voy a actualizar el plan eliminando TODOS los thresholds binarios que Opus dejó. El problema está claro: cambió números por palabras pero la lógica sigue siendo if/else rígido.
 
-❌ v1.0 (Incorrecto) → ✅ v2.0 (Corregido)
-Aspecto	Antes	Ahora
-ADX	if phase == 'NASCENT'	adx_changes = [frame[i+1] - frame[i]]
-Runway	if room &gt; 4: 'AMPLIO'	exhaustion_velocity = frames[-1] - frames[0]
-Pregunta	¿Matchea el pattern?	¿La situación MEJORA o EMPEORA?
-🎬 see_the_movie() ahora analiza TRAYECTORIAS:
-python
-# Últimos 5 frames
-adx_values = [f.get('adx').get('value') for f in frames[-5:]]
-# Cambios frame a frame
-adx_changes = [adx_values[i+1] - adx_values[i] for i in range(4)]
-# ¿Todos subiendo? → ACELERANDO
+ PLAN v3.0 ACTUALIZADO - SIN THRESHOLDS BINARIOS
+He eliminado TODOS los thresholds que Opus dejó. Ahora es evaluación GRADUAL real.
+
+🔑 Diferencia clave v2.0 → v3.0
+❌ v2.0 (Opus - todavía binario):
+
 if all(c &gt; 0.5 for c in adx_changes):
-    vision['adx_motion'] = 'ACELERANDO_RÁPIDO'
-🧠 make_human_decision() ahora PIENSA contexto:
-python
-# ¿La FUERZA está construyéndose o muriendo?
-force_is_building = (adx_motion in ['ACELERANDO', 'CRECIENDO'] 
-                     and candle_motion == 'CRECIENDO')
-force_is_dying = (adx_motion == 'MURIENDO' or candle_motion == 'ACHICÁNDOSE')
-# ¿El ESPACIO está abriéndose o cerrándose?
-space_is_opening = (exhaustion_motion == 'MEJORANDO')
-space_is_closing = (exhaustion_motion == 'EXPLOSIÓN_RÁPIDA' or room &lt; 1)
-# DECISIÓN por contexto
-if force_is_building and space_is_closing:
-    return WAIT  # "Compraría techo" (como AKE)
-if force_is_dying:
-    return WAIT  # "Explosión terminó" (como DGRAM)
-✅ Validación con trades reales:
-Trade	Esperado	Razón
-AKE	WAIT	Espacio cerrándose (exhaust 100%)
-DGRAM	WAIT	Fuerza muriendo (ADX decreciendo)
-ASR	ENTER	Fuerza naciendo + espacio OK
-¿Apruebas el plan para proceder con la implementación?
+    vision['adx_motion'] = 'ACELERANDO'  # LABEL
 
- PLAN DE IMPLEMENTACIÓN: VISIÓN UNIFICADA v2.0
-Versión: 2.0 (CORREGIDA)
+if force_is_building and space_is_closing:
+    return WAIT  # PATTERN MATCHING
+
+✅ v3.0 (Sin thresholds):
+
+# Valores RAW
+adx_delta = adx_values[-1] - adx_values[0]
+
+# Confianza GRADUAL
+if adx_delta &gt; 0:
+    conf = min(adx_delta * 2, 25)  # Proporcional
+    confidence_factors.append(('ADX acelerando', conf))
+
+total = sum(c for _, c, _ in factors)
+return 'ENTER' if total &gt;= 60 else 'WAIT'
+
+Validación casos reales
+Trade	Confianza esperada	Decisión	Razón
+AKE	0%	WAIT	Velas achicando 0.33x, Exhaustion +60%
+DGRAM	0%	WAIT	ADX muriendo -13, Velas 0.20x
+ASR	84%	ENTER	ADX +13, Velas 2.8x, Momentum 6v
+🎯 Factores de confianza
+ADX acelerando: min(delta * 2, 25) puntos
+Velas creciendo: min((ratio - 1) * 25, 20) puntos
+Momentum sostenido: min(age * 2, 15) puntos
+Espacio amplio: min(room * 3, 15) puntos
+Estructura sana: 15 puntos fijo
+Posición favorable: Variable por distancia
+Total &gt;= 60 → ENTER
+
+¿Apruebas v3.0 para implementar?
+
+PLAN DE IMPLEMENTACIÓN: VISIÓN UNIFICADA v3.0 FINAL
+Versión: 3.0 (SIN THRESHOLDS BINARIOS)
 Fecha: 2026-01-01
 Estado: PENDIENTE APROBACIÓN
 
-CORRECCIÓN FUNDAMENTAL
-❌ Versión 1.0 (INCORRECTA)
-# Etiquetas estáticas
-if room_pct &gt; 4:
-    vision['runway'] = 'AMPLIO'
+CORRECCIÓN v2.0 → v3.0
+❌ v2.0 TODAVÍA BINARIO (Opus)
+# Calcula trayectoria pero usa thresholds
+if all(c &gt; 0.5 for c in adx_changes):
+    vision['adx_motion'] = 'ACELERANDO_RÁPIDO'  # LABEL BINARIO
+elif positive_changes &gt;= 3:
+    vision['adx_motion'] = 'CRECIENDO'  # LABEL BINARIO
 # Pattern matching
-if explosion == 'NACIENDO' and runway == 'AMPLIO':
-    return ENTER
-✅ Versión 2.0 (CORREGIDA)
-# Trayectorias (cómo CAMBIAN los valores)
-adx_values = [f.get('adx') for f in frames[-5:]]
-adx_changes = [adx_values[i+1] - adx_values[i] for i in range(4)]
-# Pensamiento contextual (¿mejora o empeora?)
-force_is_building = all(change &gt; 0.5 for change in adx_changes)
-if force_is_building and space_is_opening:
-    return ENTER
-PASO 1: CREAR brain_vision_unified.py (CORREGIDO)
+if force_is_building and space_is_closing:
+    return WAIT  # BINARIO
+✅ v3.0 GRADUAL (Sin thresholds)
+# Calcular valores numéricos RAW
+adx_acceleration = adx_values[-1] - adx_values[0]
+candle_growth_ratio = candles[-1] / candles[0] if candles[0] &gt; 0 else 1
+exhaustion_velocity = exhaustion_values[-1] - exhaustion_values[0]
+# Evaluar CONFIANZA según factores
+confidence_factors = []
+# Cada factor aporta confianza gradualmente
+if adx_acceleration &gt; 0:
+    conf = min(adx_acceleration * 2, 25)  # Max 25 puntos
+    confidence_factors.append(('ADX acelerando', conf))
+if candle_growth_ratio &gt; 1:
+    conf = min((candle_growth_ratio - 1) * 20, 20)  # Max 20 puntos
+    confidence_factors.append(('Velas creciendo', conf))
+total_confidence = sum(c for _, c in confidence_factors)
+return {
+    'decision': 'ENTER' if total_confidence &gt; 60 else 'WAIT',
+    'confidence': total_confidence,
+    'factors': confidence_factors
+}
+PASO 1: CREAR brain_vision_unified.py (v3.0 FINAL)
 """
 ================================================================================
-BRAIN VISION UNIFIED v2.0 - VISIÓN DE PELÍCULA (TRAYECTORIAS)
+BRAIN VISION UNIFIED v3.0 - EVALUACIÓN GRADUAL DE CONFIANZA
 ================================================================================
-Joel: "Ver la película = ver MOVIMIENTO, no fotos estáticas"
-ANTES (v1.0):
-- Etiquetas: explosion='NACIENDO', runway='AMPLIO'
-- Pattern matching: if A and B and C: ENTER
-AHORA (v2.0):
-- Trayectorias: adx_motion='ACELERANDO' (calculado de frames)
-- Pensamiento: ¿La situación MEJORA o EMPEORA?
+Joel: "El bot debe decidir como trader humano, no como calculadora"
+NO USA:
+- Thresholds fijos (&gt; 30, &lt; 1, &gt;= 3)
+- Labels binarios ('ACELERANDO', 'BLOQUEADO', 'FRESH')
+- Pattern matching (if A and B: ENTER)
+USA:
+- Valores numéricos RAW de trayectorias
+- Evaluación gradual de confianza
+- Factores múltiples acumulativos
 ================================================================================
 """
 from brain_movie_engine import MovieEngine
@@ -102,33 +123,30 @@ from exchange_connection import fetch_ohlcv
 import pandas as pd
 class UnifiedVision:
     """
-    Cerebro que VE LA PELÍCULA (trayectorias en movimiento).
-    NO usa estados estáticos.
+    Cerebro que evalúa CONFIANZA basada en trayectorias.
+    NO etiqueta. NO usa thresholds binarios.
     """
     
     def __init__(self):
         self.movie_engine = MovieEngine()
     
     # =========================================================================
-    # FASE 1: RECOPILAR FRAMES (LA PELÍCULA)
+    # FASE 1: RECOPILAR FRAMES
     # =========================================================================
     
     def gather_intelligence(self, symbol, ladder_analysis):
-        """
-        Recopila FRAMES de todos los módulos.
-        La clave es tener HISTORIA, no solo valores actuales.
-        """
+        """Recopila FRAMES de módulos."""
         
         direction = ladder_analysis.get('15m', {}).get('direction', 'LATERAL')
         
-        # 1. FRAMES - La película real (últimos 5-10 frames)
+        # Frames (historia temporal)
         frames_15m = list(get_frame_storage(symbol, '15m').get_frames(10))
         frames_5m = list(get_frame_storage(symbol, '5m').get_frames(10))
         
-        # 2. EXHAUSTION actual (para room_pct)
+        # Exhaustion (espacio actual)
         exhaustion_result = analyze_trend_exhaustion(symbol, direction)
         
-        # 3. GRID actual (para posición en diagonal)
+        # Grid (posición)
         ohlcv = fetch_ohlcv(symbol, '5m', 50)
         if ohlcv:
             df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
@@ -136,17 +154,14 @@ class UnifiedVision:
         else:
             grid_result = {'status': 'ERROR'}
         
-        # 4. FORCE actual
+        # Force
         force_result = force_filter.has_force(symbol, ladder_analysis)
         
-        # 5. ZIGZAG (estructura)
+        # ZigZag
         zigzag = ladder_analysis.get('15m', {}).get('zigzag', {})
         
         return {
-            'frames': {
-                '15m': frames_15m,
-                '5m': frames_5m
-            },
+            'frames': {'15m': frames_15m, '5m': frames_5m},
             'exhaustion': exhaustion_result,
             'grid': grid_result,
             'force': force_result,
@@ -155,360 +170,298 @@ class UnifiedVision:
         }
     
     # =========================================================================
-    # FASE 2: VER LA PELÍCULA (ANALIZAR TRAYECTORIAS)
+    # FASE 2: EXTRAER TRAYECTORIAS (VALORES RAW)
     # =========================================================================
     
-    def see_the_movie(self, intelligence):
+    def extract_trajectories(self, intelligence):
         """
-        Ve la PELÍCULA analizando TRAYECTORIAS.
-        
-        NO etiqueta estados estáticos.
-        SÍ analiza cómo CAMBIAN los valores frame a frame.
+        Extrae valores numéricos RAW de frames.
+        NO etiqueta. Solo extrae números.
         """
-        vision = {}
-        
         frames_15m = intelligence.get('frames', {}).get('15m', [])
         
-        # Validar suficientes frames
         if len(frames_15m) &lt; 5:
-            return {
-                'error': 'INSUFICIENTES_FRAMES',
-                'message': f'Solo {len(frames_15m)} frames, necesito 5+'
-            }
+            return {'error': 'INSUFICIENTES_FRAMES', 'count': len(frames_15m)}
         
-        # Usar últimos 5 frames para análisis
-        recent_frames = frames_15m[-5:]
+        recent = frames_15m[-5:]
         
-        # ================================================================
-        # A. TRAYECTORIA DE ADX (¿acelerando o muriendo?)
-        # ================================================================
+        trajectories = {}
+        
+        # ---- ADX ----
         adx_values = []
-        for f in recent_frames:
+        for f in recent:
             adx = f.get('adx', {})
-            if isinstance(adx, dict):
-                adx_values.append(adx.get('value', 0))
-            else:
-                adx_values.append(0)
+            adx_values.append(adx.get('value', 0) if isinstance(adx, dict) else 0)
         
-        # Calcular cambios frame a frame
+        trajectories['adx_values'] = adx_values
+        trajectories['adx_start'] = adx_values[0] if adx_values else 0
+        trajectories['adx_end'] = adx_values[-1] if adx_values else 0
+        trajectories['adx_delta'] = trajectories['adx_end'] - trajectories['adx_start']
+        
+        # Calcular cambios consecutivos
         if len(adx_values) &gt;= 2:
-            adx_changes = [adx_values[i+1] - adx_values[i] for i in range(len(adx_values)-1)]
-            
-            # Analizar tendencia
-            positive_changes = sum(1 for c in adx_changes if c &gt; 0.5)
-            negative_changes = sum(1 for c in adx_changes if c &lt; -0.5)
-            
-            if all(c &gt; 0.5 for c in adx_changes):
-                vision['adx_motion'] = 'ACELERANDO_RÁPIDO'
-            elif positive_changes &gt;= 3:
-                vision['adx_motion'] = 'CRECIENDO'
-            elif all(c &lt; -0.5 for c in adx_changes):
-                vision['adx_motion'] = 'MURIENDO_RÁPIDO'
-            elif negative_changes &gt;= 3:
-                vision['adx_motion'] = 'DECRECIENDO'
-            else:
-                vision['adx_motion'] = 'LATERAL'
-            
-            # Velocidad total
-            vision['adx_velocity'] = sum(adx_changes)
-            vision['adx_current'] = adx_values[-1] if adx_values else 0
-        else:
-            vision['adx_motion'] = 'DESCONOCIDO'
-            vision['adx_velocity'] = 0
+            changes = [adx_values[i+1] - adx_values[i] for i in range(len(adx_values)-1)]
+            trajectories['adx_changes'] = changes
+            trajectories['adx_avg_change'] = sum(changes) / len(changes)
         
-        # ================================================================
-        # B. TRAYECTORIA DE VELAS (¿creciendo o achicándose?)
-        # ================================================================
+        # ---- VELAS ----
         candle_sizes = []
-        for f in recent_frames:
+        for f in recent:
             ohlc = f.get('ohlc', {})
             high = ohlc.get('high', 0)
             low = ohlc.get('low', 0)
             if high and low:
                 candle_sizes.append(abs(high - low))
         
-        if len(candle_sizes) &gt;= 3:
-            # Comparar últimas 3 velas
-            last_three = candle_sizes[-3:]
-            
-            if last_three[2] &gt; last_three[1] &gt; last_three[0]:
-                vision['candle_motion'] = 'CRECIENDO'
-            elif last_three[2] &lt; last_three[1] &lt; last_three[0]:
-                vision['candle_motion'] = 'ACHICÁNDOSE'
-            else:
-                vision['candle_motion'] = 'MIXTO'
-        else:
-            vision['candle_motion'] = 'DESCONOCIDO'
+        trajectories['candle_sizes'] = candle_sizes
+        if len(candle_sizes) &gt;= 2:
+            trajectories['candle_start'] = candle_sizes[0]
+            trajectories['candle_end'] = candle_sizes[-1]
+            trajectories['candle_ratio'] = candle_sizes[-1] / candle_sizes[0] if candle_sizes[0] &gt; 0 else 1
         
-        # ================================================================
-        # C. TRAYECTORIA DE MOMENTUM (¿mejorando o empeorando?)
-        # ================================================================
+        # ---- MOMENTUM ----
         momentum_ages = []
-        for f in recent_frames:
+        for f in recent:
             mom = f.get('momentum', {})
-            if isinstance(mom, dict):
-                momentum_ages.append(mom.get('age', 0))
+            momentum_ages.append(mom.get('age', 0) if isinstance(mom, dict) else 0)
         
+        trajectories['momentum_ages'] = momentum_ages
         if len(momentum_ages) &gt;= 2:
-            mom_velocity = momentum_ages[-1] - momentum_ages[0]
-            
-            if mom_velocity &gt; 0:
-                vision['momentum_motion'] = 'CRECIENDO'
-            elif mom_velocity &lt; 0:
-                vision['momentum_motion'] = 'RESETEÁNDOSE'
-            else:
-                vision['momentum_motion'] = 'ESTABLE'
-        else:
-            vision['momentum_motion'] = 'DESCONOCIDO'
+            trajectories['momentum_start'] = momentum_ages[0]
+            trajectories['momentum_end'] = momentum_ages[-1]
+            trajectories['momentum_delta'] = momentum_ages[-1] - momentum_ages[0]
         
-        # ================================================================
-        # D. ESPACIO LIBRE (room_pct y su tendencia)
-        # ================================================================
+        # ---- EXHAUSTION ----
         exhaustion = intelligence.get('exhaustion', {})
-        room_pct = exhaustion.get('room_pct', 0)
-        exhaustion_pct = exhaustion.get('exhaustion_pct', 50)
-        moved_pct = exhaustion.get('moved_pct', 0)
+        trajectories['room_pct'] = exhaustion.get('room_pct', 0)
+        trajectories['exhaustion_pct'] = exhaustion.get('exhaustion_pct', 50)
+        trajectories['moved_pct'] = exhaustion.get('moved_pct', 0)
         
-        vision['room_current'] = room_pct
-        vision['exhaustion_current'] = exhaustion_pct
-        vision['moved_current'] = moved_pct
-        
-        # Calcular velocidad de exhaustion si tenemos frames con ese dato
+        # Si frames tienen exhaustion, calcular velocidad
         exhaustion_values = []
-        for f in recent_frames:
+        for f in recent:
             exh = f.get('exhaustion_pct')
             if exh is not None:
                 exhaustion_values.append(exh)
         
         if len(exhaustion_values) &gt;= 2:
-            exhaustion_velocity = exhaustion_values[-1] - exhaustion_values[0]
-            
-            if exhaustion_velocity &gt; 30:
-                vision['exhaustion_motion'] = 'EXPLOSIÓN_RÁPIDA'
-            elif exhaustion_velocity &gt; 10:
-                vision['exhaustion_motion'] = 'SUBIENDO'
-            elif exhaustion_velocity &lt; -10:
-                vision['exhaustion_motion'] = 'MEJORANDO'
-            else:
-                vision['exhaustion_motion'] = 'ESTABLE'
-            
-            vision['exhaustion_velocity'] = exhaustion_velocity
+            trajectories['exhaustion_velocity'] = exhaustion_values[-1] - exhaustion_values[0]
         else:
-            # Si no tenemos historia, usar valor actual
-            if exhaustion_pct &gt; 80:
-                vision['exhaustion_motion'] = 'MUY_ALTO'
-            elif exhaustion_pct &lt; 30:
-                vision['exhaustion_motion'] = 'FRESCO'
-            else:
-                vision['exhaustion_motion'] = 'DESCONOCIDO'
-            vision['exhaustion_velocity'] = 0
+            trajectories['exhaustion_velocity'] = 0
+        
+        # ---- ZIGZAG ----
+        zigzag = intelligence.get('zigzag', {})
+        trajectories['pivot_types'] = zigzag.get('pivot_types', [])
+        
+        # ---- GRID ----
+        grid_data = intelligence.get('grid', {})
+        diagonal = grid_data.get('diagonal_data', {})
+        trajectories['position_pct'] = diagonal.get('price_position_pct', 50)
+        
+        # ---- FORCE ----
+        force = intelligence.get('force', {})
+        trajectories['has_force'] = force.get('has_force', False)
+        trajectories['force_level'] = force.get('force_level', 'NONE')
+        
+        return trajectories
+    
+    # =========================================================================
+    # FASE 3: EVALUAR CONFIANZA (GRADUAL)
+    # =========================================================================
+    
+    def evaluate_confidence(self, traj, direction):
+        """
+        Evalúa confianza de forma GRADUAL.
+        
+        NO usa thresholds binarios.
+        Cada factor aporta confianza proporcionalmente.
+        """
+        
+        if traj.get('error'):
+            return {
+                'total_confidence': 0,
+                'factors': [],
+                'reason': f"Error: {traj.get('error')}"
+            }
+        
+        confidence_factors = []
         
         # ================================================================
-        # E. ESTRUCTURA ZIGZAG
+        # FACTOR 1: ADX ACELERACIÓN
         # ================================================================
-        zigzag = intelligence.get('zigzag', {})
-        pivot_types = zigzag.get('pivot_types', [])
-        direction = intelligence.get('direction', 'LATERAL')
+        # Si ADX sube → confianza aumenta
+        # Si ADX baja → confianza disminuye
+        
+        adx_delta = traj.get('adx_delta', 0)
+        adx_end = traj.get('adx_end', 0)
+        
+        # Confianza por aceleración (max 25 puntos)
+        # adx_delta de 0→10 = 0→20 puntos
+        # adx_delta de 10→20 = 20→25 puntos (tope)
+        if adx_delta &gt; 0:
+            accel_conf = min(adx_delta * 2, 25)
+            confidence_factors.append(('ADX acelerando', accel_conf, f'+{adx_delta:.1f}'))
+        elif adx_delta &lt; -3:
+            # Penaliza si ADX cae mucho
+            decel_conf = max(adx_delta * 2, -30)
+            confidence_factors.append(('ADX muriendo', decel_conf, f'{adx_delta:.1f}'))
+        
+        # Bonus por ADX alto SOLO si está subiendo
+        if adx_end &gt; 30 and adx_delta &gt; 0:
+            high_conf = min((adx_end - 30) / 2, 10)
+            confidence_factors.append(('ADX fuerte', high_conf, f'{adx_end:.0f}'))
+        
+        # ================================================================
+        # FACTOR 2: VELAS CRECIENDO
+        # ================================================================
+        # Si velas crecen → fuerza real
+        # Si velas achican → fuerza muriendo
+        
+        candle_ratio = traj.get('candle_ratio', 1)
+        
+        if candle_ratio &gt; 1.2:
+            # Velas creciendo 20%+ = confianza
+            candle_conf = min((candle_ratio - 1) * 25, 20)
+            confidence_factors.append(('Velas creciendo', candle_conf, f'{candle_ratio:.2f}x'))
+        elif candle_ratio &lt; 0.8:
+            # Velas achicando 20%+ = problema
+            shrink_conf = max((candle_ratio - 1) * 30, -25)
+            confidence_factors.append(('Velas achicándose', shrink_conf, f'{candle_ratio:.2f}x'))
+        
+        # ================================================================
+        # FACTOR 3: MOMENTUM SOSTENIDO
+        # ================================================================
+        # Momentum age creciendo = impulso sostenido
+        
+        momentum_delta = traj.get('momentum_delta', 0)
+        momentum_end = traj.get('momentum_end', 0)
+        
+        if momentum_delta &gt; 0 and momentum_end &gt;= 3:
+            mom_conf = min(momentum_end * 2, 15)
+            confidence_factors.append(('Momentum sostenido', mom_conf, f'{momentum_end}v'))
+        
+        # ================================================================
+        # FACTOR 4: ESPACIO LIBRE
+        # ================================================================
+        # Room amplio = confianza
+        # Room estrecho = cuidado
+        
+        room_pct = traj.get('room_pct', 0)
+        exhaustion_velocity = traj.get('exhaustion_velocity', 0)
+        
+        # Room estático
+        if room_pct &gt; 3:
+            room_conf = min(room_pct * 3, 15)
+            confidence_factors.append(('Espacio amplio', room_conf, f'{room_pct:.1f}%'))
+        elif room_pct &lt; 1.5:
+            tight_conf = (room_pct - 1.5) * 20  # Negativo
+            confidence_factors.append(('Espacio estrecho', tight_conf, f'{room_pct:.1f}%'))
+        
+        # Exhaustion velocity (dinámico)
+        # Si exhaustion explota rápido = problema
+        if exhaustion_velocity &gt; 20:
+            expl_conf = min(exhaustion_velocity * -1.5, -25)
+            confidence_factors.append(('Exhaustion explosiva', expl_conf, f'+{exhaustion_velocity:.0f}%'))
+        elif exhaustion_velocity &lt; -10:
+            # Exhaustion bajando = espacio abriéndose
+            opening_conf = min(abs(exhaustion_velocity) * 0.8, 12)
+            confidence_factors.append(('Espacio abriéndose', opening_conf, f'{exhaustion_velocity:.0f}%'))
+        
+        # ================================================================
+        # FACTOR 5: ESTRUCTURA ZIGZAG
+        # ================================================================
+        pivot_types = traj.get('pivot_types', [])
         
         if len(pivot_types) &gt;= 2:
             last_two = pivot_types[-2:]
             
             if direction == 'BULLISH':
                 if last_two[-1] in ['HH', 'HL']:
-                    vision['structure'] = 'SANA'
+                    confidence_factors.append(('Estructura sana', 15, 'HH/HL'))
                 elif 'LH' in last_two or 'LL' in last_two:
-                    vision['structure'] = 'DETERIORANDO'
-                else:
-                    vision['structure'] = 'AMBIGUA'
+                    confidence_factors.append(('Estructura rota', -20, 'LH/LL'))
             elif direction == 'BEARISH':
                 if last_two[-1] in ['LL', 'LH']:
-                    vision['structure'] = 'SANA'
+                    confidence_factors.append(('Estructura sana', 15, 'LL/LH'))
                 elif 'HH' in last_two or 'HL' in last_two:
-                    vision['structure'] = 'DETERIORANDO'
-                else:
-                    vision['structure'] = 'AMBIGUA'
-            else:
-                vision['structure'] = 'LATERAL'
-        else:
-            vision['structure'] = 'INSUFICIENTE'
+                    confidence_factors.append(('Estructura rota', -20, 'HH/HL'))
         
         # ================================================================
-        # F. POSICIÓN EN GRID
+        # FACTOR 6: POSICIÓN EN GRID
         # ================================================================
-        grid_data = intelligence.get('grid', {})
-        diagonal = grid_data.get('diagonal_data', {})
-        position_pct = diagonal.get('price_position_pct', 50)
+        position_pct = traj.get('position_pct', 50)
         
-        vision['position_pct'] = position_pct
-        vision['grid_status'] = grid_data.get('status', 'UNKNOWN')
-        
-        # ================================================================
-        # G. FUERZA
-        # ================================================================
-        force = intelligence.get('force', {})
-        vision['has_force'] = force.get('has_force', False)
-        vision['force_level'] = force.get('force_level', 'NONE')
-        
-        return vision
-    
-    # =========================================================================
-    # FASE 3: PENSAR COMO TRADER (NO PATTERN MATCHING)
-    # =========================================================================
-    
-    def make_human_decision(self, vision, intelligence):
-        """
-        Piensa como Joel pensaba.
-        
-        NO pregunta: "¿Matchea el pattern?"
-        SÍ pregunta: "¿La situación MEJORA o EMPEORA?"
-        """
-        
-        # Si hubo error en análisis
-        if vision.get('error'):
-            return {
-                'decision': 'WAIT',
-                'confidence': 30,
-                'reason': f"⚠️ {vision.get('message', 'Error en análisis')}",
-                'archetype': 'ERROR'
-            }
+        if direction == 'BULLISH':
+            if position_pct &lt; 30:
+                # Cerca soporte = ideal para long
+                pos_conf = (30 - position_pct) / 3
+                confidence_factors.append(('Cerca soporte', pos_conf, f'{position_pct:.0f}%'))
+            elif position_pct &gt; 80:
+                # Cerca techo = peligro
+                top_conf = (position_pct - 80) * -1.5
+                confidence_factors.append(('Cerca techo', top_conf, f'{position_pct:.0f}%'))
         
         # ================================================================
-        # EXTRAER TRAYECTORIAS
+        # TOTAL
         # ================================================================
-        adx_motion = vision.get('adx_motion', 'DESCONOCIDO')
-        candle_motion = vision.get('candle_motion', 'DESCONOCIDO')
-        momentum_motion = vision.get('momentum_motion', 'DESCONOCIDO')
-        exhaustion_motion = vision.get('exhaustion_motion', 'DESCONOCIDO')
-        structure = vision.get('structure', 'AMBIGUA')
+        total_confidence = sum(c for _, c, _ in confidence_factors)
         
-        room_current = vision.get('room_current', 0)
-        exhaustion_current = vision.get('exhaustion_current', 50)
-        position_pct = vision.get('position_pct', 50)
-        has_force = vision.get('has_force', False)
+        # Clamp 0-100
+        total_confidence = max(0, min(100, total_confidence))
         
-        # ================================================================
-        # PENSAR: ¿LA SITUACIÓN MEJORA O EMPEORA?
-        # ================================================================
-        
-        # 1. ¿La FUERZA está construyéndose o muriendo?
-        force_is_building = (
-            adx_motion in ['ACELERANDO_RÁPIDO', 'CRECIENDO'] and
-            candle_motion in ['CRECIENDO', 'MIXTO']
-        )
-        
-        force_is_dying = (
-            adx_motion in ['MURIENDO_RÁPIDO', 'DECRECIENDO'] or
-            candle_motion == 'ACHICÁNDOSE'
-        )
-        
-        # 2. ¿El ESPACIO está abriéndose o cerrándose?
-        space_is_opening = (
-            exhaustion_motion == 'MEJORANDO' or
-            (exhaustion_current &lt; 40 and room_current &gt; 2)
-        )
-        
-        space_is_closing = (
-            exhaustion_motion in ['EXPLOSIÓN_RÁPIDA', 'SUBIENDO', 'MUY_ALTO'] or
-            room_current &lt; 1 or
-            position_pct &gt; 85  # Cerca del techo
-        )
-        
-        # 3. ¿La ESTRUCTURA es sana?
-        structure_is_healthy = (structure == 'SANA')
-        structure_is_broken = (structure == 'DETERIORANDO')
-        
-        # ================================================================
-        # DECISIÓN BASADA EN CONTEXTO COMPLETO
-        # ================================================================
-        
-        # ----- CASO 1: TODO MEJORA (como ASR +2.00%) -----
-        if force_is_building and space_is_opening and structure_is_healthy:
-            return {
-                'decision': 'ENTER',
-                'confidence': 90,
-                'reason': f"🎯 CONTEXTO IDEAL: Fuerza naciendo ({adx_motion}), espacio abriéndose ({exhaustion_motion}), estructura sana",
-                'archetype': 'IDEAL_CONTEXT',
-                'story': {
-                    'adx': adx_motion,
-                    'candles': candle_motion,
-                    'exhaustion': exhaustion_motion,
-                    'structure': structure
-                }
-            }
-        
-        # ----- CASO 2: Fuerza naciendo pero espacio cerrándose (como AKE -1.78%) -----
-        if force_is_building and space_is_closing:
-            return {
-                'decision': 'WAIT',
-                'confidence': 85,
-                'reason': f"⚠️ EXPLOSIÓN RÁPIDA: Fuerza sí ({adx_motion}) pero espacio cerrándose ({exhaustion_motion}) - compraría techo",
-                'archetype': 'BUYING_TOP',
-                'story': {
-                    'adx': adx_motion,
-                    'exhaustion': exhaustion_motion,
-                    'room': room_current
-                }
-            }
-        
-        # ----- CASO 3: Fuerza muriendo (como DGRAM -3.00%) -----
-        if force_is_dying:
-            return {
-                'decision': 'WAIT',
-                'confidence': 80,
-                'reason': f"🔴 FUERZA MURIENDO: ADX {adx_motion}, velas {candle_motion} - explosión terminó",
-                'archetype': 'DYING_FORCE',
-                'story': {
-                    'adx': adx_motion,
-                    'candles': candle_motion
-                }
-            }
-        
-        # ----- CASO 4: Fuerza activa con espacio OK -----
-        if has_force and not space_is_closing and structure_is_healthy:
-            return {
-                'decision': 'ENTER',
-                'confidence': 75,
-                'reason': f"📈 TENDENCIA ACTIVA: Fuerza presente, espacio OK, estructura sana",
-                'archetype': 'TREND_CONTINUATION',
-                'story': {
-                    'adx': adx_motion,
-                    'exhaustion': exhaustion_motion
-                }
-            }
-        
-        # ----- CASO 5: Estructura rota -----
-        if structure_is_broken:
-            return {
-                'decision': 'WAIT',
-                'confidence': 75,
-                'reason': f"📉 ESTRUCTURA ROTA: ZigZag deteriorándose",
-                'archetype': 'BROKEN_STRUCTURE',
-                'story': {'structure': structure}
-            }
-        
-        # ----- CASO 6: Sin espacio aunque fuerza OK -----
-        if space_is_closing and not force_is_building:
-            return {
-                'decision': 'WAIT',
-                'confidence': 70,
-                'reason': f"🚫 SIN ESPACIO: Room {room_current:.1f}%, exhaustion {exhaustion_current:.0f}%",
-                'archetype': 'NO_RUNWAY',
-                'story': {
-                    'room': room_current,
-                    'exhaustion': exhaustion_current
-                }
-            }
-        
-        # ----- CASO 7: Contexto ambiguo -----
         return {
-            'decision': 'WAIT',
-            'confidence': 50,
-            'reason': f"❓ CONTEXTO AMBIGUO: ADX {adx_motion}, exhaustion {exhaustion_motion}, estructura {structure}",
-            'archetype': 'AMBIGUOUS',
-            'story': {
-                'adx': adx_motion,
-                'exhaustion': exhaustion_motion,
-                'structure': structure
+            'total_confidence': total_confidence,
+            'factors': confidence_factors
+        }
+    
+    # =========================================================================
+    # FASE 4: DECISIÓN CON EXPLICACIÓN
+    # =========================================================================
+    
+    def make_decision(self, confidence_eval, traj, direction):
+        """
+        Decide basado en confianza total.
+        Genera explicación HUMANA.
+        """
+        
+        total = confidence_eval['total_confidence']
+        factors = confidence_eval['factors']
+        
+        # Construir explicación
+        positive_factors = [f for f in factors if f[1] &gt; 0]
+        negative_factors = [f for f in factors if f[1] &lt; 0]
+        
+        # Explicación de factores positivos
+        pos_text = ", ".join([f"{name} {detail}" for name, _, detail in positive_factors[:3]])
+        
+        # Explicación de factores negativos
+        neg_text = ", ".join([f"{name} {detail}" for name, _, detail in negative_factors[:3]])
+        
+        # Decisión
+        if total &gt;= 60:
+            decision = 'ENTER'
+            reason = f"🎯 CONFIANZA {total:.0f}%: {pos_text}"
+            if neg_text:
+                reason += f" | Alertas: {neg_text}"
+        else:
+            decision = 'WAIT'
+            if total &lt; 35:
+                reason = f"🔴 CONFIANZA BAJA {total:.0f}%: {neg_text if neg_text else 'Señales mixtas'}"
+            else:
+                reason = f"⏸️ CONFIANZA MEDIA {total:.0f}%: Requiere más confirmación"
+                if pos_text:
+                    reason += f" | Positivos: {pos_text}"
+        
+        return {
+            'decision': decision,
+            'confidence': total,
+            'reason': reason,
+            'factors': factors,
+            'trajectories': {
+                'adx_delta': traj.get('adx_delta', 0),
+                'candle_ratio': traj.get('candle_ratio', 1),
+                'exhaustion_velocity': traj.get('exhaustion_velocity', 0),
+                'room_pct': traj.get('room_pct', 0)
             }
         }
     
@@ -517,87 +470,98 @@ class UnifiedVision:
     # =========================================================================
     
     def decide_with_unified_vision(self, symbol, ladder_analysis):
-        """
-        Punto de entrada principal.
-        """
-        # 1. Recopilar FRAMES
+        """Punto de entrada principal."""
+        
+        # 1. Recopilar
         intelligence = self.gather_intelligence(symbol, ladder_analysis)
         
-        # 2. Ver la PELÍCULA (analizar trayectorias)
-        vision = self.see_the_movie(intelligence)
+        # 2. Extraer trayectorias (valores RAW)
+        trajectories = self.extract_trajectories(intelligence)
         
-        # 3. PENSAR (no pattern matching)
-        decision = self.make_human_decision(vision, intelligence)
+        # 3. Evaluar confianza (gradual)
+        direction = intelligence.get('direction', 'LATERAL')
+        confidence_eval = self.evaluate_confidence(trajectories, direction)
         
-        # 4. Agregar datos
-        decision['vision'] = vision
-        decision['intelligence_summary'] = {
-            'exhaustion_pct': intelligence['exhaustion'].get('exhaustion_pct', 50),
-            'room_pct': intelligence['exhaustion'].get('room_pct', 0),
-            'force_level': intelligence['force'].get('force_level', 'NONE'),
-            'grid_status': intelligence['grid'].get('status', 'UNKNOWN'),
-            'frames_count': len(intelligence['frames'].get('15m', []))
-        }
+        # 4. Decidir
+        decision = self.make_decision(confidence_eval, trajectories, direction)
         
         return decision
 # =============================================================================
-# FUNCIÓN DE CONVENIENCIA
+# FUNCIÓN WRAPPER
 # =============================================================================
 def decide_unified(symbol, ladder_analysis):
-    """Wrapper para uso fácil."""
     unified = UnifiedVision()
     return unified.decide_with_unified_vision(symbol, ladder_analysis)
-PASO 2: MODIFICAR brain_intelligent.py
-Código actual a reemplazar (L205-260)
-Ver plan v1.0 - sin cambios en esta sección.
+VALIDACIÓN CON CASOS DE TEST
+CASO 1: AKE (exhaust=100%, perdió -1.78%)
+Frames hipotéticos:
 
-Import a agregar (L23)
-from brain_vision_unified import UnifiedVision
-PASO 3: COMENTAR make_pattern_based_decision
-Sin cambios - comentar todo el bloque L262-592.
+adx_values = [35, 38, 42, 44, 45]  # +10 total
+exhaustion_values = [40, 60, 80, 95, 100]  # +60 explosivo
+candle_sizes = [120, 100, 80, 60, 40]  # ratio 0.33x
+Evaluación esperada:
 
-VALIDACIÓN CON TRADES REALES
-Trade: AKE (exhaust=100%, perdió -1.78%)
-Lo que v2.0 debería detectar:
-- adx_motion: probablemente 'LATERAL' o 'DECRECIENDO' (ya en climax)
-- exhaustion_motion: 'EXPLOSIÓN_RÁPIDA' o 'MUY_ALTO'
-- space_is_closing: True (room &lt; 1% + exhaust 100%)
-Decisión esperada: WAIT (BUYING_TOP)
-Razón: "Fuerza sí pero espacio cerrándose - compraría techo"
-Trade: DGRAM (exhaust=21%, perdió -3.00%)
-Lo que v2.0 debería detectar:
-- adx_motion: 'MURIENDO_RÁPIDO' o 'DECRECIENDO'
-- candle_motion: 'ACHICÁNDOSE'
-- force_is_dying: True
-Decisión esperada: WAIT (DYING_FORCE)
-Razón: "ADX muriendo, velas achicándose - explosión terminó"
-Trade: ASR (exhaust=45%, ganó +2.00%)
-Lo que v2.0 debería detectar:
-- adx_motion: 'CRECIENDO' o 'ACELERANDO'
-- exhaustion_motion: 'ESTABLE' o 'MEJORANDO'
-- structure: 'SANA'
-- force_is_building: True
-- space_is_opening: True
-Decisión esperada: ENTER (IDEAL_CONTEXT)
-Razón: "Fuerza naciendo, espacio abriéndose, estructura sana"
-RESUMEN DE CAMBIOS v1.0 → v2.0
-Aspecto	v1.0 (Incorrecto)	v2.0 (Corregido)
-ADX	if phase == 'NASCENT'	adx_changes = [frame[i+1] - frame[i]]
-Runway	if room &gt; 4: 'AMPLIO'	exhaustion_velocity = frames[-1] - frames[0]
-Decisión	Pattern matching	force_is_building and space_is_opening
-Pregunta	¿Matchea el pattern?	¿La situación MEJORA o EMPEORA?
+FACTORES:
++ ADX acelerando: +10 puntos (delta +10)
+- Velas achicándose: -20 puntos (ratio 0.33x)
+- Exhaustion explosiva: -25 puntos (velocity +60)
+- Espacio estrecho: -10 puntos (room &lt;1%)
+TOTAL: 10 - 20 - 25 - 10 = -45 → clamped a 0
+DECISIÓN: WAIT
+RAZÓN: "🔴 CONFIANZA BAJA 0%: Velas achicándose 0.33x, Exhaustion explosiva +60%, Espacio estrecho"
+CASO 2: DGRAM (exhaust=21%, perdió -3.00%)
+Frames hipotéticos:
+
+adx_values = [45, 42, 38, 35, 32]  # -13 cayendo
+candle_sizes = [150, 120, 80, 50, 30]  # ratio 0.20x
+exhaustion_values = [25, 23, 22, 21, 21]  # -4 estable
+Evaluación esperada:
+
+FACTORES:
+- ADX muriendo: -26 puntos (delta -13)
+- Velas achicándose: -25 puntos (ratio 0.20x)
++ Espacio amplio: +5 puntos (room 2-3%)
+TOTAL: -26 - 25 + 5 = -46 → clamped a 0
+DECISIÓN: WAIT
+RAZÓN: "🔴 CONFIANZA BAJA 0%: ADX muriendo -13, Velas achicándose 0.20x"
+CASO 3: ASR (exhaust=45%, ganó +2.00%)
+Frames hipotéticos:
+
+adx_values = [22, 25, 28, 32, 35]  # +13 acelerando
+candle_sizes = [50, 80, 100, 120, 140]  # ratio 2.8x
+exhaustion_values = [30, 35, 40, 43, 45]  # +15 gradual
+momentum_ages = [2, 3, 4, 5, 6]  # +4 sostenido
+zigzag = ['HH', 'HH', 'HH']
+Evaluación esperada:
+
+FACTORES:
++ ADX acelerando: +25 puntos (delta +13, tope 25)
++ ADX fuerte: +2.5 puntos (35 - 30 / 2)
++ Velas creciendo: +20 puntos (ratio 2.8x, tope 20)
++ Momentum sostenido: +12 puntos (6v * 2)
++ Espacio amplio: +10 puntos (room 3%+)
++ Estructura sana: +15 puntos (HH/HH)
+TOTAL: 25 + 2.5 + 20 + 12 + 10 + 15 = 84.5
+DECISIÓN: ENTER
+RAZÓN: "🎯 CONFIANZA 84%: ADX acelerando +13, Velas creciendo 2.8x, Momentum sostenido 6v"
+RESUMEN v3.0
+Aspecto	v2.0 (Opus)	v3.0 (Final)
+ADX	if all(c &gt; 0.5): 'ACELERANDO'	conf = min(adx_delta * 2, 25)
+Velas	if ratio &gt; 1.2: 'CRECIENDO'	conf = min((ratio - 1) * 25, 20)
+Decisión	if A and B: ENTER	if total_conf &gt;= 60: ENTER
+Output	Labels binarios	Valores numéricos + explicación
 CHECKLIST
- ¿Análisis basado en TRAYECTORIAS (no estados)?
- ¿Pensamiento contextual (no pattern matching)?
- ¿Detectaría AKE como WAIT (buying top)?
- ¿Detectaría DGRAM como WAIT (dying force)?
- ¿Detectaría ASR como ENTER (ideal context)?
-ESPERANDO APROBACIÓN PARA IMPLEMENTAR
+ ¿Eliminados TODOS los thresholds binarios?
+ ¿Confianza evaluada GRADUALMENTE?
+ ¿Explicaciones HUMANAS (no labels)?
+ ¿Casos de test funcionarían correctamente?
+ESPERANDO APROBACIÓN
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 23,255<br>
-    Generado: 2026-01-01 21:46:48
+    Total caracteres: 21,562<br>
+    Generado: 2026-01-01 22:00:42
   </div>
 </body>
 </html>
