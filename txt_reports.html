@@ -15,714 +15,686 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-01 20:46:12</div>
+  <div class="meta">Última actualización: 2026-01-01 21:35:58</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
- INFORME COMPLETO: ARQUITECTURA GRID Y DECISIÓN
-HALLAZGO PRINCIPAL: MÓDULOS DESCONECTADOS
-El problema arquitectural NO es el scoring, es que Grid y Exhaustion no se comunican.
+PLAN COMPLETO DE IMPLEMENTACIÓN LISTO
+He creado un plan detallado con todo el código propuesto. Resumen:
 
-Flujo actual (ROTO):
-analyze_15m() → calcula exhaustion_pct ✅
-       ↓
-grid.analyze() → NO recibe exhaustion_pct ❌
-       ↓
-MovieEngine → NO recibe exhaustion_pct ❌
-       ↓
-make_pattern_based_decision() → aplica penalty TARDE ❌
-¿Por qué AKE con exhaust=100% entró?
-Paso	Valor	Problema
-Score base	~137	Inflado por Grid+Force+Zona
-Exhaustion penalty	-50	Máximo lineal
-Score final	87.5	Superó threshold de 50
-Grid	APROBÓ	No sabía que exhaust=100%
-¿Por qué DGRAM con exhaust=21% perdió -3%?
-Exhaust bajo ≠ buen trade. Falta investigar:
+📁 Archivos a modificar
+Archivo	Acción	Detalles
+brain_vision_unified.py	CREAR	~350 líneas nuevas
+brain_intelligent.py	MODIFICAR	L23 (import), L205-260 (reemplazar flujo)
+brain_intelligent.py	COMENTAR	L262-592 (make_pattern_based_decision)
+🧠 Clase UnifiedVision - 3 fases
+gather_intelligence() - Recopila de: MovieEngine, Grid, Exhaustion, Frames, ZigZag, Force
+see_the_movie() - Interpreta: explosion, runway, structure, position, indicators
+make_human_decision() - 8 escenarios contextuales (no scoring)
+🎯 Escenarios de decisión (ejemplos)
+Escenario	Condiciones	Decisión
+IDEAL	Explosión naciendo + runway amplio + estructura sana	ENTER 90%
+EXPLOSIÓN	ADX acelerando + fuerza detectada	ENTER 85%
+MURIENDO	Explosión muriendo/muerta	WAIT 80%
+SIN ESPACIO	Runway bloqueado o cerca techo	WAIT 85%
+EXHAUSTED	Tendencia agotada + sin espacio	WAIT 90%
+❓ Preguntas para revisión
+¿Los 8 escenarios cubren los casos que veías?
+¿Falta algún escenario específico?
+¿Las interpretaciones de visión son correctas?
+Revisa el plan completo y confirmá cuando esté listo para implementar.
 
-¿Dirección correcta?
-¿MovieEngine vio ADX muriendo?
-¿Precio en resistencia?
-¿ZigZag roto (HH→LL)?
-El CSV no guarda estos outputs - necesitamos script de diagnóstico.
-
-Recomendación: INTEGRAR, no más penalties
-
-# PROPUESTA: Grid recibe exhaustion
-def analyze(self, symbol, df, ladder, zigzag, exhaustion_pct=None):
-    if exhaustion_pct and exhaustion_pct &gt; 90:
-        return {'status': 'BLOQUEADO', 'razon': '🚨 Exhausted 90%+'}
-
-¿Quieres que cree un script de diagnóstico para ver los outputs reales de AKE/DGRAM/ASR?
-INFORME PROFUNDO: ARQUITECTURA GRID Y FLUJO DE DECISIÓN
+PLAN DE IMPLEMENTACIÓN: VISIÓN UNIFICADA
+Versión: 1.0
 Fecha: 2026-01-01
+Estado: PENDIENTE APROBACIÓN
 
-PARTE 1: ARQUITECTURA DEL GRID
-1.1 Los 3 Módulos de Grid
-Módulo	Función	Relación con otros
-brain_grid.py
-DECISOR PRINCIPAL. Clase 
-MarketGrid
- que analiza zona, contexto, fuerza y calcula score. Es el que devuelve status OPERABLE/WAIT/BLOQUEADO	Lo llama 
-orchestrate_intelligence()
-brain_grid_master.py
-CONSTRUCTOR MULTI-TF. Clase 
-GridMaster
- que construye grids para 5M/1H/4H y los integra. Calcula profit potential, movimiento 48h	Lo llama 
-brain_grid_indicators.py
-brain_grid_indicators.py
-DIBUJADOR. Clase 
-GridIndicators
- que mapea ADX, Momentum, Volume Profile sobre el grid espacial	No se usa en flujo principal
-1.2 ¿Cuál es el Grid principal?
-brain_grid.py
- es el decisor principal usado en 
-orchestrate_intelligence()
-.
+RESUMEN EJECUTIVO
+Objetivo
+Crear un módulo brain_vision_unified.py que:
 
-# brain_intelligent.py L83-87:
-from brain_grid import grid  # &lt;-- Instancia global de MarketGrid
-ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
-df_grid = pd.DataFrame(ohlcv_grid, columns=[...])
-grid_result = grid.analyze(symbol, df_grid, ladder_analysis)  # &lt;-- AQUÍ
-1.3 ¿Qué datos RECIBE el Grid?
-def analyze(self, symbol, df_5m, ladder=None, zigzag_data=None):
-    # RECIBE:
-    # - df_5m: DataFrame OHLCV de 5 minutos
-    # - ladder: Análisis multi-timeframe (opcional)
-    # - zigzag_data: Pivots del ZigZag (opcional)
-Lo que SÍ recibe:
-
-Dato	Fuente	Cómo lo usa
-ladder['15m']['adx']	
-analyze_15m()
-Para validar fuerza (ADX&gt;22)
-ladder['15m']['momentum']	
-analyze_15m()
-Para color del puntero
-zigzag_data	
-brain_zigzag_tti.py
-Para trendlines diagonales
-Lo que NO recibe:
-
-Dato	Por qué importa
-❌ exhaustion_pct	Grid no sabe si tendencia está agotada
-❌ movie_result	Grid no sabe lo que vio MovieEngine
-❌ room_pct	Grid no sabe espacio hasta S/R
-PARTE 2: FLUJO DE DECISIÓN COMPLETO
-2.1 Diagrama de flujo
-bot_main.py
-    └── analyze_all_coins() / scan_market()
-        └── brain_intelligent.decide_intelligently(symbol)
-            └── orchestrate_intelligence(symbol)
-                │
-                ├── 1. pattern_engine.detect_all_patterns()
-                │
-                ├── 2. analyze_4h(), analyze_1h(), analyze_15m(), analyze_5m()
-                │       └── (aquí se llama analyze_trend_exhaustion())
-                │       └── (exhaustion_pct se guarda en a15m)
-                │
-                ├── 3. grid.analyze(symbol, df_5m, ladder_analysis)
-                │       └── Devuelve: status, score, contexto
-                │       └── NO recibe exhaustion_pct
-                │
-                ├── 4. MovieEngine.analyze_complete_movie(symbol)
-                │       └── Analiza frames de 5M, 1H, 4H
-                │       └── Devuelve: should_enter, reason, scenes
-                │
-                ├── 5. force_filter.has_force(symbol, ladder)
-                │       └── Si NO tiene fuerza → HARD BLOCK
-                │
-                └── 6. make_pattern_based_decision(...)
-                        ├── Evalúa Wrecking Ball
-                        ├── Evalúa ZigZag
-                        ├── Evalúa S/R
-                        ├── Evalúa Grid score (+/-)
-                        ├── Evalúa Movie penalty
-                        ├── Evalúa Exhaustion penalty  ← AQUÍ SE APLICA
-                        ├── Evalúa ADX Dying penalty
-                        └── DECISIÓN: ENTER si score &gt;= threshold
-2.2 ¿Quién toma la decisión FINAL?
-make_pattern_based_decision()
- en 
-brain_intelligent.py
-
-# brain_intelligent.py L589-591:
-if final_score &gt;= MIN_THRESHOLD:
-    return {'action': 'ENTER', ...}
-else:
-    return {'action': 'WAIT', ...}
-MIN_THRESHOLD es dinámico (45-60 según ADX).
-
-PARTE 3: ANÁLISIS DE TRADES PROBLEMÁTICOS
-🔴 PROBLEMA FUNDAMENTAL IDENTIFICADO
-El backtest NO guarda los outputs detallados de cada módulo.
-
-El CSV solo guarda:
-
-symbol, 
-score
-, exhaustion_pct, force_level
-NO guarda: grid_result, movie_scenes, zigzag_data, room_pct
-Para obtener outputs reales necesitamos modificar el backtest o crear un script de diagnóstico.
-
-3.1 Trade: AKE (exhaust=100%, score=87.5, PnL=-1.78%)
-LO QUE SABEMOS:
-
-Campo	Valor	Interpretación
-exhaustion_pct	100%	Tendencia COMPLETAMENTE agotada
-score
-87.5	Alto (pasó threshold ~50)
-force_level	BRUTAL	ADX muy alto
-PnL	-1.78%	Pérdida
-RECONSTRUCCIÓN HIPOTÉTICA:
-
-┌────────────────────────────────────────────────────────────┐
-│ AKE con exhaust=100%                                       │
-├────────────────────────────────────────────────────────────┤
-│ 1. FORCE FILTER: PASÓ (BRUTAL)                             │
-│    → ADX probablemente &gt;35                                 │
-├────────────────────────────────────────────────────────────┤
-│ 2. GRID:                                                   │
-│    → Probablemente: status=OPERABLE                        │
-│    → Grid NO sabe que exhaust=100%                         │
-│    → Grid solo ve: zona, diagonal, fuerza                  │
-├────────────────────────────────────────────────────────────┤
-│ 3. MOVIEENGINE:                                            │
-│    → Probablemente: should_enter=True o penalty baja       │
-│    → MovieEngine VE trayectorias pero no "room"            │
-├────────────────────────────────────────────────────────────┤
-│ 4. EXHAUSTION PENALTY:                                     │
-│    → exhaust=100% → penalty = 50 * (100-50)/50 = -50       │
-│    → Score pre-penalty = 87.5 + 50 = ~137.5                │
-├────────────────────────────────────────────────────────────┤
-│ 5. CÁLCULO FINAL:                                          │
-│    score_base = ~137.5                                     │
-│    - exhaustion_penalty = -50                              │
-│    = final_score = 87.5 (&gt; threshold 50)                   │
-│    → DECISIÓN: ENTER ❌                                    │
-└────────────────────────────────────────────────────────────┘
-¿POR QUÉ FALLÓ?
-
-El score base era TAN alto (~137) que la penalty de -50 no bastó.
-
-¿QUÉ DEBERÍA HABER VISTO?
-
-Grid debería saber que exhaust=100% y rechazar
-MovieEngine debería detectar ADX en fase DYING
-Exhaustion penalty debería ser exponencial o hard-block
-3.2 Trade: DGRAM (exhaust=21%, score=100, PnL=-3.00%)
-LO QUE SABEMOS:
-
-Campo	Valor	Interpretación
-exhaustion_pct	21%	Tendencia FRESCA
-score
-100	MÁXIMO posible
-force_level	BRUTAL	ADX muy alto
-PnL	-3.00%	Pérdida FUERTE
-RECONSTRUCCIÓN HIPOTÉTICA:
-
-┌────────────────────────────────────────────────────────────┐
-│ DGRAM con exhaust=21%, score=100                           │
-├────────────────────────────────────────────────────────────┤
-│ PROBLEMA: Exhaust bajo + score perfecto = PÉRDIDA          │
-│ Algo más falló que NO se captura                           │
-├────────────────────────────────────────────────────────────┤
-│ POSIBLES CAUSAS:                                           │
-│                                                            │
-│ 1. DIRECCIÓN INCORRECTA                                    │
-│    → Bot entró LONG pero mercado iba SHORT                 │
-│    → Exhaustion mide bien pero dirección mal               │
-│                                                            │
-│ 2. PUMP &amp; DUMP                                             │
-│    → Explosión repentina que revirtió                      │
-│    → Bot entró en el pico                                  │
-│                                                            │
-│ 3. ADX MURIENDO RÁPIDO                                     │
-│    → ADX era alto pero CAYENDO                             │
-│    → MovieEngine debería haber penalizado                  │
-│                                                            │
-│ 4. RESISTENCIA INMEDIATA                                   │
-│    → Precio estaba justo debajo de resistencia             │
-│    → Grid no detectó (o no penalizó suficiente)            │
-│                                                            │
-│ 5. ZIGZAG DETERIORÁNDOSE                                   │
-│    → Estructura HH→HH→LL (break of structure)              │
-│    → No se detectó el cambio                               │
-└────────────────────────────────────────────────────────────┘
-¿QUÉ FALTA INVESTIGAR?
-
-¿Cuál era la dirección del trade (LONG/SHORT)?
-¿Qué vio MovieEngine (fase, quality)?
-¿Grid detectó posición en diagonal?
-¿ZigZag mostraba estructura sana o rota?
-3.3 Trade: ASR (exhaust=45%, score=61.5, PnL=+2.00%)
-LO QUE SABEMOS:
-
-Campo	Valor	Interpretación
-exhaustion_pct	45%	DEVELOPING (zona media)
-score
-61.5	Moderado pero aprobó
-force_level	BRUTAL	ADX alto
-PnL	+2.00%	GANANCIA
-¿POR QUÉ FUNCIONÓ?
-
-┌────────────────────────────────────────────────────────────┐
-│ ASR con exhaust=45%, score=61.5                            │
-├────────────────────────────────────────────────────────────┤
-│ FACTORES DE ÉXITO:                                         │
-│                                                            │
-│ 1. EXHAUSTION EN ZONA ÓPTIMA                               │
-│    → 45% = zona DEVELOPING (ni muy temprano ni tarde)      │
-│    → Aún hay room suficiente para moverse                  │
-│                                                            │
-│ 2. SCORE MODERADO                                          │
-│    → 61.5 no es extremo                                    │
-│    → Probablemente no todos los checks fueron perfectos    │
-│    → Esto FILTRÓ setups marginales                         │
-│                                                            │
-│ 3. BALANCE CORRECTO                                        │
-│    → Fuerza BRUTAL + Exhaustion moderada = setup real      │
-│    → No forzó entrada con score inflado                    │
-└────────────────────────────────────────────────────────────┘
-PARTE 4: DIAGNÓSTICO ARQUITECTURAL
-4.1 ¿Dónde está el problema?
-┌─────────────────────────────────────────────────────────────────┐
-│                 FLUJO ACTUAL (DESCONECTADO)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  analyze_15m()                                                  │
-│       │                                                         │
-│       ├── Calcula exhaustion_pct ✓                              │
-│       └── Guarda en a15m ✓                                      │
-│                                                                 │
-│  grid.analyze()                                                 │
-│       │                                                         │
-│       ├── Recibe: df_5m, ladder, zigzag_data                    │
-│       ├── NO recibe: exhaustion_pct ❌                          │
-│       └── Calcula score INDEPENDIENTE                           │
-│                                                                 │
-│  MovieEngine.analyze_complete_movie()                           │
-│       │                                                         │
-│       ├── Analiza trayectorias de frames                        │
-│       ├── NO recibe: exhaustion_pct ❌                          │
-│       └── Decide INDEPENDIENTE                                  │
-│                                                                 │
-│  make_pattern_based_decision()                                  │
-│       │                                                         │
-│       ├── Recibe: grid_result, movie_result, a15m               │
-│       ├── AQUÍ se aplica exhaustion_penalty (tarde) ✓           │
-│       └── PERO score base ya puede ser muy alto ❌              │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-4.2 ¿Qué está específicamente roto?
-Problema	Descripción	Impacto
-Grid ciego a exhaustion	Grid no sabe si tendencia está agotada	Aprueba trades al 100% exhaustion
-Score inflado	Múltiples bonuses se suman sin límite	Score base puede ser &gt;150
-Penalty lineal débil	-50 max no basta para scores altos	Trades con exhaust=100% pasan
-No hay hard-block	Exhaustion solo penaliza, no bloquea	Siempre hay chance de pasar
-Modules independientes	Grid, MovieEngine, Exhaustion no se comunican	Cada uno decide por su lado
-4.3 ¿Qué información le falta al decisor final?
-Joel cuando opera manualmente VE:
-
-¿Cuánto recorrió vs cuánto queda? (exhaustion visual)
-
-Bot lo calcula pero no lo integra en Grid
-¿Precio acelerando o desacelerando? (momentum velocity)
-
-MovieEngine lo calcula pero no lo penaliza fuerte
-¿Estructura ZigZag sana o rota? (HH→HL vs HH→LL)
-
-Se calcula pero no bloquea si se rompe
-¿Estoy comprando techo absoluto? (position in range)
-
-Grid calcula pero exhaust=100% debería BLOQUEAR
-4.4 Recomendación: Integración, no más penalties
-En lugar de agregar más penalties, CONECTAR los módulos:
-
-# PROPUESTA: Grid recibe exhaustion
-def analyze(self, symbol, df_5m, ladder=None, zigzag_data=None, exhaustion_pct=None):
-    # Si exhaustion &gt; 90%, status = BLOQUEADO sin importar score
-    if exhaustion_pct and exhaustion_pct &gt; 90:
+Recopile información de TODOS los módulos existentes
+Vea el cuadro completo como Joel lo veía
+Decida basado en CONTEXTO, no en scoring aritmético
+Filosofía (NO NEGOCIABLE)
+❌ NO hard-blocks binarios
+❌ NO penalties aritméticas (score -= 50)
+❌ NO thresholds rígidos
+✅ Visión holística
+✅ Decisión contextual
+✅ Time Ladder puro
+PASO 1: CREAR brain_vision_unified.py
+Ubicación
+c:\Users\Joel\Trading automatizado\BraintraderAntigravity\brain_vision_unified.py
+Código propuesto completo
+"""
+================================================================================
+BRAIN VISION UNIFIED v1.0 - VISIÓN HOLÍSTICA DEL MERCADO
+================================================================================
+Joel: "Hay que darle inteligencia, que vea la película y decida como un 
+trader humano. El bot está preparado para eso."
+Este módulo:
+1. RECOPILA información de TODOS los módulos existentes
+2. VE el cuadro completo (no snapshots aislados)
+3. DECIDE basado en CONTEXTO, no en scoring aritmético
+NO usa:
+- Hard blocks (if &gt; X: BLOQUEAR)
+- Penalties aritméticas (score -= 50)
+- Thresholds rígidos
+SÍ usa:
+- Análisis contextual
+- Decisión como trader humano
+- Time Ladder (frames en movimiento)
+================================================================================
+"""
+from brain_movie_engine import MovieEngine
+from brain_grid import grid
+from brain_trend_exhaustion import analyze_trend_exhaustion
+from brain_frames import get_frame_storage
+from brain_zigzag_tti import get_zigzag_data
+from brain_force_filter import force_filter
+from exchange_connection import fetch_ohlcv
+import pandas as pd
+class UnifiedVision:
+    """
+    Cerebro unificado que ve TODO el contexto del mercado.
+    
+    Decide como un trader humano, no como una calculadora.
+    """
+    
+    def __init__(self):
+        self.movie_engine = MovieEngine()
+    
+    # =========================================================================
+    # FASE 1: RECOPILAR TODA LA INTELIGENCIA
+    # =========================================================================
+    
+    def gather_intelligence(self, symbol, ladder_analysis):
+        """
+        Recopila información de TODOS los módulos existentes.
+        
+        Returns:
+            dict: Toda la información del mercado en un solo lugar
+        """
+        
+        # 1. MOVIEENGINE - ¿La película cuenta una historia bullish/bearish?
+        direction = ladder_analysis.get('15m', {}).get('direction', 'LATERAL')
+        movie_result = self.movie_engine.analyze_complete_movie(symbol, direction)
+        
+        # 2. GRID - ¿Dónde estoy? ¿Hacia dónde voy?
+        ohlcv = fetch_ohlcv(symbol, '5m', 50)
+        if ohlcv:
+            df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
+            grid_result = grid.analyze(symbol, df, ladder_analysis)
+        else:
+            grid_result = {'status': 'ERROR', 'score': 0}
+        
+        # 3. EXHAUSTION - ¿Cuánto recorrí vs cuánto queda?
+        exhaustion_result = analyze_trend_exhaustion(symbol, direction)
+        
+        # 4. FRAMES - ¿ADX/Momentum acelerando o desacelerando?
+        frames_15m = get_frame_storage(symbol, '15m').get_frames(5)
+        frames_5m = get_frame_storage(symbol, '5m').get_frames(5)
+        
+        # 5. ZIGZAG - ¿Estructura sana o deteriorándose?
+        try:
+            zigzag_data = get_zigzag_data(symbol, '15m')
+        except:
+            zigzag_data = {'pivot_types': [], 'pivots': []}
+        
+        # 6. FORCE - ¿Hay fuerza desarrollándose?
+        force_result = force_filter.has_force(symbol, ladder_analysis)
+        
         return {
-            'status': 'BLOQUEADO',
-            'razon': f'🚨 Exhaustion {exhaustion_pct:.0f}% - Tendencia agotada',
-            'score': -100
+            'movie': movie_result,
+            'grid': grid_result,
+            'exhaustion': exhaustion_result,
+            'frames': {'15m': frames_15m, '5m': frames_5m},
+            'zigzag': zigzag_data,
+            'force': force_result,
+            'direction': direction
         }
-Esto evita que Grid apruebe algo que Exhaustion ya sabe que es malo.
-
-Dame el mapa completo del bot, de todos los modulos para que sirven cada uno y la estructura de como estan unificados. Gracias.
-
-RESUMEN DEL MAPA
-Categorías principales (41 módulos):
-Categoría	Módulos	Descripción
-Orquestación	
-bot_main.py
-, 
-brain_intelligent.py
-Entry point y coordinador central
-Análisis Multi-TF	
-brain_analyzer.py
-, 
-brain_calculator.py
-ADX, Momentum, EMAs por timeframe
-Grid (Espacio)	
-brain_grid.py
-, 
-brain_grid_master.py
-, 
-brain_grid_indicators.py
-Navegación espacial, zonas, S/R
-Película (Tiempo)	
-brain_movie_engine.py
-, 
-brain_frames.py
-, 
-brain_trajectory.py
-Historia temporal, velocidad, fases
-Indicadores Granulares	brain_adx_*.py, brain_momentum_*.py, 
-brain_zigzag_tti.py
-Análisis detallado de cada indicador
-Decisión	
-brain_think.py
-, 
-brain_force_filter.py
-, 
-brain_phase_classifier.py
-Sniper 3 capas, filtros
-Exhaustion	
-brain_trend_exhaustion.py
-, 
-brain_trend_birth.py
-Agotamiento y nacimiento de tendencias
-Ejecución	
-brain_executor.py
-, 
-brain_watchlist.py
-, 
-brain_sniper_realtime.py
-Trades, monitoreo
-Infraestructura	
-exchange_connection.py
-, 
-database_manager.py
-, 
-sheets_manager.py
-Conectividad
-
-Flujo principal:
-
-bot_main → brain_intelligent → [analyzer, grid, movie, force] → make_decision → executor
-
- Gap detectado:
-exhaustion_pct NO llega a 
-brain_grid.py
- (están desconectados)
-El reporte completo está en el archivo adjunto con diagramas y conexiones detalladas.
-
- INFORME PROFUNDO: ARQUITECTURA GRID Y FLUJO DE DECISIÓN
-Fecha: 2026-01-01
-
-PARTE 1: ARQUITECTURA DEL GRID
-1.1 Los 3 Módulos de Grid
-Módulo	Función	Relación con otros
-brain_grid.py
-DECISOR PRINCIPAL. Clase 
-MarketGrid
- que analiza zona, contexto, fuerza y calcula score. Es el que devuelve status OPERABLE/WAIT/BLOQUEADO	Lo llama 
-orchestrate_intelligence()
-brain_grid_master.py
-CONSTRUCTOR MULTI-TF. Clase 
-GridMaster
- que construye grids para 5M/1H/4H y los integra. Calcula profit potential, movimiento 48h	Lo llama 
-brain_grid_indicators.py
-brain_grid_indicators.py
-DIBUJADOR. Clase 
-GridIndicators
- que mapea ADX, Momentum, Volume Profile sobre el grid espacial	No se usa en flujo principal
-1.2 ¿Cuál es el Grid principal?
-brain_grid.py
- es el decisor principal usado en 
-orchestrate_intelligence()
-.
-
-# brain_intelligent.py L83-87:
-from brain_grid import grid  # &lt;-- Instancia global de MarketGrid
-ohlcv_grid = fetch_ohlcv(symbol, '5m', 50)
-df_grid = pd.DataFrame(ohlcv_grid, columns=[...])
-grid_result = grid.analyze(symbol, df_grid, ladder_analysis)  # &lt;-- AQUÍ
-1.3 ¿Qué datos RECIBE el Grid?
-def analyze(self, symbol, df_5m, ladder=None, zigzag_data=None):
-    # RECIBE:
-    # - df_5m: DataFrame OHLCV de 5 minutos
-    # - ladder: Análisis multi-timeframe (opcional)
-    # - zigzag_data: Pivots del ZigZag (opcional)
-Lo que SÍ recibe:
-
-Dato	Fuente	Cómo lo usa
-ladder['15m']['adx']	
-analyze_15m()
-Para validar fuerza (ADX&gt;22)
-ladder['15m']['momentum']	
-analyze_15m()
-Para color del puntero
-zigzag_data	
-brain_zigzag_tti.py
-Para trendlines diagonales
-Lo que NO recibe:
-
-Dato	Por qué importa
-❌ exhaustion_pct	Grid no sabe si tendencia está agotada
-❌ movie_result	Grid no sabe lo que vio MovieEngine
-❌ room_pct	Grid no sabe espacio hasta S/R
-PARTE 2: FLUJO DE DECISIÓN COMPLETO
-2.1 Diagrama de flujo
-bot_main.py
-    └── analyze_all_coins() / scan_market()
-        └── brain_intelligent.decide_intelligently(symbol)
-            └── orchestrate_intelligence(symbol)
-                │
-                ├── 1. pattern_engine.detect_all_patterns()
-                │
-                ├── 2. analyze_4h(), analyze_1h(), analyze_15m(), analyze_5m()
-                │       └── (aquí se llama analyze_trend_exhaustion())
-                │       └── (exhaustion_pct se guarda en a15m)
-                │
-                ├── 3. grid.analyze(symbol, df_5m, ladder_analysis)
-                │       └── Devuelve: status, score, contexto
-                │       └── NO recibe exhaustion_pct
-                │
-                ├── 4. MovieEngine.analyze_complete_movie(symbol)
-                │       └── Analiza frames de 5M, 1H, 4H
-                │       └── Devuelve: should_enter, reason, scenes
-                │
-                ├── 5. force_filter.has_force(symbol, ladder)
-                │       └── Si NO tiene fuerza → HARD BLOCK
-                │
-                └── 6. make_pattern_based_decision(...)
-                        ├── Evalúa Wrecking Ball
-                        ├── Evalúa ZigZag
-                        ├── Evalúa S/R
-                        ├── Evalúa Grid score (+/-)
-                        ├── Evalúa Movie penalty
-                        ├── Evalúa Exhaustion penalty  ← AQUÍ SE APLICA
-                        ├── Evalúa ADX Dying penalty
-                        └── DECISIÓN: ENTER si score &gt;= threshold
-2.2 ¿Quién toma la decisión FINAL?
-make_pattern_based_decision()
- en 
-brain_intelligent.py
-
-# brain_intelligent.py L589-591:
-if final_score &gt;= MIN_THRESHOLD:
-    return {'action': 'ENTER', ...}
-else:
-    return {'action': 'WAIT', ...}
-MIN_THRESHOLD es dinámico (45-60 según ADX).
-
-PARTE 3: ANÁLISIS DE TRADES PROBLEMÁTICOS
-🔴 PROBLEMA FUNDAMENTAL IDENTIFICADO
-El backtest NO guarda los outputs detallados de cada módulo.
-
-El CSV solo guarda:
-
-symbol, 
-score
-, exhaustion_pct, force_level
-NO guarda: grid_result, movie_scenes, zigzag_data, room_pct
-Para obtener outputs reales necesitamos modificar el backtest o crear un script de diagnóstico.
-
-3.1 Trade: AKE (exhaust=100%, score=87.5, PnL=-1.78%)
-LO QUE SABEMOS:
-
-Campo	Valor	Interpretación
-exhaustion_pct	100%	Tendencia COMPLETAMENTE agotada
-score
-87.5	Alto (pasó threshold ~50)
-force_level	BRUTAL	ADX muy alto
-PnL	-1.78%	Pérdida
-RECONSTRUCCIÓN HIPOTÉTICA:
-
-┌────────────────────────────────────────────────────────────┐
-│ AKE con exhaust=100%                                       │
-├────────────────────────────────────────────────────────────┤
-│ 1. FORCE FILTER: PASÓ (BRUTAL)                             │
-│    → ADX probablemente &gt;35                                 │
-├────────────────────────────────────────────────────────────┤
-│ 2. GRID:                                                   │
-│    → Probablemente: status=OPERABLE                        │
-│    → Grid NO sabe que exhaust=100%                         │
-│    → Grid solo ve: zona, diagonal, fuerza                  │
-├────────────────────────────────────────────────────────────┤
-│ 3. MOVIEENGINE:                                            │
-│    → Probablemente: should_enter=True o penalty baja       │
-│    → MovieEngine VE trayectorias pero no "room"            │
-├────────────────────────────────────────────────────────────┤
-│ 4. EXHAUSTION PENALTY:                                     │
-│    → exhaust=100% → penalty = 50 * (100-50)/50 = -50       │
-│    → Score pre-penalty = 87.5 + 50 = ~137.5                │
-├────────────────────────────────────────────────────────────┤
-│ 5. CÁLCULO FINAL:                                          │
-│    score_base = ~137.5                                     │
-│    - exhaustion_penalty = -50                              │
-│    = final_score = 87.5 (&gt; threshold 50)                   │
-│    → DECISIÓN: ENTER ❌                                    │
-└────────────────────────────────────────────────────────────┘
-¿POR QUÉ FALLÓ?
-
-El score base era TAN alto (~137) que la penalty de -50 no bastó.
-
-¿QUÉ DEBERÍA HABER VISTO?
-
-Grid debería saber que exhaust=100% y rechazar
-MovieEngine debería detectar ADX en fase DYING
-Exhaustion penalty debería ser exponencial o hard-block
-3.2 Trade: DGRAM (exhaust=21%, score=100, PnL=-3.00%)
-LO QUE SABEMOS:
-
-Campo	Valor	Interpretación
-exhaustion_pct	21%	Tendencia FRESCA
-score
-100	MÁXIMO posible
-force_level	BRUTAL	ADX muy alto
-PnL	-3.00%	Pérdida FUERTE
-RECONSTRUCCIÓN HIPOTÉTICA:
-
-┌────────────────────────────────────────────────────────────┐
-│ DGRAM con exhaust=21%, score=100                           │
-├────────────────────────────────────────────────────────────┤
-│ PROBLEMA: Exhaust bajo + score perfecto = PÉRDIDA          │
-│ Algo más falló que NO se captura                           │
-├────────────────────────────────────────────────────────────┤
-│ POSIBLES CAUSAS:                                           │
-│                                                            │
-│ 1. DIRECCIÓN INCORRECTA                                    │
-│    → Bot entró LONG pero mercado iba SHORT                 │
-│    → Exhaustion mide bien pero dirección mal               │
-│                                                            │
-│ 2. PUMP &amp; DUMP                                             │
-│    → Explosión repentina que revirtió                      │
-│    → Bot entró en el pico                                  │
-│                                                            │
-│ 3. ADX MURIENDO RÁPIDO                                     │
-│    → ADX era alto pero CAYENDO                             │
-│    → MovieEngine debería haber penalizado                  │
-│                                                            │
-│ 4. RESISTENCIA INMEDIATA                                   │
-│    → Precio estaba justo debajo de resistencia             │
-│    → Grid no detectó (o no penalizó suficiente)            │
-│                                                            │
-│ 5. ZIGZAG DETERIORÁNDOSE                                   │
-│    → Estructura HH→HH→LL (break of structure)              │
-│    → No se detectó el cambio                               │
-└────────────────────────────────────────────────────────────┘
-¿QUÉ FALTA INVESTIGAR?
-
-¿Cuál era la dirección del trade (LONG/SHORT)?
-¿Qué vio MovieEngine (fase, quality)?
-¿Grid detectó posición en diagonal?
-¿ZigZag mostraba estructura sana o rota?
-3.3 Trade: ASR (exhaust=45%, score=61.5, PnL=+2.00%)
-LO QUE SABEMOS:
-
-Campo	Valor	Interpretación
-exhaustion_pct	45%	DEVELOPING (zona media)
-score
-61.5	Moderado pero aprobó
-force_level	BRUTAL	ADX alto
-PnL	+2.00%	GANANCIA
-¿POR QUÉ FUNCIONÓ?
-
-┌────────────────────────────────────────────────────────────┐
-│ ASR con exhaust=45%, score=61.5                            │
-├────────────────────────────────────────────────────────────┤
-│ FACTORES DE ÉXITO:                                         │
-│                                                            │
-│ 1. EXHAUSTION EN ZONA ÓPTIMA                               │
-│    → 45% = zona DEVELOPING (ni muy temprano ni tarde)      │
-│    → Aún hay room suficiente para moverse                  │
-│                                                            │
-│ 2. SCORE MODERADO                                          │
-│    → 61.5 no es extremo                                    │
-│    → Probablemente no todos los checks fueron perfectos    │
-│    → Esto FILTRÓ setups marginales                         │
-│                                                            │
-│ 3. BALANCE CORRECTO                                        │
-│    → Fuerza BRUTAL + Exhaustion moderada = setup real      │
-│    → No forzó entrada con score inflado                    │
-└────────────────────────────────────────────────────────────┘
-PARTE 4: DIAGNÓSTICO ARQUITECTURAL
-4.1 ¿Dónde está el problema?
-┌─────────────────────────────────────────────────────────────────┐
-│                 FLUJO ACTUAL (DESCONECTADO)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  analyze_15m()                                                  │
-│       │                                                         │
-│       ├── Calcula exhaustion_pct ✓                              │
-│       └── Guarda en a15m ✓                                      │
-│                                                                 │
-│  grid.analyze()                                                 │
-│       │                                                         │
-│       ├── Recibe: df_5m, ladder, zigzag_data                    │
-│       ├── NO recibe: exhaustion_pct ❌                          │
-│       └── Calcula score INDEPENDIENTE                           │
-│                                                                 │
-│  MovieEngine.analyze_complete_movie()                           │
-│       │                                                         │
-│       ├── Analiza trayectorias de frames                        │
-│       ├── NO recibe: exhaustion_pct ❌                          │
-│       └── Decide INDEPENDIENTE                                  │
-│                                                                 │
-│  make_pattern_based_decision()                                  │
-│       │                                                         │
-│       ├── Recibe: grid_result, movie_result, a15m               │
-│       ├── AQUÍ se aplica exhaustion_penalty (tarde) ✓           │
-│       └── PERO score base ya puede ser muy alto ❌              │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-4.2 ¿Qué está específicamente roto?
-Problema	Descripción	Impacto
-Grid ciego a exhaustion	Grid no sabe si tendencia está agotada	Aprueba trades al 100% exhaustion
-Score inflado	Múltiples bonuses se suman sin límite	Score base puede ser &gt;150
-Penalty lineal débil	-50 max no basta para scores altos	Trades con exhaust=100% pasan
-No hay hard-block	Exhaustion solo penaliza, no bloquea	Siempre hay chance de pasar
-Modules independientes	Grid, MovieEngine, Exhaustion no se comunican	Cada uno decide por su lado
-4.3 ¿Qué información le falta al decisor final?
-Joel cuando opera manualmente VE:
-
-¿Cuánto recorrió vs cuánto queda? (exhaustion visual)
-
-Bot lo calcula pero no lo integra en Grid
-¿Precio acelerando o desacelerando? (momentum velocity)
-
-MovieEngine lo calcula pero no lo penaliza fuerte
-¿Estructura ZigZag sana o rota? (HH→HL vs HH→LL)
-
-Se calcula pero no bloquea si se rompe
-¿Estoy comprando techo absoluto? (position in range)
-
-Grid calcula pero exhaust=100% debería BLOQUEAR
-4.4 Recomendación: Integración, no más penalties
-En lugar de agregar más penalties, CONECTAR los módulos:
-
-# PROPUESTA: Grid recibe exhaustion
-def analyze(self, symbol, df_5m, ladder=None, zigzag_data=None, exhaustion_pct=None):
-    # Si exhaustion &gt; 90%, status = BLOQUEADO sin importar score
-    if exhaustion_pct and exhaustion_pct &gt; 90:
+    
+    # =========================================================================
+    # FASE 2: VER LA PELÍCULA COMPLETA
+    # =========================================================================
+    
+    def see_the_movie(self, intelligence):
+        """
+        Ve la PELÍCULA completa y entiende el contexto.
+        
+        NO usa if/else binarios.
+        ENTIENDE el contexto como un trader humano.
+        
+        Returns:
+            dict: Interpretación holística del mercado
+        """
+        vision = {}
+        
+        # ---------- A. CALIDAD DE LA EXPLOSIÓN ----------
+        # ¿La fuerza está NACIENDO, CRECIENDO, o MURIENDO?
+        
+        movie = intelligence.get('movie', {})
+        scenes = movie.get('scenes', {})
+        scene_5m = scenes.get('5m', {})
+        
+        adx_phase = scene_5m.get('adx_phase', 'UNKNOWN')
+        adx_velocity = scene_5m.get('adx_trajectory', {}).get('velocity', 0)
+        
+        if adx_phase in ['EXPLOSION_NASCENT', 'EXPLOSION_BUILDING']:
+            vision['explosion'] = 'NACIENDO'  # 🟢 Excelente
+        elif adx_phase in ['EXPLOSION_SUSTAINED', 'EXPLOSION_STRONG']:
+            vision['explosion'] = 'ACTIVA'    # 🟡 Buena
+        elif adx_phase in ['EXPLOSION_CLIMAX', 'EXPLOSION_FADING']:
+            vision['explosion'] = 'MURIENDO'  # 🔴 Peligrosa
+        elif adx_phase in ['FORCE_DYING', 'FORCE_WEAK', 'LATERAL']:
+            vision['explosion'] = 'MUERTA'    # ⚫ No hay
+        else:
+            vision['explosion'] = 'DESCONOCIDA'
+        
+        # ADX acelerando vs desacelerando
+        if adx_velocity &gt; 0.5:
+            vision['adx_trend'] = 'ACELERANDO'
+        elif adx_velocity &lt; -0.5:
+            vision['adx_trend'] = 'DESACELERANDO'
+        else:
+            vision['adx_trend'] = 'ESTABLE'
+        
+        # ---------- B. RUNWAY (ESPACIO LIBRE) ----------
+        # ¿Cuánto espacio hay para que el precio se mueva?
+        
+        exhaustion = intelligence.get('exhaustion', {})
+        room_pct = exhaustion.get('room_pct', 0)
+        moved_pct = exhaustion.get('moved_pct', 0)
+        exhaustion_pct = exhaustion.get('exhaustion_pct', 50)
+        
+        if room_pct &gt; 4:
+            vision['runway'] = 'AMPLIO'       # 🟢 Mucho espacio
+        elif room_pct &gt; 2:
+            vision['runway'] = 'MODERADO'     # 🟡 Espacio aceptable
+        elif room_pct &gt; 1:
+            vision['runway'] = 'ESTRECHO'     # 🟠 Poco espacio
+        else:
+            vision['runway'] = 'BLOQUEADO'    # 🔴 Sin espacio
+        
+        # Fase de exhaustion
+        if exhaustion_pct &lt; 30:
+            vision['exhaustion_phase'] = 'FRESH'
+        elif exhaustion_pct &lt; 50:
+            vision['exhaustion_phase'] = 'DEVELOPING'
+        elif exhaustion_pct &lt; 70:
+            vision['exhaustion_phase'] = 'MATURE'
+        else:
+            vision['exhaustion_phase'] = 'EXHAUSTED'
+        
+        # ---------- C. ESTRUCTURA ZIGZAG ----------
+        # ¿La estructura es SANA (HH→HL) o ROTA (HH→LH→LL)?
+        
+        zigzag = intelligence.get('zigzag', {})
+        pivot_types = zigzag.get('pivot_types', [])
+        
+        if len(pivot_types) &gt;= 2:
+            last_two = pivot_types[-2:]
+            
+            direction = intelligence.get('direction', 'LATERAL')
+            
+            if direction == 'BULLISH':
+                # Bullish sano: HH, HL
+                if last_two[-1] in ['HH', 'HL'] and last_two[-2] in ['HH', 'HL']:
+                    vision['structure'] = 'SANA'
+                elif 'LH' in last_two or 'LL' in last_two:
+                    vision['structure'] = 'DETERIORANDO'
+                else:
+                    vision['structure'] = 'AMBIGUA'
+            
+            elif direction == 'BEARISH':
+                # Bearish sano: LL, LH
+                if last_two[-1] in ['LL', 'LH'] and last_two[-2] in ['LL', 'LH']:
+                    vision['structure'] = 'SANA'
+                elif 'HH' in last_two or 'HL' in last_two:
+                    vision['structure'] = 'DETERIORANDO'
+                else:
+                    vision['structure'] = 'AMBIGUA'
+            else:
+                vision['structure'] = 'LATERAL'
+        else:
+            vision['structure'] = 'INSUFICIENTE'
+        
+        # ---------- D. POSICIÓN EN GRID ----------
+        # ¿Estoy comprando TECHO o cerca de SOPORTE?
+        
+        grid_data = intelligence.get('grid', {})
+        grid_status = grid_data.get('status', 'UNKNOWN')
+        contexto = grid_data.get('contexto', 'UNKNOWN')
+        
+        # Posición en diagonal (si está disponible)
+        diagonal = grid_data.get('diagonal_data', {})
+        position_pct = diagonal.get('price_position_pct', 50)
+        
+        if position_pct &lt; 25:
+            vision['position'] = 'CERCA_SOPORTE'   # 🟢 Ideal para LONG
+        elif position_pct &lt; 50:
+            vision['position'] = 'ZONA_BAJA'       # 🟡 Buena
+        elif position_pct &lt; 75:
+            vision['position'] = 'ZONA_ALTA'       # 🟠 Riesgosa
+        else:
+            vision['position'] = 'CERCA_TECHO'     # 🔴 Peligro
+        
+        vision['grid_status'] = grid_status
+        vision['grid_contexto'] = contexto
+        
+        # ---------- E. NIVEL DE FUERZA ----------
+        
+        force = intelligence.get('force', {})
+        vision['has_force'] = force.get('has_force', False)
+        vision['force_level'] = force.get('force_level', 'NONE')
+        
+        # ---------- F. FRAMES - ACELERACIÓN ----------
+        # ¿Los indicadores están mejorando o empeorando?
+        
+        frames = intelligence.get('frames', {})
+        frames_15m = frames.get('15m', [])
+        
+        if len(frames_15m) &gt;= 3:
+            # Extraer ADX de últimos 3 frames
+            try:
+                adx_values = [f.get('adx', {}).get('value', 0) for f in frames_15m[-3:]]
+                if adx_values[2] &gt; adx_values[1] &gt; adx_values[0]:
+                    vision['indicators'] = 'MEJORANDO'
+                elif adx_values[2] &lt; adx_values[1] &lt; adx_values[0]:
+                    vision['indicators'] = 'EMPEORANDO'
+                else:
+                    vision['indicators'] = 'MIXTO'
+            except:
+                vision['indicators'] = 'DESCONOCIDO'
+        else:
+            vision['indicators'] = 'INSUFICIENTE'
+        
+        return vision
+    
+    # =========================================================================
+    # FASE 3: DECIDIR COMO TRADER HUMANO
+    # =========================================================================
+    
+    def make_human_decision(self, vision, intelligence):
+        """
+        Decide como Joel decidía.
+        
+        NO usa scoring aritmético.
+        USA contexto completo para decidir.
+        
+        Returns:
+            dict: Decisión con razón humana
+        """
+        
+        # Extraer valores clave
+        explosion = vision.get('explosion', 'DESCONOCIDA')
+        runway = vision.get('runway', 'DESCONOCIDO')
+        structure = vision.get('structure', 'AMBIGUA')
+        position = vision.get('position', 'DESCONOCIDA')
+        exhaustion_phase = vision.get('exhaustion_phase', 'UNKNOWN')
+        adx_trend = vision.get('adx_trend', 'ESTABLE')
+        has_force = vision.get('has_force', False)
+        indicators = vision.get('indicators', 'DESCONOCIDO')
+        
+        # =====================================================================
+        # ESCENARIOS DE DECISIÓN (como Joel pensaba)
+        # =====================================================================
+        
+        # ----- ESCENARIO 1: SETUP IDEAL -----
+        # Explosión naciendo + espacio libre + estructura sana + indicadores mejorando
+        if (explosion in ['NACIENDO', 'ACTIVA'] and
+            runway in ['AMPLIO', 'MODERADO'] and
+            structure == 'SANA' and
+            position in ['CERCA_SOPORTE', 'ZONA_BAJA'] and
+            indicators in ['MEJORANDO', 'MIXTO']):
+            
+            return {
+                'decision': 'ENTER',
+                'confidence': 90,
+                'reason': f"🎯 SETUP IDEAL: Explosión {explosion}, runway {runway}, estructura {structure}",
+                'archetype': 'IDEAL_SETUP'
+            }
+        
+        # ----- ESCENARIO 2: EXPLOSIÓN FUERTE -----
+        # Fuerza brutal compensado deficiencias menores
+        if (explosion == 'NACIENDO' and
+            has_force and
+            adx_trend == 'ACELERANDO' and
+            runway != 'BLOQUEADO'):
+            
+            return {
+                'decision': 'ENTER',
+                'confidence': 85,
+                'reason': f"⚡ EXPLOSIÓN NACIENDO: ADX acelerando, fuerza detectada",
+                'archetype': 'EXPLOSION_ENTRY'
+            }
+        
+        # ----- ESCENARIO 3: CONTINUACIÓN DE TENDENCIA -----
+        # Tendencia activa con espacio y estructura
+        if (explosion == 'ACTIVA' and
+            runway in ['AMPLIO', 'MODERADO'] and
+            structure == 'SANA' and
+            exhaustion_phase in ['FRESH', 'DEVELOPING']):
+            
+            return {
+                'decision': 'ENTER',
+                'confidence': 75,
+                'reason': f"📈 CONTINUACIÓN: Tendencia activa, fase {exhaustion_phase}",
+                'archetype': 'TREND_CONTINUATION'
+            }
+        
+        # ----- ESCENARIO 4: FUERZA MURIENDO -----
+        # Explosión terminando = esperar
+        if explosion in ['MURIENDO', 'MUERTA']:
+            return {
+                'decision': 'WAIT',
+                'confidence': 80,
+                'reason': f"⏸️ ESPERAR: Explosión {explosion}, ADX {adx_trend}",
+                'archetype': 'DYING_FORCE'
+            }
+        
+        # ----- ESCENARIO 5: SIN ESPACIO (COMPRAR TECHO) -----
+        if runway == 'BLOQUEADO' or position == 'CERCA_TECHO':
+            return {
+                'decision': 'WAIT',
+                'confidence': 85,
+                'reason': f"🚫 SIN ESPACIO: Runway {runway}, posición {position}",
+                'archetype': 'NO_RUNWAY'
+            }
+        
+        # ----- ESCENARIO 6: ESTRUCTURA ROTA -----
+        if structure == 'DETERIORANDO':
+            return {
+                'decision': 'WAIT',
+                'confidence': 75,
+                'reason': f"⚠️ ESTRUCTURA ROTA: ZigZag deteriorándose",
+                'archetype': 'BROKEN_STRUCTURE'
+            }
+        
+        # ----- ESCENARIO 7: EXHAUSTED -----
+        if exhaustion_phase == 'EXHAUSTED' and runway in ['ESTRECHO', 'BLOQUEADO']:
+            return {
+                'decision': 'WAIT',
+                'confidence': 90,
+                'reason': f"🛑 EXHAUSTED: Tendencia agotada ({exhaustion_phase}), sin espacio ({runway})",
+                'archetype': 'EXHAUSTED_TREND'
+            }
+        
+        # ----- ESCENARIO 8: AMBIGUO -----
+        # No está claro - mejor esperar
         return {
-            'status': 'BLOQUEADO',
-            'razon': f'🚨 Exhaustion {exhaustion_pct:.0f}% - Tendencia agotada',
-            'score': -100
+            'decision': 'WAIT',
+            'confidence': 50,
+            'reason': f"❓ AMBIGUO: explosion={explosion}, runway={runway}, structure={structure}",
+            'archetype': 'AMBIGUOUS'
         }
-Esto evita que Grid apruebe algo que Exhaustion ya sabe que es malo.
+    
+    # =========================================================================
+    # FUNCIÓN PRINCIPAL
+    # =========================================================================
+    
+    def decide_with_unified_vision(self, symbol, ladder_analysis):
+        """
+        Punto de entrada principal.
+        
+        Toma decisión viendo la PELÍCULA COMPLETA del mercado.
+        
+        Args:
+            symbol: Par a analizar
+            ladder_analysis: Análisis multi-TF de brain_analyzer
+            
+        Returns:
+            dict: Decisión con toda la información de visión
+        """
+        
+        # 1. Recopilar TODA la inteligencia
+        intelligence = self.gather_intelligence(symbol, ladder_analysis)
+        
+        # 2. Ver la PELÍCULA COMPLETA
+        vision = self.see_the_movie(intelligence)
+        
+        # 3. Decidir como trader HUMANO
+        decision = self.make_human_decision(vision, intelligence)
+        
+        # 4. Agregar visión al resultado
+        decision['vision'] = vision
+        decision['intelligence'] = {
+            'exhaustion_pct': intelligence['exhaustion'].get('exhaustion_pct', 50),
+            'room_pct': intelligence['exhaustion'].get('room_pct', 0),
+            'force_level': intelligence['force'].get('force_level', 'NONE'),
+            'grid_status': intelligence['grid'].get('status', 'UNKNOWN')
+        }
+        
+        return decision
+# =============================================================================
+# FUNCIÓN DE CONVENIENCIA
+# =============================================================================
+def decide_unified(symbol, ladder_analysis):
+    """Wrapper para uso fácil."""
+    unified = UnifiedVision()
+    return unified.decide_with_unified_vision(symbol, ladder_analysis)
+PASO 2: MODIFICAR brain_intelligent.py
+Ubicación
+c:\Users\Joel\Trading automatizado\BraintraderAntigravity\brain_intelligent.py
+2.1 CÓDIGO ACTUAL a REEMPLAZAR (Líneas 205-260)
+# CÓDIGO ACTUAL - brain_intelligent.py L205-260
+    decision = make_pattern_based_decision(
+        patterns_result, ladder_analysis, math_signals, 
+        symbol, current_price, recent_history, grid_result
+    )
+    # --- REPORTE Y SALIDA ---
+    print(f"\n🔍 REPORTE INTELIGENTE: {symbol}")
+    print(f"   - Acción: {decision['action']} (Conf: {decision['confidence']})")
+    if decision['reasons']:
+        print(f"   - Razones: {decision['reasons'][0]}")
+        if len(decision['reasons']) &gt; 1:
+            print(f"     ...y {len(decision['reasons'])-1} más.")
+    # Guardar Telemetría
+    try:
+        telemetry_data = ladder_analysis.copy()
+        telemetry_data['decision_reasons'] = decision['reasons']
+        
+        db_manager.insert_telemetry(
+            symbol, 
+            'OPERAR' if decision['action'] == 'ENTER' else 'NO_OPERAR',
+            decision['confidence'],
+            telemetry_data
+        )
+    except Exception as e:
+        print(f"⚠️ Telemetry error: {e}")
+    # Formatear retorno para bot_main
+    if decision['action'] == 'ENTER':
+        return {
+            'action': 'OPERAR',
+            'trade_type': decision['strategy']['type'],
+            'confidence': decision['confidence'],
+            'pattern': decision.get('pattern'),
+            'reasons': decision['reasons'],
+            'full_analysis': {
+                'ladder_data': ladder_analysis, 
+                'patterns': patterns_result,
+                'force_result': force_result
+            },
+            'position_size': decision['strategy']['position_size'],
+            'strategy': decision['strategy']
+        }
+    else:
+        return {
+            'action': 'NO_OPERAR',
+            'confidence': decision['confidence'],
+            'reason': f"Wait: {decision['reasons'][0] if decision['reasons'] else 'Low score'}",
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'force_result': force_result,
+                'lateral_penalty': lateral_penalty,
+                'lateral_reasons': lateral_reasons
+            }
+        }
+2.2 CÓDIGO PROPUESTO (Líneas 205-260)
+# CÓDIGO NUEVO - brain_intelligent.py L205-260
+    # ===================================================================
+    # &gt;&gt;&gt; VISIÓN UNIFICADA (reemplaza make_pattern_based_decision) &lt;&lt;&lt;
+    # ===================================================================
+    from brain_vision_unified import UnifiedVision
+    
+    unified = UnifiedVision()
+    decision = unified.decide_with_unified_vision(symbol, ladder_analysis)
+    # --- REPORTE Y SALIDA ---
+    print(f"\n🔍 VISIÓN UNIFICADA: {symbol}")
+    print(f"   - Decisión: {decision['decision']} (Conf: {decision['confidence']})")
+    print(f"   - Razón: {decision['reason']}")
+    print(f"   - Arquetipo: {decision.get('archetype', 'N/A')}")
+    
+    # Mostrar visión
+    vision = decision.get('vision', {})
+    print(f"   📊 Visión: explosion={vision.get('explosion')}, runway={vision.get('runway')}, structure={vision.get('structure')}")
+    # Guardar Telemetría
+    try:
+        telemetry_data = ladder_analysis.copy()
+        telemetry_data['unified_vision'] = decision.get('vision', {})
+        telemetry_data['decision_reason'] = decision['reason']
+        
+        db_manager.insert_telemetry(
+            symbol, 
+            'OPERAR' if decision['decision'] == 'ENTER' else 'NO_OPERAR',
+            decision['confidence'],
+            telemetry_data
+        )
+    except Exception as e:
+        print(f"⚠️ Telemetry error: {e}")
+    # Formatear retorno para bot_main
+    if decision['decision'] == 'ENTER':
+        return {
+            'action': 'OPERAR',
+            'trade_type': 'LONG' if ladder_analysis.get('15m', {}).get('direction') == 'BULLISH' else 'SHORT',
+            'confidence': decision['confidence'],
+            'pattern': decision.get('archetype', 'UNIFIED_VISION'),
+            'reasons': [decision['reason']],
+            'full_analysis': {
+                'ladder_data': ladder_analysis, 
+                'patterns': patterns_result,
+                'force_result': force_result,
+                'unified_vision': decision['vision']
+            },
+            'position_size': 0.1,  # Default, será ajustado por executor
+            'strategy': determine_strategy(patterns_result, ladder_analysis)
+        }
+    else:
+        return {
+            'action': 'NO_OPERAR',
+            'confidence': decision['confidence'],
+            'reason': decision['reason'],
+            'full_analysis': {
+                'ladder_data': ladder_analysis,
+                'force_result': force_result,
+                'unified_vision': decision['vision']
+            }
+        }
+2.3 IMPORTS a AGREGAR (Línea 23)
+# CÓDIGO ACTUAL - brain_intelligent.py L23
+from brain_movie_engine import MovieEngine, analyze_movie
+# CÓDIGO NUEVO - brain_intelligent.py L23
+from brain_movie_engine import MovieEngine, analyze_movie
+from brain_vision_unified import UnifiedVision  # &lt;&lt;&lt; AGREGAR
+PASO 3: CÓDIGO A COMENTAR (NO BORRAR)
+Función 
+make_pattern_based_decision
+ (Líneas 262-592)
+Acción: COMENTAR TODO el bloque, no borrar
 
+# =============================================================================
+# CÓDIGO LEGACY - COMENTADO (reemplazado por UnifiedVision)
+# =============================================================================
+# def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price, recent_history=None, grid_result=None):
+#     """
+#     Núcleo de Decisión v5.0 (Corregido)
+#     Integra: Física (Wrecking Ball), Estructura (ZigZag), Zonas (S/R), Memoria.
+#     """
+#     score = 0
+#     reasons = []
+#     ... (TODO EL BLOQUE COMENTADO)
+Razón: Mantener para referencia y posible rollback si algo falla.
+
+PASO 4: CONEXIONES ENTRE MÓDULOS
+Lo que UnifiedVision conecta:
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       ANTES (DESCONECTADO)                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  MovieEngine ──┐                                                        │
+│                │                                                        │
+│  Grid ─────────┼──&gt; make_pattern_based_decision() ──&gt; score += / -=     │
+│                │         (penalties aritméticas)                        │
+│  Exhaustion ───┤                                                        │
+│                │                                                        │
+│  ZigZag ───────┘                                                        │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       DESPUÉS (UNIFICADO)                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  MovieEngine ──┐                                                        │
+│                │                                                        │
+│  Grid ─────────┼──&gt; UnifiedVision.gather_intelligence()                 │
+│                │         │                                              │
+│  Exhaustion ───┤         ▼                                              │
+│                │    see_the_movie()                                     │
+│  ZigZag ───────┤         │                                              │
+│                │         ▼                                              │
+│  Frames ───────┤    make_human_decision()                               │
+│                │         │                                              │
+│  Force ────────┘         ▼                                              │
+│                   DECISIÓN CONTEXTUAL                                   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+PASO 5: TESTING
+5.1 Verificación de sintaxis
+python -m py_compile brain_vision_unified.py
+python -m py_compile brain_intelligent.py
+5.2 Test unitario rápido
+# test_unified_vision.py
+from brain_vision_unified import UnifiedVision, decide_unified
+from brain_analyzer import analyze_4h, analyze_1h, analyze_15m, analyze_5m
+symbol = 'BTC/USDT:USDT'
+ladder = {
+    '4h': analyze_4h(symbol),
+    '1h': analyze_1h(symbol),
+    '15m': analyze_15m(symbol),
+    '5m': analyze_5m(symbol)
+}
+decision = decide_unified(symbol, ladder)
+print(f"Decision: {decision['decision']}")
+print(f"Reason: {decision['reason']}")
+print(f"Vision: {decision['vision']}")
+5.3 Backtest completo
+# Modificar TARGET_TRADES = 20
+python tools/backtest_real.py
+5.4 Métricas a comparar
+Métrica	Antes (Scoring)	Después (Unified)
+Win Rate	50%	?
+PnL Total	-1.38%	?
+Trades exhaust&gt;90%	5 (entraron)	? (deberían NO entrar)
+RESUMEN DE CAMBIOS
+Archivo	Acción	Líneas
+brain_vision_unified.py	CREAR	~350 líneas nuevas
+brain_intelligent.py
+MODIFICAR	L23 (import), L205-260 (reemplazar)
+brain_intelligent.py
+COMENTAR	L262-592 (make_pattern_based_decision)
+CHECKLIST DE APROBACIÓN
+ ¿El plan está claro?
+ ¿La filosofía (no hard-blocks) se mantiene?
+ ¿Los escenarios de decisión cubren los casos?
+ ¿Hay algo que agregar/modificar?
+ESPERANDO APROBACIÓN PARA PROCEDER
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 28,974<br>
-    Generado: 2026-01-01 20:46:12
+    Total caracteres: 27,670<br>
+    Generado: 2026-01-01 21:35:58
   </div>
 </body>
 </html>
