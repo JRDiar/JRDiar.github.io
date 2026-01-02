@@ -15,242 +15,313 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-01 21:35:58</div>
+  <div class="meta">Última actualización: 2026-01-01 21:46:48</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-PLAN COMPLETO DE IMPLEMENTACIÓN LISTO
-He creado un plan detallado con todo el código propuesto. Resumen:
+ PLAN v2.0 ACTUALIZADO
+He corregido el plan según tus indicaciones. Los cambios clave:
 
-📁 Archivos a modificar
-Archivo	Acción	Detalles
-brain_vision_unified.py	CREAR	~350 líneas nuevas
-brain_intelligent.py	MODIFICAR	L23 (import), L205-260 (reemplazar flujo)
-brain_intelligent.py	COMENTAR	L262-592 (make_pattern_based_decision)
-🧠 Clase UnifiedVision - 3 fases
-gather_intelligence() - Recopila de: MovieEngine, Grid, Exhaustion, Frames, ZigZag, Force
-see_the_movie() - Interpreta: explosion, runway, structure, position, indicators
-make_human_decision() - 8 escenarios contextuales (no scoring)
-🎯 Escenarios de decisión (ejemplos)
-Escenario	Condiciones	Decisión
-IDEAL	Explosión naciendo + runway amplio + estructura sana	ENTER 90%
-EXPLOSIÓN	ADX acelerando + fuerza detectada	ENTER 85%
-MURIENDO	Explosión muriendo/muerta	WAIT 80%
-SIN ESPACIO	Runway bloqueado o cerca techo	WAIT 85%
-EXHAUSTED	Tendencia agotada + sin espacio	WAIT 90%
-❓ Preguntas para revisión
-¿Los 8 escenarios cubren los casos que veías?
-¿Falta algún escenario específico?
-¿Las interpretaciones de visión son correctas?
-Revisa el plan completo y confirmá cuando esté listo para implementar.
+❌ v1.0 (Incorrecto) → ✅ v2.0 (Corregido)
+Aspecto	Antes	Ahora
+ADX	if phase == 'NASCENT'	adx_changes = [frame[i+1] - frame[i]]
+Runway	if room &gt; 4: 'AMPLIO'	exhaustion_velocity = frames[-1] - frames[0]
+Pregunta	¿Matchea el pattern?	¿La situación MEJORA o EMPEORA?
+🎬 see_the_movie() ahora analiza TRAYECTORIAS:
+python
+# Últimos 5 frames
+adx_values = [f.get('adx').get('value') for f in frames[-5:]]
+# Cambios frame a frame
+adx_changes = [adx_values[i+1] - adx_values[i] for i in range(4)]
+# ¿Todos subiendo? → ACELERANDO
+if all(c &gt; 0.5 for c in adx_changes):
+    vision['adx_motion'] = 'ACELERANDO_RÁPIDO'
+🧠 make_human_decision() ahora PIENSA contexto:
+python
+# ¿La FUERZA está construyéndose o muriendo?
+force_is_building = (adx_motion in ['ACELERANDO', 'CRECIENDO'] 
+                     and candle_motion == 'CRECIENDO')
+force_is_dying = (adx_motion == 'MURIENDO' or candle_motion == 'ACHICÁNDOSE')
+# ¿El ESPACIO está abriéndose o cerrándose?
+space_is_opening = (exhaustion_motion == 'MEJORANDO')
+space_is_closing = (exhaustion_motion == 'EXPLOSIÓN_RÁPIDA' or room &lt; 1)
+# DECISIÓN por contexto
+if force_is_building and space_is_closing:
+    return WAIT  # "Compraría techo" (como AKE)
+if force_is_dying:
+    return WAIT  # "Explosión terminó" (como DGRAM)
+✅ Validación con trades reales:
+Trade	Esperado	Razón
+AKE	WAIT	Espacio cerrándose (exhaust 100%)
+DGRAM	WAIT	Fuerza muriendo (ADX decreciendo)
+ASR	ENTER	Fuerza naciendo + espacio OK
+¿Apruebas el plan para proceder con la implementación?
 
-PLAN DE IMPLEMENTACIÓN: VISIÓN UNIFICADA
-Versión: 1.0
+ PLAN DE IMPLEMENTACIÓN: VISIÓN UNIFICADA v2.0
+Versión: 2.0 (CORREGIDA)
 Fecha: 2026-01-01
 Estado: PENDIENTE APROBACIÓN
 
-RESUMEN EJECUTIVO
-Objetivo
-Crear un módulo brain_vision_unified.py que:
-
-Recopile información de TODOS los módulos existentes
-Vea el cuadro completo como Joel lo veía
-Decida basado en CONTEXTO, no en scoring aritmético
-Filosofía (NO NEGOCIABLE)
-❌ NO hard-blocks binarios
-❌ NO penalties aritméticas (score -= 50)
-❌ NO thresholds rígidos
-✅ Visión holística
-✅ Decisión contextual
-✅ Time Ladder puro
-PASO 1: CREAR brain_vision_unified.py
-Ubicación
-c:\Users\Joel\Trading automatizado\BraintraderAntigravity\brain_vision_unified.py
-Código propuesto completo
+CORRECCIÓN FUNDAMENTAL
+❌ Versión 1.0 (INCORRECTA)
+# Etiquetas estáticas
+if room_pct &gt; 4:
+    vision['runway'] = 'AMPLIO'
+# Pattern matching
+if explosion == 'NACIENDO' and runway == 'AMPLIO':
+    return ENTER
+✅ Versión 2.0 (CORREGIDA)
+# Trayectorias (cómo CAMBIAN los valores)
+adx_values = [f.get('adx') for f in frames[-5:]]
+adx_changes = [adx_values[i+1] - adx_values[i] for i in range(4)]
+# Pensamiento contextual (¿mejora o empeora?)
+force_is_building = all(change &gt; 0.5 for change in adx_changes)
+if force_is_building and space_is_opening:
+    return ENTER
+PASO 1: CREAR brain_vision_unified.py (CORREGIDO)
 """
 ================================================================================
-BRAIN VISION UNIFIED v1.0 - VISIÓN HOLÍSTICA DEL MERCADO
+BRAIN VISION UNIFIED v2.0 - VISIÓN DE PELÍCULA (TRAYECTORIAS)
 ================================================================================
-Joel: "Hay que darle inteligencia, que vea la película y decida como un 
-trader humano. El bot está preparado para eso."
-Este módulo:
-1. RECOPILA información de TODOS los módulos existentes
-2. VE el cuadro completo (no snapshots aislados)
-3. DECIDE basado en CONTEXTO, no en scoring aritmético
-NO usa:
-- Hard blocks (if &gt; X: BLOQUEAR)
-- Penalties aritméticas (score -= 50)
-- Thresholds rígidos
-SÍ usa:
-- Análisis contextual
-- Decisión como trader humano
-- Time Ladder (frames en movimiento)
+Joel: "Ver la película = ver MOVIMIENTO, no fotos estáticas"
+ANTES (v1.0):
+- Etiquetas: explosion='NACIENDO', runway='AMPLIO'
+- Pattern matching: if A and B and C: ENTER
+AHORA (v2.0):
+- Trayectorias: adx_motion='ACELERANDO' (calculado de frames)
+- Pensamiento: ¿La situación MEJORA o EMPEORA?
 ================================================================================
 """
 from brain_movie_engine import MovieEngine
 from brain_grid import grid
 from brain_trend_exhaustion import analyze_trend_exhaustion
 from brain_frames import get_frame_storage
-from brain_zigzag_tti import get_zigzag_data
 from brain_force_filter import force_filter
 from exchange_connection import fetch_ohlcv
 import pandas as pd
 class UnifiedVision:
     """
-    Cerebro unificado que ve TODO el contexto del mercado.
-    
-    Decide como un trader humano, no como una calculadora.
+    Cerebro que VE LA PELÍCULA (trayectorias en movimiento).
+    NO usa estados estáticos.
     """
     
     def __init__(self):
         self.movie_engine = MovieEngine()
     
     # =========================================================================
-    # FASE 1: RECOPILAR TODA LA INTELIGENCIA
+    # FASE 1: RECOPILAR FRAMES (LA PELÍCULA)
     # =========================================================================
     
     def gather_intelligence(self, symbol, ladder_analysis):
         """
-        Recopila información de TODOS los módulos existentes.
-        
-        Returns:
-            dict: Toda la información del mercado en un solo lugar
+        Recopila FRAMES de todos los módulos.
+        La clave es tener HISTORIA, no solo valores actuales.
         """
         
-        # 1. MOVIEENGINE - ¿La película cuenta una historia bullish/bearish?
         direction = ladder_analysis.get('15m', {}).get('direction', 'LATERAL')
-        movie_result = self.movie_engine.analyze_complete_movie(symbol, direction)
         
-        # 2. GRID - ¿Dónde estoy? ¿Hacia dónde voy?
+        # 1. FRAMES - La película real (últimos 5-10 frames)
+        frames_15m = list(get_frame_storage(symbol, '15m').get_frames(10))
+        frames_5m = list(get_frame_storage(symbol, '5m').get_frames(10))
+        
+        # 2. EXHAUSTION actual (para room_pct)
+        exhaustion_result = analyze_trend_exhaustion(symbol, direction)
+        
+        # 3. GRID actual (para posición en diagonal)
         ohlcv = fetch_ohlcv(symbol, '5m', 50)
         if ohlcv:
             df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
             grid_result = grid.analyze(symbol, df, ladder_analysis)
         else:
-            grid_result = {'status': 'ERROR', 'score': 0}
+            grid_result = {'status': 'ERROR'}
         
-        # 3. EXHAUSTION - ¿Cuánto recorrí vs cuánto queda?
-        exhaustion_result = analyze_trend_exhaustion(symbol, direction)
-        
-        # 4. FRAMES - ¿ADX/Momentum acelerando o desacelerando?
-        frames_15m = get_frame_storage(symbol, '15m').get_frames(5)
-        frames_5m = get_frame_storage(symbol, '5m').get_frames(5)
-        
-        # 5. ZIGZAG - ¿Estructura sana o deteriorándose?
-        try:
-            zigzag_data = get_zigzag_data(symbol, '15m')
-        except:
-            zigzag_data = {'pivot_types': [], 'pivots': []}
-        
-        # 6. FORCE - ¿Hay fuerza desarrollándose?
+        # 4. FORCE actual
         force_result = force_filter.has_force(symbol, ladder_analysis)
         
+        # 5. ZIGZAG (estructura)
+        zigzag = ladder_analysis.get('15m', {}).get('zigzag', {})
+        
         return {
-            'movie': movie_result,
-            'grid': grid_result,
+            'frames': {
+                '15m': frames_15m,
+                '5m': frames_5m
+            },
             'exhaustion': exhaustion_result,
-            'frames': {'15m': frames_15m, '5m': frames_5m},
-            'zigzag': zigzag_data,
+            'grid': grid_result,
             'force': force_result,
+            'zigzag': zigzag,
             'direction': direction
         }
     
     # =========================================================================
-    # FASE 2: VER LA PELÍCULA COMPLETA
+    # FASE 2: VER LA PELÍCULA (ANALIZAR TRAYECTORIAS)
     # =========================================================================
     
     def see_the_movie(self, intelligence):
         """
-        Ve la PELÍCULA completa y entiende el contexto.
+        Ve la PELÍCULA analizando TRAYECTORIAS.
         
-        NO usa if/else binarios.
-        ENTIENDE el contexto como un trader humano.
-        
-        Returns:
-            dict: Interpretación holística del mercado
+        NO etiqueta estados estáticos.
+        SÍ analiza cómo CAMBIAN los valores frame a frame.
         """
         vision = {}
         
-        # ---------- A. CALIDAD DE LA EXPLOSIÓN ----------
-        # ¿La fuerza está NACIENDO, CRECIENDO, o MURIENDO?
+        frames_15m = intelligence.get('frames', {}).get('15m', [])
         
-        movie = intelligence.get('movie', {})
-        scenes = movie.get('scenes', {})
-        scene_5m = scenes.get('5m', {})
+        # Validar suficientes frames
+        if len(frames_15m) &lt; 5:
+            return {
+                'error': 'INSUFICIENTES_FRAMES',
+                'message': f'Solo {len(frames_15m)} frames, necesito 5+'
+            }
         
-        adx_phase = scene_5m.get('adx_phase', 'UNKNOWN')
-        adx_velocity = scene_5m.get('adx_trajectory', {}).get('velocity', 0)
+        # Usar últimos 5 frames para análisis
+        recent_frames = frames_15m[-5:]
         
-        if adx_phase in ['EXPLOSION_NASCENT', 'EXPLOSION_BUILDING']:
-            vision['explosion'] = 'NACIENDO'  # 🟢 Excelente
-        elif adx_phase in ['EXPLOSION_SUSTAINED', 'EXPLOSION_STRONG']:
-            vision['explosion'] = 'ACTIVA'    # 🟡 Buena
-        elif adx_phase in ['EXPLOSION_CLIMAX', 'EXPLOSION_FADING']:
-            vision['explosion'] = 'MURIENDO'  # 🔴 Peligrosa
-        elif adx_phase in ['FORCE_DYING', 'FORCE_WEAK', 'LATERAL']:
-            vision['explosion'] = 'MUERTA'    # ⚫ No hay
+        # ================================================================
+        # A. TRAYECTORIA DE ADX (¿acelerando o muriendo?)
+        # ================================================================
+        adx_values = []
+        for f in recent_frames:
+            adx = f.get('adx', {})
+            if isinstance(adx, dict):
+                adx_values.append(adx.get('value', 0))
+            else:
+                adx_values.append(0)
+        
+        # Calcular cambios frame a frame
+        if len(adx_values) &gt;= 2:
+            adx_changes = [adx_values[i+1] - adx_values[i] for i in range(len(adx_values)-1)]
+            
+            # Analizar tendencia
+            positive_changes = sum(1 for c in adx_changes if c &gt; 0.5)
+            negative_changes = sum(1 for c in adx_changes if c &lt; -0.5)
+            
+            if all(c &gt; 0.5 for c in adx_changes):
+                vision['adx_motion'] = 'ACELERANDO_RÁPIDO'
+            elif positive_changes &gt;= 3:
+                vision['adx_motion'] = 'CRECIENDO'
+            elif all(c &lt; -0.5 for c in adx_changes):
+                vision['adx_motion'] = 'MURIENDO_RÁPIDO'
+            elif negative_changes &gt;= 3:
+                vision['adx_motion'] = 'DECRECIENDO'
+            else:
+                vision['adx_motion'] = 'LATERAL'
+            
+            # Velocidad total
+            vision['adx_velocity'] = sum(adx_changes)
+            vision['adx_current'] = adx_values[-1] if adx_values else 0
         else:
-            vision['explosion'] = 'DESCONOCIDA'
+            vision['adx_motion'] = 'DESCONOCIDO'
+            vision['adx_velocity'] = 0
         
-        # ADX acelerando vs desacelerando
-        if adx_velocity &gt; 0.5:
-            vision['adx_trend'] = 'ACELERANDO'
-        elif adx_velocity &lt; -0.5:
-            vision['adx_trend'] = 'DESACELERANDO'
+        # ================================================================
+        # B. TRAYECTORIA DE VELAS (¿creciendo o achicándose?)
+        # ================================================================
+        candle_sizes = []
+        for f in recent_frames:
+            ohlc = f.get('ohlc', {})
+            high = ohlc.get('high', 0)
+            low = ohlc.get('low', 0)
+            if high and low:
+                candle_sizes.append(abs(high - low))
+        
+        if len(candle_sizes) &gt;= 3:
+            # Comparar últimas 3 velas
+            last_three = candle_sizes[-3:]
+            
+            if last_three[2] &gt; last_three[1] &gt; last_three[0]:
+                vision['candle_motion'] = 'CRECIENDO'
+            elif last_three[2] &lt; last_three[1] &lt; last_three[0]:
+                vision['candle_motion'] = 'ACHICÁNDOSE'
+            else:
+                vision['candle_motion'] = 'MIXTO'
         else:
-            vision['adx_trend'] = 'ESTABLE'
+            vision['candle_motion'] = 'DESCONOCIDO'
         
-        # ---------- B. RUNWAY (ESPACIO LIBRE) ----------
-        # ¿Cuánto espacio hay para que el precio se mueva?
+        # ================================================================
+        # C. TRAYECTORIA DE MOMENTUM (¿mejorando o empeorando?)
+        # ================================================================
+        momentum_ages = []
+        for f in recent_frames:
+            mom = f.get('momentum', {})
+            if isinstance(mom, dict):
+                momentum_ages.append(mom.get('age', 0))
         
+        if len(momentum_ages) &gt;= 2:
+            mom_velocity = momentum_ages[-1] - momentum_ages[0]
+            
+            if mom_velocity &gt; 0:
+                vision['momentum_motion'] = 'CRECIENDO'
+            elif mom_velocity &lt; 0:
+                vision['momentum_motion'] = 'RESETEÁNDOSE'
+            else:
+                vision['momentum_motion'] = 'ESTABLE'
+        else:
+            vision['momentum_motion'] = 'DESCONOCIDO'
+        
+        # ================================================================
+        # D. ESPACIO LIBRE (room_pct y su tendencia)
+        # ================================================================
         exhaustion = intelligence.get('exhaustion', {})
         room_pct = exhaustion.get('room_pct', 0)
-        moved_pct = exhaustion.get('moved_pct', 0)
         exhaustion_pct = exhaustion.get('exhaustion_pct', 50)
+        moved_pct = exhaustion.get('moved_pct', 0)
         
-        if room_pct &gt; 4:
-            vision['runway'] = 'AMPLIO'       # 🟢 Mucho espacio
-        elif room_pct &gt; 2:
-            vision['runway'] = 'MODERADO'     # 🟡 Espacio aceptable
-        elif room_pct &gt; 1:
-            vision['runway'] = 'ESTRECHO'     # 🟠 Poco espacio
+        vision['room_current'] = room_pct
+        vision['exhaustion_current'] = exhaustion_pct
+        vision['moved_current'] = moved_pct
+        
+        # Calcular velocidad de exhaustion si tenemos frames con ese dato
+        exhaustion_values = []
+        for f in recent_frames:
+            exh = f.get('exhaustion_pct')
+            if exh is not None:
+                exhaustion_values.append(exh)
+        
+        if len(exhaustion_values) &gt;= 2:
+            exhaustion_velocity = exhaustion_values[-1] - exhaustion_values[0]
+            
+            if exhaustion_velocity &gt; 30:
+                vision['exhaustion_motion'] = 'EXPLOSIÓN_RÁPIDA'
+            elif exhaustion_velocity &gt; 10:
+                vision['exhaustion_motion'] = 'SUBIENDO'
+            elif exhaustion_velocity &lt; -10:
+                vision['exhaustion_motion'] = 'MEJORANDO'
+            else:
+                vision['exhaustion_motion'] = 'ESTABLE'
+            
+            vision['exhaustion_velocity'] = exhaustion_velocity
         else:
-            vision['runway'] = 'BLOQUEADO'    # 🔴 Sin espacio
+            # Si no tenemos historia, usar valor actual
+            if exhaustion_pct &gt; 80:
+                vision['exhaustion_motion'] = 'MUY_ALTO'
+            elif exhaustion_pct &lt; 30:
+                vision['exhaustion_motion'] = 'FRESCO'
+            else:
+                vision['exhaustion_motion'] = 'DESCONOCIDO'
+            vision['exhaustion_velocity'] = 0
         
-        # Fase de exhaustion
-        if exhaustion_pct &lt; 30:
-            vision['exhaustion_phase'] = 'FRESH'
-        elif exhaustion_pct &lt; 50:
-            vision['exhaustion_phase'] = 'DEVELOPING'
-        elif exhaustion_pct &lt; 70:
-            vision['exhaustion_phase'] = 'MATURE'
-        else:
-            vision['exhaustion_phase'] = 'EXHAUSTED'
-        
-        # ---------- C. ESTRUCTURA ZIGZAG ----------
-        # ¿La estructura es SANA (HH→HL) o ROTA (HH→LH→LL)?
-        
+        # ================================================================
+        # E. ESTRUCTURA ZIGZAG
+        # ================================================================
         zigzag = intelligence.get('zigzag', {})
         pivot_types = zigzag.get('pivot_types', [])
+        direction = intelligence.get('direction', 'LATERAL')
         
         if len(pivot_types) &gt;= 2:
             last_two = pivot_types[-2:]
             
-            direction = intelligence.get('direction', 'LATERAL')
-            
             if direction == 'BULLISH':
-                # Bullish sano: HH, HL
-                if last_two[-1] in ['HH', 'HL'] and last_two[-2] in ['HH', 'HL']:
+                if last_two[-1] in ['HH', 'HL']:
                     vision['structure'] = 'SANA'
                 elif 'LH' in last_two or 'LL' in last_two:
                     vision['structure'] = 'DETERIORANDO'
                 else:
                     vision['structure'] = 'AMBIGUA'
-            
             elif direction == 'BEARISH':
-                # Bearish sano: LL, LH
-                if last_two[-1] in ['LL', 'LH'] and last_two[-2] in ['LL', 'LH']:
+                if last_two[-1] in ['LL', 'LH']:
                     vision['structure'] = 'SANA'
                 elif 'HH' in last_two or 'HL' in last_two:
                     vision['structure'] = 'DETERIORANDO'
@@ -261,174 +332,184 @@ class UnifiedVision:
         else:
             vision['structure'] = 'INSUFICIENTE'
         
-        # ---------- D. POSICIÓN EN GRID ----------
-        # ¿Estoy comprando TECHO o cerca de SOPORTE?
-        
+        # ================================================================
+        # F. POSICIÓN EN GRID
+        # ================================================================
         grid_data = intelligence.get('grid', {})
-        grid_status = grid_data.get('status', 'UNKNOWN')
-        contexto = grid_data.get('contexto', 'UNKNOWN')
-        
-        # Posición en diagonal (si está disponible)
         diagonal = grid_data.get('diagonal_data', {})
         position_pct = diagonal.get('price_position_pct', 50)
         
-        if position_pct &lt; 25:
-            vision['position'] = 'CERCA_SOPORTE'   # 🟢 Ideal para LONG
-        elif position_pct &lt; 50:
-            vision['position'] = 'ZONA_BAJA'       # 🟡 Buena
-        elif position_pct &lt; 75:
-            vision['position'] = 'ZONA_ALTA'       # 🟠 Riesgosa
-        else:
-            vision['position'] = 'CERCA_TECHO'     # 🔴 Peligro
+        vision['position_pct'] = position_pct
+        vision['grid_status'] = grid_data.get('status', 'UNKNOWN')
         
-        vision['grid_status'] = grid_status
-        vision['grid_contexto'] = contexto
-        
-        # ---------- E. NIVEL DE FUERZA ----------
-        
+        # ================================================================
+        # G. FUERZA
+        # ================================================================
         force = intelligence.get('force', {})
         vision['has_force'] = force.get('has_force', False)
         vision['force_level'] = force.get('force_level', 'NONE')
         
-        # ---------- F. FRAMES - ACELERACIÓN ----------
-        # ¿Los indicadores están mejorando o empeorando?
-        
-        frames = intelligence.get('frames', {})
-        frames_15m = frames.get('15m', [])
-        
-        if len(frames_15m) &gt;= 3:
-            # Extraer ADX de últimos 3 frames
-            try:
-                adx_values = [f.get('adx', {}).get('value', 0) for f in frames_15m[-3:]]
-                if adx_values[2] &gt; adx_values[1] &gt; adx_values[0]:
-                    vision['indicators'] = 'MEJORANDO'
-                elif adx_values[2] &lt; adx_values[1] &lt; adx_values[0]:
-                    vision['indicators'] = 'EMPEORANDO'
-                else:
-                    vision['indicators'] = 'MIXTO'
-            except:
-                vision['indicators'] = 'DESCONOCIDO'
-        else:
-            vision['indicators'] = 'INSUFICIENTE'
-        
         return vision
     
     # =========================================================================
-    # FASE 3: DECIDIR COMO TRADER HUMANO
+    # FASE 3: PENSAR COMO TRADER (NO PATTERN MATCHING)
     # =========================================================================
     
     def make_human_decision(self, vision, intelligence):
         """
-        Decide como Joel decidía.
+        Piensa como Joel pensaba.
         
-        NO usa scoring aritmético.
-        USA contexto completo para decidir.
-        
-        Returns:
-            dict: Decisión con razón humana
+        NO pregunta: "¿Matchea el pattern?"
+        SÍ pregunta: "¿La situación MEJORA o EMPEORA?"
         """
         
-        # Extraer valores clave
-        explosion = vision.get('explosion', 'DESCONOCIDA')
-        runway = vision.get('runway', 'DESCONOCIDO')
+        # Si hubo error en análisis
+        if vision.get('error'):
+            return {
+                'decision': 'WAIT',
+                'confidence': 30,
+                'reason': f"⚠️ {vision.get('message', 'Error en análisis')}",
+                'archetype': 'ERROR'
+            }
+        
+        # ================================================================
+        # EXTRAER TRAYECTORIAS
+        # ================================================================
+        adx_motion = vision.get('adx_motion', 'DESCONOCIDO')
+        candle_motion = vision.get('candle_motion', 'DESCONOCIDO')
+        momentum_motion = vision.get('momentum_motion', 'DESCONOCIDO')
+        exhaustion_motion = vision.get('exhaustion_motion', 'DESCONOCIDO')
         structure = vision.get('structure', 'AMBIGUA')
-        position = vision.get('position', 'DESCONOCIDA')
-        exhaustion_phase = vision.get('exhaustion_phase', 'UNKNOWN')
-        adx_trend = vision.get('adx_trend', 'ESTABLE')
+        
+        room_current = vision.get('room_current', 0)
+        exhaustion_current = vision.get('exhaustion_current', 50)
+        position_pct = vision.get('position_pct', 50)
         has_force = vision.get('has_force', False)
-        indicators = vision.get('indicators', 'DESCONOCIDO')
         
-        # =====================================================================
-        # ESCENARIOS DE DECISIÓN (como Joel pensaba)
-        # =====================================================================
+        # ================================================================
+        # PENSAR: ¿LA SITUACIÓN MEJORA O EMPEORA?
+        # ================================================================
         
-        # ----- ESCENARIO 1: SETUP IDEAL -----
-        # Explosión naciendo + espacio libre + estructura sana + indicadores mejorando
-        if (explosion in ['NACIENDO', 'ACTIVA'] and
-            runway in ['AMPLIO', 'MODERADO'] and
-            structure == 'SANA' and
-            position in ['CERCA_SOPORTE', 'ZONA_BAJA'] and
-            indicators in ['MEJORANDO', 'MIXTO']):
-            
+        # 1. ¿La FUERZA está construyéndose o muriendo?
+        force_is_building = (
+            adx_motion in ['ACELERANDO_RÁPIDO', 'CRECIENDO'] and
+            candle_motion in ['CRECIENDO', 'MIXTO']
+        )
+        
+        force_is_dying = (
+            adx_motion in ['MURIENDO_RÁPIDO', 'DECRECIENDO'] or
+            candle_motion == 'ACHICÁNDOSE'
+        )
+        
+        # 2. ¿El ESPACIO está abriéndose o cerrándose?
+        space_is_opening = (
+            exhaustion_motion == 'MEJORANDO' or
+            (exhaustion_current &lt; 40 and room_current &gt; 2)
+        )
+        
+        space_is_closing = (
+            exhaustion_motion in ['EXPLOSIÓN_RÁPIDA', 'SUBIENDO', 'MUY_ALTO'] or
+            room_current &lt; 1 or
+            position_pct &gt; 85  # Cerca del techo
+        )
+        
+        # 3. ¿La ESTRUCTURA es sana?
+        structure_is_healthy = (structure == 'SANA')
+        structure_is_broken = (structure == 'DETERIORANDO')
+        
+        # ================================================================
+        # DECISIÓN BASADA EN CONTEXTO COMPLETO
+        # ================================================================
+        
+        # ----- CASO 1: TODO MEJORA (como ASR +2.00%) -----
+        if force_is_building and space_is_opening and structure_is_healthy:
             return {
                 'decision': 'ENTER',
                 'confidence': 90,
-                'reason': f"🎯 SETUP IDEAL: Explosión {explosion}, runway {runway}, estructura {structure}",
-                'archetype': 'IDEAL_SETUP'
+                'reason': f"🎯 CONTEXTO IDEAL: Fuerza naciendo ({adx_motion}), espacio abriéndose ({exhaustion_motion}), estructura sana",
+                'archetype': 'IDEAL_CONTEXT',
+                'story': {
+                    'adx': adx_motion,
+                    'candles': candle_motion,
+                    'exhaustion': exhaustion_motion,
+                    'structure': structure
+                }
             }
         
-        # ----- ESCENARIO 2: EXPLOSIÓN FUERTE -----
-        # Fuerza brutal compensado deficiencias menores
-        if (explosion == 'NACIENDO' and
-            has_force and
-            adx_trend == 'ACELERANDO' and
-            runway != 'BLOQUEADO'):
-            
+        # ----- CASO 2: Fuerza naciendo pero espacio cerrándose (como AKE -1.78%) -----
+        if force_is_building and space_is_closing:
             return {
-                'decision': 'ENTER',
+                'decision': 'WAIT',
                 'confidence': 85,
-                'reason': f"⚡ EXPLOSIÓN NACIENDO: ADX acelerando, fuerza detectada",
-                'archetype': 'EXPLOSION_ENTRY'
+                'reason': f"⚠️ EXPLOSIÓN RÁPIDA: Fuerza sí ({adx_motion}) pero espacio cerrándose ({exhaustion_motion}) - compraría techo",
+                'archetype': 'BUYING_TOP',
+                'story': {
+                    'adx': adx_motion,
+                    'exhaustion': exhaustion_motion,
+                    'room': room_current
+                }
             }
         
-        # ----- ESCENARIO 3: CONTINUACIÓN DE TENDENCIA -----
-        # Tendencia activa con espacio y estructura
-        if (explosion == 'ACTIVA' and
-            runway in ['AMPLIO', 'MODERADO'] and
-            structure == 'SANA' and
-            exhaustion_phase in ['FRESH', 'DEVELOPING']):
-            
-            return {
-                'decision': 'ENTER',
-                'confidence': 75,
-                'reason': f"📈 CONTINUACIÓN: Tendencia activa, fase {exhaustion_phase}",
-                'archetype': 'TREND_CONTINUATION'
-            }
-        
-        # ----- ESCENARIO 4: FUERZA MURIENDO -----
-        # Explosión terminando = esperar
-        if explosion in ['MURIENDO', 'MUERTA']:
+        # ----- CASO 3: Fuerza muriendo (como DGRAM -3.00%) -----
+        if force_is_dying:
             return {
                 'decision': 'WAIT',
                 'confidence': 80,
-                'reason': f"⏸️ ESPERAR: Explosión {explosion}, ADX {adx_trend}",
-                'archetype': 'DYING_FORCE'
+                'reason': f"🔴 FUERZA MURIENDO: ADX {adx_motion}, velas {candle_motion} - explosión terminó",
+                'archetype': 'DYING_FORCE',
+                'story': {
+                    'adx': adx_motion,
+                    'candles': candle_motion
+                }
             }
         
-        # ----- ESCENARIO 5: SIN ESPACIO (COMPRAR TECHO) -----
-        if runway == 'BLOQUEADO' or position == 'CERCA_TECHO':
+        # ----- CASO 4: Fuerza activa con espacio OK -----
+        if has_force and not space_is_closing and structure_is_healthy:
             return {
-                'decision': 'WAIT',
-                'confidence': 85,
-                'reason': f"🚫 SIN ESPACIO: Runway {runway}, posición {position}",
-                'archetype': 'NO_RUNWAY'
+                'decision': 'ENTER',
+                'confidence': 75,
+                'reason': f"📈 TENDENCIA ACTIVA: Fuerza presente, espacio OK, estructura sana",
+                'archetype': 'TREND_CONTINUATION',
+                'story': {
+                    'adx': adx_motion,
+                    'exhaustion': exhaustion_motion
+                }
             }
         
-        # ----- ESCENARIO 6: ESTRUCTURA ROTA -----
-        if structure == 'DETERIORANDO':
+        # ----- CASO 5: Estructura rota -----
+        if structure_is_broken:
             return {
                 'decision': 'WAIT',
                 'confidence': 75,
-                'reason': f"⚠️ ESTRUCTURA ROTA: ZigZag deteriorándose",
-                'archetype': 'BROKEN_STRUCTURE'
+                'reason': f"📉 ESTRUCTURA ROTA: ZigZag deteriorándose",
+                'archetype': 'BROKEN_STRUCTURE',
+                'story': {'structure': structure}
             }
         
-        # ----- ESCENARIO 7: EXHAUSTED -----
-        if exhaustion_phase == 'EXHAUSTED' and runway in ['ESTRECHO', 'BLOQUEADO']:
+        # ----- CASO 6: Sin espacio aunque fuerza OK -----
+        if space_is_closing and not force_is_building:
             return {
                 'decision': 'WAIT',
-                'confidence': 90,
-                'reason': f"🛑 EXHAUSTED: Tendencia agotada ({exhaustion_phase}), sin espacio ({runway})",
-                'archetype': 'EXHAUSTED_TREND'
+                'confidence': 70,
+                'reason': f"🚫 SIN ESPACIO: Room {room_current:.1f}%, exhaustion {exhaustion_current:.0f}%",
+                'archetype': 'NO_RUNWAY',
+                'story': {
+                    'room': room_current,
+                    'exhaustion': exhaustion_current
+                }
             }
         
-        # ----- ESCENARIO 8: AMBIGUO -----
-        # No está claro - mejor esperar
+        # ----- CASO 7: Contexto ambiguo -----
         return {
             'decision': 'WAIT',
             'confidence': 50,
-            'reason': f"❓ AMBIGUO: explosion={explosion}, runway={runway}, structure={structure}",
-            'archetype': 'AMBIGUOUS'
+            'reason': f"❓ CONTEXTO AMBIGUO: ADX {adx_motion}, exhaustion {exhaustion_motion}, estructura {structure}",
+            'archetype': 'AMBIGUOUS',
+            'story': {
+                'adx': adx_motion,
+                'exhaustion': exhaustion_motion,
+                'structure': structure
+            }
         }
     
     # =========================================================================
@@ -438,33 +519,24 @@ class UnifiedVision:
     def decide_with_unified_vision(self, symbol, ladder_analysis):
         """
         Punto de entrada principal.
-        
-        Toma decisión viendo la PELÍCULA COMPLETA del mercado.
-        
-        Args:
-            symbol: Par a analizar
-            ladder_analysis: Análisis multi-TF de brain_analyzer
-            
-        Returns:
-            dict: Decisión con toda la información de visión
         """
-        
-        # 1. Recopilar TODA la inteligencia
+        # 1. Recopilar FRAMES
         intelligence = self.gather_intelligence(symbol, ladder_analysis)
         
-        # 2. Ver la PELÍCULA COMPLETA
+        # 2. Ver la PELÍCULA (analizar trayectorias)
         vision = self.see_the_movie(intelligence)
         
-        # 3. Decidir como trader HUMANO
+        # 3. PENSAR (no pattern matching)
         decision = self.make_human_decision(vision, intelligence)
         
-        # 4. Agregar visión al resultado
+        # 4. Agregar datos
         decision['vision'] = vision
-        decision['intelligence'] = {
+        decision['intelligence_summary'] = {
             'exhaustion_pct': intelligence['exhaustion'].get('exhaustion_pct', 50),
             'room_pct': intelligence['exhaustion'].get('room_pct', 0),
             'force_level': intelligence['force'].get('force_level', 'NONE'),
-            'grid_status': intelligence['grid'].get('status', 'UNKNOWN')
+            'grid_status': intelligence['grid'].get('status', 'UNKNOWN'),
+            'frames_count': len(intelligence['frames'].get('15m', []))
         }
         
         return decision
@@ -476,225 +548,56 @@ def decide_unified(symbol, ladder_analysis):
     unified = UnifiedVision()
     return unified.decide_with_unified_vision(symbol, ladder_analysis)
 PASO 2: MODIFICAR brain_intelligent.py
-Ubicación
-c:\Users\Joel\Trading automatizado\BraintraderAntigravity\brain_intelligent.py
-2.1 CÓDIGO ACTUAL a REEMPLAZAR (Líneas 205-260)
-# CÓDIGO ACTUAL - brain_intelligent.py L205-260
-    decision = make_pattern_based_decision(
-        patterns_result, ladder_analysis, math_signals, 
-        symbol, current_price, recent_history, grid_result
-    )
-    # --- REPORTE Y SALIDA ---
-    print(f"\n🔍 REPORTE INTELIGENTE: {symbol}")
-    print(f"   - Acción: {decision['action']} (Conf: {decision['confidence']})")
-    if decision['reasons']:
-        print(f"   - Razones: {decision['reasons'][0]}")
-        if len(decision['reasons']) &gt; 1:
-            print(f"     ...y {len(decision['reasons'])-1} más.")
-    # Guardar Telemetría
-    try:
-        telemetry_data = ladder_analysis.copy()
-        telemetry_data['decision_reasons'] = decision['reasons']
-        
-        db_manager.insert_telemetry(
-            symbol, 
-            'OPERAR' if decision['action'] == 'ENTER' else 'NO_OPERAR',
-            decision['confidence'],
-            telemetry_data
-        )
-    except Exception as e:
-        print(f"⚠️ Telemetry error: {e}")
-    # Formatear retorno para bot_main
-    if decision['action'] == 'ENTER':
-        return {
-            'action': 'OPERAR',
-            'trade_type': decision['strategy']['type'],
-            'confidence': decision['confidence'],
-            'pattern': decision.get('pattern'),
-            'reasons': decision['reasons'],
-            'full_analysis': {
-                'ladder_data': ladder_analysis, 
-                'patterns': patterns_result,
-                'force_result': force_result
-            },
-            'position_size': decision['strategy']['position_size'],
-            'strategy': decision['strategy']
-        }
-    else:
-        return {
-            'action': 'NO_OPERAR',
-            'confidence': decision['confidence'],
-            'reason': f"Wait: {decision['reasons'][0] if decision['reasons'] else 'Low score'}",
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                'force_result': force_result,
-                'lateral_penalty': lateral_penalty,
-                'lateral_reasons': lateral_reasons
-            }
-        }
-2.2 CÓDIGO PROPUESTO (Líneas 205-260)
-# CÓDIGO NUEVO - brain_intelligent.py L205-260
-    # ===================================================================
-    # &gt;&gt;&gt; VISIÓN UNIFICADA (reemplaza make_pattern_based_decision) &lt;&lt;&lt;
-    # ===================================================================
-    from brain_vision_unified import UnifiedVision
-    
-    unified = UnifiedVision()
-    decision = unified.decide_with_unified_vision(symbol, ladder_analysis)
-    # --- REPORTE Y SALIDA ---
-    print(f"\n🔍 VISIÓN UNIFICADA: {symbol}")
-    print(f"   - Decisión: {decision['decision']} (Conf: {decision['confidence']})")
-    print(f"   - Razón: {decision['reason']}")
-    print(f"   - Arquetipo: {decision.get('archetype', 'N/A')}")
-    
-    # Mostrar visión
-    vision = decision.get('vision', {})
-    print(f"   📊 Visión: explosion={vision.get('explosion')}, runway={vision.get('runway')}, structure={vision.get('structure')}")
-    # Guardar Telemetría
-    try:
-        telemetry_data = ladder_analysis.copy()
-        telemetry_data['unified_vision'] = decision.get('vision', {})
-        telemetry_data['decision_reason'] = decision['reason']
-        
-        db_manager.insert_telemetry(
-            symbol, 
-            'OPERAR' if decision['decision'] == 'ENTER' else 'NO_OPERAR',
-            decision['confidence'],
-            telemetry_data
-        )
-    except Exception as e:
-        print(f"⚠️ Telemetry error: {e}")
-    # Formatear retorno para bot_main
-    if decision['decision'] == 'ENTER':
-        return {
-            'action': 'OPERAR',
-            'trade_type': 'LONG' if ladder_analysis.get('15m', {}).get('direction') == 'BULLISH' else 'SHORT',
-            'confidence': decision['confidence'],
-            'pattern': decision.get('archetype', 'UNIFIED_VISION'),
-            'reasons': [decision['reason']],
-            'full_analysis': {
-                'ladder_data': ladder_analysis, 
-                'patterns': patterns_result,
-                'force_result': force_result,
-                'unified_vision': decision['vision']
-            },
-            'position_size': 0.1,  # Default, será ajustado por executor
-            'strategy': determine_strategy(patterns_result, ladder_analysis)
-        }
-    else:
-        return {
-            'action': 'NO_OPERAR',
-            'confidence': decision['confidence'],
-            'reason': decision['reason'],
-            'full_analysis': {
-                'ladder_data': ladder_analysis,
-                'force_result': force_result,
-                'unified_vision': decision['vision']
-            }
-        }
-2.3 IMPORTS a AGREGAR (Línea 23)
-# CÓDIGO ACTUAL - brain_intelligent.py L23
-from brain_movie_engine import MovieEngine, analyze_movie
-# CÓDIGO NUEVO - brain_intelligent.py L23
-from brain_movie_engine import MovieEngine, analyze_movie
-from brain_vision_unified import UnifiedVision  # &lt;&lt;&lt; AGREGAR
-PASO 3: CÓDIGO A COMENTAR (NO BORRAR)
-Función 
-make_pattern_based_decision
- (Líneas 262-592)
-Acción: COMENTAR TODO el bloque, no borrar
+Código actual a reemplazar (L205-260)
+Ver plan v1.0 - sin cambios en esta sección.
 
-# =============================================================================
-# CÓDIGO LEGACY - COMENTADO (reemplazado por UnifiedVision)
-# =============================================================================
-# def make_pattern_based_decision(patterns, ladder, signals, symbol, current_price, recent_history=None, grid_result=None):
-#     """
-#     Núcleo de Decisión v5.0 (Corregido)
-#     Integra: Física (Wrecking Ball), Estructura (ZigZag), Zonas (S/R), Memoria.
-#     """
-#     score = 0
-#     reasons = []
-#     ... (TODO EL BLOQUE COMENTADO)
-Razón: Mantener para referencia y posible rollback si algo falla.
+Import a agregar (L23)
+from brain_vision_unified import UnifiedVision
+PASO 3: COMENTAR make_pattern_based_decision
+Sin cambios - comentar todo el bloque L262-592.
 
-PASO 4: CONEXIONES ENTRE MÓDULOS
-Lo que UnifiedVision conecta:
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       ANTES (DESCONECTADO)                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  MovieEngine ──┐                                                        │
-│                │                                                        │
-│  Grid ─────────┼──&gt; make_pattern_based_decision() ──&gt; score += / -=     │
-│                │         (penalties aritméticas)                        │
-│  Exhaustion ───┤                                                        │
-│                │                                                        │
-│  ZigZag ───────┘                                                        │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       DESPUÉS (UNIFICADO)                               │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  MovieEngine ──┐                                                        │
-│                │                                                        │
-│  Grid ─────────┼──&gt; UnifiedVision.gather_intelligence()                 │
-│                │         │                                              │
-│  Exhaustion ───┤         ▼                                              │
-│                │    see_the_movie()                                     │
-│  ZigZag ───────┤         │                                              │
-│                │         ▼                                              │
-│  Frames ───────┤    make_human_decision()                               │
-│                │         │                                              │
-│  Force ────────┘         ▼                                              │
-│                   DECISIÓN CONTEXTUAL                                   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-PASO 5: TESTING
-5.1 Verificación de sintaxis
-python -m py_compile brain_vision_unified.py
-python -m py_compile brain_intelligent.py
-5.2 Test unitario rápido
-# test_unified_vision.py
-from brain_vision_unified import UnifiedVision, decide_unified
-from brain_analyzer import analyze_4h, analyze_1h, analyze_15m, analyze_5m
-symbol = 'BTC/USDT:USDT'
-ladder = {
-    '4h': analyze_4h(symbol),
-    '1h': analyze_1h(symbol),
-    '15m': analyze_15m(symbol),
-    '5m': analyze_5m(symbol)
-}
-decision = decide_unified(symbol, ladder)
-print(f"Decision: {decision['decision']}")
-print(f"Reason: {decision['reason']}")
-print(f"Vision: {decision['vision']}")
-5.3 Backtest completo
-# Modificar TARGET_TRADES = 20
-python tools/backtest_real.py
-5.4 Métricas a comparar
-Métrica	Antes (Scoring)	Después (Unified)
-Win Rate	50%	?
-PnL Total	-1.38%	?
-Trades exhaust&gt;90%	5 (entraron)	? (deberían NO entrar)
-RESUMEN DE CAMBIOS
-Archivo	Acción	Líneas
-brain_vision_unified.py	CREAR	~350 líneas nuevas
-brain_intelligent.py
-MODIFICAR	L23 (import), L205-260 (reemplazar)
-brain_intelligent.py
-COMENTAR	L262-592 (make_pattern_based_decision)
-CHECKLIST DE APROBACIÓN
- ¿El plan está claro?
- ¿La filosofía (no hard-blocks) se mantiene?
- ¿Los escenarios de decisión cubren los casos?
- ¿Hay algo que agregar/modificar?
-ESPERANDO APROBACIÓN PARA PROCEDER
+VALIDACIÓN CON TRADES REALES
+Trade: AKE (exhaust=100%, perdió -1.78%)
+Lo que v2.0 debería detectar:
+- adx_motion: probablemente 'LATERAL' o 'DECRECIENDO' (ya en climax)
+- exhaustion_motion: 'EXPLOSIÓN_RÁPIDA' o 'MUY_ALTO'
+- space_is_closing: True (room &lt; 1% + exhaust 100%)
+Decisión esperada: WAIT (BUYING_TOP)
+Razón: "Fuerza sí pero espacio cerrándose - compraría techo"
+Trade: DGRAM (exhaust=21%, perdió -3.00%)
+Lo que v2.0 debería detectar:
+- adx_motion: 'MURIENDO_RÁPIDO' o 'DECRECIENDO'
+- candle_motion: 'ACHICÁNDOSE'
+- force_is_dying: True
+Decisión esperada: WAIT (DYING_FORCE)
+Razón: "ADX muriendo, velas achicándose - explosión terminó"
+Trade: ASR (exhaust=45%, ganó +2.00%)
+Lo que v2.0 debería detectar:
+- adx_motion: 'CRECIENDO' o 'ACELERANDO'
+- exhaustion_motion: 'ESTABLE' o 'MEJORANDO'
+- structure: 'SANA'
+- force_is_building: True
+- space_is_opening: True
+Decisión esperada: ENTER (IDEAL_CONTEXT)
+Razón: "Fuerza naciendo, espacio abriéndose, estructura sana"
+RESUMEN DE CAMBIOS v1.0 → v2.0
+Aspecto	v1.0 (Incorrecto)	v2.0 (Corregido)
+ADX	if phase == 'NASCENT'	adx_changes = [frame[i+1] - frame[i]]
+Runway	if room &gt; 4: 'AMPLIO'	exhaustion_velocity = frames[-1] - frames[0]
+Decisión	Pattern matching	force_is_building and space_is_opening
+Pregunta	¿Matchea el pattern?	¿La situación MEJORA o EMPEORA?
+CHECKLIST
+ ¿Análisis basado en TRAYECTORIAS (no estados)?
+ ¿Pensamiento contextual (no pattern matching)?
+ ¿Detectaría AKE como WAIT (buying top)?
+ ¿Detectaría DGRAM como WAIT (dying force)?
+ ¿Detectaría ASR como ENTER (ideal context)?
+ESPERANDO APROBACIÓN PARA IMPLEMENTAR
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 27,670<br>
-    Generado: 2026-01-01 21:35:58
+    Total caracteres: 23,255<br>
+    Generado: 2026-01-01 21:46:48
   </div>
 </body>
 </html>
