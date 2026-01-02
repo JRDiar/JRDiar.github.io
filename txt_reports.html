@@ -15,385 +15,529 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-02 03:15:07</div>
+  <div class="meta">Última actualización: 2026-01-02 15:14:58</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-PLAN ENTREGADO
-dual_system_plan.md incluye:
+"""
+BACKTESTING REAL - Usa lógica EXACTA del bot
+=============================================
+Este script usa decide_intelligently() y el mismo flujo del bot,
+pero con datos locales (sin requests a MEXC).
 
-✅ Todo lo que solicitaste:
-3 Cambios Exactos:
-Threshold 60→40 (brain_vision_unified.py)
-Position sizing dinámico 5%/10%/15% (brain_intelligent.py)
-Logging opcional (brain_intelligent.py)
-Código Copy-Paste Listo:
-Cada cambio con líneas exactas
-Código actual vs código nuevo
-Comentarios incluidos
-Validaciones:
-3 tests específicos
-Métricas esperadas
-Comparación con baseline
-📊 Plus Adicionales:
-Distribución esperada de 100 análisis simulados
-4 Casos de uso detallados (confidence 75/55/45/35)
-Riesgos y mitigaciones para cada uno
-Rollback plan (2 minutos para revertir)
-Checklist completo de implementación
-Métricas de éxito/fracaso (criterios objetivos)
-Análisis financiero (conservador/optimista/pesimista)
-🎯 Filosofía Mantenida:
-✅ Time Ladder gradual
-✅ Sin código binario
-✅ Gestión de riesgo inteligente
+Requisito: Ejecutar primero tools/download_historical.py
+"""
+import sys
+import os
+import json
+import time
+from pathlib import Path
+import pandas as pd  # Para leer CSVs
+import csv
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
-El plan está listo para ejecutar cuando quieras. Solo revisar el archivo y cuando estés conforme, puedo implementar los 3 cambios quirúrgicos.
-PLAN DE IMPLEMENTACIÓN: Sistema Dual de Confianza
-Fecha: 2026-01-02
-Objetivo: Aumentar volumen de trades manteniendo gestión de riesgo
-Estrategia: Threshold 60→40 + Position sizing estratificado
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-📋 RESUMEN EJECUTIVO
-Cambio Filosófico
-ANTES: Threshold binario 60% → Solo setups "perfectos"
-DESPUÉS: Threshold gradual 40% → Todos los setups "aceptables" con riesgo proporcional
+from exchange_connection import (
+    enable_backtest_mode, disable_backtest_mode,
+    advance_backtest_frame, get_backtest_frame, 
+    get_backtest_balance, set_backtest_frame
+)
+from brain_intelligent import decide_intelligently
+from brain_frames import load_frames_from_ohlcv, get_frame_storage
 
-Impacto Esperado
-Métrica	Actual (60%)	Esperado (40%)	Cambio
-Trades/sesión	20	40-60	+100-200%
-Win Rate	55%	50-53%	-2 a -5%
-PnL	+10.56%	+12-18%	+1.5 a +7.5%
-Risk Management	Fijo 10%	Dinámico 5-15%	Estratificado
-🎯 CAMBIOS REQUERIDOS
-CAMBIO #1: Threshold en UnifiedVision
-Archivo: 
-brain_vision_unified.py
+# =======================================================
+# CONFIGURACIÓN
+# =======================================================
+DATA_DIR = 'data/historical_2025'  # 2025 full year data
+TARGET_TRADES = 30
+INITIAL_CAPITAL = 1000
+STOP_LOSS_PCT = 3.0
+TAKE_PROFIT_PCT = 2.0
+MAX_HOLD_FRAMES = 6  # ~30 min (6 frames de 5m)
 
-Línea: 348
-Dificultad: ⭐ Trivial
-Riesgo: 🟢 Bajo
+# Threading
+MAX_WORKERS = 8
+SHOW_PROGRESS_EVERY = 25
 
-Código Actual:
-# L348-351
-if total &gt;= 60:
-    decision = 'ENTER'
-else:
-    decision = 'WAIT'
-Código Nuevo:
-# L348-353
-# FIX 2026-01-02: Sistema dual - Threshold 60→40
-# Joel: "Más volumen, gestión de riesgo con position size"
-if total &gt;= 40:
-    decision = 'ENTER'
-else:
-    decision = 'WAIT'
-Justificación:
-Permite setups con 40-59% confidence
-Riesgo controlado por position_size (ver Cambio #2)
-Mantiene filosofía gradual de UnifiedVision
-CAMBIO #2: Position Size Dinámico
-Archivo: 
-brain_intelligent.py
+# Colores
+GREEN = '\033[92m'
+RED = '\033[91m'
+YELLOW = '\033[93m'
+CYAN = '\033[96m'
+MAGENTA = '\033[95m'
+RESET = '\033[0m'
+BOLD = '\033[1m'
 
-Líneas: 241-256
-Dificultad: ⭐⭐ Moderada
-Riesgo: 🟡 Medio (cambia lógica de capital)
+# Thread-safe results
+results_lock = threading.Lock()
+results = {
+    'wins': 0,
+    'losses': 0,
+    'total_pnl': 0.0,
+    'capital': INITIAL_CAPITAL,
+    'trades': [],
+    'best_trade': 0.0,
+    'worst_trade': 0.0
+}
+trade_count = 0
+active_simulated_trades = {}  # {symbol: {entry_price, direction, entry_frame}}
 
-Código Actual:
-# L241-256
-if decision['decision'] == 'ENTER':
-    return {
-        'action': 'OPERAR',
-        'trade_type': 'LONG' if ladder_analysis.get('15m', {}).get('direction') == 'BULLISH' else 'SHORT',
-        'confidence': decision['confidence'],
-        'pattern': 'UNIFIED_VISION',
-        'reasons': [decision['reason']],
-        'full_analysis': {
-            'ladder_data': ladder_analysis, 
-            'patterns': patterns_result,
-            'force_result': force_result,
-            'unified_vision': decision
-        },
-        'position_size': 0.1,  # ← FIJO
-        'strategy': determine_strategy(patterns_result, ladder_analysis)
-    }
-Código Nuevo:
-# L241-273
-if decision['decision'] == 'ENTER':
+# CSV Logger globals
+CSV_LOG_DIR = 'data/backtest_logs'
+csv_log_path = None
+csv_writer = None
+csv_file = None
+
+def init_csv_logger():
+    """Inicializa el archivo CSV para logging"""
+    global csv_log_path, csv_writer, csv_file
     
-    # ===================================================================
-    # SISTEMA DUAL: Position Size según Confianza
-    # ===================================================================
-    # Joel: "Más volumen pero gestión de riesgo inteligente"
-    #
-    # TIER ALTO    (60-100%): 15% capital - Setups perfectos
-    # TIER MEDIO   (50-60%):  10% capital - Setups buenos (mayoría)
-    # TIER BAJO    (40-50%):   5% capital - Setups mediocres (exploración)
-    # ===================================================================
+    os.makedirs(CSV_LOG_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    csv_log_path = os.path.join(CSV_LOG_DIR, f'trades_{timestamp}.csv')
     
-    confidence = decision['confidence']
+    csv_file = open(csv_log_path, 'w', newline='', encoding='utf-8')
+    csv_writer = csv.writer(csv_file)
     
-    if confidence &gt;= 60:
-        position_size = 0.15  # Setups perfectos (como threshold 60 antiguo)
-        risk_tier = 'ALTO'
-    elif confidence &gt;= 50:
-        position_size = 0.10  # Setups buenos (nuevo rango)
-        risk_tier = 'MEDIO'
-    else:  # 40-50
-        position_size = 0.05  # Setups mediocres (exploración conservadora)
-        risk_tier = 'BAJO'
+    # Header
+    csv_writer.writerow([
+        'symbol', 'entry_frame', 'entry_price', 'exit_frame', 'exit_price',
+        'direction', 'pnl_pct', 'pnl_usd', 'duration_min', 'exit_reason',
+        'score', 'exhaustion_pct', 'exhaustion_phase', 'adx_value', 
+        'force_level'
+    ])
     
-    print(f"   💰 Position Size: {position_size*100:.0f}% (Tier: {risk_tier}, Conf: {confidence:.0f}%)")
+    print(f"📝 CSV Log: {csv_log_path}")
+
+def close_csv_logger():
+    """Cierra el archivo CSV"""
+    global csv_file
+    if csv_file:
+        csv_file.close()
+        print(f"📝 Log guardado: {csv_log_path}")
+
+def load_cache():
+    """Cargar datos históricos desde CSVs"""
+    cache = {}
+    files = os.listdir(DATA_DIR)
     
-    return {
-        'action': 'OPERAR',
-        'trade_type': 'LONG' if ladder_analysis.get('15m', {}).get('direction') == 'BULLISH' else 'SHORT',
-        'confidence': confidence,
-        'pattern': 'UNIFIED_VISION',
-        'reasons': [decision['reason']],
-        'full_analysis': {
-            'ladder_data': ladder_analysis, 
-            'patterns': patterns_result,
-            'force_result': force_result,
-            'unified_vision': decision
-        },
-        'position_size': position_size,  # ← DINÁMICO
-        'risk_tier': risk_tier,  # ← NUEVO campo para tracking
-        'strategy': determine_strategy(patterns_result, ladder_analysis)
-    }
-Justificación:
-60%+ (ALTO): Misma exposición que threshold 60 antiguo (15%)
-50-60% (MEDIO): Nuevos trades, riesgo moderado (10%)
-40-50% (BAJO): Exploración conservadora (5%)
-CAMBIO #3: Logging de CASI-setups (OPCIONAL)
-Archivo: 
-brain_intelligent.py
-
-Líneas: 257-267
-Dificultad: ⭐ Trivial
-Riesgo: 🟢 Bajo (solo logging)
-
-Código Actual:
-# L257-267
-else:
-    return {
-        'action': 'NO_OPERAR',
-        'confidence': decision['confidence'],
-        'reason': decision['reason'],
-        'full_analysis': {
-            'ladder_data': ladder_analysis,
-            'force_result': force_result,
-            'unified_vision': decision
-        }
-    }
-Código Nuevo:
-# L275-289
-else:
-    # Logging de setups que casi califican (para calibración)
-    confidence = decision['confidence']
-    if confidence &gt;= 30:
-        print(f"   ⏸️ CASI: Confidence {confidence:.0f}% (necesita 40%+)")
-        print(f"      Razón: {decision['reason'][:80]}...")
+    if not files:
+        print(f"{RED}❌ Directorio vacío{RESET}")
+        return None
     
-    return {
-        'action': 'NO_OPERAR',
-        'confidence': confidence,
-        'reason': decision['reason'],
-        'full_analysis': {
-            'ladder_data': ladder_analysis,
-            'force_result': force_result,
-            'unified_vision': decision
-        }
-    }
-Justificación:
-Ayuda a calibrar si threshold 40% es óptimo
-Identifica setups que quedan fuera por poco
-Útil para ajustar factores de confianza
-🔢 DISTRIBUCIÓN ESPERADA DE TRADES
-Simulación con 100 análisis:
-Tier	Confidence	Count	Position Size	Capital Risk	PnL Esperado
-ALTO	60-100%	20	15%	3.0% total	+3.6% (60% WR)
-MEDIO	50-60%	35	10%	3.5% total	+3.5% (52% WR)
-BAJO	40-50%	25	5%	1.25% total	+0.25% (45% WR)
-Rechazados	&lt;40%	20	0%	0%	0%
-TOTAL	-	80 trades	-	7.75%	+7.35%
-vs Sistema Antiguo (threshold 60%):
+    print(f"   📂 Cargando {len(files)} archivos...")
+    
+    # FIX 2026-01-02: Cargar CSVs en lugar de JSONs
+    for filename in files:
+        if not filename.endswith('.csv'):
+            continue
+        
+        try:
+            filepath = os.path.join(DATA_DIR, filename)
+            df = pd.read_csv(filepath)
+            
+            # Extraer symbol del filename (ej: BTC_USDT_USDT.csv → BTC/USDT:USDT)
+            symbol_raw = filename.replace('.csv', '')
+            # Primera _ es /, segunda _ es :
+            parts = symbol_raw.split('_')
+            if len(parts) &gt;= 3:
+                symbol = f"{parts[0]}/{parts[1]}:{parts[2]}"
+            else:
+                continue  # Skip archivos con formato incorrecto
+            
+            # Convertir DataFrame a lista de listas [timestamp, O, H, L, C, V]
+            required_cols = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+            if not all(col in df.columns for col in required_cols):
+                print(f"   ⚠️ {filename}: columnas faltantes")
+                continue
+            
+            # Convertir a lista de listas para compatibilidad con FrameStorage
+            ohlcv_list = df[required_cols].values.tolist()
+            
+            cache[symbol] = {
+                '5m': ohlcv_list
+            }
+        except Exception as e:
+            print(f"   ⚠️ Error en {filename}: {e}")
+    
+    print(f"   ✅ {len(cache)} símbolos cargados")
+    return cache
 
-Trades: 20 vs 80 (+300%)
-Capital Risk: 3.0% vs 7.75% (+158%)
-PnL: +3.6% vs +7.35% (+104%)
-✅ VALIDACIONES POST-IMPLEMENTACIÓN
-TEST 1: Threshold Correcto
-# Verificar en logs:
-# ✅ Confidence 65% → OPERAR
-# ✅ Confidence 55% → OPERAR
-# ✅ Confidence 45% → OPERAR
-# ✅ Confidence 35% → NO_OPERAR
-TEST 2: Position Sizing Correcto
-# Verificar en logs:
-# ✅ Confidence 65% → "Position Size: 15% (Tier: ALTO)"
-# ✅ Confidence 55% → "Position Size: 10% (Tier: MEDIO)"
-# ✅ Confidence 45% → "Position Size: 5% (Tier: BAJO)"
-TEST 3: Backtest Comparison
-# Ejecutar backtest Y comparar con baseline
-python tools/backtest_real.py
-Métricas clave:
+def simulate_trade_outcome(symbol, direction, entry_frame, current_frame, cache):
+    """
+    Simula el resultado de un trade mirando frames futuros.
+    Retorna None si aún no hay outcome, o PnL% si hay SL/TP/TimeExit
+    """
+    if symbol not in cache or '5m' not in cache[symbol]:
+        return -STOP_LOSS_PCT  # Asumir loss si no hay data
+    
+    ohlcv = cache[symbol]['5m']
+    
+    if entry_frame &gt;= len(ohlcv) or current_frame &gt;= len(ohlcv):
+        return None
+    
+    entry_price = ohlcv[entry_frame][4]  # Close al entrar
+    
+    # Revisar frames desde entrada hasta ahora
+    for frame_idx in range(entry_frame + 1, current_frame + 1):
+        if frame_idx &gt;= len(ohlcv):
+            break
+            
+        candle = ohlcv[frame_idx]
+        high = candle[2]
+        low = candle[3]
+        
+        if direction == 'BULLISH':
+            # Check SL
+            pnl_low = (low - entry_price) / entry_price * 100
+            if pnl_low &lt;= -STOP_LOSS_PCT:
+                return -STOP_LOSS_PCT
+            
+            # Check TP
+            pnl_high = (high - entry_price) / entry_price * 100
+            if pnl_high &gt;= TAKE_PROFIT_PCT:
+                return TAKE_PROFIT_PCT
+        else:
+            # BEARISH
+            pnl_high = (entry_price - high) / entry_price * 100
+            if pnl_high &lt;= -STOP_LOSS_PCT:
+                return -STOP_LOSS_PCT
+            
+            pnl_low = (entry_price - low) / entry_price * 100
+            if pnl_low &gt;= TAKE_PROFIT_PCT:
+                return TAKE_PROFIT_PCT
+    
+    # Check time exit
+    frames_held = current_frame - entry_frame
+    if frames_held &gt;= MAX_HOLD_FRAMES:
+        current_close = ohlcv[min(current_frame, len(ohlcv)-1)][4]
+        if direction == 'BULLISH':
+            return (current_close - entry_price) / entry_price * 100
+        else:
+            return (entry_price - current_close) / entry_price * 100
+    
+    return None  # Trade aún activo
 
-Trades ejecutados: debe aumentar 2-3x
-Win rate: esperar 50-53% (aceptable si -2 a -5% del actual)
-PnL: debe ser superior al actual (&gt;+10.56%)
-Max drawdown: no debe exceder -15%
-📊 CASOS DE USO
-Caso 1: Setup Perfecto (Confidence 75%)
-UnifiedVision: 75% confidence → ENTER
-Position Size: 15% capital (TIER ALTO)
-Stop Loss: -3% → Riesgo: -0.45% del capital total
-Entrada: SÍ (como antes)
-Caso 2: Setup Bueno (Confidence 55%)
-UnifiedVision: 55% confidence → ENTER (NUEVO)
-Position Size: 10% capital (TIER MEDIO)
-Stop Loss: -3% → Riesgo: -0.30% del capital total
-Entrada: SÍ (antes era rechazado)
-Caso 3: Setup Mediocre (Confidence 45%)
-UnifiedVision: 45% confidence → ENTER (NUEVO)
-Position Size: 5% capital (TIER BAJO)
-Stop Loss: -3% → Riesgo: -0.15% del capital total
-Entrada: SÍ con riesgo mínimo (antes era rechazado)
-Caso 4: Setup Débil (Confidence 35%)
-UnifiedVision: 35% confidence → WAIT
-Entrada: NO (como antes)
-⚠️ RIESGOS Y MITIGACIONES
-Riesgo #1: Overtrading
-Síntoma: Demasiados trades simultáneos
-Mitigación: Límite de 5 trades activos (ya existe en bot)
+def record_trade_result(symbol, direction, pnl_pct):
+    """Registra resultado de trade de forma thread-safe"""
+    global trade_count, results
+    
+    with results_lock:
+        trade_count += 1
+        current = trade_count
+        
+        is_win = pnl_pct &gt; 0
+        
+        if is_win:
+            results['wins'] += 1
+        else:
+            results['losses'] += 1
+        
+        results['total_pnl'] += pnl_pct
+        pnl_usd = (pnl_pct / 100) * results['capital']
+        results['capital'] += pnl_usd
+        
+        if pnl_pct &gt; results['best_trade']:
+            results['best_trade'] = pnl_pct
+        if pnl_pct &lt; results['worst_trade']:
+            results['worst_trade'] = pnl_pct
+        
+        results['trades'].append({
+            'symbol': symbol,
+            'direction': direction,
+            'pnl': pnl_pct
+        })
+        
+        # Progress
+        color = GREEN if is_win else RED
+        icon = "✅" if is_win else "❌"
+        total = results['wins'] + results['losses']
+        wr = (results['wins'] / total * 100) if total &gt; 0 else 0
+        
+        print(f"{icon} [{current:3d}/{TARGET_TRADES}] {color}{symbol:20s}{RESET} | "
+              f"{direction:7s} | PnL: {color}{pnl_pct:+6.2f}%{RESET} | "
+              f"WR: {wr:5.1f}% | Cap: ${results['capital']:.2f}")
+        
+        if current % SHOW_PROGRESS_EVERY == 0:
+            print(f"\n{CYAN}--- STATS @ {total} trades ---{RESET}")
+            print(f"    WR: {wr:.1f}% | PnL: {results['total_pnl']:+.2f}%\n")
+    
+    return current
 
-Riesgo #2: Trades BAJO calidad
-Síntoma: Win rate &lt;45% en tier BAJO
-Mitigación: Monitorear por 48h, si WR&lt;45% → subir threshold a 45%
+def print_final_report(elapsed):
+    """Reporte final"""
+    total = results['wins'] + results['losses']
+    if total == 0:
+        print("⚠️ No se ejecutaron trades")
+        return
+    
+    wr = (results['wins'] / total * 100)
+    profit = results['capital'] - INITIAL_CAPITAL
+    
+    print(f"\n{BOLD}{'='*60}{RESET}")
+    print(f"{BOLD}📊 REPORTE FINAL - {total} TRADES (LÓGICA REAL DEL BOT){RESET}")
+    print(f"{'='*60}")
+    
+    print(f"\n{BOLD}📈 RESUMEN:{RESET}")
+    print(f"   Win Rate: {wr:.1f}% ({results['wins']}W/{results['losses']}L)")
+    print(f"   PnL Total: {results['total_pnl']:+.2f}%")
+    print(f"   Capital: ${INITIAL_CAPITAL} → ${results['capital']:.2f}")
+    print(f"   Ganancia: ${profit:+.2f} ({profit/INITIAL_CAPITAL*100:+.2f}%)")
+    
+    print(f"\n{BOLD}📊 ESTADÍSTICAS:{RESET}")
+    print(f"   Mejor Trade: {results['best_trade']:+.2f}%")
+    print(f"   Peor Trade: {results['worst_trade']:+.2f}%")
+    print(f"   PnL Promedio: {results['total_pnl']/total:+.2f}%")
+    
+    print(f"\n{BOLD}⚡ PERFORMANCE:{RESET}")
+    print(f"   Tiempo total: {elapsed:.1f} segundos")
+    print(f"   Trades/segundo: {total/elapsed:.1f}")
+    
+    # Guardar
+    report_path = 'reports/backtest_real_results.txt'
+    os.makedirs('reports', exist_ok=True)
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(f"BACKTESTING REAL - RESULTADOS\n")
+        f.write(f"{'='*50}\n")
+        f.write(f"LÓGICA: decide_intelligently() exacta del bot\n")
+        f.write(f"Timestamp: {datetime.now()}\n")
+        f.write(f"Trades: {total}\n")
+        f.write(f"Win Rate: {wr:.1f}%\n")
+        f.write(f"PnL Total: {results['total_pnl']:+.2f}%\n")
+        f.write(f"Capital: ${INITIAL_CAPITAL} -&gt; ${results['capital']:.2f}\n")
+        f.write(f"Tiempo: {elapsed:.1f}s\n")
+    
+    print(f"\n💾 Guardado: {report_path}")
+    print(f"{'='*60}\n")
 
-Riesgo #3: Capital insuficiente
-Síntoma: No puede abrir trades (capital bloqueado)
-Mitigación: Max 7.75% capital en riesgo simultáneo
+def run_backtest_real():
+    """Ejecuta backtesting con la lógica REAL del bot"""
+    global trade_count, active_simulated_trades
+    
+    print(f"\n{BOLD}{'='*60}{RESET}")
+    print(f"{BOLD}🧠 BACKTESTING REAL - LÓGICA EXACTA DEL BOT{RESET}")
+    print(f"{'='*60}")
+    
+    # 1. Cargar cache
+    cache = load_cache()
+    if not cache:
+        return
+    
+    # OPTIMIZACIÓN: Limitar a primeros 100 símbolos para velocidad
+    all_symbols = list(cache.keys())
+    symbols = all_symbols[:100]
+    print(f"   ✅ {len(symbols)} símbolos seleccionados (de {len(all_symbols)} totales)")
+    
+    # 2. Determinar frames disponibles
+    min_frames = min(len(cache[s].get('5m', [])) for s in symbols if '5m' in cache.get(s, {}))
+    print(f"   📊 {min_frames} frames disponibles")
+    print(f"   🎯 Target: {TARGET_TRADES} trades")
+    print(f"   ⚙️ Usando decide_intelligently() real\n")
+    
+    # 3. Pre-cargar FrameStorage para todos los símbolos
+    print(f"   ⚡ Pre-cargando FrameStorage para {len(symbols)} símbolos...")
+    for i, symbol in enumerate(symbols):
+        if i % 20 == 0:
+            print(f"      Cargando... {i}/{len(symbols)}")
+        ohlcv_data = cache[symbol]['5m']
+        # Cargar frames iniciales
+        load_frames_from_ohlcv(symbol, '15m', ohlcv_data[:100], num_frames=10)
+        load_frames_from_ohlcv(symbol, '5m', ohlcv_data[:100], num_frames=10)
+    print(f"   ✅ FrameStorage pre-cargado\n")
+    
+    # 4. Activar modo backtest
+    enable_backtest_mode(cache, INITIAL_CAPITAL)
+    
+    # 5. Iniciar logger CSV
+    init_csv_logger()
+    
+    start_time = time.time()
+    
+    try:
+        # 6. Iterar frame por frame (saltar cada 15 para velocidad)
+        for frame in range(100, min_frames - 50, 15):  # OPTIMIZADO: Saltar 15 frames
+            set_backtest_frame(frame)
+            
+            # Revisar trades activos primero
+            symbols_to_close = []
+            for sym, trade_info in list(active_simulated_trades.items()):
+                pnl = simulate_trade_outcome(
+                    sym, 
+                    trade_info['direction'], 
+                    trade_info['entry_frame'],
+                    frame,
+                    cache
+                )
+                if pnl is not None:
+                    # Determinar razón de salida
+                    if abs(pnl + STOP_LOSS_PCT) &lt; 0.1:
+                        exit_reason = 'SL'
+                    elif abs(pnl - TAKE_PROFIT_PCT) &lt; 0.1:
+                        exit_reason = 'TP'
+                    else:
+                        exit_reason = 'TIME'
+                    
+                    symbols_to_close.append((sym, trade_info, pnl, exit_reason, frame))
+            
+            # Cerrar trades y LOGUEAR
+            for sym, trade_info, pnl, exit_reason, exit_frame in symbols_to_close:
+                direction = trade_info['direction']
+                entry_frame = trade_info['entry_frame']
+                entry_price = trade_info.get('entry_price', 0)
+                
+                # Exit price
+                exit_price = cache[sym]['5m'][min(exit_frame, len(cache[sym]['5m'])-1)][4]
+                
+                # Duración
+                duration_min = (exit_frame - entry_frame) * 5
+                
+                # PnL USD - USANDO CAPITAL DE ENTRADA
+                pnl_usd = (pnl / 100) * trade_info.get('entry_capital', INITIAL_CAPITAL)
+                
+                # Escribir CSV
+                if csv_writer:
+                    csv_writer.writerow([
+                        sym, entry_frame, f'{entry_price:.2f}', 
+                        exit_frame, f'{exit_price:.2f}',
+                        direction, f'{pnl:+.2f}', f'{pnl_usd:+.2f}', duration_min, exit_reason,
+                        trade_info.get('score', 0),
+                        f"{trade_info.get('exhaustion_pct', 0):.1f}",
+                        trade_info.get('adx_phase', 'UNKNOWN'),
+                        f"{trade_info.get('adx_value', 0):.1f}",
+                        trade_info.get('force_level', 'UNKNOWN')
+                    ])
+                    csv_file.flush()
+                
+                # Console output detallado
+                print(f"\n{'─'*50}")
+                print(f"TRADE #{trade_count+1}: {sym}")
+                print(f"├─ Entry: Frame {entry_frame} @ ${entry_price:,.2f} | Exhaust: {trade_info.get('exhaustion_pct', 0):.0f}% | Score: {trade_info.get('score', 0)}")
+                print(f"├─ Exit:  Frame {exit_frame} @ ${exit_price:,.2f} | Duration: {duration_min} min")
+                color = GREEN if pnl &gt; 0 else RED
+                print(f"└─ PnL: {color}{pnl:+.2f}%{RESET} (${pnl_usd:+.2f}) | Reason: {exit_reason}")
+                print(f"{'─'*50}")
+                
+                del active_simulated_trades[sym]
+                record_trade_result(sym, direction, pnl)
+                
+                if trade_count &gt;= TARGET_TRADES:
+                    break
+            
+            if trade_count &gt;= TARGET_TRADES:
+                break
+            
+            # Buscar nuevas oportunidades (si no hay muchos trades activos)
+            if len(active_simulated_trades) &lt; 3:
+                for symbol in symbols:
+                    if symbol in active_simulated_trades:
+                        continue
+                    if trade_count &gt;= TARGET_TRADES:
+                        break
+                    
+                    try:
+                        # Frames ya están pre-cargados, solo decidir
+                        decision = decide_intelligently(symbol)
+                        
+                        # FIX: Validar que decision no sea None
+                        if not decision or not isinstance(decision, dict):
+                            continue
+                        
+                        action = decision.get('action', 'NO_OPERAR')
+                        score = decision.get('confidence', 0)
+                        
+                        # FIX 2026-01-02: Threshold 40 (NO 60)
+                        if action == 'OPERAR':
+                            # Obtener dirección y datos para logging
+                            full_analysis = decision.get('full_analysis', {})
+                            
+                            # Validar que full_analysis exista
+                            if not full_analysis:
+                                continue
+                            
+                            ladder_data = full_analysis.get('ladder_data', {})
+                            
+                            # Los datos están en subnodos por TF
+                            data_15m = ladder_data.get('15m', {})
+                            data_5m = ladder_data.get('5m', {})
+                            
+                            # Direction del 15m (principal)
+                            direction = data_15m.get('direction', 'BULLISH')
+                            
+                            if direction not in ['BULLISH', 'BEARISH']:
+                                continue
+                            
+                            # Entry price del cache
+                            entry_price = cache[symbol]['5m'][frame][4]
+                            
+                            # Extraer datos de indicadores del 15m
+                            adx_data = data_15m.get('adx', {})
+                            exhaustion_room = data_15m.get('exhaustion_room', 100)
+                            exhaustion_phase = data_15m.get('exhaustion_phase', 'UNKNOWN')
+                            
+                            # force_result está directamente en full_analysis
+                            force_result = full_analysis.get('force_result', {})
+                            
+                            # Registrar trade simulado CON DATOS DE LOGGING
+                            active_simulated_trades[symbol] = {
+                                'direction': direction,
+                                'entry_frame': frame,
+                                'entry_price': entry_price,
+                                'entry_capital': results['capital'],
+                                'score': score,
+                                # Datos para logging (rutas corregidas)
+                                'exhaustion_pct': data_15m.get('exhaustion_pct', 0),
+                                'adx_phase': exhaustion_phase,
+                                'adx_value': adx_data.get('adx_current', 0),
+                                'force_level': force_result.get('force_level', 'UNKNOWN'),
+                                'dist_resistance': 0,
+                                'dist_support': 0,
+                            }
+                            
+                            # Limitar cuántos trades abrimos por frame
+                            if len(active_simulated_trades) &gt;= 3:
+                                break
+                    
+                    except Exception as e:
+                        # Mostrar error específico para debugging
+                        if "NoneType" not in str(e):
+                            print(f"⚠️ Error en {symbol}: {e}")
+                        continue
+            
+            # Mostrar progreso cada 50 frames
+            if frame % 50 == 0:
+                print(f"   📊 Frame {frame}/{min_frames} | Trades: {trade_count} | Activos: {len(active_simulated_trades)}")
+    
+    finally:
+        close_csv_logger()
+        disable_backtest_mode()
+    
+    elapsed = time.time() - start_time
+    
+    print(f"\n{MAGENTA}⚡ Completado en {elapsed:.1f} segundos{RESET}")
+    print_final_report(elapsed)
 
-Riesgo #4: Más pérdidas consecutivas
-Síntoma: Drawdown &gt;15%
-Mitigación: Circuit breaker: si drawdown &gt;12% → pausar tier BAJO
-
-🔄 ROLLBACK PLAN
-Si el sistema dual NO funciona, revertir es trivial:
-
-Paso 1: Revertir Threshold
-# brain_vision_unified.py L348
-if total &gt;= 60:  # Volver a 60
-    decision = 'ENTER'
-Paso 2: Revertir Position Size
-# brain_intelligent.py L254
-'position_size': 0.1,  # Fijo 10%
-Tiempo de rollback: 2 minutos
-
-📈 MÉTRICAS DE ÉXITO
-Criterios de Éxito (48h):
-Métrica	Mínimo Aceptable	Óptimo
-Trades/día	30+	50+
-Win Rate Global	48%+	52%+
-PnL/día	+8%+	+15%+
-Max Drawdown	&lt;15%	&lt;10%
-Criterios de Fracaso (rollback):
-Win rate &lt;45%
-PnL negativo por 48h
-Max drawdown &gt;15%
-🎯 FILOSOFÍA TIME LADDER MANTENIDA
-✅ Mantiene:
-Confianza gradual (no binaria)
-Evaluación proporcional de factores
-Sin hard-blocks internos
-Análisis de trayectorias
-✅ Mejora:
-Más trades (acepta desde 40%)
-Gestión de riesgo (position size estratificado)
-Aprovecha oportunidades (no pierde setups 50-59%)
-❌ NO rompe:
-Lógica de UnifiedVision
-Sistema de factores (ADX, velas, momentum, etc.)
-FrameStorage y fallbacks
-📋 CHECKLIST DE IMPLEMENTACIÓN
-Pre-Implementación:
- Backup de 
-brain_vision_unified.py
- Backup de 
-brain_intelligent.py
- Verificar capital disponible &gt;$1000
-Implementación:
- CAMBIO #1: Threshold 60→40 (brain_vision_unified.py:348)
- CAMBIO #2: Position sizing dinámico (brain_intelligent.py:241-273)
- CAMBIO #3 (opcional): Logging CASI-setups (brain_intelligent.py:275-289)
- Validar sintaxis: python -m py_compile brain_intelligent.py
- Validar sintaxis: python -m py_compile brain_vision_unified.py
-Testing:
- TEST 1: Threshold (verificar logs accept 40%+)
- TEST 2: Position sizing (verificar 15%/10%/5%)
- TEST 3: Backtest (comparar con baseline)
- Monitorear 24h inicial
-Post-Implementación:
- Documentar en CHANGELOG_2026-01-02.md
- Monitorear métricas por 48h
- Ajustar si necesario o rollback
-🔧 COMANDOS DE EJECUCIÓN
-Implementar cambios:
-# 1. Editar brain_vision_unified.py L348
-# 2. Editar brain_intelligent.py L241-289
-# 3. Validar sintaxis
-python -m py_compile brain_vision_unified.py
-python -m py_compile brain_intelligent.py
-Ejecutar backtest:
-python tools/backtest_real.py
-Monitorear bot en vivo:
-python bot_main.py 2&gt;&amp;1 | tee logs/dual_system_$(date +%Y%m%d_%H%M%S).log
-📊 ANÁLISIS DE IMPACTO
-Financial Impact:
-Escenario Conservador:
-
-+30 trades/día adicionales
-48% win rate en nuevos trades
-+0.5% PnL/trade promedio
-Resultado: +7.2% PnL adicional/día
-Escenario Optimista:
-
-+50 trades/día adicionales
-52% win rate en nuevos trades
-+0.6% PnL/trade promedio
-Resultado: +15.6% PnL adicional/día
-Escenario Pesimista:
-
-+30 trades/día adicionales
-42% win rate en nuevos trades (MALO)
--0.2% PnL/trade promedio (NEGATIVO)
-Resultado: -3% PnL (ROLLBACK)
-🎓 CONCLUSIÓN
-Este es un cambio quirúrgico de 25 líneas que:
-
-✅ Aumenta volumen de trades 2-3x
-✅ Mantiene filosofía gradual
-✅ Gestiona riesgo con position sizing
-✅ Es fácil de revertir si falla
-Complejidad: Baja
-Riesgo: Medio-Bajo
-Reward: Alto (+50-100% PnL esperado)
-
-Recomendación: ✅ IMPLEMENTAR con monitoreo estricto 48h
-
-Creado: 2026-01-02
-Autor: Claude Sonnet (Antigravity)
-Solicitado por: 
-
+if __name__ == "__main__":
+    print(f"\n{YELLOW}⏳ Iniciando BACKTESTING REAL en 3 segundos...{RESET}")
+    print(f"   Este backtest usa decide_intelligently() del bot")
+    print(f"   Presiona Ctrl+C para cancelar\n")
+    time.sleep(3)
+    
+    try:
+        run_backtest_real()
+    except KeyboardInterrupt:
+        print(f"\n{YELLOW}⏹️ Cancelado{RESET}")
+        elapsed = time.time()
+        print_final_report(elapsed)
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 11,603<br>
-    Generado: 2026-01-02 03:15:07
+    Total caracteres: 19,738<br>
+    Generado: 2026-01-02 15:14:58
   </div>
 </body>
 </html>
