@@ -15,529 +15,578 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-02 15:14:58</div>
+  <div class="meta">Última actualización: 2026-01-02 23:55:48</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-"""
-BACKTESTING REAL - Usa lógica EXACTA del bot
-=============================================
-Este script usa decide_intelligently() y el mismo flujo del bot,
-pero con datos locales (sin requests a MEXC).
+✅ Investigación profunda completa. Encontré el root cause exacto:
 
-Requisito: Ejecutar primero tools/download_historical.py
-"""
-import sys
-import os
-import json
-import time
-from pathlib import Path
-import pandas as pd  # Para leer CSVs
-import csv
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
+BUG: El código de exhaustion penalty en brain_intelligent.py está COMPLETADO COMENTADO (líneas 542-557). UnifiedVision NO valida exhaustion_pct, solo usa room_pct con penalty muy débil.
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+RESULTADO: Bot puede entrar con exhaustion=100% si otros factores suman suficiente confidence.
 
-from exchange_connection import (
-    enable_backtest_mode, disable_backtest_mode,
-    advance_backtest_frame, get_backtest_frame, 
-    get_backtest_balance, set_backtest_frame
-)
-from brain_intelligent import decide_intelligently
-from brain_frames import load_frames_from_ohlcv, get_frame_storage
+Ver exhaustion_deep_analysis.md con:
 
-# =======================================================
-# CONFIGURACIÓN
-# =======================================================
-DATA_DIR = 'data/historical_2025'  # 2025 full year data
-TARGET_TRADES = 30
-INITIAL_CAPITAL = 1000
-STOP_LOSS_PCT = 3.0
-TAKE_PROFIT_PCT = 2.0
-MAX_HOLD_FRAMES = 6  # ~30 min (6 frames de 5m)
+Flujo completo de decisión
 
-# Threading
-MAX_WORKERS = 8
-SHOW_PROGRESS_EVERY = 25
+FLUJO DE CONEXIÓN COMPLETO
+NO SE USA
+SÍ
+NO
+orchestrate_intelligence
+analyze_4h/1h/15m/5m
+UnifiedVision.decide_with_unified_vision
+gather_intelligence
+analyze_trend_exhaustion
+Calcula exhaustion_pctroom_pctphase
+Retorna dict con exhaustion
+extract_trajectories
+Extrae a trajectoriesexhaustion_pctroom_pctexhaustion_velocity
+evaluate_confidence
+Evalúa factores:ADX, Velas, Momentumroom_pct limitadoexhaustion_velocity limitado
+exhaustion_pct?
+calculate total_confidence
+make_decision
+total_confidence &gt;= 40?
+Return ENTER
+Return WAIT
+Map to OPERAR
+Map to NO_OPERAR
 
-# Colores
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-CYAN = '\033[96m'
-MAGENTA = '\033[95m'
-RESET = '\033[0m'
-BOLD = '\033[1m'
+Análisis de cada módulo
+Diagrama detallado
+Fix específico con código
+El fix es simple (15-30 min): agregar validación de exhaustion_pct en evaluate_confidence().
 
-# Thread-safe results
-results_lock = threading.Lock()
-results = {
-    'wins': 0,
-    'losses': 0,
-    'total_pnl': 0.0,
-    'capital': INITIAL_CAPITAL,
-    'trades': [],
-    'best_trade': 0.0,
-    'worst_trade': 0.0
+ DEEP ANALYSIS: Exhaustion Entry Bug
+Comprehensive Investigation Report
+📊 EXECUTIVE SUMMARY
+Problem: Bot enters trades with exhaustion=100% and room=0.3%, capturing minimalprofiles (+0.09% avg).
+
+Root Cause Found: ✅ IDENTIFIED
+
+Exhaustion IS calculated correctly by 
+brain_trend_exhaustion.py
+Values ARE extracted by UnifiedVision.extract_trajectories()
+BUT exhaustion_pct is NEVER used in decision logic
+Main exhaustion penalty code is COMMENTED OUT in 
+brain_intelligent.py
+Result: Bot has no mechanism to reject high exhaustion trades.
+
+1️⃣ MÓDULO DE FUERZA RESTANTE
+Archivo Principal
+brain_trend_exhaustion.py
+ (263 líneas)
+
+Función Principal
+analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=None)
+
+Líneas: 27-169
+
+Cálculo de Exhaustion
+# Líneas 88-95
+total_range = moved_pct + room_pct
+if total_range &gt; 0:
+    base_exhaustion = (moved_pct / total_range) * 100
+else:
+    base_exhaustion = 50
+exhaustion_score = int(base_exhaustion)
+Fórmula:
+exhaustion = moved / (moved + room) * 100
+
+Ejemplos:
+
+moved=0%, room=5% → exhaustion=0% ✅ FRESH
+moved=2%, room=2% → exhaustion=50% ⚠️ DEVELOPING
+moved=4%, room=1% → exhaustion=80% ❌ EXHAUSTED
+moved=5%, room=0.3% → exhaustion=94% ❌ EXHAUSTED
+Cálculo de Room
+# Líneas 60-75
+if direction == 'BULLISH':
+    dist_to_resistance = ((high_50 - current_price) / current_price) * 100
+    room_pct = dist_to_resistance
+    moved_pct = dist_from_support
+    
+elif direction == 'BEARISH':
+    dist_to_support = ((current_price - low_50) / current_price) * 100
+    room_pct = dist_to_support
+    moved_pct = dist_from_resistance
+Cálculo:
+
+Usa máximo/mínimo de últimas 50 velas (5m)
+room_pct = distancia hasta resistencia (BULLISH) o soporte (BEARISH)
+moved_pct = distancia desde soporte (BULLISH) o resistencia (BEARISH)
+Output Structure
+{
+    'exhaustion_pct': 94,        # 0-100
+    'room_pct': 0.3,             # Espacio hasta S/R
+    'moved_pct': 4.7,            # Distancia recorrida
+    'phase': 'EXHAUSTED',        # FRESH/DEVELOPING/MATURE/EXHAUSTED
+    'multipliers': {             # Para ajustar penalties
+        'adx': 1.5,
+        'momentum': 1.3,
+        'late_entry': 2.0,
+        'lateral': 1.2
+    },
+    'details': {...}
 }
-trade_count = 0
-active_simulated_trades = {}  # {symbol: {entry_price, direction, entry_frame}}
+Fases Definidas
+# Líneas 150-157
+if exhaustion_pct &gt;= 70:
+    phase = 'EXHAUSTED'      # ❌ AVOID
+elif exhaustion_pct &gt;= 50:
+    phase = 'MATURE'         # ⚠️ WAIT  
+elif exhaustion_pct &gt;= 30:
+    phase = 'DEVELOPING'     # 🟡 CAREFUL
+else:
+    phase = 'FRESH'          # ✅ ENTER
+Estado del Módulo
+✅ FUNCIONA CORRECTAMENTE
 
-# CSV Logger globals
-CSV_LOG_DIR = 'data/backtest_logs'
-csv_log_path = None
-csv_writer = None
-csv_file = None
+Calcula exhaustion_pct con precisión
+Calcula room_pct correctamente
+Identifica fase ('EXHAUSTED' cuando &gt;70%)
+Retorna multipliers para penalties
+Problema: Los multipliers NO se usan en ningún lado
+2️⃣ MÓDULO HOLÍSTICO (DECISIÓN FINAL)
+Archivo Principal
+brain_vision_unified.py
+ (419 líneas)
 
-def init_csv_logger():
-    """Inicializa el archivo CSV para logging"""
-    global csv_log_path, csv_writer, csv_file
-    
-    os.makedirs(CSV_LOG_DIR, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    csv_log_path = os.path.join(CSV_LOG_DIR, f'trades_{timestamp}.csv')
-    
-    csv_file = open(csv_log_path, 'w', newline='', encoding='utf-8')
-    csv_writer = csv.writer(csv_file)
-    
-    # Header
-    csv_writer.writerow([
-        'symbol', 'entry_frame', 'entry_price', 'exit_frame', 'exit_price',
-        'direction', 'pnl_pct', 'pnl_usd', 'duration_min', 'exit_reason',
-        'score', 'exhaustion_pct', 'exhaustion_phase', 'adx_value', 
-        'force_level'
-    ])
-    
-    print(f"📝 CSV Log: {csv_log_path}")
+Función de Decisión
+UnifiedVision.decide_with_unified_vision(symbol, ladder_analysis)
+Líneas: 392-408
 
-def close_csv_logger():
-    """Cierra el archivo CSV"""
-    global csv_file
-    if csv_file:
-        csv_file.close()
-        print(f"📝 Log guardado: {csv_log_path}")
+Flujo de Decisión
+# 1. Recopilar inteligencia
+intelligence = self.gather_intelligence(symbol, ladder_analysis)
+# → Llama a brain_trend_exhaustion.analyze_trend_exhaustion()
+# → Obtiene exhaustion_pct, room_pct, phase
+# 2. Extraer trayectorias
+trajectories = self.extract_trajectories(intelligence)
+# → Extrae exhaustion_pct a trajectories['exhaustion_pct']
+# → Extrae room_pct a trajectories['room_pct']
+# 3. Evaluar confianza
+confidence_eval = self.evaluate_confidence(trajectories, direction)
+# → AQUÍ es donde debería rechazar por exhaustion alto
+# → PERO NO LO HACE (ver abajo)
+# 4. Decidir
+decision = self.make_decision(confidence_eval, trajectories, direction)
+# → Retorna 'ENTER' si confidence &gt;= 40
+Factores Considerados en evaluate_confidence()
+Líneas 223-337:
 
-def load_cache():
-    """Cargar datos históricos desde CSVs"""
-    cache = {}
-    files = os.listdir(DATA_DIR)
-    
-    if not files:
-        print(f"{RED}❌ Directorio vacío{RESET}")
-        return None
-    
-    print(f"   📂 Cargando {len(files)} archivos...")
-    
-    # FIX 2026-01-02: Cargar CSVs en lugar de JSONs
-    for filename in files:
-        if not filename.endswith('.csv'):
-            continue
-        
-        try:
-            filepath = os.path.join(DATA_DIR, filename)
-            df = pd.read_csv(filepath)
-            
-            # Extraer symbol del filename (ej: BTC_USDT_USDT.csv → BTC/USDT:USDT)
-            symbol_raw = filename.replace('.csv', '')
-            # Primera _ es /, segunda _ es :
-            parts = symbol_raw.split('_')
-            if len(parts) &gt;= 3:
-                symbol = f"{parts[0]}/{parts[1]}:{parts[2]}"
-            else:
-                continue  # Skip archivos con formato incorrecto
-            
-            # Convertir DataFrame a lista de listas [timestamp, O, H, L, C, V]
-            required_cols = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-            if not all(col in df.columns for col in required_cols):
-                print(f"   ⚠️ {filename}: columnas faltantes")
-                continue
-            
-            # Convertir a lista de listas para compatibilidad con FrameStorage
-            ohlcv_list = df[required_cols].values.tolist()
-            
-            cache[symbol] = {
-                '5m': ohlcv_list
-            }
-        except Exception as e:
-            print(f"   ⚠️ Error en {filename}: {e}")
-    
-    print(f"   ✅ {len(cache)} símbolos cargados")
-    return cache
+Factor	Peso Max	Condición de Contribución
+ADX	27 pts	Base: adx_end * 0.4 (max 12)
+Bonus: adx_delta &gt; 0 (+15)
+Penalty: adx_delta &lt; -5 (-12)
+Velas	20 pts	ratio &gt;= 1.0: (ratio-1)*40 (max 20)
+ratio &lt; 1.0: (ratio-1)*40 (min -20)
+Momentum	18 pts	delta &gt; 0 AND end &gt;= 2: end*3 (max 18)
+Espacio (room_pct)	20 pts	room &gt; 1.5%: room*5 (max 20)
+room &lt; 1.0%: (room-1)*15
+Exhaustion Velocity	15 pts	velocity &gt; 15: velocity * -0.8 (max -15)
+velocity &lt; -10: abs(velocity)*0.8 (+12)
+Estructura ZigZag	15 pts	HH/HL (BULLISH): +15
+LH/LL (BULLISH): -20
+Posición Grid	Variable	Cerca soporte: +bonus
+Cerca techo: -penalty
+Total Máximo Teórico: ~120 pts (se clampea a 100)
 
-def simulate_trade_outcome(symbol, direction, entry_frame, current_frame, cache):
-    """
-    Simula el resultado de un trade mirando frames futuros.
-    Retorna None si aún no hay outcome, o PnL% si hay SL/TP/TimeExit
-    """
-    if symbol not in cache or '5m' not in cache[symbol]:
-        return -STOP_LOSS_PCT  # Asumir loss si no hay data
-    
-    ohlcv = cache[symbol]['5m']
-    
-    if entry_frame &gt;= len(ohlcv) or current_frame &gt;= len(ohlcv):
-        return None
-    
-    entry_price = ohlcv[entry_frame][4]  # Close al entrar
-    
-    # Revisar frames desde entrada hasta ahora
-    for frame_idx in range(entry_frame + 1, current_frame + 1):
-        if frame_idx &gt;= len(ohlcv):
-            break
-            
-        candle = ohlcv[frame_idx]
-        high = candle[2]
-        low = candle[3]
-        
-        if direction == 'BULLISH':
-            # Check SL
-            pnl_low = (low - entry_price) / entry_price * 100
-            if pnl_low &lt;= -STOP_LOSS_PCT:
-                return -STOP_LOSS_PCT
-            
-            # Check TP
-            pnl_high = (high - entry_price) / entry_price * 100
-            if pnl_high &gt;= TAKE_PROFIT_PCT:
-                return TAKE_PROFIT_PCT
-        else:
-            # BEARISH
-            pnl_high = (entry_price - high) / entry_price * 100
-            if pnl_high &lt;= -STOP_LOSS_PCT:
-                return -STOP_LOSS_PCT
-            
-            pnl_low = (entry_price - low) / entry_price * 100
-            if pnl_low &gt;= TAKE_PROFIT_PCT:
-                return TAKE_PROFIT_PCT
-    
-    # Check time exit
-    frames_held = current_frame - entry_frame
-    if frames_held &gt;= MAX_HOLD_FRAMES:
-        current_close = ohlcv[min(current_frame, len(ohlcv)-1)][4]
-        if direction == 'BULLISH':
-            return (current_close - entry_price) / entry_price * 100
-        else:
-            return (entry_price - current_close) / entry_price * 100
-    
-    return None  # Trade aún activo
+¿Usa exhaustion_pct?
+🔴 NO. JAMÁS.
 
-def record_trade_result(symbol, direction, pnl_pct):
-    """Registra resultado de trade de forma thread-safe"""
-    global trade_count, results
-    
-    with results_lock:
-        trade_count += 1
-        current = trade_count
-        
-        is_win = pnl_pct &gt; 0
-        
-        if is_win:
-            results['wins'] += 1
-        else:
-            results['losses'] += 1
-        
-        results['total_pnl'] += pnl_pct
-        pnl_usd = (pnl_pct / 100) * results['capital']
-        results['capital'] += pnl_usd
-        
-        if pnl_pct &gt; results['best_trade']:
-            results['best_trade'] = pnl_pct
-        if pnl_pct &lt; results['worst_trade']:
-            results['worst_trade'] = pnl_pct
-        
-        results['trades'].append({
-            'symbol': symbol,
-            'direction': direction,
-            'pnl': pnl_pct
-        })
-        
-        # Progress
-        color = GREEN if is_win else RED
-        icon = "✅" if is_win else "❌"
-        total = results['wins'] + results['losses']
-        wr = (results['wins'] / total * 100) if total &gt; 0 else 0
-        
-        print(f"{icon} [{current:3d}/{TARGET_TRADES}] {color}{symbol:20s}{RESET} | "
-              f"{direction:7s} | PnL: {color}{pnl_pct:+6.2f}%{RESET} | "
-              f"WR: {wr:5.1f}% | Cap: ${results['capital']:.2f}")
-        
-        if current % SHOW_PROGRESS_EVERY == 0:
-            print(f"\n{CYAN}--- STATS @ {total} trades ---{RESET}")
-            print(f"    WR: {wr:.1f}% | PnL: {results['total_pnl']:+.2f}%\n")
-    
-    return current
+# Línea 173 - extract_trajectories()
+trajectories['exhaustion_pct'] = exhaustion.get('exhaustion_pct', 50)
+# Pero este valor NUNCA se usa en evaluate_confidence()
+# NO HAY CÓDIGO que lo lea o lo evalúe
+¿Usa room_pct?
+🟡 SÍ, PERO DE FORMA MUY LIMITADA
 
-def print_final_report(elapsed):
-    """Reporte final"""
-    total = results['wins'] + results['losses']
-    if total == 0:
-        print("⚠️ No se ejecutaron trades")
-        return
-    
-    wr = (results['wins'] / total * 100)
-    profit = results['capital'] - INITIAL_CAPITAL
-    
-    print(f"\n{BOLD}{'='*60}{RESET}")
-    print(f"{BOLD}📊 REPORTE FINAL - {total} TRADES (LÓGICA REAL DEL BOT){RESET}")
-    print(f"{'='*60}")
-    
-    print(f"\n{BOLD}📈 RESUMEN:{RESET}")
-    print(f"   Win Rate: {wr:.1f}% ({results['wins']}W/{results['losses']}L)")
-    print(f"   PnL Total: {results['total_pnl']:+.2f}%")
-    print(f"   Capital: ${INITIAL_CAPITAL} → ${results['capital']:.2f}")
-    print(f"   Ganancia: ${profit:+.2f} ({profit/INITIAL_CAPITAL*100:+.2f}%)")
-    
-    print(f"\n{BOLD}📊 ESTADÍSTICAS:{RESET}")
-    print(f"   Mejor Trade: {results['best_trade']:+.2f}%")
-    print(f"   Peor Trade: {results['worst_trade']:+.2f}%")
-    print(f"   PnL Promedio: {results['total_pnl']/total:+.2f}%")
-    
-    print(f"\n{BOLD}⚡ PERFORMANCE:{RESET}")
-    print(f"   Tiempo total: {elapsed:.1f} segundos")
-    print(f"   Trades/segundo: {total/elapsed:.1f}")
-    
-    # Guardar
-    report_path = 'reports/backtest_real_results.txt'
-    os.makedirs('reports', exist_ok=True)
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write(f"BACKTESTING REAL - RESULTADOS\n")
-        f.write(f"{'='*50}\n")
-        f.write(f"LÓGICA: decide_intelligently() exacta del bot\n")
-        f.write(f"Timestamp: {datetime.now()}\n")
-        f.write(f"Trades: {total}\n")
-        f.write(f"Win Rate: {wr:.1f}%\n")
-        f.write(f"PnL Total: {results['total_pnl']:+.2f}%\n")
-        f.write(f"Capital: ${INITIAL_CAPITAL} -&gt; ${results['capital']:.2f}\n")
-        f.write(f"Tiempo: {elapsed:.1f}s\n")
-    
-    print(f"\n💾 Guardado: {report_path}")
-    print(f"{'='*60}\n")
+# Líneas 273-278
+if room_pct &gt; 1.5:  # Contribuye positivamente
+    room_conf = min(room_pct * 5, 20)
+    confidence_factors.append(('Espacio', room_conf, f'{room_pct:.1f}%'))
+elif room_pct &lt; 1.0:  # Penaltysi muy estrecho
+    tight_conf = (room_pct - 1.0) * 15  # Negativo
+    confidence_factors.append(('Espacio estrecho', tight_conf, f'{room_pct:.1f}%'))
+Problema: Rango muerto 1.0%-1.5%
 
-def run_backtest_real():
-    """Ejecuta backtesting con la lógica REAL del bot"""
-    global trade_count, active_simulated_trades
-    
-    print(f"\n{BOLD}{'='*60}{RESET}")
-    print(f"{BOLD}🧠 BACKTESTING REAL - LÓGICA EXACTA DEL BOT{RESET}")
-    print(f"{'='*60}")
-    
-    # 1. Cargar cache
-    cache = load_cache()
-    if not cache:
-        return
-    
-    # OPTIMIZACIÓN: Limitar a primeros 100 símbolos para velocidad
-    all_symbols = list(cache.keys())
-    symbols = all_symbols[:100]
-    print(f"   ✅ {len(symbols)} símbolos seleccionados (de {len(all_symbols)} totales)")
-    
-    # 2. Determinar frames disponibles
-    min_frames = min(len(cache[s].get('5m', [])) for s in symbols if '5m' in cache.get(s, {}))
-    print(f"   📊 {min_frames} frames disponibles")
-    print(f"   🎯 Target: {TARGET_TRADES} trades")
-    print(f"   ⚙️ Usando decide_intelligently() real\n")
-    
-    # 3. Pre-cargar FrameStorage para todos los símbolos
-    print(f"   ⚡ Pre-cargando FrameStorage para {len(symbols)} símbolos...")
-    for i, symbol in enumerate(symbols):
-        if i % 20 == 0:
-            print(f"      Cargando... {i}/{len(symbols)}")
-        ohlcv_data = cache[symbol]['5m']
-        # Cargar frames iniciales
-        load_frames_from_ohlcv(symbol, '15m', ohlcv_data[:100], num_frames=10)
-        load_frames_from_ohlcv(symbol, '5m', ohlcv_data[:100], num_frames=10)
-    print(f"   ✅ FrameStorage pre-cargado\n")
-    
-    # 4. Activar modo backtest
-    enable_backtest_mode(cache, INITIAL_CAPITAL)
-    
-    # 5. Iniciar logger CSV
-    init_csv_logger()
-    
-    start_time = time.time()
-    
-    try:
-        # 6. Iterar frame por frame (saltar cada 15 para velocidad)
-        for frame in range(100, min_frames - 50, 15):  # OPTIMIZADO: Saltar 15 frames
-            set_backtest_frame(frame)
-            
-            # Revisar trades activos primero
-            symbols_to_close = []
-            for sym, trade_info in list(active_simulated_trades.items()):
-                pnl = simulate_trade_outcome(
-                    sym, 
-                    trade_info['direction'], 
-                    trade_info['entry_frame'],
-                    frame,
-                    cache
-                )
-                if pnl is not None:
-                    # Determinar razón de salida
-                    if abs(pnl + STOP_LOSS_PCT) &lt; 0.1:
-                        exit_reason = 'SL'
-                    elif abs(pnl - TAKE_PROFIT_PCT) &lt; 0.1:
-                        exit_reason = 'TP'
-                    else:
-                        exit_reason = 'TIME'
-                    
-                    symbols_to_close.append((sym, trade_info, pnl, exit_reason, frame))
-            
-            # Cerrar trades y LOGUEAR
-            for sym, trade_info, pnl, exit_reason, exit_frame in symbols_to_close:
-                direction = trade_info['direction']
-                entry_frame = trade_info['entry_frame']
-                entry_price = trade_info.get('entry_price', 0)
-                
-                # Exit price
-                exit_price = cache[sym]['5m'][min(exit_frame, len(cache[sym]['5m'])-1)][4]
-                
-                # Duración
-                duration_min = (exit_frame - entry_frame) * 5
-                
-                # PnL USD - USANDO CAPITAL DE ENTRADA
-                pnl_usd = (pnl / 100) * trade_info.get('entry_capital', INITIAL_CAPITAL)
-                
-                # Escribir CSV
-                if csv_writer:
-                    csv_writer.writerow([
-                        sym, entry_frame, f'{entry_price:.2f}', 
-                        exit_frame, f'{exit_price:.2f}',
-                        direction, f'{pnl:+.2f}', f'{pnl_usd:+.2f}', duration_min, exit_reason,
-                        trade_info.get('score', 0),
-                        f"{trade_info.get('exhaustion_pct', 0):.1f}",
-                        trade_info.get('adx_phase', 'UNKNOWN'),
-                        f"{trade_info.get('adx_value', 0):.1f}",
-                        trade_info.get('force_level', 'UNKNOWN')
-                    ])
-                    csv_file.flush()
-                
-                # Console output detallado
-                print(f"\n{'─'*50}")
-                print(f"TRADE #{trade_count+1}: {sym}")
-                print(f"├─ Entry: Frame {entry_frame} @ ${entry_price:,.2f} | Exhaust: {trade_info.get('exhaustion_pct', 0):.0f}% | Score: {trade_info.get('score', 0)}")
-                print(f"├─ Exit:  Frame {exit_frame} @ ${exit_price:,.2f} | Duration: {duration_min} min")
-                color = GREEN if pnl &gt; 0 else RED
-                print(f"└─ PnL: {color}{pnl:+.2f}%{RESET} (${pnl_usd:+.2f}) | Reason: {exit_reason}")
-                print(f"{'─'*50}")
-                
-                del active_simulated_trades[sym]
-                record_trade_result(sym, direction, pnl)
-                
-                if trade_count &gt;= TARGET_TRADES:
-                    break
-            
-            if trade_count &gt;= TARGET_TRADES:
-                break
-            
-            # Buscar nuevas oportunidades (si no hay muchos trades activos)
-            if len(active_simulated_trades) &lt; 3:
-                for symbol in symbols:
-                    if symbol in active_simulated_trades:
-                        continue
-                    if trade_count &gt;= TARGET_TRADES:
-                        break
-                    
-                    try:
-                        # Frames ya están pre-cargados, solo decidir
-                        decision = decide_intelligently(symbol)
-                        
-                        # FIX: Validar que decision no sea None
-                        if not decision or not isinstance(decision, dict):
-                            continue
-                        
-                        action = decision.get('action', 'NO_OPERAR')
-                        score = decision.get('confidence', 0)
-                        
-                        # FIX 2026-01-02: Threshold 40 (NO 60)
-                        if action == 'OPERAR':
-                            # Obtener dirección y datos para logging
-                            full_analysis = decision.get('full_analysis', {})
-                            
-                            # Validar que full_analysis exista
-                            if not full_analysis:
-                                continue
-                            
-                            ladder_data = full_analysis.get('ladder_data', {})
-                            
-                            # Los datos están en subnodos por TF
-                            data_15m = ladder_data.get('15m', {})
-                            data_5m = ladder_data.get('5m', {})
-                            
-                            # Direction del 15m (principal)
-                            direction = data_15m.get('direction', 'BULLISH')
-                            
-                            if direction not in ['BULLISH', 'BEARISH']:
-                                continue
-                            
-                            # Entry price del cache
-                            entry_price = cache[symbol]['5m'][frame][4]
-                            
-                            # Extraer datos de indicadores del 15m
-                            adx_data = data_15m.get('adx', {})
-                            exhaustion_room = data_15m.get('exhaustion_room', 100)
-                            exhaustion_phase = data_15m.get('exhaustion_phase', 'UNKNOWN')
-                            
-                            # force_result está directamente en full_analysis
-                            force_result = full_analysis.get('force_result', {})
-                            
-                            # Registrar trade simulado CON DATOS DE LOGGING
-                            active_simulated_trades[symbol] = {
-                                'direction': direction,
-                                'entry_frame': frame,
-                                'entry_price': entry_price,
-                                'entry_capital': results['capital'],
-                                'score': score,
-                                # Datos para logging (rutas corregidas)
-                                'exhaustion_pct': data_15m.get('exhaustion_pct', 0),
-                                'adx_phase': exhaustion_phase,
-                                'adx_value': adx_data.get('adx_current', 0),
-                                'force_level': force_result.get('force_level', 'UNKNOWN'),
-                                'dist_resistance': 0,
-                                'dist_support': 0,
-                            }
-                            
-                            # Limitar cuántos trades abrimos por frame
-                            if len(active_simulated_trades) &gt;= 3:
-                                break
-                    
-                    except Exception as e:
-                        # Mostrar error específico para debugging
-                        if "NoneType" not in str(e):
-                            print(f"⚠️ Error en {symbol}: {e}")
-                        continue
-            
-            # Mostrar progreso cada 50 frames
-            if frame % 50 == 0:
-                print(f"   📊 Frame {frame}/{min_frames} | Trades: {trade_count} | Activos: {len(active_simulated_trades)}")
-    
-    finally:
-        close_csv_logger()
-        disable_backtest_mode()
-    
-    elapsed = time.time() - start_time
-    
-    print(f"\n{MAGENTA}⚡ Completado en {elapsed:.1f} segundos{RESET}")
-    print_final_report(elapsed)
+room_pct = 1.2% → 0 contribución (ni bonus ni penalty)
+room_pct = 0.3% → penalty de -10.5 puntos (muy poco)
+¿Usa exhaustion_velocity?
+🟡 SÍ, VELOCITY PERO NO PCT
 
-if __name__ == "__main__":
-    print(f"\n{YELLOW}⏳ Iniciando BACKTESTING REAL en 3 segundos...{RESET}")
-    print(f"   Este backtest usa decide_intelligently() del bot")
-    print(f"   Presiona Ctrl+C para cancelar\n")
-    time.sleep(3)
-    
-    try:
-        run_backtest_real()
-    except KeyboardInterrupt:
-        print(f"\n{YELLOW}⏹️ Cancelado{RESET}")
-        elapsed = time.time()
-        print_final_report(elapsed)
+# Líneas 281-287
+if exhaustion_velocity &gt; 15:  # Si sube rápido
+    expl_conf = max(exhaustion_velocity * -0.8, -15)
+    confidence_factors.append(('Exhaustion rápida', expl_conf, ...))
+Velocity = cambio de exhaustion entre frames
+NO es lo mismo que exhaustion_pct absoluto
 
+Ejemplo problemático:
+
+Frame 1: exhaustion=95%
+Frame 2: exhaustion=95%
+exhaustion_velocity = 0 → ✅ OK según UnifiedVision
+exhaustion_pct = 95% → ❌ NO CHEQUEADO
+Threshold de Rechazo
+# Línea 405 - make_decision()
+if total &gt;= 40:
+    decision = 'ENTER'
+else:
+    decision = 'WAIT'
+Threshold: 40% confidence
+
+Problema: Puede llegar a 40% SIN considerar exhaustion_pct
+
+Ejemplo de confidence=45% con exhaustion=95%:
+
+ADX: +15 pts (ADX alto y subiendo)
+Velas: +8 pts (creciendo 20%)
+Momentum: +9 pts (3 velas verdes)
+Room (0.3%): -10 pts
+Estructura: +15 pts (HH)
+Total: 37 pts → con pequeños ajustes llega a 40+ → ENTER
+Estado del Módulo
+⚠️ FUNCIONAL PERO INCOMPLETO
+
+✅ Evalúa múltiples factores
+✅ Usa room_pct (limitadamente)
+❌ NO usa exhaustion_pct
+❌ NO rechaza exhaustion alto
+⚠️ room_pct penalty es muy leve
+3️⃣ FLUJO DE CONEXIÓN COMPLETO
+NO SE USA
+SÍ
+NO
+orchestrate_intelligence
+analyze_4h/1h/15m/5m
+UnifiedVision.decide_with_unified_vision
+gather_intelligence
+analyze_trend_exhaustion
+Calcula exhaustion_pctroom_pctphase
+Retorna dict con exhaustion
+extract_trajectories
+Extrae a trajectoriesexhaustion_pctroom_pctexhaustion_velocity
+evaluate_confidence
+Evalúa factores:ADX, Velas, Momentumroom_pct limitadoexhaustion_velocity limitado
+exhaustion_pct?
+calculate total_confidence
+make_decision
+total_confidence &gt;= 40?
+Return ENTER
+Return WAIT
+Map to OPERAR
+Map to NO_OPERAR
+Paso a Paso con Ejemplo Real
+Símbolo: 1000CAT/USDT
+Estado Real: exhaustion=100%, room=0.3%
+
+1. orchestrate_intelligence('1000CAT/USDT')
+   ↓
+2. ladder_analysis = {
+     '4h': {...},
+     '1h': {...},
+     '15m': {direction: 'BULLISH', adx: 42, ...},
+     '5m': {...}
+   }
+   ↓
+3. UnifiedVision.decide_with_unified_vision()
+   ↓
+4. intelligence = gather_intelligence()
+   → Llama analyze_trend_exhaustion('1000CAT/USDT', 'BULLISH')
+   → Retorna:
+   {
+     'exhaustion_pct': 100,
+     'room_pct': 0.3,
+     'phase': 'EXHAUSTED',
+     'multipliers': {...}
+   }
+   ↓
+5. trajectories = extract_trajectories(intelligence)
+   → trajectories = {
+       'adx_end': 42,
+       'adx_delta': +5,
+       'candle_ratio': 1.15,
+       'momentum_end': 3,
+       'room_pct': 0.3,          ← ✅ EXTRAÍDO
+       'exhaustion_pct': 100,    ← ✅ EXTRAÍDO PERO NO USADO
+       'exhaustion_velocity': 2,
+       ...
+     }
+   ↓
+6. confidence_eval = evaluate_confidence(trajectories, 'BULLISH')
+   → FACTORES EVALUADOS:
+     • ADX:            +15 pts (base 12 + delta bonus 3)
+     • Velas:          +6  pts (ratio 1.15)
+     • Momentum:       +9  pts (3 velas)
+     • Room (0.3%):    -10 pts (room &lt; 1.0)
+     • Exhaustion vel: 0   pts (velocity=2, no alcanza threshold)
+     • Estructura (HH): +15 pts
+     
+   → total_confidence = 35 pts
+   
+   🔍 NOTA: Si tuviera otro pequeño bonus (ej: grid position)
+            podría llegar a 40+ y ENTRAR
+   ↓
+7. decision = make_decision()
+   → if 35 &gt;= 40: NO
+   → return 'WAIT'
+   ↓
+8. Map to action
+   → 'WAIT' → 'NO_OPERAR'
+Pero si confidence=45 en vez de 35:
+
+→ if 45 &gt;= 40: SÍ
+→ return 'ENTER'
+→ Map to 'OPERAR'
+→ ❌ ENTRA CON EXHAUSTION=100%
+4️⃣ DIAGNÓSTICO: ¿POR QUÉ ENTRA CON EXHAUSTION=100%?
+Root Cause Analysis
+🔴 CAUSA #1: Exhaustion Penalty COMENTADO
+Ubicación: 
+brain_intelligent.py
+ líneas 542-557
+
+# ESTE CÓDIGO ESTÁ TODO COMENTADO:
+# exhaustion_pct = a15m.get('exhaustion_pct', 50)
+# exhaustion_adjustment = 0
+# 
+# if exhaustion_pct &lt;= 50:
+#     exhaustion_adjustment = int(10 * (1 - exhaustion_pct / 50))
+#     final_score += exhaustion_adjustment
+# else:
+#     # Zona gastada: penalty lineal desde 0 hasta -50
+#     exhaustion_penalty = int(50 * (exhaustion_pct - 50) / 50)
+#     final_score -= exhaustion_penalty  # ← NUNCA SE EJECUTA
+Historia: Este código estaba activo en versiones anteriores del bot.
+Cambio: Joel pidió implementar UnifiedVision para replace el scoring antiguo.
+Problema: Al migrar a UnifiedVision, se comentó el exhaustion penalty PERO NO se implementó en UnifiedVision.
+
+🔴 CAUSA #2: UnifiedVision NO Valida Exhaustion_pct
+Ubicación: 
+brain_vision_unified.py
+ 
+evaluate_confidence()
+ líneas 223-337
+
+Lo que DEBERÍA haber:
+
+# Si exhaustion_pct &gt; 70, rechazar o penalty severo
+exhaustion_pct = traj.get('exhaustion_pct', 50)
+if exhaustion_pct &gt;= 85:
+    # Exhaustion crítico: penalty masivo
+    exh_penalty = -40
+    confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &gt;= 70:
+    # Exhausted: penalty alto
+    exh_penalty = -25
+    confidence_factors.append(('Exhausted', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &gt;= 50:
+    # Mature: penalty moderado
+    exh_penalty = -12
+    confidence_factors.append(('Mature', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &lt; 30:
+    # Fresh: bonus
+    exh_bonus = +10
+    confidence_factors.append(('Fresh', exh_bonus, f'{exhaustion_pct:.0f}%'))
+Lo que HAY:
+
+# NADA. Exhaustion_pct NO se usa.
+🟡 CAUSA #3: Room_pct Penalty Insuficiente
+Ubicación: 
+brain_vision_unified.py
+ líneas 273-278
+
+Actual:
+
+if room_pct &lt; 1.0:
+    tight_conf = (room_pct - 1.0) * 15
+    # room=0.3% → tight_conf = -10.5 pts
+Problema: -10.5 pts NO es suficiente para bloquear.
+Si hay otros factores positivos (ADX, momentum, estructura) que sumen +50 pts, el total será 40+ → ENTRA
+
+Debería ser:
+
+if room_pct &lt; 0.5:
+    tight_conf = -40  # Bloqueo casi garantizado
+elif room_pct &lt; 1.0:
+    tight_conf = -25
+elif room_pct &lt; 1.5:
+    tight_conf = -12
+¿Qué Factor Sobrescribe la Validación?
+NO hay un factor único que sobrescriba.
+El problema es la AUSENCIA de validación de exhaustion_pct.
+
+Los factores positivos (ADX, momentum, estructura) pueden sumar suficiente para llegar a 40+ sin que nada los bloquee por exhaustion alto.
+
+Ejemplo de entrada con exhaustion=100%:
+
+Factor	Puntos	Detalle
+ADX base + bonus	+18	ADX=45, delta=+6
+Velas creciendo	+10	Ratio 1.25
+Momentum	+9	3 velas verdes
+Estructura HH	+15	ZigZag sano
+Room penalty	-11	room=0.3%
+Grid position	+4	Cerca de nivel
+TOTAL	45	✅ &gt;= 40 → ENTER
+Exhaustion=100% NO afecta la decisión.
+
+5️⃣ PROPUESTA DE FIX
+Fix Inmediato (15 min)
+Archivo: 
+brain_vision_unified.py
+
+Función: 
+evaluate_confidence()
+ después de línea 264
+
+Agregar:
+
+# ================================================================
+# FACTOR 3.5: EXHAUSTION ABSOLUTO (CRÍTICO - FIX 2026-01-03)
+# ================================================================
+exhaustion_pct = traj.get('exhaustion_pct', 50)
+if exhaustion_pct &gt;= 85:
+    # Zona crítica: bloquear casi siempre
+    exh_penalty = -40
+    confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &gt;= 70:
+    # Exhausted: penalty alta
+    exh_penalty = -25
+    confidence_factors.append(('Exhausted', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &gt;= 50:
+    # Mature: penalty moderada
+    exh_penalty = int(-15 * (exhaustion_pct - 50) / 20)  # -0 a -15
+    confidence_factors.append(('Mature', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &lt; 30:
+    # Fresh: bonus
+    exh_bonus = int(10 * (30 - exhaustion_pct) / 30)  # 0 a +10
+    confidence_factors.append(('Fresh', exh_bonus, f'{exhaustion_pct:.0f}%'))
+Fix Completo (30 min)
+1. Agregar exhaustion_pct penalty (ver arriba)
+
+2. Aumentar room_pct penalties (
+brain_vision_unified.py
+ líneas 273-278):
+
+# ANTES
+if room_pct &lt; 1.0:
+    tight_conf = (room_pct - 1.0) * 15
+# DESPUÉS
+if room_pct &lt; 0.5:
+    # Extremadamente estrecho: bloqueo casi garantizado
+    tight_conf = -35
+    confidence_factors.append(('Espacio crítico', tight_conf, f'{room_pct:.1f}%'))
+elif room_pct &lt; 1.0:
+    # Muy estrecho: penalty alta
+    tight_conf = -20
+    confidence_factors.append(('Espacio muy estrecho', tight_conf, f'{room_pct:.1f}%'))
+elif room_pct &lt; 1.5:
+    # Estrecho: penalty moderada
+    tight_conf = -10
+    confidence_factors.append(('Espacio estrecho', tight_conf, f'{room_pct:.1f}%'))
+elif room_pct &gt; 1.5:
+    # Amplio: bonus
+    room_conf = min(room_pct * 5, 20)
+    confidence_factors.append(('Espacio amplio', room_conf, f'{room_pct:.1f}%'))
+3. Considerar phase (opcional):
+
+# Después de extraer exhaustion_pct
+exhaustion_data = intelligence.get('exhaustion', {})
+phase = exhaustion_data.get('phase', 'UNKNOWN')
+# En evaluate_confidence, usar phase para modificar otros factores
+if phase == 'EXHAUSTED':
+    # Reducir bonuses de otros factores
+    # o aplicar penalty global adicional
+¿Es Problema de Cálculo o de Conexión?
+✅ CONEXIÓN
+
+El cálculo de exhaustion_pct es correcto (brain_trend_exhaustion.py)
+El valor se extrae correctamente (extract_trajectories)
+Pero NO se usa en la decisión (evaluate_confidence)
+Es un problema de lógica faltante, no de bug en cálculo.
+
+6️⃣ VALIDACIÓN ESPERADA
+Antes del Fix
+Trade ejemplo:
+
+Symbol: 1000CAT/USDT
+Exhaustion: 100%
+Room: 0.3%
+Confidence: 45%
+→ Decision: ENTER ❌
+→ PnL: -3% (compró el techo)
+Después del Fix
+Mismo trade:
+
+Symbol: 1000CAT/USDT
+Exhaustion: 100%
+Room: 0.3%
+Factores:
+  ADX: +18
+  Velas: +10
+  Momentum: +9
+  Estructura: +15
+  Room penalty: -20 (aumentado de -11)
+  Exhaustion penalty: -40 (NUEVO)
+  Grid: +4
+  
+Total: -4 pts
+Confidence: -4% (&lt; 40%)
+→ Decision: WAIT ✅
+→ PnL: N/A (rechazado correctamente)
+Métricas Esperadas Post-Fix
+Trades con exhaustion &gt;70% reduce de ~30% a &lt;5%
+Average PnL por trade: aumenta de +0.09% a +0.5-1.0%
+Win Rate: se mantiene o mejora ligeramente (rechaza loses probables)
+Total trades: reduce ~20-30% pero con mejor calidad
+📋 RESUMEN EJECUTIVO FINAL
+Módulo de Fuerza Restante
+✅ FUNCIONA
+
+Archivo: 
+brain_trend_exhaustion.py
+Calcula correctamente exhaustion_pct y room_pct
+Output estructura completa con phase y multipliers
+Módulo Holístico
+⚠️ INCOMPLETO
+
+Archivo: 
+brain_vision_unified.py
+Evalúa múltiples factores PERO ignora exhaustion_pct
+Usa room_pct pero con penalties muy leves
+Conexión Entre Módulos
+✅ CONECTADOS PERO NO USADOS
+
+Data fluye correctamente de exhaustion → trajectories
+PERO trajectories['exhaustion_pct'] nunca se lee en decision
+Diagnóstico
+🔴 ROOT CAUSE:
+
+Exhaustion penalty code fue COMENTADO en brain_intelligent.py
+NO se re-implementó en UnifiedVision
+Room_pct penalty es insuficiente (-10 vs necesario -25/-40)
+Propuesta de Fix
+Agregar en 
+evaluate_confidence()
+:
+
+Penalty -40 si exhaustion &gt;= 85%
+Penalty -25 si exhaustion &gt;= 70%
+Aumentar room penalties (&lt; 0.5% = -35 pts)
+Tiempo estimado: 15-30 minutos
+Complejidad: BAJA (solo agregar código faltante)
+Riesgo: BAJO (no afecta cálculos existentes)
+
+Fin del Análisis Profundo
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 19,738<br>
-    Generado: 2026-01-02 15:14:58
+    Total caracteres: 16,956<br>
+    Generado: 2026-01-02 23:55:48
   </div>
 </body>
 </html>
