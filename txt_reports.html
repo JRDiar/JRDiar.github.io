@@ -15,625 +15,906 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-03 01:22:06</div>
+  <div class="meta">Última actualización: 2026-01-03 01:39:54</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Ahora que conoces la filosofía fundamental del bot, podrías analizar el bot completamente buscando todo lo que hace lo contrario a time ladder? para que veamos los frames completos? Analiza todo y reporta lo que bloquea la pelicular. Gracias. Perfecto Joel, voy a hacer un análisis exhaustivo del bot completo buscando TODO lo que viola Time Ladder. Dame unos minutos para analizar: Audit completo terminado.
+Plan completo de VAR System listo.
 
-ENCONTRADAS: 25+ violaciones de Time Ladder
+ARQUITECTURA:
 
-CRÍTICAS (Hard blocks en snapshots):
+5 clases (FrameRecorder, MovieAnalyzer, EventDetector, TradeMovie, VARRecorder)
+Trigger: Trade closure
+Output: JSONs con frames + velocities + events + analysis
+FEATURES:
 
+Graba -30min a +10min del trade
+Calcula velocities/accelerations
+Detecta eventos (explosion, peak)
+Identifica binary decisions vs Time Ladder verdict
+Error handling (no crashea backtest)
+ESTIMADO: 5-6 horas implementación
 
+Ver implementation_plan.md con:
 
+Especificaciones completas de cada clase
+Integración en backtest
+Testing strategy
+Success criteria
+PREGUNTAS:
 
+Samplear cada 5min (rápido) o 1min (completo)?
+Todos los indicators o solo key ones?
+¿Apruebas para proceder?
 
-Exhaustion estático (if &gt;= 85%)
+VAR SYSTEM - IMPLEMENTATION PLAN
+Video Action Replay for Time Ladder Analysis
+📋 EXECUTIVE SUMMARY
+System Name: VAR (Video Action Replay)
+Purpose: Record complete "movies" of trades to analyze trajectories vs snapshots
+Trigger: Trade closure (post-mortem analysis)
+Output: JSON files with frames, velocities, accelerations, events
+Integration: Standalone observer, NO decision-making
 
+Foundation for: Time Ladder trajectory-based analysis
 
+🏗️ ARCHITECTURE
+Module Structure
+brain_var_recorder.py
+├── FrameRecorder        (Stores snapshots)
+├── MovieAnalyzer        (Calculates trajectories)
+├── EventDetector        (Finds key moments)
+├── TradeMovie           (Reconstructs complete movie)
+└── VARRecorder          (Main orchestrator)
+Data Flow
+Trade Closes
+    ↓
+VARRecorder.on_trade_closed(trade_data)
+    ↓
+FrameRecorder.fetch_historical_frames(symbol, timerange)
+    ↓
+MovieAnalyzer.calculate_velocities(frames)
+    ↓
+MovieAnalyzer.calculate_accelerations(frames)
+    ↓
+EventDetector.detect_explosion_start(frames)
+    ↓
+EventDetector.detect_price_peak(frames)
+    ↓
+TradeMovie.generate_json(all_data)
+    ↓
+Save to: trade_recordings/trade_XXX_SYMBOL_OUTCOME.json
+📁 CLASS SPECIFICATIONS
+Class 1: FrameRecorder
+Purpose: Fetch and store OHLCV + indicators for each minute
 
-Room estático (if &lt; 0.5%)
+Methods:
 
-
-
-Grid BLOQUEADO (posición)
-
-ALTAS (Penalties binarias):
-
-
-
-
-
-6 warnings en brain_analyzer (ADX decay, momentum old, etc.)
-
-
-
-3 factores en UnifiedVision (velas, momentum, ADX sin aceleración)
-
-MEDIAS:
-
-
-
-
-
-12+ thresholds estáticos en config
-
-ROOT CAUSE: TODO evalúa FOTOS (snapshots) en vez de PELÍCULAS (trayectorias)
-
-Ver
-
-time_ladder_violations_audit.md
-
-con análisis completo, ejemplos, y roadmap de fix por fases.
-
-
-
-Next: Implementar VAR System para grabar frames y calcular velocidades/aceleraciones. 
-
-TIME LADDER VIOLATIONS AUDIT - COMPLETE CODEBASE ANALYSIS
-Análisis Exhaustivo: Código que Bloquea la PELÍCULA
-📊 EXECUTIVE SUMMARY
-Audit Date: 2026-01-03
-Philosophy: Time Ladder = Ver PELÍCULA (trayectorias), NO FOTO (snapshots)
-
-Total Violations Found: 25+
-Severity Levels:
-
-🔴 CRITICAL (Hard blocks): 3
-🟠 HIGH (Binary penalties on snapshots): 8
-🟡 MEDIUM (Static thresholds): 12
-🟢 LOW (Informational, no blocking): 2+
-🔴 CRITICAL VIOLATIONS (Hard Blocks)
-VIOLATION #1: Grid BLOQUEADO (brain_intelligent.py)
-Location: 
-brain_intelligent.py
- líneas ~92-110
-
-Code:
-
-if grid_result['status'] == 'BLOQUEADO':
-    # Obtener multipliers de exhaustion
-    exhaustion_mult = a15m.get('exhaustion_mult', ...)
-    exhaustion_phase = a15m.get('exhaustion_phase', 'UNKNOWN')
+class FrameRecorder:
+    def __init__(self):
+        self.cache = {}  # symbol → frames (durante backtest)
     
-    # Penalty BASE severa (mantener restrictivo)
-    base_penalty = 60
-    lateral_mult = exhaustion_mult.get('lateral', 1.0)
-    adjusted_penalty = int(base_penalty * lateral_mult)
+    def fetch_frames(self, symbol, start_time, end_time):
+        """
+        Obtiene frames históricos para el rango dado.
+        
+        Args:
+            symbol: str - Trading pair
+            start_time: datetime - Entry - 30min
+            end_time: datetime - Exit + 10min
+        
+        Returns:
+            list[dict] - Frames con OHLCV + indicators
+        """
+        frames = []
+        
+        # Fetch OHLCV 1m
+        ohlcv = fetch_ohlcv(symbol, '1m', limit=100)
+        
+        # Filter por timerange
+        filtered = filter_by_time(ohlcv, start_time, end_time)
+        
+        # Para cada candle, calcular indicators
+        for candle in filtered:
+            frame = {
+                'timestamp': candle[0],
+                'price': {
+                    'open': candle[1],
+                    'high': candle[2],
+                    'low': candle[3],
+                    'close': candle[4],
+                    'volume': candle[5]
+                },
+                'indicators': self._calculate_indicators(symbol, candle)
+            }
+            frames.append(frame)
+        
+        return frames
     
-    # COMENTADO: Agregar a lateral_penalty existente
-    # lateral_penalty += adjusted_penalty  # ← PENALTY DESACTIVADA
-Problema:
-
-grid_result['status'] == 'BLOQUEADO' → Decisión basada en SNAPSHOT (posición en grid EN UN MOMENTO)
-NO considera si el precio está MOVIÉNDOSE hacia zona mejor
-FOTO: "Estás en zona bloqueada" → RECHAZAR
-PELÍCULA: "Entraste bloqueado pero SALIENDO rápido" → Podría ser válido
-Time Ladder Fix:
-
-# Ver últimos 5 frames de posición en grid
-grid_positions = [87%, 83%, 78%, 72%, 68%]  # Bajando rápido
-grid_velocity = (68 - 87) / 5 = -3.8% por frame  # Saliendo de zona peligrosa
-if grid_velocity &lt; -2:  # Alejándose rápido de techo
-    # No penalizar, está mejorando
-elif grid_velocity &gt; 0:  # Acercándose a techo
-    # Penalizar más
-Status: ⚠️ Penalty COMENTADA pero lógica de BLOQUEO permanece
-
-VIOLATION #2: Exhaustion ESTÁTICO (brain_vision_unified.py)
-Location: 
-brain_vision_unified.py
- líneas 268-293
-
-Code:
-
-# FACTOR 3.5: EXHAUSTION ABSOLUTO (FIX 2026-01-03)
-exhaustion_pct = traj.get('exhaustion_pct', 50)
-if exhaustion_pct &gt;= 85:
-    exh_penalty = -40
-    confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
-elif exhaustion_pct &gt;= 70:
-    exh_penalty = -25
-    confidence_factors.append(('Exhausted', exh_penalty, f'{exhaustion_pct:.0f}%'))
-Problema:
-
-if exhaustion_pct &gt;= 85 → Evalúa SNAPSHOT (exhaustion EN UN MOMENTO)
-NO considera TRAYECTORIA de exhaustion
-Mismo exhaustion=85% puede ser:
-Subiendo desde 50% → EVITAR (quemándose rápido)
-Bajando desde 100% → CONSIDERAR (recuperándose)
-Time Ladder Fix:
-
-# Ver trayectoria de exhaustion en últimos 5 frames
-exhaustion_history = [100%, 95%, 90%, 87%, 85%]
-exhaustion_velocity = (85 - 100) / 5 = -3% por frame  # Bajando (recup arándose)
-if exhaustion_velocity &lt; -2:  # Recuperándose rápido
-    # Menos penalty o incluso bonus
-elif exhaustion_velocity &gt; 2:  # Quemándose rápido
-    # Mayor penalty
-Status: 🔴 IMPLEMENTADO PERO ES BINARIO DISFRAZADO
-
-VIOLATION #3: Room ESTÁTICO (brain_vision_unified.py)
-Location: 
-brain_vision_unified.py
- líneas 297-315
-
-Code:
-
-# FACTOR 4: ESPACIO (FIX 2026-01-03: Penalties aumentadas)
-room_pct = traj.get('room_pct', 0)
-if room_pct &lt; 0.5:
-    tight_conf = -35
-    confidence_factors.append(('Espacio crítico', tight_conf, f'{room_pct:.1f}%'))
-elif room_pct &lt; 1.0:
-    tight_conf = -20
-    confidence_factors.append(('Espacio muy estrecho', tight_conf, f'{room_pct:.1f}%'))
-Problema:
-
-if room_pct &lt; 0.5 → Evalúa SNAPSHOT (espacio EN UN MOMENTO)
-NO considera si espacio está ABRIÉNDOSE o CERRÁNDOSE
-Room=0.5% puede ser:
-Era 3%, ahora 0.5% → CERRÁNDOSE (peligro) ❌
-Era 0.1%, ahora 0.5% → ABRIÉNDOSE (mejorando) ✅
-Time Ladder Fix:
-
-# Ver trayectoria de room
-room_history = [0.1%, 0.25%, 0.35%, 0.42%, 0.5%]
-room_velocity = (0.5 - 0.1) / 5 = +0.08% por frame  # Abriéndose
-if room_velocity &gt; 0.05:  # Espacio creciendo
-    # Bonus o menor penalty
-elif room_velocity &lt; -0.05:  # Espacio cerrando
-    # Mayor penalty
-Status: 🔴 IMPLEMENTADO PERO ES BINARIO DISFRAZADO
-
-🟠 HIGH VIOLATIONS (Binary Penalties on Snapshots)
-VIOLATION #4: ADX Decay Warning (brain_analyzer.py)
-Location: 
-brain_analyzer.py
- línea 2053-2056
-
-Code:
-
-# WARNING 1: ADX decreciendo
-if adx_trend == 'decreciendo':
-    penalties.append(WARNING_15M_ADX_DECAY)  # 15 pts
-    warnings.append(f'ADX 15M decreciendo ({adx_current:.1f})')
-Problema:
-
-adx_trend == 'decreciendo' → SNAPSHOT
-NO considera VELOCIDAD de decaída
-ADX decreciendo puede ser:
-Era 40, ahora 38 → Decayendo lento (aún fuerte) ✅
-Era 25, ahora 15 → Colapsando rápido (peligro) ❌
-Time Ladder Fix:
-
-adx_velocity = calculate_velocity(adx_history)
-adx_acceleration = calculate_acceleration(adx_history)
-if adx_velocity &lt; -2 and adx_acceleration &lt; -0.5:  # Colapsando
-    penalty = 30
-elif adx_velocity &lt; -1:  # Decayendo moderado
-    penalty = 15
-elif adx_velocity &lt; 0:  # Decayendo lento
-    penalty = 5
-Status: 🟠 BINARIO ACTIVO
-
-VIOLATION #5: Momentum Old Warning (brain_analyzer.py)
-Location: 
-brain_analyzer.py
- línea 2059-2063
-
-Code:
-
-# WARNING 2: Momentum edad alta
-if momentum_age &gt; 12:
-    penalties.append(WARNING_15M_MOMENTUM_OLD)  # 25 pts
-    warnings.append(f'Momentum 15M agotado ({momentum_age}v)')
-Problema:
-
-if momentum_age &gt; 12 → SNAPSHOT de edad
-NO considera si momentum está ACELERANDO o DESACELERANDO
-Momentum age=13 puede ser:
-Creciendo desde age=5 hace 8 frames → Acelerando (fuerte) ✅
-Decreciendo desde age=20 hace 7 frames → Muriendo (débil) ❌
-Time Ladder Fix:
-
-momentum_age_history = [5, 7, 9, 11, 13]
-age_velocity = (13 - 5) / 5 = +1.6 velas/frame  # Creciendo
-if age_velocity &gt; 1:  # Acelerando
-    # Sin penalty o bonus
-elif age_velocity &lt; -1:  # Desacelerando
-    # Penalty alta
-Status: 🟠 BINARIO ACTIVO
-
-VIOLATION #6: Direction Conflict Warning (brain_analyzer.py)
-Location: 
-brain_analyzer.py
- línea 2066-2070
-
-Code:
-
-# WARNING 3: Dirección contradictoria
-if direction_15m != direction_5m and direction_15m != 'LATERAL':
-    penalties.append(WARNING_15M_DIRECTION)  # 25 pts
-    warnings.append(f'Dirección 15M ({direction_15m}) vs 5M ({direction_5m})')
-Problema:
-
-Compara DOS SNAPSHOTS (direction_15m EN UN MOMENTO vs direction_5m EN OTRO MOMENTO)
-NO considera CONVERGENCIA o DIVERGENCIA en el tiempo
-Conflict puede ser:
-15M BEARISH → LATERAL → BULLISH (convergiendo a 5M) ✅
-15M BULLISH → LATERAL → BEARISH (divergiendo de 5M) ❌
-Time Ladder Fix:
-
-# Ver trayectoria de direcciones en 15M
-direction_15m_history = ['BEARISH', 'LATERAL', 'LATERAL', 'BULLISH', 'BULLISH']
-if direction_15m_history muestra CONVERGENCIA hacia 5M:
-    # Bonus o sin penalty
-elif direction_15m_history muestra DIVERGENCIA:
-    # Penalty alta
-Status: 🟠 BINARIO ACTIVO
-
-VIOLATION #7: Lateral Warning (brain_analyzer.py)
-Location: 
-brain_analyzer.py
- línea 2073-2077
-
-Code:
-
-# WARNING 4: Lateral 15M
-if direction_15m == 'LATERAL' and abs(spread_15m) &lt; 5:
-    penalties.append(WARNING_15M_LATERAL)  # 15 pts
-    warnings.append('15M LATERAL sin fuerza definida')
-Problema:
-
-direction_15m == 'LATERAL' → SNAPSHOT
-NO considera si está SALIENDO o ENTRANDO en lateral
-Lateral puede ser:
-Era BULLISH, ahora LATERAL (perdiendo fuerza) ❌
-Era LATERAL, spread creciendo (emergiendo) ✅
-Time Ladder Fix:
-
-direction_history = ['LATERAL', 'LATERAL', 'LATERAL', 'DEVELOPING', 'BULLISH']
-spread_history = [2, 3, 4, 5, 6]
-if direction improving AND spread growing:
-    # Sin penalty, está emergiendo
-elif direction degrading:
-    # Penalty
-Status: 🟠 BINARIO ACTIVO
-
-VIOLATION #8: No Structure Warning (brain_analyzer.py)
-Location: 
-brain_analyzer.py
- línea 2080-2085
-
-Code:
-
-# WARNING 5: Sin estructura clara
-if not zigzag_15m.get('pivot_types'):
-    penalties.append(WARNING_15M_NO_STRUCTURE)  # 15 pts
-    warnings.append('15M sin estructura HH/HL/LL/LH detectada')
-Problema:
-
-Verifica AUSENCIA de pivots EN UN MOMENTO
-NO considera si estructura se está FORMANDO o PERDIENDO
-Sin pivots puede ser:
-Estructura perdida hace 1 frame (acabándose) ❌
-Estructura aún no formada pero emergiendo ✅
-Time Ladder Fix:
-
-pivot_count_history = [0, 0, 1, 2, 3]  # Pivots formándose
-if pivot_count increasing:
-    # Estructura emergiendo, sin penalty
-elif pivot_count decreasing:
-    # Estructura perdiéndose, penalty
-Status: 🟠 BINARIO ACTIVO
-
-VIOLATION #9: ADX Weak Warning (brain_analyzer.py)
-Location: 
-brain_analyzer.py
- línea 2088-2092
-
-Code:
-
-# WARNING 6: ADX débil
-if adx_current &lt; 20:
-    penalties.append(WARNING_15M_ADX_WEAK)  # 10 pts
-    warnings.append(f'ADX 15M débil ({adx_current:.1f})')
-Problema:
-
-if adx_current &lt; 20 → SNAPSHOT
-NO considera TRAYECTORIA de ADX
-ADX=19 puede ser:
-Subiendo desde 10 (emergiendo) ✅
-Cayendo desde 35 (muriendo) ❌
-Time Ladder Fix:
-
-adx_history = [10, 13, 15, 17, 19]
-adx_velocity = (19 - 10) / 5 = +1.8 por frame
-if adx_velocity &gt; 1:  # Creciendo rápido
-    # Sin penalty, está emergiendo
-elif adx_velocity &lt; -1:  # Cayendo rápido
-    # Mayor penalty
-Status: 🟠 BINARIO ACTIVO
-
-VIOLATION #10: Candle Ratio (brain_vision_unified.py)
-Location: 
-brain_vision_unified.py
- líneas 244-255
-
-Code:
-
-# FACTOR 2: VELAS (GRADUAL en todo rango - FIX 2026-01-02)
-candle_ratio = traj.get('candle_ratio', 1)
-if candle_ratio &gt;= 1.0:
-    candle_conf = min((candle_ratio - 1) * 40, 20)
-else:
-    candle_conf = max((candle_ratio - 1) * 40, -20)
-Problema:
-
-candle_ratio compara SOLO último frame vs primero
-NO considera ACELERACIÓN de crecimiento
-Ratio=1.2 puede ser:
-Acelerando: 1.0 → 1.05 → 1.1 → 1.15 → 1.2 (creciendo uniformemente) ✅
-Desacelerando: 1.0 → 1.15 → 1.18 → 1.19 → 1.2 (frenando) ❌
-Time Ladder Fix:
-
-candle_sizes = [100, 105, 110, 115, 120]
-candle_accelerations = calculate_acceleration(candle_sizes)
-if acceleration &gt; 0:  # Acelerando
-    bonus += 5
-elif acceleration &lt; 0:  # Desacelerando
-    penalty -= 5
-Status: 🟠 MEJORADO pero aún no usa ACELERACIÓN
-
-VIOLATION #11: Momentum Delta (brain_vision_unified.py)
-Location: 
-brain_vision_unified.py
- líneas 258-264
-
-Code:
-
-# FACTOR 3: MOMENTUM (menos restrictivo - FIX 2026-01-02)
-momentum_delta = traj.get('momentum_delta', 0)
-momentum_end = traj.get('momentum_end', 0)
-if momentum_delta &gt; 0 and momentum_end &gt;= 2:
-    mom_conf = min(momentum_end * 3, 18)
-    confidence_factors.append(('Momentum', mom_conf, f'{momentum_end}v'))
-Problema:
-
-momentum_delta &gt; 0 compara solo inicio vs final
-NO considera CONSTANCIA del crecimiento
-Delta=+3 puede ser:
-Crecimiento constante: 2→3→4→5 ✅
-Crecimiento irregular: 2→5→3→4 ❌
-Time Ladder Fix:
-
-momentum_ages = [2, 3, 4, 5]
-momentum_consistency = std_deviation(momentum_ages)
-if consistency &lt; 0.5:  # Crecimiento constante
-    bonus += 5
-elif consistency &gt; 1.5:  # Irregular
-    penalty -= 3
-Status: 🟠 MEJORADO pero no valida CONSISTENCIA
-
-🟡 MEDIUM VIOLATIONS (Static Thresholds)
-VIOLATION #12-23: Config Thresholds (brain_config.py)
-Location: 
-brain_config.py
- múltiples líneas
-
-Static Thresholds Found:
-
-Config	Value	Problem
-ADX_THRESHOLD	22	FOTO: No considera trending
-ADX_MIN_ACCELERATION	0.05	Fijo, no adaptativo
-DI_MIN_SPREAD	3.0	COMENTADO pero aún en código
-MOMENTUM_CONSECUTIVE_CANDLES	3	No considera velocidad
-VOLUME_RATIO_MIN	1.3	No considera trend
-VETO_5M_ADX_MIN	18	Threshold arbitrario
-VETO_5M_ADX_VELOCITY_CRITICAL	-2	Estático
-VETO_5M_THRESHOLD	100	Threshold de veto
-WARNING_15M_ADX_DECAY	15	Penalty fija
-WARNING_15M_MOMENTUM_OLD	25	Penalty fija
-WARNING_15M_DIRECTION	25	Penalty fija
-WARNING_15M_LATERAL	15	Penalty fija
-Problema General:
-
-Todos son VALORES FIJOS que NO se adaptan a contexto
-NO consideran TRAYECTORIAS
-Aplican MISMO threshold sin importar PELÍCULA
-Time Ladder Fix:
-
-Thresholds deberían ser DINÁMICOS basados en trayectorias
-Ejemplo: ADX_THRESHOLD debería depender de adx_velocity
-Si ADX=20 pero creciendo +2/frame → OK
-Si ADX=25 pero cayendo -2/frame → NO OK
-Status: 🟡 TODOS son ESTÁTICOS
-
-🟢 LOW VIOLATIONS (Warning Only)
-VIOLATION #24: Spread Log (brain_analyzer.py)
-Location: 
-brain_analyzer.py
- línea 2044-2046
-
-Code:
-
-if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
-    warnings.append(f'Spread 15M bajo ({spread_15m:.1f})')
-    print(f"   ⚠️  Spread 15M: {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (débil pero NO bloqueado)")
-Status: ✅ WARNING ONLY (No bloquea) - CORRECTO
-
-📋 SUMMARY BY MODULE
-brain_vision_unified.py
-Factor	Violation Type	Severity
-Exhaustion	Snapshot-based	🔴 CRITICAL
-Room	Snapshot-based	🔴 CRITICAL
-ADX	Delta only, no acceleration	🟠 HIGH
-Velas	Ratio only, no acceleration	🟠 HIGH
-Momentum	Delta only, no consistency	🟠 HIGH
-Total: 5 violations
-
-brain_analyzer.py
-Warning	Violation Type	Severity
-ADX Decay	Snapshot trend	🟠 HIGH
-Momentum Old	Snapshot age	🟠 HIGH
-Direction Conflict	Two snapshots	🟠 HIGH
-Lateral	Snapshot state	🟠 HIGH
-No Structure	Snapshot absence	🟠 HIGH
-ADX Weak	Snapshot value	🟠 HIGH
-Spread (comentado)	-	✅ OK
-Total: 6 active violations + 1 fixed
-
-brain_config.py
-Threshold	Violation Type	Severity
-12+ static thresholds	Not adaptive	🟡 MEDIUM
-Total: 12 violations
-
-brain_intelligent.py
-Block	Violation Type	Severity
-Grid BLOQUEADO	Snapshot position	⚠️ COMMENTED
-Total: 1 commented (not active)
-
-🎯 FIX PRIORITY ROADMAP
-PHASE 1: IMPLEMENT VAR SYSTEM (Foundation)
-Goal: Enable trajectory analysis
-
-Steps:
-
-Create FrameRecorder class to store last 5-10 frames
-Store for each symbol:
-ADX history
-Exhaustion history
-Room history
-Candle size history
-Momentum age history
-Direction history
-Spread history
-Calculate velocities and accelerations
-Estimated Time: 2-3 hours
-
-PHASE 2: REPLACE CRITICAL VIOLATIONS
-Priority 1: Exhaustion (brain_vision_unified.py)
-
-# ANTES
-if exhaustion_pct &gt;= 85:
-    penalty = -40
-# DESPUÉS  
-exhaustion_velocity = calculate_velocity(exhaustion_history)
-if exhaustion_velocity &gt; 3:  # Quemándose rápido
-    penalty = -40
-elif exhaustion_velocity &gt; 1:  # Quemándose moderado
-    penalty = -25
-elif exhaustion_velocity &lt; -2:  # Recuperándose
-    penalty = -10
-Priority 2: Room (brain_vision_unified.py)
-
-# ANTES
-if room_pct &lt; 0.5:
-    penalty = -35
-# DESPUÉS
-room_velocity = calculate_velocity(room_history)
-if room_velocity &lt; -0.1:  # Cerrándose rápido
-    penalty = -35
-elif room_velocity &lt; -0.05:  # Cerrándose moderado
-    penalty = -20
-elif room_velocity &gt; 0.05:  # Abriéndose
-    penalty = -5
-Priority 3: ADX (brain_vision_unified.py)
-
-# ANTES
-adx_total = adx_base + adx_bonus
-# DESPUÉS
-adx_acceleration = calculate_acceleration(adx_history)
-if adx_acceleration &gt; 0.5:  # Acelerando
-    bonus += 10
-elif adx_acceleration &lt; -0.5:  # Desacelerando
-    penalty -= 10
-Estimated Time: 1-2 hours
-
-PHASE 3: REPLACE HIGH VIOLATIONS
-Fix all 6 warnings in brain_analyzer.py
-
-Replace each snapshot-based warning with trajectory-based analysis.
-
-Estimated Time: 2-3 hours
-
-PHASE 4: DYNAMIC THRESHOLDS
-Make config thresholds adaptive
-
-Example:
-
-# ANTES
-ADX_THRESHOLD = 22  # Fijo
-# DESPUÉS
-def calculate_adx_threshold(adx_velocity):
-    if adx_velocity &gt; 1:
-        return 18  # Bajamos threshold si está creciendo
-    elif adx_velocity &lt; -1:
-        return 26  # Subimos threshold si está cayendo
-    else:
-        return 22  # Default
-Estimated Time: 1-2 hours
-
-🔍 VALIDATION CHECKLIST
-Post-fix validation:
-
- VAR System stores 5-10 frames for all indicators
- All 
-evaluate_confidence
- factors use velocities/accelerations
- All brain_analyzer warnings use trajectories
- No if value &gt; threshold: penalty without trajectory context
- Config thresholds are dynamic or removed
- Backtest shows PELÍCULA analysis in debug logs
- Example: "ADX: 19 (+1.8/frame, +0.3 accel) → EMERGENTE"
-📊 EXPECTED IMPACT
-Before (Snapshot-Based)
-Symbol: XYZ/USDT
-ADX: 22 ✅
-Exhaustion: 85% ❌ REJECT
-Room: 0.8% ❌ REJECT
-→ NO OPERAR
-But PELÍCULA shows:
-
-ADX: 15→17→19→21→22 (creciendo +1.75/frame)
-Exhaustion: 100→95→90→87→85 (recuperándose -3/frame)
-Room: 0.3→0.5→0.65→0.75→0.8 (abriéndose +0.125/frame)
-Setup VÁLIDO rechazado por mirar FOTOS
-
-After (Trajectory-Based)
-Symbol: XYZ/USDT
-ADX: 22 (velocity +1.75, accel +0.2) ✅ EMERGENTE
-Exhaustion: 85% (velocity -3, recovering) ✅ MEJORANDO
-Room: 0.8% (velocity +0.125, opening) ✅ ABRIENDO
-→ OPERAR ✅
-Setup VÁLIDO reconocido al ver PELÍCULA
-
-🎬 CONCLUSIÓN
-Total Violations Found: 25+
-
-Breakdown:
-
-3 Critical (hard blocks on snapshots)
-8 High (binary penalties on snapshots)
-12+ Medium (static thresholds)
-2+ Low (warnings only, OK)
-Root Cause: Código piensa en SNAPSHOTS (valores en momentos) en vez de TRAYECTORIAS (valores en movimiento)
-
-Solution: Implementar VAR System + reemplazar todas las evaluaciones snapshot-based con trajectory-based
-
-Estimated Total Work: 8-12 hours
-
-Next Step: Implementar VAR System (Phase 1) como foundation para todo lo demás
-
-Fin del Audit Completo
+    def _calculate_indicators(self, symbol, candle):
+        """
+        Calcula todos los indicators para este frame.
+        
+        Returns:
+            dict con adx, di+, di-, momentum, exhaustion, etc.
+        """
+        # Usar brain_calculator para ADX, momentum
+        # Usar brain_trend_exhaustion para exhaustion
+        # Retornar dict completo
+Challenge: Recalcular indicators para cada minuto es costoso.
+
+Solution:
+
+Opción A: Usar cached data si existe (FrameStorage)
+Opción B: Batch calculation (calcular todos juntos)
+Opción C: Sample (cada 5min en vez de 1min para velocidad)
+Recommendation: Opción C para MVP, optimizar después
+
+Class 2: MovieAnalyzer
+Purpose: Calculate velocities and accelerations from frames
+
+Methods:
+
+class MovieAnalyzer:
+    @staticmethod
+    def calculate_velocity(values):
+        """
+        Velocity = (final - initial) / num_frames
+        
+        Args:
+            values: list[float] - Serie temporal
+        
+        Returns:
+            float - Velocity (units per frame)
+        """
+        if len(values) &lt; 2:
+            return 0.0
+        return (values[-1] - values[0]) / (len(values) - 1)
+    
+    @staticmethod
+    def calculate_acceleration(values):
+        """
+        Acceleration = velocity_second_half - velocity_first_half
+        
+        Args:
+            values: list[float] - Serie temporal
+        
+        Returns:
+            float - Acceleration
+        """
+        if len(values) &lt; 4:
+            return 0.0
+        
+        mid = len(values) // 2
+        first_half = values[:mid]
+        second_half = values[mid:]
+        
+        vel_first = MovieAnalyzer.calculate_velocity(first_half)
+        vel_second = MovieAnalyzer.calculate_velocity(second_half)
+        
+        return vel_second - vel_first
+    
+    @staticmethod
+    def analyze_frames(frames):
+        """
+        Calcula velocities y accelerations para TODOS los indicators.
+        
+        Args:
+            frames: list[dict] - Frames completos
+        
+        Returns:
+            dict - {
+                'velocities': {...},
+                'accelerations': {...}
+            }
+        """
+        result = {
+            'velocities': {},
+            'accelerations': {}
+        }
+        
+        # Extract time series
+        adx_values = [f['indicators']['adx'] for f in frames]
+        exhaustion_values = [f['indicators']['exhaustion_pct'] for f in frames]
+        room_values = [f['indicators']['room_pct'] for f in frames]
+        spread_values = [f['indicators']['spread'] for f in frames]
+        grid_values = [f['indicators'].get('grid_position', 50) for f in frames]
+        
+        # Calculate velocities
+        result['velocities']['adx'] = {
+            'value': MovieAnalyzer.calculate_velocity(adx_values),
+            'interpretation': MovieAnalyzer._interpret_velocity('adx', ...)
+        }
+        
+        result['velocities']['exhaustion'] = {
+            'value': MovieAnalyzer.calculate_velocity(exhaustion_values),
+            'interpretation': MovieAnalyzer._interpret_velocity('exhaustion', ...)
+        }
+        
+        # ... mismo para room, spread, grid
+        
+        # Calculate accelerations
+        result['accelerations']['adx'] = {
+            'value': MovieAnalyzer.calculate_acceleration(adx_values),
+            'interpretation': MovieAnalyzer._interpret_acceleration('adx', ...)
+        }
+        
+        # ... mismo para otros
+        
+        return result
+    
+    @staticmethod
+    def _interpret_velocity(indicator, value):
+        """
+        Interpreta velocity en términos humanos.
+        """
+        if indicator == 'adx':
+            if value &gt; 2:
+                return 'CRECIENDO_RAPIDO'
+            elif value &gt; 0.5:
+                return 'CRECIENDO'
+            elif value &lt; -2:
+                return 'CAYENDO_RAPIDO'
+            elif value &lt; -0.5:
+                return 'CAYENDO'
+            else:
+                return 'ESTABLE'
+        
+        elif indicator == 'exhaustion':
+            if value &gt; 5:
+                return 'QUEMANDOSE_BRUTAL'
+            elif value &gt; 2:
+                return 'QUEMANDOSE_RAPIDO'
+            elif value &lt; -2:
+                return 'RECUPERANDOSE'
+            else:
+                return 'ESTABLE'
+        
+        # ... etc para otros indicators
+Key Point: Interpretations son DESCRIPTIVAS, NO decisionales
+
+Class 3: EventDetector
+Purpose: Find key moments in the movie
+
+Methods:
+
+class EventDetector:
+    @staticmethod
+    def detect_explosion_start(frames):
+        """
+        Detecta cuándo empezó la explosión.
+        
+        Criteria:
+        - exhaustion &lt; 30% (FRESH)
+        - ADX velocity &gt; 0 (creciendo)
+        - Candle size creciendo
+        
+        Returns:
+            timestamp or None
+        """
+        for i in range(1, len(frames)):
+            current = frames[i]
+            previous = frames[i-1]
+            
+            if (current['indicators']['exhaustion_pct'] &lt; 30 and
+                current['indicators']['adx'] &gt; previous['indicators']['adx'] and
+                current['price']['high'] - current['price']['low'] &gt; 
+                previous['price']['high'] - previous['price']['low']):
+                
+                return current['timestamp']
+        
+        return None
+    
+    @staticmethod
+    def detect_price_peak(frames):
+        """
+        Frame con precio más alto.
+        """
+        if not frames:
+            return None
+        
+        max_frame = max(frames, key=lambda f: f['price']['high'])
+        return max_frame['timestamp']
+    
+    @staticmethod
+    def detect_bot_analysis_time(frames, entry_time):
+        """
+        Estima cuándo el bot "decidió" analizar.
+        
+        Típicamente ~2min antes de entry.
+        """
+        # Simple heuristic: entry_time - 2min
+        return entry_time - timedelta(minutes=2)
+    
+    @staticmethod
+    def calculate_timing_metrics(events, trade_data):
+        """
+        Calcula métricas de timing.
+        
+        Returns:
+            dict - {
+                'entry_timing': 'EARLY'/'PERFECT'/'LATE',
+                'entry_delay_min': int,
+                'exit_timing': 'EARLY'/'PERFECT'/'LATE',
+                'exit_early_min': int
+            }
+        """
+        metrics = {}
+        
+        explosion_start = events.get('explosion_detected')
+        entry_time = trade_data['entry_time']
+        price_peak = events.get('price_peak')
+        exit_time = trade_data['exit_time']
+        
+        # Entry timing
+        if explosion_start:
+            delay = (entry_time - explosion_start).total_seconds() / 60
+            metrics['entry_delay_min'] = int(delay)
+            
+            if delay &lt; 5:
+                metrics['entry_timing'] = 'EARLY'
+            elif delay &lt; 15:
+                metrics['entry_timing'] = 'PERFECT'
+            else:
+                metrics['entry_timing'] = 'LATE'
+        
+        # Exit timing
+        if price_peak:
+            early = (price_peak - exit_time).total_seconds() / 60
+            metrics['exit_early_min'] = int(early)
+            
+            if early &gt; 10:
+                metrics['exit_timing'] = 'EARLY'
+            elif early &gt; -5:
+                metrics['exit_timing'] = 'PERFECT'
+            else:
+                metrics['exit_timing'] = 'LATE'
+        
+        return metrics
+Class 4: TradeMovie
+Purpose: Reconstruct complete movie and generate analysis
+
+Methods:
+
+class TradeMovie:
+    def __init__(self, trade_data, frames, velocities, accelerations, events):
+        self.trade_data = trade_data
+        self.frames = frames
+        self.velocities = velocities
+        self.accelerations = accelerations
+        self.events = events
+    
+    def generate_json(self):
+        """
+        Genera JSON completo con toda la info.
+        """
+        return {
+            'meta': self._generate_meta(),
+            'timeline': self._generate_timeline(),
+            'frames': self._generate_frames(),
+            'velocities': self.velocities,
+            'accelerations': self.accelerations,
+            'analysis': self._generate_analysis()
+        }
+    
+    def _generate_meta(self):
+        """Meta info del trade."""
+        return {
+            'trade_id': self.trade_data['trade_id'],
+            'symbol': self.trade_data['symbol'],
+            'outcome': self.trade_data['outcome'],
+            'pnl_pct': self.trade_data['pnl_pct'],
+            'pnl_usd': self.trade_data.get('pnl_usd', 0),
+            'entry_time': self.trade_data['entry_time'].isoformat(),
+            'exit_time': self.trade_data['exit_time'].isoformat(),
+            'duration_min': int((self.trade_data['exit_time'] - 
+                                self.trade_data['entry_time']).total_seconds() / 60),
+            'direction': self.trade_data['direction']
+        }
+    
+    def _generate_timeline(self):
+        """Timeline con eventos marcados."""
+        return {
+            'recording_start': self.frames[0]['timestamp'].isoformat(),
+            'explosion_detected': self.events.get('explosion_detected', '').isoformat() if self.events.get('explosion_detected') else None,
+            'bot_analyzed': self.events.get('bot_analyzed', '').isoformat() if self.events.get('bot_analyzed') else None,
+            'entry': self.trade_data['entry_time'].isoformat(),
+            'price_peak': self.events.get('price_peak', '').isoformat() if self.events.get('price_peak') else None,
+            'exit': self.trade_data['exit_time'].isoformat(),
+            'recording_end': self.frames[-1]['timestamp'].isoformat()
+        }
+    
+    def _generate_frames(self):
+        """
+        Frames con relative_min agregado.
+        """
+        entry_time = self.trade_data['entry_time']
+        
+        formatted_frames = []
+        for frame in self.frames:
+            relative_min = int((frame['timestamp'] - entry_time).total_seconds() / 60)
+            
+            formatted_frames.append({
+                'timestamp': frame['timestamp'].isoformat(),
+                'relative_min': relative_min,
+                'price': frame['price'],
+                'indicators': frame['indicators']
+            })
+        
+        return formatted_frames
+    
+    def _generate_analysis(self):
+        """
+        Análisis crítico: binary decisions vs time ladder.
+        """
+        analysis = {}
+        
+        # Timing metrics
+        timing = EventDetector.calculate_timing_metrics(self.events, self.trade_data)
+        analysis.update(timing)
+        
+        # Binary decisions analysis
+        analysis['binary_decisions'] = self._analyze_binary_decisions()
+        
+        # Time Ladder verdict
+        analysis['time_ladder_would_say'] = self._time_ladder_verdict()
+        
+        # Root cause
+        analysis['root_cause'] = self._identify_root_cause()
+        
+        return analysis
+    
+    def _analyze_binary_decisions(self):
+        """
+        Identifica decisiones binarias que se tomaron.
+        """
+        decisions = []
+        
+        # Entry frame
+        entry_frame = self._get_frame_at_time(self.trade_data['entry_time'])
+        if not entry_frame:
+            return decisions
+        
+        exh = entry_frame['indicators']['exhaustion_pct']
+        room = entry_frame['indicators']['room_pct']
+        grid = entry_frame['indicators'].get('grid_position', 50)
+        
+        # Exhaustion threshold
+        if exh &lt; 85:
+            exh_vel = self.velocities['exhaustion']['value']
+            decisions.append(
+                f"Exhaustion {exh:.0f}% &lt; 85% threshold → APPROVED "
+                f"(pero velocity +{exh_vel:.1f} {'era CRÍTICA' if exh_vel &gt; 5 else 'era alta'})"
+            )
+        
+        # Room threshold
+        if room &gt; 0.5:
+            room_vel = self.velocities['room']['value']
+            decisions.append(
+                f"Room {room:.1f}% &gt; 0.5% threshold → APPROVED "
+                f"(pero velocity {room_vel:.2f} {'cerrando rápido' if room_vel &lt; -0.1 else 'OK'})"
+            )
+        
+        # Grid threshold
+        if grid &lt; 75:
+            grid_vel = self.velocities.get('grid_position', {}).get('value', 0)
+            decisions.append(
+                f"Grid {grid:.0f}% &lt; 75% threshold → APPROVED "
+                f"(pero velocity +{grid_vel:.1f} acercándose)" if grid_vel &gt; 0 else
+                f"Grid {grid:.0f}% &lt; 75% threshold → APPROVED (velocity OK)"
+            )
+        
+        return decisions
+    
+    def _time_ladder_verdict(self):
+        """
+        Qué diría Time Ladder viendo las trayectorias.
+        """
+        exh_vel = self.velocities['exhaustion']['value']
+        room_vel = self.velocities['room']['value']
+        adx_vel = self.velocities['adx']['value']
+        
+        # Criterios Time Ladder
+        red_flags = []
+        
+        if exh_vel &gt; 5:
+            red_flags.append("Exhaustion quemándose brutal")
+        if room_vel &lt; -0.2:
+            red_flags.append("Room cerrando rápido")
+        if adx_vel &lt; -1:
+            red_flags.append("ADX cayendo")
+        
+        if len(red_flags) &gt;= 2:
+            return f"WAIT - {', '.join(red_flags)}"
+        elif len(red_flags) == 1:
+            return f"CAUTION - {red_flags[0]}"
+        else:
+            return "ENTER - Trayectorias sostenibles"
+    
+    def _identify_root_cause(self):
+        """
+        Identifica causa raíz del outcome.
+        """
+        if self.trade_data['outcome'] == 'WIN':
+            return "N/A (trade exitoso)"
+        
+        # Para losses, analizar
+        exh_vel = self.velocities['exhaustion']['value']
+        room_vel = self.velocities['room']['value']
+        
+        if exh_vel &gt; 5 and room_vel &lt; -0.2:
+            return "BINARY_THINKING - Thresholds aprobaron pero trayectorias insostenibles"
+        elif self.analysis['entry_timing'] == 'LATE':
+            return "LATE_ENTRY - Entró después de la explosión"
+        elif self.analysis['exit_timing'] == 'EARLY':
+            return "EARLY_EXIT - Salió antes del pico"
+        else:
+            return "UNKNOWN - Requiere análisis manual"
+    
+    def _get_frame_at_time(self, target_time):
+        """Helper para encontrar frame en timestamp específico."""
+        for frame in self.frames:
+            if abs((frame['timestamp'] - target_time).total_seconds()) &lt; 60:
+                return frame
+        return None
+Class 5: VARRecorder (Main)
+Purpose: Orchestrator - called when trade closes
+
+Methods:
+
+import os
+import json
+from datetime import datetime, timedelta
+class VARRecorder:
+    def __init__(self, output_dir='trade_recordings'):
+        self.output_dir = output_dir
+        self.frame_recorder = FrameRecorder()
+        self.movie_analyzer = MovieAnalyzer()
+        self.event_detector = EventDetector()
+        
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+    
+    def on_trade_closed(self, trade_data):
+        """
+        Main entry point - called when trade closes.
+        
+        Args:
+            trade_data: dict - {
+                'trade_id': int,
+                'symbol': str,
+                'outcome': 'WIN'/'LOSS',
+                'pnl_pct': float,
+                'pnl_usd': float,
+                'entry_time': datetime,
+                'exit_time': datetime,
+                'direction': 'BULLISH'/'BEARISH'
+            }
+        """
+        try:
+            print(f"\n🎬 VAR Recording trade #{trade_data['trade_id']} {trade_data['symbol']}...")
+            
+            # 1. Define timerange
+            start_time = trade_data['entry_time'] - timedelta(minutes=30)
+            end_time = trade_data['exit_time'] + timedelta(minutes=10)
+            
+            # 2. Fetch frames
+            frames = self.frame_recorder.fetch_frames(
+                trade_data['symbol'],
+                start_time,
+                end_time
+            )
+            
+            if not frames:
+                print(f"   ⚠️ No frames available for {trade_data['symbol']}")
+                return
+            
+            print(f"   📹 Recorded {len(frames)} frames")
+            
+            # 3. Calculate velocities &amp; accelerations
+            analysis = self.movie_analyzer.analyze_frames(frames)
+            
+            # 4. Detect events
+            events = {
+                'explosion_detected': self.event_detector.detect_explosion_start(frames),
+                'price_peak': self.event_detector.detect_price_peak(frames),
+                'bot_analyzed': self.event_detector.detect_bot_analysis_time(
+                    frames, trade_data['entry_time']
+                )
+            }
+            
+            # 5. Reconstruct movie
+            movie = TradeMovie(
+                trade_data,
+                frames,
+                analysis['velocities'],
+                analysis['accelerations'],
+                events
+            )
+            
+            # 6. Generate JSON
+            movie_json = movie.generate_json()
+            
+            # 7. Save to file
+            filename = self._generate_filename(trade_data)
+            filepath = os.path.join(self.output_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(movie_json, f, indent=2, ensure_ascii=False)
+            
+            print(f"   ✅ Saved: {filename}")
+            
+        except Exception as e:
+            print(f"   ❌ VAR Error: {str(e)}")
+            # NO crashear el backtest - solo logear
+    
+    def _generate_filename(self, trade_data):
+        """
+        Genera nombre de archivo descriptivo.
+        
+        Format: trade_XXX_SYMBOL_OUTCOME_DATE.json
+        Example: trade_142_1000CAT_LOSS_20260103.json
+        """
+        trade_id = str(trade_data['trade_id']).zfill(3)
+        symbol = trade_data['symbol'].replace('/', '').replace(':', '')
+        outcome = trade_data['outcome']
+        date = trade_data['exit_time'].strftime('%Y%m%d')
+        
+        return f"trade_{trade_id}_{symbol}_{outcome}_{date}.json"
+🔗 INTEGRATION
+In backtest_real.py
+Location: After trade exit logic
+
+# At top of file
+from brain_var_recorder import VARRecorder
+# In main() or __init__
+var_recorder = VARRecorder(output_dir='trade_recordings')
+# In trade exit logic (around line 450-500)
+def simulate_trade_outcome(...):
+    # ... existing logic ...
+    
+    # After determining outcome
+    pnl_pct = ...
+    outcome = 'WIN' if pnl_pct &gt; 0 else 'LOSS'
+    
+    # NEW: Record movie
+    var_recorder.on_trade_closed({
+        'trade_id': trade_count,
+        'symbol': symbol,
+        'outcome': outcome,
+        'pnl_pct': pnl_pct,
+        'pnl_usd': pnl_usd,
+        'entry_time': entry_time,  # Already have this
+        'exit_time': exit_time,    # Already have this
+        'direction': direction
+    })
+    
+    # Continue with existing logic...
+Critical: This runs AFTER trade closes, doesn't block decision loop
+
+📊 TESTING STRATEGY
+Phase 1: Unit Tests
+Test each class independently:
+
+# test_frame_recorder.py
+def test_fetch_frames():
+    recorder = FrameRecorder()
+    frames = recorder.fetch_frames(
+        'BTC/USDT:USDT',
+        datetime.now() - timedelta(hours=1),
+        datetime.now()
+    )
+    assert len(frames) &gt; 0
+    assert 'price' in frames[0]
+    assert 'indicators' in frames[0]
+# test_movie_analyzer.py
+def test_calculate_velocity():
+    values = [10, 12, 14, 16, 18]
+    velocity = MovieAnalyzer.calculate_velocity(values)
+    assert velocity == 2.0  # +2 per frame
+# test_event_detector.py
+def test_detect_price_peak():
+    frames = [...]  # Mock frames
+    peak = EventDetector.detect_price_peak(frames)
+    assert peak is not None
+Phase 2: Integration Test
+Run 5-trade backtest:
+
+# Modify backtest_real.py to only run 5 trades
+TARGET_TRADES = 5
+python tools/backtest_real.py
+Expected:
+
+5 JSON files in trade_recordings/
+Each file has complete structure
+No crashes
+Phase 3: Validation
+Manually review 1 JSON:
+
+import json
+with open('trade_recordings/trade_001_BTCUSDT_WIN_20260103.json') as f:
+    movie = json.load(f)
+# Validate structure
+assert 'meta' in movie
+assert 'frames' in movie
+assert 'velocities' in movie
+assert 'analysis' in movie
+# Validate frames
+assert len(movie['frames']) &gt; 0
+assert movie['frames'][0]['relative_min'] &lt; 0  # Before entry
+# Validate velocities
+assert 'adx' in movie['velocities']
+assert 'exhaustion' in movie['velocities']
+# Validate analysis
+assert 'entry_timing' in movie['analysis']
+assert 'binary_decisions' in movie['analysis']
+⚠️ ERROR HANDLING
+Graceful Degradation
+def on_trade_closed(self, trade_data):
+    try:
+        frames = self.frame_recorder.fetch_frames(...)
+    except Exception as e:
+        print(f"   ⚠️ Could not fetch frames: {e}")
+        # Save partial data instead of crashing
+        partial_movie = {
+            'meta': self._generate_meta(trade_data),
+            'error': str(e),
+            'frames': [],
+            'note': 'Partial recording due to data fetch failure'
+        }
+        self._save_partial(partial_movie, trade_data)
+        return  # Don't crash backtest
+Missing Indicators
+def _calculate_indicators(self, symbol, candle):
+    indicators = {}
+    
+    try:
+        indicators['adx'] = calculate_adx(...)
+    except:
+        indicators['adx'] = None  # Mark as missing
+    
+    try:
+        indicators['exhaustion_pct'] = calculate_exhaustion(...)
+    except:
+        indicators['exhaustion_pct'] = None
+    
+    return indicators
+📈 OPTIMIZATION
+Performance Considerations
+Problem: Fetching 60+ frames per trade is slow
+
+Solutions:
+
+Sampling (MVP)
+
+Fetch every 5min instead of 1min
+60 frames → 12 frames
+Velocities still accurate
+Caching (Phase 2)
+
+Use FrameStorage if available
+Only fetch what's not cached
+Async (Phase 3)
+
+Record in background thread
+Don't block backtest
+Recommendation: Start with sampling, optimize later
+
+✅ SUCCESS CRITERIA
+Must Have
+ brain_var_recorder.py created with 5 classes
+ Integrated in backtest_real.py
+ 5-trade test generates 5 JSON files
+ Each JSON has complete structure (meta, frames, velocities, analysis)
+ No crashes on missing data
+ Backtest slowdown &lt; 30%
+Nice to Have
+ Interpretations for all velocity values
+ Event detection (explosion, peak) working
+ Binary decisions analysis populated
+ Time Ladder verdict accurate
+Validation Checks
+# After 5-trade test
+ls trade_recordings/
+# Should show: trade_001_*.json ... trade_005_*.json
+python -c "
+import json
+with open('trade_recordings/trade_001_BTCUSDT_WIN_20260103.json') as f:
+    m = json.load(f)
+    print(f'Frames: {len(m[\"frames\"])}')
+    print(f'Velocities: {list(m[\"velocities\"].keys())}')
+    print(f'Events: {list(m[\"timeline\"].keys())}')
+    print(f'Analysis: {list(m[\"analysis\"].keys())}')
+"
+📝 DELIVERABLES
+brain_var_recorder.py - Complete implementation
+Integration guide - How to add to backtest
+Example JSON - One real trade recording
+Testing report - Results from 5-trade test
+CHANGELOG entry - Document VAR implementation
+🎯 IMPLEMENTATION STEPS
+Step 1: Create brain_var_recorder.py skeleton
+"""
+BRAIN VAR RECORDER v1.0
+=======================
+Video Action Replay - Records complete trade "movies"
+for Time Ladder trajectory analysis.
+"""
+class FrameRecorder:
+    pass
+class MovieAnalyzer:
+    pass
+class EventDetector:
+    pass
+class TradeMovie:
+    pass
+class VARRecorder:
+    pass
+Step 2: Implement FrameRecorder
+fetch_frames()
+_calculate_indicators()
+Error handling
+Step 3: Implement MovieAnalyzer
+calculate_velocity()
+calculate_acceleration()
+analyze_frames()
+_interpret_velocity()
+Step 4: Implement EventDetector
+detect_explosion_start()
+detect_price_peak()
+calculate_timing_metrics()
+Step 5: Implement TradeMovie
+generate_json()
+_generate_meta()
+_generate_timeline()
+_generate_frames()
+_generate_analysis()
+Step 6: Implement VARRecorder
+on_trade_closed()
+_generate_filename()
+Error handling
+Step 7: Integration
+Add to backtest_real.py
+Test with 5 trades
+Step 8: Validation
+Review generated JSONs
+Verify structure
+Check velocities
+Validate analysis
+⏱️ ESTIMATED TIME
+Step 1-2: 1 hour
+Step 3: 1 hour
+Step 4: 45min
+Step 5: 1 hour
+Step 6: 45min
+Step 7-8: 45min
+Total: ~5-6 hours
+
+🚀 NEXT STEPS AFTER VAR
+Once VAR is working:
+
+Run 150-trade backtest
+Analyze recordings manually
+Identify common patterns in losses:
+High exhaustion velocity
+Room closing fast
+ADX deceleration
+Implement trajectory-based checks
+Replace binary thresholds one by one
+VAR is the foundation. Without it, Time Ladder is impossible.
+
+❓ QUESTIONS BEFORE IMPLEMENTATION
+Sampling rate: Every 1min or every 5min? (Recommend 5min for MVP)
+Indicator subset: All indicators or just key ones? (Recommend key: ADX, exhaustion, room, spread)
+Error handling: Save partial data or skip failed trades? (Recommend partial)
+Output location: trade_recordings/ or data/trade_recordings/? (Your choice)
+Ready to implement when you approve this plan.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 17,473<br>
-    Generado: 2026-01-03 01:22:06
+    Total caracteres: 27,956<br>
+    Generado: 2026-01-03 01:39:54
   </div>
 </body>
 </html>
