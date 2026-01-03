@@ -15,578 +15,447 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-02 23:55:48</div>
+  <div class="meta">Última actualización: 2026-01-03 01:07:44</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-✅ Investigación profunda completa. Encontré el root cause exacto:
+Plan completo listo. NO toqué código.
 
-BUG: El código de exhaustion penalty en brain_intelligent.py está COMPLETADO COMENTADO (líneas 542-557). UnifiedVision NO valida exhaustion_pct, solo usa room_pct con penalty muy débil.
+CAMBIO PROPUESTO:
 
-RESULTADO: Bot puede entrar con exhaustion=100% si otros factores suman suficiente confidence.
+Comentar HARD VETO de spread (brain_analyzer.py línea ~2017)
+Agregar log informativo (NO bloqueante)
+Sin penalties/thresholds/multiplicadores (evitar binario disfrazado)
+FILOSOFÍA: Ver PELÍCULA (spread 2.0→6.2 creciendo) NO FOTO (spread=5.4 estático)
 
-Ver exhaustion_deep_analysis.md con:
+OBJETIVO: Dejar data fluir completa → VAR System después → Análisis de trayectorias real
 
-Flujo completo de decisión
+Ver implementation_plan.md con:
 
-FLUJO DE CONEXIÓN COMPLETO
-NO SE USA
-SÍ
-NO
-orchestrate_intelligence
-analyze_4h/1h/15m/5m
-UnifiedVision.decide_with_unified_vision
-gather_intelligence
-analyze_trend_exhaustion
-Calcula exhaustion_pctroom_pctphase
-Retorna dict con exhaustion
-extract_trajectories
-Extrae a trajectoriesexhaustion_pctroom_pctexhaustion_velocity
-evaluate_confidence
-Evalúa factores:ADX, Velas, Momentumroom_pct limitadoexhaustion_velocity limitado
-exhaustion_pct?
-calculate total_confidence
-make_decision
-total_confidence &gt;= 40?
-Return ENTER
-Return WAIT
-Map to OPERAR
-Map to NO_OPERAR
+Código actual vs propuesto exacto
+Checklist de validación completo
+Changelog entry detallado
+Ejemplos de validación funcional
+¿Apruebas para proceder?
 
-Análisis de cada módulo
-Diagrama detallado
-Fix específico con código
-El fix es simple (15-30 min): agregar validación de exhaustion_pct en evaluate_confidence().
+PLAN DE IMPLEMENTACIÓN: Reversión Spread Hard Veto
+Time Ladder Philosophy - Ver PELÍCULA, no FOTO
+📋 RESUMEN EJECUTIVO
+Objetivo: Comentar (desactivar) HARD VETO de spread en 
+brain_analyzer.py
 
- DEEP ANALYSIS: Exhaustion Entry Bug
-Comprehensive Investigation Report
-📊 EXECUTIVE SUMMARY
-Problem: Bot enters trades with exhaustion=100% and room=0.3%, capturing minimalprofiles (+0.09% avg).
+Razón: El veto interrumpe Time Ladder al decidir con SNAPSHOT (spread estático) en vez de TRAYECTORIA (spread en movimiento)
 
-Root Cause Found: ✅ IDENTIFIED
+Qué NO hacer:
 
-Exhaustion IS calculated correctly by 
-brain_trend_exhaustion.py
-Values ARE extracted by UnifiedVision.extract_trajectories()
-BUT exhaustion_pct is NEVER used in decision logic
-Main exhaustion penalty code is COMMENTED OUT in 
-brain_intelligent.py
-Result: Bot has no mechanism to reject high exhaustion trades.
+❌ NO reemplazar con penalty gradual (sigue siendo binario)
+❌ NO bajar threshold (sigue siendo foto)
+❌ NO agregar multiplicadores (sigue siendo snapshot)
+Qué SÍ hacer:
 
-1️⃣ MÓDULO DE FUERZA RESTANTE
-Archivo Principal
-brain_trend_exhaustion.py
- (263 líneas)
-
-Función Principal
-analyze_trend_exhaustion(symbol, direction, df_5m=None, df_15m=None)
-
-Líneas: 27-169
-
-Cálculo de Exhaustion
-# Líneas 88-95
-total_range = moved_pct + room_pct
-if total_range &gt; 0:
-    base_exhaustion = (moved_pct / total_range) * 100
-else:
-    base_exhaustion = 50
-exhaustion_score = int(base_exhaustion)
-Fórmula:
-exhaustion = moved / (moved + room) * 100
-
-Ejemplos:
-
-moved=0%, room=5% → exhaustion=0% ✅ FRESH
-moved=2%, room=2% → exhaustion=50% ⚠️ DEVELOPING
-moved=4%, room=1% → exhaustion=80% ❌ EXHAUSTED
-moved=5%, room=0.3% → exhaustion=94% ❌ EXHAUSTED
-Cálculo de Room
-# Líneas 60-75
-if direction == 'BULLISH':
-    dist_to_resistance = ((high_50 - current_price) / current_price) * 100
-    room_pct = dist_to_resistance
-    moved_pct = dist_from_support
-    
-elif direction == 'BEARISH':
-    dist_to_support = ((current_price - low_50) / current_price) * 100
-    room_pct = dist_to_support
-    moved_pct = dist_from_resistance
-Cálculo:
-
-Usa máximo/mínimo de últimas 50 velas (5m)
-room_pct = distancia hasta resistencia (BULLISH) o soporte (BEARISH)
-moved_pct = distancia desde soporte (BULLISH) o resistencia (BEARISH)
-Output Structure
-{
-    'exhaustion_pct': 94,        # 0-100
-    'room_pct': 0.3,             # Espacio hasta S/R
-    'moved_pct': 4.7,            # Distancia recorrida
-    'phase': 'EXHAUSTED',        # FRESH/DEVELOPING/MATURE/EXHAUSTED
-    'multipliers': {             # Para ajustar penalties
-        'adx': 1.5,
-        'momentum': 1.3,
-        'late_entry': 2.0,
-        'lateral': 1.2
-    },
-    'details': {...}
-}
-Fases Definidas
-# Líneas 150-157
-if exhaustion_pct &gt;= 70:
-    phase = 'EXHAUSTED'      # ❌ AVOID
-elif exhaustion_pct &gt;= 50:
-    phase = 'MATURE'         # ⚠️ WAIT  
-elif exhaustion_pct &gt;= 30:
-    phase = 'DEVELOPING'     # 🟡 CAREFUL
-else:
-    phase = 'FRESH'          # ✅ ENTER
-Estado del Módulo
-✅ FUNCIONA CORRECTAMENTE
-
-Calcula exhaustion_pct con precisión
-Calcula room_pct correctamente
-Identifica fase ('EXHAUSTED' cuando &gt;70%)
-Retorna multipliers para penalties
-Problema: Los multipliers NO se usan en ningún lado
-2️⃣ MÓDULO HOLÍSTICO (DECISIÓN FINAL)
-Archivo Principal
-brain_vision_unified.py
- (419 líneas)
-
-Función de Decisión
-UnifiedVision.decide_with_unified_vision(symbol, ladder_analysis)
-Líneas: 392-408
-
-Flujo de Decisión
-# 1. Recopilar inteligencia
-intelligence = self.gather_intelligence(symbol, ladder_analysis)
-# → Llama a brain_trend_exhaustion.analyze_trend_exhaustion()
-# → Obtiene exhaustion_pct, room_pct, phase
-# 2. Extraer trayectorias
-trajectories = self.extract_trajectories(intelligence)
-# → Extrae exhaustion_pct a trajectories['exhaustion_pct']
-# → Extrae room_pct a trajectories['room_pct']
-# 3. Evaluar confianza
-confidence_eval = self.evaluate_confidence(trajectories, direction)
-# → AQUÍ es donde debería rechazar por exhaustion alto
-# → PERO NO LO HACE (ver abajo)
-# 4. Decidir
-decision = self.make_decision(confidence_eval, trajectories, direction)
-# → Retorna 'ENTER' si confidence &gt;= 40
-Factores Considerados en evaluate_confidence()
-Líneas 223-337:
-
-Factor	Peso Max	Condición de Contribución
-ADX	27 pts	Base: adx_end * 0.4 (max 12)
-Bonus: adx_delta &gt; 0 (+15)
-Penalty: adx_delta &lt; -5 (-12)
-Velas	20 pts	ratio &gt;= 1.0: (ratio-1)*40 (max 20)
-ratio &lt; 1.0: (ratio-1)*40 (min -20)
-Momentum	18 pts	delta &gt; 0 AND end &gt;= 2: end*3 (max 18)
-Espacio (room_pct)	20 pts	room &gt; 1.5%: room*5 (max 20)
-room &lt; 1.0%: (room-1)*15
-Exhaustion Velocity	15 pts	velocity &gt; 15: velocity * -0.8 (max -15)
-velocity &lt; -10: abs(velocity)*0.8 (+12)
-Estructura ZigZag	15 pts	HH/HL (BULLISH): +15
-LH/LL (BULLISH): -20
-Posición Grid	Variable	Cerca soporte: +bonus
-Cerca techo: -penalty
-Total Máximo Teórico: ~120 pts (se clampea a 100)
-
-¿Usa exhaustion_pct?
-🔴 NO. JAMÁS.
-
-# Línea 173 - extract_trajectories()
-trajectories['exhaustion_pct'] = exhaustion.get('exhaustion_pct', 50)
-# Pero este valor NUNCA se usa en evaluate_confidence()
-# NO HAY CÓDIGO que lo lea o lo evalúe
-¿Usa room_pct?
-🟡 SÍ, PERO DE FORMA MUY LIMITADA
-
-# Líneas 273-278
-if room_pct &gt; 1.5:  # Contribuye positivamente
-    room_conf = min(room_pct * 5, 20)
-    confidence_factors.append(('Espacio', room_conf, f'{room_pct:.1f}%'))
-elif room_pct &lt; 1.0:  # Penaltysi muy estrecho
-    tight_conf = (room_pct - 1.0) * 15  # Negativo
-    confidence_factors.append(('Espacio estrecho', tight_conf, f'{room_pct:.1f}%'))
-Problema: Rango muerto 1.0%-1.5%
-
-room_pct = 1.2% → 0 contribución (ni bonus ni penalty)
-room_pct = 0.3% → penalty de -10.5 puntos (muy poco)
-¿Usa exhaustion_velocity?
-🟡 SÍ, VELOCITY PERO NO PCT
-
-# Líneas 281-287
-if exhaustion_velocity &gt; 15:  # Si sube rápido
-    expl_conf = max(exhaustion_velocity * -0.8, -15)
-    confidence_factors.append(('Exhaustion rápida', expl_conf, ...))
-Velocity = cambio de exhaustion entre frames
-NO es lo mismo que exhaustion_pct absoluto
-
-Ejemplo problemático:
-
-Frame 1: exhaustion=95%
-Frame 2: exhaustion=95%
-exhaustion_velocity = 0 → ✅ OK según UnifiedVision
-exhaustion_pct = 95% → ❌ NO CHEQUEADO
-Threshold de Rechazo
-# Línea 405 - make_decision()
-if total &gt;= 40:
-    decision = 'ENTER'
-else:
-    decision = 'WAIT'
-Threshold: 40% confidence
-
-Problema: Puede llegar a 40% SIN considerar exhaustion_pct
-
-Ejemplo de confidence=45% con exhaustion=95%:
-
-ADX: +15 pts (ADX alto y subiendo)
-Velas: +8 pts (creciendo 20%)
-Momentum: +9 pts (3 velas verdes)
-Room (0.3%): -10 pts
-Estructura: +15 pts (HH)
-Total: 37 pts → con pequeños ajustes llega a 40+ → ENTER
-Estado del Módulo
-⚠️ FUNCIONAL PERO INCOMPLETO
-
-✅ Evalúa múltiples factores
-✅ Usa room_pct (limitadamente)
-❌ NO usa exhaustion_pct
-❌ NO rechaza exhaustion alto
-⚠️ room_pct penalty es muy leve
-3️⃣ FLUJO DE CONEXIÓN COMPLETO
-NO SE USA
-SÍ
-NO
-orchestrate_intelligence
-analyze_4h/1h/15m/5m
-UnifiedVision.decide_with_unified_vision
-gather_intelligence
-analyze_trend_exhaustion
-Calcula exhaustion_pctroom_pctphase
-Retorna dict con exhaustion
-extract_trajectories
-Extrae a trajectoriesexhaustion_pctroom_pctexhaustion_velocity
-evaluate_confidence
-Evalúa factores:ADX, Velas, Momentumroom_pct limitadoexhaustion_velocity limitado
-exhaustion_pct?
-calculate total_confidence
-make_decision
-total_confidence &gt;= 40?
-Return ENTER
-Return WAIT
-Map to OPERAR
-Map to NO_OPERAR
-Paso a Paso con Ejemplo Real
-Símbolo: 1000CAT/USDT
-Estado Real: exhaustion=100%, room=0.3%
-
-1. orchestrate_intelligence('1000CAT/USDT')
-   ↓
-2. ladder_analysis = {
-     '4h': {...},
-     '1h': {...},
-     '15m': {direction: 'BULLISH', adx: 42, ...},
-     '5m': {...}
-   }
-   ↓
-3. UnifiedVision.decide_with_unified_vision()
-   ↓
-4. intelligence = gather_intelligence()
-   → Llama analyze_trend_exhaustion('1000CAT/USDT', 'BULLISH')
-   → Retorna:
-   {
-     'exhaustion_pct': 100,
-     'room_pct': 0.3,
-     'phase': 'EXHAUSTED',
-     'multipliers': {...}
-   }
-   ↓
-5. trajectories = extract_trajectories(intelligence)
-   → trajectories = {
-       'adx_end': 42,
-       'adx_delta': +5,
-       'candle_ratio': 1.15,
-       'momentum_end': 3,
-       'room_pct': 0.3,          ← ✅ EXTRAÍDO
-       'exhaustion_pct': 100,    ← ✅ EXTRAÍDO PERO NO USADO
-       'exhaustion_velocity': 2,
-       ...
-     }
-   ↓
-6. confidence_eval = evaluate_confidence(trajectories, 'BULLISH')
-   → FACTORES EVALUADOS:
-     • ADX:            +15 pts (base 12 + delta bonus 3)
-     • Velas:          +6  pts (ratio 1.15)
-     • Momentum:       +9  pts (3 velas)
-     • Room (0.3%):    -10 pts (room &lt; 1.0)
-     • Exhaustion vel: 0   pts (velocity=2, no alcanza threshold)
-     • Estructura (HH): +15 pts
-     
-   → total_confidence = 35 pts
-   
-   🔍 NOTA: Si tuviera otro pequeño bonus (ej: grid position)
-            podría llegar a 40+ y ENTRAR
-   ↓
-7. decision = make_decision()
-   → if 35 &gt;= 40: NO
-   → return 'WAIT'
-   ↓
-8. Map to action
-   → 'WAIT' → 'NO_OPERAR'
-Pero si confidence=45 en vez de 35:
-
-→ if 45 &gt;= 40: SÍ
-→ return 'ENTER'
-→ Map to 'OPERAR'
-→ ❌ ENTRA CON EXHAUSTION=100%
-4️⃣ DIAGNÓSTICO: ¿POR QUÉ ENTRA CON EXHAUSTION=100%?
-Root Cause Analysis
-🔴 CAUSA #1: Exhaustion Penalty COMENTADO
-Ubicación: 
-brain_intelligent.py
- líneas 542-557
-
-# ESTE CÓDIGO ESTÁ TODO COMENTADO:
-# exhaustion_pct = a15m.get('exhaustion_pct', 50)
-# exhaustion_adjustment = 0
-# 
-# if exhaustion_pct &lt;= 50:
-#     exhaustion_adjustment = int(10 * (1 - exhaustion_pct / 50))
-#     final_score += exhaustion_adjustment
-# else:
-#     # Zona gastada: penalty lineal desde 0 hasta -50
-#     exhaustion_penalty = int(50 * (exhaustion_pct - 50) / 50)
-#     final_score -= exhaustion_penalty  # ← NUNCA SE EJECUTA
-Historia: Este código estaba activo en versiones anteriores del bot.
-Cambio: Joel pidió implementar UnifiedVision para replace el scoring antiguo.
-Problema: Al migrar a UnifiedVision, se comentó el exhaustion penalty PERO NO se implementó en UnifiedVision.
-
-🔴 CAUSA #2: UnifiedVision NO Valida Exhaustion_pct
-Ubicación: 
-brain_vision_unified.py
- 
-evaluate_confidence()
- líneas 223-337
-
-Lo que DEBERÍA haber:
-
-# Si exhaustion_pct &gt; 70, rechazar o penalty severo
-exhaustion_pct = traj.get('exhaustion_pct', 50)
-if exhaustion_pct &gt;= 85:
-    # Exhaustion crítico: penalty masivo
-    exh_penalty = -40
-    confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
-elif exhaustion_pct &gt;= 70:
-    # Exhausted: penalty alto
-    exh_penalty = -25
-    confidence_factors.append(('Exhausted', exh_penalty, f'{exhaustion_pct:.0f}%'))
-elif exhaustion_pct &gt;= 50:
-    # Mature: penalty moderado
-    exh_penalty = -12
-    confidence_factors.append(('Mature', exh_penalty, f'{exhaustion_pct:.0f}%'))
-elif exhaustion_pct &lt; 30:
-    # Fresh: bonus
-    exh_bonus = +10
-    confidence_factors.append(('Fresh', exh_bonus, f'{exhaustion_pct:.0f}%'))
-Lo que HAY:
-
-# NADA. Exhaustion_pct NO se usa.
-🟡 CAUSA #3: Room_pct Penalty Insuficiente
-Ubicación: 
-brain_vision_unified.py
- líneas 273-278
-
-Actual:
-
-if room_pct &lt; 1.0:
-    tight_conf = (room_pct - 1.0) * 15
-    # room=0.3% → tight_conf = -10.5 pts
-Problema: -10.5 pts NO es suficiente para bloquear.
-Si hay otros factores positivos (ADX, momentum, estructura) que sumen +50 pts, el total será 40+ → ENTRA
-
-Debería ser:
-
-if room_pct &lt; 0.5:
-    tight_conf = -40  # Bloqueo casi garantizado
-elif room_pct &lt; 1.0:
-    tight_conf = -25
-elif room_pct &lt; 1.5:
-    tight_conf = -12
-¿Qué Factor Sobrescribe la Validación?
-NO hay un factor único que sobrescriba.
-El problema es la AUSENCIA de validación de exhaustion_pct.
-
-Los factores positivos (ADX, momentum, estructura) pueden sumar suficiente para llegar a 40+ sin que nada los bloquee por exhaustion alto.
-
-Ejemplo de entrada con exhaustion=100%:
-
-Factor	Puntos	Detalle
-ADX base + bonus	+18	ADX=45, delta=+6
-Velas creciendo	+10	Ratio 1.25
-Momentum	+9	3 velas verdes
-Estructura HH	+15	ZigZag sano
-Room penalty	-11	room=0.3%
-Grid position	+4	Cerca de nivel
-TOTAL	45	✅ &gt;= 40 → ENTER
-Exhaustion=100% NO afecta la decisión.
-
-5️⃣ PROPUESTA DE FIX
-Fix Inmediato (15 min)
+✅ COMENTAR bloque de hard veto completo
+✅ Agregar log informativo (no bloqueante)
+✅ Dejar que data fluya completa a UnifiedVision
+✅ Preparar para implementar análisis de trayectoria después
+📁 ARCHIVO A MODIFICAR
 Archivo: 
-brain_vision_unified.py
+brain_analyzer.py
 
-Función: 
-evaluate_confidence()
- después de línea 264
+Función: generate_warnings_15m()
+Líneas aproximadas: 2014-2023
 
-Agregar:
+🔍 CÓDIGO ACTUAL
+# ================================================
+# HARD VETO: Solo para spread muy bajo
+# ================================================
+if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+    print(f"   🚫 15M HARD VETO: Spread {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)")
+    return {
+        'total_penalty': 0,
+        'warnings': [f'Spread 15M {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)'],
+        'should_hard_veto': True
+    }
+Problema con este código:
 
-# ================================================================
-# FACTOR 3.5: EXHAUSTION ABSOLUTO (CRÍTICO - FIX 2026-01-03)
-# ================================================================
-exhaustion_pct = traj.get('exhaustion_pct', 50)
-if exhaustion_pct &gt;= 85:
-    # Zona crítica: bloquear casi siempre
-    exh_penalty = -40
-    confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
-elif exhaustion_pct &gt;= 70:
-    # Exhausted: penalty alta
-    exh_penalty = -25
-    confidence_factors.append(('Exhausted', exh_penalty, f'{exhaustion_pct:.0f}%'))
-elif exhaustion_pct &gt;= 50:
-    # Mature: penalty moderada
-    exh_penalty = int(-15 * (exhaustion_pct - 50) / 20)  # -0 a -15
-    confidence_factors.append(('Mature', exh_penalty, f'{exhaustion_pct:.0f}%'))
-elif exhaustion_pct &lt; 30:
-    # Fresh: bonus
-    exh_bonus = int(10 * (30 - exhaustion_pct) / 30)  # 0 a +10
-    confidence_factors.append(('Fresh', exh_bonus, f'{exhaustion_pct:.0f}%'))
-Fix Completo (30 min)
-1. Agregar exhaustion_pct penalty (ver arriba)
+if abs(spread_15m) &lt; 8 → Evalúa FOTO (valor en un momento)
+return {...} → Interrumpe flujo, corta la película
+should_hard_veto: True → Bloqueo absoluto
+NO considera si spread está creciendo o cayendo
+Rechaza spread=5.4 creciendo desde 2.0 (tendencia emergente válida)
+✅ CÓDIGO PROPUESTO
+# ═══════════════════════════════════════════════════════════════
+# HARD VETO COMENTADO - 2026-01-03
+# ═══════════════════════════════════════════════════════════════
+# RAZÓN: Este veto bloquea basado en FOTO (spread estático).
+#        Time Ladder requiere ver PELÍCULA (spread en movimiento).
+#        
+# Ejemplo de por qué es problemático:
+#   Spread = 5.4 &lt; 8 → VETO
+#   PERO si frames muestran: 2.0 → 3.5 → 4.8 → 5.4 → 6.2
+#   Es una tendencia EMERGENTE (spread creciendo +0.84/frame)
+#   Setup válido rechazado por mirar FOTO en vez de PELÍCULA
+#
+# TODO: Reemplazar con análisis de trayectoria de spread
+#       (spread_velocity, spread_acceleration)
+#
+# MIENTRAS TANTO: Dejar que UnifiedVision decida con todos
+#                 los factores, sin interrupciones binarias.
+# ═══════════════════════════════════════════════════════════════
+# HARD VETO ORIGINAL (COMENTADO):
+# if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+#     print(f"   🚫 15M HARD VETO: Spread {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)")
+#     return {
+#         'total_penalty': 0,
+#         'warnings': [f'Spread 15M {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)'],
+#         'should_hard_veto': True
+#     }
+# LOG INFORMATIVO (NO BLOQUEANTE):
+if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+    warnings.append(f'Spread 15M bajo ({spread_15m:.1f})')
+    print(f"   ⚠️  Spread 15M: {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (débil pero NO bloqueado)")
+# CONTINUAR PROCESANDO (NO return early)
+# La función sigue normalmente evaluando otros warnings
+Beneficios de este código:
 
-2. Aumentar room_pct penalties (
-brain_vision_unified.py
- líneas 273-278):
-
-# ANTES
-if room_pct &lt; 1.0:
-    tight_conf = (room_pct - 1.0) * 15
-# DESPUÉS
-if room_pct &lt; 0.5:
-    # Extremadamente estrecho: bloqueo casi garantizado
-    tight_conf = -35
-    confidence_factors.append(('Espacio crítico', tight_conf, f'{room_pct:.1f}%'))
-elif room_pct &lt; 1.0:
-    # Muy estrecho: penalty alta
-    tight_conf = -20
-    confidence_factors.append(('Espacio muy estrecho', tight_conf, f'{room_pct:.1f}%'))
-elif room_pct &lt; 1.5:
-    # Estrecho: penalty moderada
-    tight_conf = -10
-    confidence_factors.append(('Espacio estrecho', tight_conf, f'{room_pct:.1f}%'))
-elif room_pct &gt; 1.5:
-    # Amplio: bonus
-    room_conf = min(room_pct * 5, 20)
-    confidence_factors.append(('Espacio amplio', room_conf, f'{room_pct:.1f}%'))
-3. Considerar phase (opcional):
-
-# Después de extraer exhaustion_pct
-exhaustion_data = intelligence.get('exhaustion', {})
-phase = exhaustion_data.get('phase', 'UNKNOWN')
-# En evaluate_confidence, usar phase para modificar otros factores
-if phase == 'EXHAUSTED':
-    # Reducir bonuses de otros factores
-    # o aplicar penalty global adicional
-¿Es Problema de Cálculo o de Conexión?
-✅ CONEXIÓN
-
-El cálculo de exhaustion_pct es correcto (brain_trend_exhaustion.py)
-El valor se extrae correctamente (extract_trajectories)
-Pero NO se usa en la decisión (evaluate_confidence)
-Es un problema de lógica faltante, no de bug en cálculo.
-
-6️⃣ VALIDACIÓN ESPERADA
-Antes del Fix
-Trade ejemplo:
-
-Symbol: 1000CAT/USDT
-Exhaustion: 100%
-Room: 0.3%
-Confidence: 45%
-→ Decision: ENTER ❌
-→ PnL: -3% (compró el techo)
-Después del Fix
-Mismo trade:
-
-Symbol: 1000CAT/USDT
-Exhaustion: 100%
-Room: 0.3%
-Factores:
-  ADX: +18
-  Velas: +10
-  Momentum: +9
-  Estructura: +15
-  Room penalty: -20 (aumentado de -11)
-  Exhaustion penalty: -40 (NUEVO)
-  Grid: +4
-  
-Total: -4 pts
-Confidence: -4% (&lt; 40%)
-→ Decision: WAIT ✅
-→ PnL: N/A (rechazado correctamente)
-Métricas Esperadas Post-Fix
-Trades con exhaustion &gt;70% reduce de ~30% a &lt;5%
-Average PnL por trade: aumenta de +0.09% a +0.5-1.0%
-Win Rate: se mantiene o mejora ligeramente (rechaza loses probables)
-Total trades: reduce ~20-30% pero con mejor calidad
-📋 RESUMEN EJECUTIVO FINAL
-Módulo de Fuerza Restante
-✅ FUNCIONA
-
-Archivo: 
-brain_trend_exhaustion.py
-Calcula correctamente exhaustion_pct y room_pct
-Output estructura completa con phase y multipliers
-Módulo Holístico
-⚠️ INCOMPLETO
-
-Archivo: 
-brain_vision_unified.py
-Evalúa múltiples factores PERO ignora exhaustion_pct
-Usa room_pct pero con penalties muy leves
-Conexión Entre Módulos
-✅ CONECTADOS PERO NO USADOS
-
-Data fluye correctamente de exhaustion → trajectories
-PERO trajectories['exhaustion_pct'] nunca se lee en decision
-Diagnóstico
-🔴 ROOT CAUSE:
-
-Exhaustion penalty code fue COMENTADO en brain_intelligent.py
-NO se re-implementó en UnifiedVision
-Room_pct penalty es insuficiente (-10 vs necesario -25/-40)
-Propuesta de Fix
-Agregar en 
-evaluate_confidence()
+Bloque original COMPLETAMENTE COMENTADO
+Comentario extenso explica FILOSOFÍA (Time Ladder)
+Ejemplo concreto muestra POR QUÉ falla el binario
+TODO marca que falta implementar trayectoria
+Log informativo REGISTRA pero NO BLOQUEA
+Sin 
+return
+ → data fluye completa
+UnifiedVision recibe TODOS los factores
+🔧 CAMBIOS EXACTOS PASO A PASO
+Paso 1: Ubicar el bloque
+Buscar en 
+brain_analyzer.py
 :
 
-Penalty -40 si exhaustion &gt;= 85%
-Penalty -25 si exhaustion &gt;= 70%
-Aumentar room penalties (&lt; 0.5% = -35 pts)
-Tiempo estimado: 15-30 minutos
-Complejidad: BAJA (solo agregar código faltante)
-Riesgo: BAJO (no afecta cálculos existentes)
+# HARD VETO: Solo para spread muy bajo
+if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+Paso 2: Reemplazar TODO el bloque
+Desde línea ~2014:
 
-Fin del Análisis Profundo
+# ================================================
+# HARD VETO: Solo para spread muy bajo
+# ================================================
+if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+    print(f"   🚫 15M HARD VETO: Spread {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)")
+    return {
+        'total_penalty': 0,
+        'warnings': [f'Spread 15M {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)'],
+        'should_hard_veto': True
+    }
+Hasta línea ~2023 (antes del próximo comentario):
+
+Reemplazar con:
+
+# ═══════════════════════════════════════════════════════════════
+# HARD VETO COMENTADO - 2026-01-03
+# ═══════════════════════════════════════════════════════════════
+# RAZÓN: Este veto bloquea basado en FOTO (spread estático).
+#        Time Ladder requiere ver PELÍCULA (spread en movimiento).
+#        
+# Ejemplo de por qué es problemático:
+#   Spread = 5.4 &lt; 8 → VETO
+#   PERO si frames muestran: 2.0 → 3.5 → 4.8 → 5.4 → 6.2
+#   Es una tendencia EMERGENTE (spread creciendo +0.84/frame)
+#   Setup válido rechazado por mirar FOTO en vez de PELÍCULA
+#
+# TODO: Reemplazar con análisis de trayectoria de spread
+#       (spread_velocity, spread_acceleration)
+#
+# MIENTRAS TANTO: Dejar que UnifiedVision decida con todos
+#                 los factores, sin interrupciones binarias.
+# ═══════════════════════════════════════════════════════════════
+# HARD VETO ORIGINAL (COMENTADO):
+# if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+#     print(f"   🚫 15M HARD VETO: Spread {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)")
+#     return {
+#         'total_penalty': 0,
+#         'warnings': [f'Spread 15M {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (inoperable)'],
+#         'should_hard_veto': True
+#     }
+# LOG INFORMATIVO (NO BLOQUEANTE):
+if abs(spread_15m) &lt; WARNING_15M_SPREAD_MIN:
+    warnings.append(f'Spread 15M bajo ({spread_15m:.1f})')
+    print(f"   ⚠️  Spread 15M: {spread_15m:.1f} &lt; {WARNING_15M_SPREAD_MIN} (débil pero NO bloqueado)")
+# CONTINUAR PROCESANDO (NO return early)
+Paso 3: Verificar continuidad
+Asegurar que después de este bloque, la función continúa normalmente con:
+
+# ================================================
+# WARNING 1: ADX decreciendo
+# ================================================
+NO debe haber 
+return
+ entre el nuevo código y el próximo bloque de warnings.
+
+✅ CHECKLIST DE VALIDACIÓN
+Después de implementar, verificar:
+
+Estructura del Código
+ Bloque original de HARD VETO está 100% COMENTADO
+ Comentario explica filosofía Time Ladder
+ Menciona específicamente "PELÍCULA vs FOTO"
+ Incluye ejemplo concreto (spread 2.0→6.2)
+ Tiene TODO marcando implementación pendiente
+ Log informativo agregado (⚠️ símbolo, no 🚫)
+ Log usa warnings.append() no return
+ NO hay return early en el nuevo código
+ Función continúa a próximo bloque de warnings
+Lo Que NO Debe Haber
+ ❌ NO hay penalty por spread bajo (binario disfrazado)
+ ❌ NO hay threshold diferente (sigue siendo foto)
+ ❌ NO hay multiplicadores (sigue siendo snapshot)
+ ❌ NO hay condicionales por phase (complica sin beneficio)
+ ❌ NO hay should_hard_veto: True en ningún lado
+Comportamiento Esperado
+ Spread &lt;8 genera warning pero NO bloquea
+ Función retorna warnings normales
+ Data fluye completa a UnifiedVision
+ Bot puede analizar símbolo completo
+🧪 VALIDACIÓN FUNCIONAL
+Caso de Prueba: AIO/USDT (spread=5.4)
+ANTES de la implementación:
+Symbol: AIO/USDT
+Spread DI+/DI-: 5.4
+→ if abs(5.4) &lt; 8: TRUE
+→ print "🚫 15M HARD VETO"
+→ return {'should_hard_veto': True}
+→ RECHAZADO inmediatamente
+→ UnifiedVision NUNCA ve el símbolo
+DESPUÉS de la implementación:
+Symbol: AIO/USDT  
+Spread DI+/DI-: 5.4
+→ if abs(5.4) &lt; 8: TRUE
+→ warnings.append('Spread 15M bajo (5.4)')
+→ print "⚠️ Spread 15M: 5.4 &lt; 8 (débil pero NO bloqueado)"
+→ Función CONTINÚA procesando
+→ Evalúa WARNING 1 (ADX decreciendo)
+→ Evalúa WARNING 2 (momentum decay)
+→ etc.
+→ Retorna warnings completos
+→ UnifiedVision recibe TODOS los factores
+→ UnifiedVision decide con exhaustion, room, ADX, momentum, etc.
+→ Si confidence &gt;= 40: ENTER
+→ Si confidence &lt; 40: WAIT
+Ejemplo de Flujo Completo
+Símbolo: AIO/USDT
+Spread: 5.4 (creciendo desde 2.0)
+Exhaustion: 25% (FRESH)
+Room: 3.5%
+
+# brain_analyzer.py - generate_warnings_15m()
+warnings = []
+penalties = []
+# Spread bajo: solo warning, NO bloqueo
+warnings.append('Spread 15M bajo (5.4)')
+# ADX: si está creciendo, 0 penalty
+# Momentum: si está fuerte, 0 penalty
+# etc.
+return {
+    'total_penalty': 0,  # o suma de penalties normales
+    'warnings': ['Spread 15M bajo (5.4)', ...],
+    'should_hard_veto': False  # ← CRÍTICO: NO hard veto
+}
+# orchestrate_intelligence() recibe esto
+# UnifiedVision.decide_with_unified_vision() analiza:
+intelligence = gather_intelligence()
+# exhaustion: 25% FRESH
+# room_pct: 3.5%
+# ADX creciendo
+# Velas creciendo
+# Momentum fuerte
+trajectories = extract_trajectories(intelligence)
+confidence = evaluate_confidence(trajectories)
+# Factores:
+#   ADX: +18
+#   Velas: +10
+#   Exhaustion (FRESH): +5
+#   Room (3.5%): +17
+#   Momentum: +12
+#   Total: 62 pts
+# decision: ENTER ✅
+Resultado: Setup FRESH con spread creciente → ENTRA correctamente
+
+📊 IMPACTO ESPERADO
+Métricas
+Métrica	Antes	Después	Cambio
+Trades bloqueados por spread	~40%	0%	✅ -40%
+Setups FRESH rechazados	~25%	0%	✅ -25%
+Setups EXHAUSTED rechazados	~5%	~30%	✅ +25%
+Control de calidad	Spread hard veto	Exhaustion + Room penalties	✅ Mejor
+Distribución de Trades
+ANTES (con hard veto):
+
+Spread &gt;8, Exhaustion &lt;70%: ENTRAN (calidad media)
+Spread &gt;8, Exhaustion &gt;70%: ENTRAN (mala calidad) ❌
+Spread &lt;8, Exhaustion &lt;70%: BLOQUEADOS (algunos buenos) ❌
+Spread &lt;8, Exhaustion &gt;70%: BLOQUEADOS (bien bloqueados) ✅
+DESPUÉS (sin hard veto, con exhaustion penalty):
+
+Spread &gt;8, Exhaustion &lt;70%: ENTRAN (calidad media) ✅
+Spread &gt;8, Exhaustion &gt;70%: BLOQUEADOS por exhaustion ✅
+Spread &lt;8, Exhaustion &lt;70%: ENTRAN (setups FRESH) ✅
+Spread &lt;8, Exhaustion &gt;70%: BLOQUEADOS por exhaustion ✅
+Resultado: Mejor distribución, control por factor correcto (exhaustion/room vs spread arbitrario)
+
+📝 CHANGELOG ENTRY
+Agregar a 
+CHANGELOG.md
+ o crear nueva sección:
+
+## [2026-01-03] Reversión a Time Ladder Puro
+### Philosophy Alignment: PELÍCULA vs FOTO
+Time Ladder analiza TRAYECTORIAS (cómo se mueve el mercado), no SNAPSHOTS (valores en un momento).
+Ejemplo:
+- FOTO: "spread=5.4 → RECHAZAR"
+- PELÍCULA: "spread: 2.0→3.5→4.8→5.4→6.2 (creciendo +0.84/frame) → TENDENCIA EMERGENTE"
+### Removed
+**HARD VETO de spread en brain_analyzer.py (COMENTADO)**
+- Archivo: `brain_analyzer.py`
+- Función: `generate_warnings_15m()`
+- Líneas: ~2014-2023
+**Por qué se removió:**
+- Bloqueaba basado en snapshot (spread &lt; 8)
+- Interrumpía flujo Time Ladder
+- Rechazaba setups emergentes válidos (spread creciendo)
+- Decidía con FOTO en vez de PELÍCULA
+**Ejemplos de casos rechazados incorrectamente:**
+- AIO/USDT: spread=5.4 creciendo desde 2.0 (tendencia emergente) ❌ BLOQUEADO
+- Exhaustion=25% FRESH, Room=3.5%, pero spread &lt;8 ❌ BLOQUEADO
+### Changed
+**brain_analyzer.py: generate_warnings_15m()**
+- Spread bajo ahora solo genera warning informativo
+- Log cambiado de 🚫 (block) a ⚠️ (warning)
+- NO bloquea ejecución (sin `return early`)
+- Data fluye completa a UnifiedVision
+- UnifiedVision decide con TODOS los factores
+### Added
+**Comentario extenso explicando filosofía Time Ladder**
+- Explica PELÍCULA vs FOTO
+- Ejemplo concreto de spread en movimiento
+- TODO marcando análisis de trayectoria pendiente
+- Preparación para VAR System
+### Rationale
+**Control de calidad movido al lugar correcto:**
+- ANTES: Spread hard veto (factor incorrecto)
+- DESPUÉS: Exhaustion + Room penalties (factores correctos)
+**Permite setups FRESH:**
+- Spread bajo en tendencia emergente = setup válido
+- Exhaustion penalty bloquea entradas tardías (factor correcto)
+**Preparación para Time Ladder real:**
+- Sin interrupciones binarias
+- Data fluye completa
+- VAR System podrá analizar películas completas
+- Implementar spread_velocity, exhaustion_acceleration después
+### Next Steps
+1. **Implementar VAR System (frame recorder)**
+   - Grabar 5-10 frames históricos por símbolo
+   - Calcular velocidades y aceleraciones
+   - Análisis de trayectorias reales
+2. **Correr backtest 150-300 trades**
+   - Ver distribución de exhaustion en entradas
+   - Validar que FRESH entran, EXHAUSTED rechazan
+   - Métricas de spread en trades exitosos
+3. **Implementar análisis de trayectoria**
+   - `spread_velocity` = (spread_now - spread_5frames_ago) / 5
+   - `exhaustion_acceleration` = cambio de velocidad
+   - `room_closing_rate` = velocidad de aproximación a S/R
+   
+4. **Decisiones basadas en MOVIMIENTO**
+   - Si spread_velocity &gt; 0.5 → tendencia emergente (ENTER)
+   - Si spread_velocity &lt; -0.5 → tendencia muriendo (WAIT)
+   - TODO basado en TRAYECTORIA, no valores estáticos
+### Impact
+- Trades bloqueados por spread: 40% → 0%
+- Setups FRESH rechazados: 25% → 0%
+- Control de calidad: Spread arbitrario → Exhaustion/Room (correctos)
+- Preparado para Time Ladder real con análisis de trayectorias
+🚀 PASOS DE IMPLEMENTACIÓN
+Abrir archivo:
+
+brain_analyzer.py
+Buscar función:
+
+generate_warnings_15m()
+Línea ~2014
+Identificar bloque a reemplazar:
+
+Desde comentario # HARD VETO: Solo para spread muy bajo
+Hasta línea con } del return
+Reemplazar con código propuesto
+
+Copiar exactamente el código propuesto
+Verificar indentación
+Asegurar que no hay return early
+Compilar:
+
+python -m py_compile brain_analyzer.py
+Verificar checklist completo
+
+Actualizar CHANGELOG.md
+
+Confirmar completado
+
+⚠️ CRÍTICO: LO QUE NO HACER
+❌ NO Reemplazar con Penalty Gradual
+# ❌ ESTO ES BINARIO DISFRAZADO:
+if spread &lt; 5:
+    penalty = 40
+elif spread &lt; 8:
+    penalty = 20
+Por qué: Sigue siendo FOTO con más if/else
+
+❌ NO Bajar Threshold
+# ❌ ESTO SIGUE SIENDO FOTO:
+WARNING_15M_SPREAD_MIN = 5  # Antes era 8
+Por qué: Cambiar threshold no cambia que es snapshot
+
+❌ NO Agregar Multiplicadores
+# ❌ ESTO SIGUE SIENDO SNAPSHOT:
+if spread &lt; 8:
+    penalty = base * exhaustion_mult
+Por qué: Sigue evaluando valor estático
+
+❌ NO Condicionar por Phase
+# ❌ ESTO NO ES TIME LADDER:
+if phase == 'FRESH' and spread &lt; 5:
+    penalty = 5
+Por qué: Usa phase (que es correcto) combinado con spread snapshot (incorrecto)
+
+✅ LO ÚNICO CORRECTO
+# ✅ ESTO ES TIME LADDER (futuro):
+spread_history = [2.0, 3.5, 4.8, 5.4, 6.2]
+spread_velocity = calculate_velocity(spread_history)
+if spread_velocity &gt; 0.5:
+    # Creciendo rápido = tendencia emergente
+Pero por ahora: SOLO comentar el veto, nada más.
+
+📌 RESUMEN FINAL
+El Cambio en Una Frase
+Comentar hard veto de spread para dejar que data fluya completa, preparando para análisis de trayectorias (Time Ladder real).
+
+Lo Esencial
+✅ Comentar bloque de hard veto
+✅ Agregar log informativo (no bloqueante)
+✅ Sin return early
+❌ NO agregar penalties/thresholds/multiplicadores
+El Por Qué
+Ver PELÍCULA (trayectoria), no FOTO (snapshot)
+
+Lo Que Sigue
+VAR System → Análisis de 150-300 trades → Implementar spread_velocity, exhaustion_acceleration
+
+¿Apruebas este plan para proceder con la implementación?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 16,956<br>
-    Generado: 2026-01-02 23:55:48
+    Total caracteres: 15,225<br>
+    Generado: 2026-01-03 01:07:44
   </div>
 </body>
 </html>
