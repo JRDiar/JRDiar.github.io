@@ -15,420 +15,390 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-03 01:47:41</div>
+  <div class="meta">Última actualización: 2026-01-03 10:54:19</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Plan completo de VAR System listo.
+Plan completo creado: 
+var_2_implementation_plan.md
 
-ARQUITECTURA:
+Resumen del Plan VAR 2.0
+Concepto: DUAL MOVIE sincronizado
 
-5 clases (FrameRecorder, MovieAnalyzer, EventDetector, TradeMovie, VARRecorder)
-Trigger: Trade closure
-Output: JSONs con frames + velocities + events + analysis
-FEATURES:
+🎥 Market Movie = Qué pasó (3ra persona)
+🧠 Bot Brain Movie = Qué pensó el bot (1ra persona)
+Componentes:
 
-Graba -30min a +10min del trade
-Calcula velocities/accelerations
-Detecta eventos (explosion, peak)
-Identifica binary decisions vs Time Ladder verdict
-Error handling (no crashea backtest)
-ESTIMADO: 5-6 horas implementación
+Nueva clase BotBrainRecorder (código completo incluido)
+5 puntos de integración en archivos existentes (FIND/REPLACE exactos)
+3 métodos de análisis automático de bugs
+Plan de testing completo (5 trades → validación → 500 trades)
+Ejemplo de output JSON con ambas películas
+Beneficio clave:
 
-Ver implementation_plan.md con:
+Sin Bot Brain: "Entró con exhaustion 60%, no sé por qué" → días adivinando
+Con Bot Brain: "Factor Room +15 pts empujó confidence de 40% a 55%" → bug visible en minutos
 
-Especificaciones completas de cada clase
-Integración en backtest
-Testing strategy
-Success criteria
-PREGUNTAS:
+¿Procedo con la implementación o quieres revisar/ajustar el plan primero?
 
-Samplear cada 5min (rápido) o 1min (completo)?
-Todos los indicators o solo key ones?
-¿Apruebas para proceder?
-
-VAR SYSTEM - IMPLEMENTATION PLAN
-Video Action Replay for Time Ladder Analysis
+VAR SYSTEM 2.0 - DUAL MOVIE IMPLEMENTATION PLAN
+Market Movie + Bot Brain Movie
 📋 EXECUTIVE SUMMARY
-System Name: VAR (Video Action Replay)
-Purpose: Record complete "movies" of trades to analyze trajectories vs snapshots
-Trigger: Trade closure (post-mortem analysis)
-Output: JSON files with frames, velocities, accelerations, events
-Integration: Standalone observer, NO decision-making
+Upgrade: VAR 1.0 → VAR 2.0
+New Feature: Bot Brain Movie (proceso de decisión frame-by-frame)
+Benefit: Ver QUÉ PENSÓ el bot, no solo qué pasó en el mercado
+Impact: Bugs visibles en minutos, no días
 
-Foundation for: Time Ladder trajectory-based analysis
+🎯 CONCEPTO
+Dual Synchronized Movies
+MOVIE 1 - Market Movie (3ra persona - exterior)
 
+{
+  "timestamp": "2025-12-15T14:00:00",
+  "market": {
+    "adx": 18.5,
+    "exhaustion_pct": 15.0,
+    "room_pct": 4.8
+  }
+}
+MOVIE 2 - Bot Brain Movie (1ra persona - interior)
+
+{
+  "timestamp": "2025-12-15T14:00:00",
+  "bot_brain": {
+    "confidence_factors": [
+      {"name": "ADX", "value": 12, "reason": "Base 18.5"},
+      {"name": "Exhaustion", "value": 0, "reason": "NOT USED"}
+    ],
+    "total_confidence": 33,
+    "decision": "WAIT",
+    "decision_reason": "Confidence 33% &lt; 40%"
+  }
+}
+SINCRONIZADAS:
+
+{
+  "timestamp": "2025-12-15T14:00:00",
+  "market": {...},
+  "bot_brain": {...}
+}
 🏗️ ARCHITECTURE
-Module Structure
+New Class: BotBrainRecorder
+File: 
 brain_var_recorder.py
-├── FrameRecorder        (Stores snapshots)
-├── MovieAnalyzer        (Calculates trajectories)
-├── EventDetector        (Finds key moments)
-├── TradeMovie           (Reconstructs complete movie)
-└── VARRecorder          (Main orchestrator)
-Data Flow
-Trade Closes
-    ↓
-VARRecorder.on_trade_closed(trade_data)
-    ↓
-FrameRecorder.fetch_historical_frames(symbol, timerange)
-    ↓
-MovieAnalyzer.calculate_velocities(frames)
-    ↓
-MovieAnalyzer.calculate_accelerations(frames)
-    ↓
-EventDetector.detect_explosion_start(frames)
-    ↓
-EventDetector.detect_price_peak(frames)
-    ↓
-TradeMovie.generate_json(all_data)
-    ↓
-Save to: trade_recordings/trade_XXX_SYMBOL_OUTCOME.json
-📁 CLASS SPECIFICATIONS
-Class 1: FrameRecorder
-Purpose: Fetch and store OHLCV + indicators for each minute
+ (add to existing file)
 
-Methods:
+Location: After 
+EventDetector
+ class, before 
+TradeMovie
+ class
 
-class FrameRecorder:
-    def __init__(self):
-        self.cache = {}  # symbol → frames (durante backtest)
+Complete Code:
+
+class BotBrainRecorder:
+    """
+    Records BOT's decision-making process at each historical frame.
     
-    def fetch_frames(self, symbol, start_time, end_time):
+    Simulates what the bot would have thought/decided at each moment
+    by reconstructing the analysis with historical data.
+    
+    This is the "first-person camera" inside the bot's brain.
+    """
+    
+    def __init__(self):
+        self.cache = {}
+    
+    def record_decision_at_frame(self, symbol, frame_data, direction):
         """
-        Obtiene frames históricos para el rango dado.
+        Simulates bot's decision process at this historical frame.
         
         Args:
             symbol: str - Trading pair
-            start_time: datetime - Entry - 30min
-            end_time: datetime - Exit + 10min
-        
-        Returns:
-            list[dict] - Frames con OHLCV + indicators
-        """
-        frames = []
-        
-        # Fetch OHLCV 1m
-        ohlcv = fetch_ohlcv(symbol, '1m', limit=100)
-        
-        # Filter por timerange
-        filtered = filter_by_time(ohlcv, start_time, end_time)
-        
-        # Para cada candle, calcular indicators
-        for candle in filtered:
-            frame = {
-                'timestamp': candle[0],
-                'price': {
-                    'open': candle[1],
-                    'high': candle[2],
-                    'low': candle[3],
-                    'close': candle[4],
-                    'volume': candle[5]
-                },
-                'indicators': self._calculate_indicators(symbol, candle)
-            }
-            frames.append(frame)
-        
-        return frames
-    
-    def _calculate_indicators(self, symbol, candle):
-        """
-        Calcula todos los indicators para este frame.
-        
-        Returns:
-            dict con adx, di+, di-, momentum, exhaustion, etc.
-        """
-        # Usar brain_calculator para ADX, momentum
-        # Usar brain_trend_exhaustion para exhaustion
-        # Retornar dict completo
-Challenge: Recalcular indicators para cada minuto es costoso.
-
-Solution:
-
-Opción A: Usar cached data si existe (FrameStorage)
-Opción B: Batch calculation (calcular todos juntos)
-Opción C: Sample (cada 5min en vez de 1min para velocidad)
-Recommendation: Opción C para MVP, optimizar después
-
-Class 2: MovieAnalyzer
-Purpose: Calculate velocities and accelerations from frames
-
-Methods:
-
-class MovieAnalyzer:
-    @staticmethod
-    def calculate_velocity(values):
-        """
-        Velocity = (final - initial) / num_frames
-        
-        Args:
-            values: list[float] - Serie temporal
-        
-        Returns:
-            float - Velocity (units per frame)
-        """
-        if len(values) &lt; 2:
-            return 0.0
-        return (values[-1] - values[0]) / (len(values) - 1)
-    
-    @staticmethod
-    def calculate_acceleration(values):
-        """
-        Acceleration = velocity_second_half - velocity_first_half
-        
-        Args:
-            values: list[float] - Serie temporal
-        
-        Returns:
-            float - Acceleration
-        """
-        if len(values) &lt; 4:
-            return 0.0
-        
-        mid = len(values) // 2
-        first_half = values[:mid]
-        second_half = values[mid:]
-        
-        vel_first = MovieAnalyzer.calculate_velocity(first_half)
-        vel_second = MovieAnalyzer.calculate_velocity(second_half)
-        
-        return vel_second - vel_first
-    
-    @staticmethod
-    def analyze_frames(frames):
-        """
-        Calcula velocities y accelerations para TODOS los indicators.
-        
-        Args:
-            frames: list[dict] - Frames completos
+            frame_data: dict - Market indicators at this frame
+            direction: str - BULLISH/BEARISH
         
         Returns:
             dict - {
-                'velocities': {...},
-                'accelerations': {...}
+                'confidence_factors': [...],
+                'total_confidence': 55,
+                'decision': 'ENTER',
+                'decision_reason': 'Confidence crossed threshold'
             }
         """
-        result = {
-            'velocities': {},
-            'accelerations': {}
-        }
-        
-        # Extract time series
-        adx_values = [f['indicators']['adx'] for f in frames]
-        exhaustion_values = [f['indicators']['exhaustion_pct'] for f in frames]
-        room_values = [f['indicators']['room_pct'] for f in frames]
-        spread_values = [f['indicators']['spread'] for f in frames]
-        grid_values = [f['indicators'].get('grid_position', 50) for f in frames]
-        
-        # Calculate velocities
-        result['velocities']['adx'] = {
-            'value': MovieAnalyzer.calculate_velocity(adx_values),
-            'interpretation': MovieAnalyzer._interpret_velocity('adx', ...)
-        }
-        
-        result['velocities']['exhaustion'] = {
-            'value': MovieAnalyzer.calculate_velocity(exhaustion_values),
-            'interpretation': MovieAnalyzer._interpret_velocity('exhaustion', ...)
-        }
-        
-        # ... mismo para room, spread, grid
-        
-        # Calculate accelerations
-        result['accelerations']['adx'] = {
-            'value': MovieAnalyzer.calculate_acceleration(adx_values),
-            'interpretation': MovieAnalyzer._interpret_acceleration('adx', ...)
-        }
-        
-        # ... mismo para otros
-        
-        return result
+        try:
+            # Build synthetic ladder_analysis from frame data
+            ladder_analysis = self._build_ladder_analysis(symbol, frame_data, direction)
+            
+            # Call UnifiedVision to get decision (lightweight)
+            from brain_vision_unified import UnifiedVision
+            vision = UnifiedVision()
+            
+            # Get trajectory data (simplified)
+            traj = self._build_trajectory(frame_data, direction)
+            
+            # Evaluate confidence (this is what we want to see!)
+            result = vision.evaluate_confidence(traj, direction, ladder_analysis)
+            
+            # Extract confidence breakdown
+            confidence_breakdown = self._extract_confidence_breakdown(result)
+            
+            return confidence_breakdown
+            
+        except Exception as e:
+            # If simulation fails, return error state
+            return {
+                'confidence_factors': [],
+                'total_confidence': 0,
+                'decision': 'ERROR',
+                'decision_reason': f'Simulation failed: {str(e)[:50]}',
+                'error': str(e)
+            }
     
-    @staticmethod
-    def _interpret_velocity(indicator, value):
+    def _build_ladder_analysis(self, symbol, frame_data, direction):
         """
-        Interpreta velocity en términos humanos.
+        Constructs synthetic ladder_analysis for this historical frame.
+        
+        UnifiedVision needs ladder_analysis, so we build one from
+        the indicator data we have in this frame.
         """
-        if indicator == 'adx':
-            if value &gt; 2:
-                return 'CRECIENDO_RAPIDO'
-            elif value &gt; 0.5:
-                return 'CRECIENDO'
-            elif value &lt; -2:
-                return 'CAYENDO_RAPIDO'
-            elif value &lt; -0.5:
-                return 'CAYENDO'
-            else:
-                return 'ESTABLE'
+        # Extract key indicators from frame
+        adx = frame_data.get('adx', 0)
+        di_plus = frame_data.get('di_plus', 0)
+        di_minus = frame_data.get('di_minus', 0)
+        exhaustion_pct = frame_data.get('exhaustion_pct', 50)
+        room_pct = frame_data.get('room_pct', 0)
+        momentum_age = frame_data.get('momentum_age', 0)
         
-        elif indicator == 'exhaustion':
-            if value &gt; 5:
-                return 'QUEMANDOSE_BRUTAL'
-            elif value &gt; 2:
-                return 'QUEMANDOSE_RAPIDO'
-            elif value &lt; -2:
-                return 'RECUPERANDOSE'
-            else:
-                return 'ESTABLE'
+        # Build minimal 15m analysis (UnifiedVision mainly uses this)
+        ladder_15m = {
+            'direction': direction,
+            'adx': {
+                'adx_current': adx,
+                'di_plus': di_plus,
+                'di_minus': di_minus,
+                'spread': abs(di_plus - di_minus),
+                'trend': 'creciendo' if adx &gt; 20 else 'estable'
+            },
+            'exhaustion_pct': exhaustion_pct,
+            'room_pct': room_pct,
+            'exhaustion_phase': self._get_phase(exhaustion_pct),
+            'momentum': {
+                'consecutive_count': momentum_age,
+                'current_color': 'green' if momentum_age &gt; 0 else 'red'
+            }
+        }
         
-        # ... etc para otros indicators
-Key Point: Interpretations son DESCRIPTIVAS, NO decisionales
-
-Class 3: EventDetector
-Purpose: Find key moments in the movie
-
-Methods:
-
-class EventDetector:
-    @staticmethod
-    def detect_explosion_start(frames):
+        # Return ladder with 15m (minimum required)
+        return {
+            '15m': ladder_15m,
+            '5m': {},  # Placeholder
+            '1h': {},  # Placeholder
+            '4h': {}   # Placeholder
+        }
+    
+    def _build_trajectory(self, frame_data, direction):
         """
-        Detecta cuándo empezó la explosión.
+        Builds trajectory dict for UnifiedVision.evaluate_confidence().
+        """
+        # Extract data from frame
+        adx_end = frame_data.get('adx', 0)
+        exhaustion_pct = frame_data.get('exhaustion_pct', 50)
+        room_pct = frame_data.get('room_pct', 0)
+        momentum_age = frame_data.get('momentum_age', 0)
         
-        Criteria:
-        - exhaustion &lt; 30% (FRESH)
-        - ADX velocity &gt; 0 (creciendo)
-        - Candle size creciendo
+        # Build trajectory (simplified - no velocity for now)
+        return {
+            'direction': direction,
+            'adx_end': adx_end,
+            'adx_delta': 0,  # We don't have velocity in single frame
+            'candle_ratio': 1.0,  # Neutral
+            'momentum_end': momentum_age,
+            'momentum_delta': 0,
+            'exhaustion_pct': exhaustion_pct,
+            'room_pct': room_pct,
+            'exhaustion_velocity': 0,  # No velocity data
+            'pivot_types': [],  # No structure data
+            'position_pct': 50  # Neutral grid position
+        }
+    
+    def _get_phase(self, exhaustion_pct):
+        """Maps exhaustion percentage to phase."""
+        if exhaustion_pct &lt; 30:
+            return 'FRESH'
+        elif exhaustion_pct &lt; 50:
+            return 'DEVELOPING'
+        elif exhaustion_pct &lt; 70:
+            return 'MATURE'
+        else:
+            return 'EXHAUSTED'
+    
+    def _extract_confidence_breakdown(self, result):
+        """
+        Extracts confidence factors from UnifiedVision result.
+        
+        Args:
+            result: dict from evaluate_confidence()
         
         Returns:
-            timestamp or None
+            dict with confidence_factors, total, decision, reason
         """
-        for i in range(1, len(frames)):
-            current = frames[i]
-            previous = frames[i-1]
+        # Result format from UnifiedVision:
+        # {
+        #   'action': 'OPERAR' or 'WAIT',
+        #   'confidence': 55,
+        #   'reason': 'Confidence sufficient',
+        #   'details': {...}
+        # }
+        
+        action = result.get('action', 'WAIT')
+        confidence = result.get('confidence', 0)
+        reason = result.get('reason', 'Unknown')
+        details = result.get('details', {})
+        
+        # Try to extract factors from details
+        # UnifiedVision in evaluate_confidence builds confidence_factors list
+        factors = []
+        
+        # If details has confidence_factors (from our implementation)
+        if 'confidence_factors' in details:
+            # Format: [('ADX', 12, 'reason'), ...]
+            for factor_tuple in details['confidence_factors']:
+                if len(factor_tuple) &gt;= 2:
+                    name = factor_tuple[0]
+                    value = factor_tuple[1]
+                    factor_reason = factor_tuple[2] if len(factor_tuple) &gt; 2 else ''
+                    
+                    factors.append({
+                        'name': name,
+                        'value': round(value, 1),
+                        'reason': str(factor_reason)
+                    })
+        
+        # If no factors extracted, create generic one
+        if not factors:
+            factors.append({
+                'name': 'Total',
+                'value': confidence,
+                'reason': 'Details not available'
+            })
+        
+        # Determine decision
+        decision = 'ENTER' if action == 'OPERAR' else 'WAIT'
+        
+        # Build decision reason
+        threshold = 40  # Known threshold
+        if confidence &gt;= threshold:
+            decision_reason = f"Confidence {confidence}% &gt;= {threshold}% threshold"
+        else:
+            decision_reason = f"Confidence {confidence}% &lt; {threshold}% threshold"
+        
+        return {
+            'confidence_factors': factors,
+            'total_confidence': round(confidence, 1),
+            'decision': decision,
+            'decision_reason': decision_reason
+        }
+🔗 INTEGRATION
+1. Update VARRecorder Class
+File: 
+brain_var_recorder.py
+
+Location: In VARRecorder.__init__() method
+
+FIND:
+
+class VARRecorder:
+    def __init__(self, output_dir='trade_recordings'):
+        self.output_dir = output_dir
+        self.frame_recorder = FrameRecorder()
+        self.movie_analyzer = MovieAnalyzer()
+        self.event_detector = EventDetector()
+        
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"🎬 VAR System initialized → {output_dir}/")
+REPLACE WITH:
+
+class VARRecorder:
+    def __init__(self, output_dir='trade_recordings'):
+        self.output_dir = output_dir
+        self.frame_recorder = FrameRecorder()
+        self.movie_analyzer = MovieAnalyzer()
+        self.event_detector = EventDetector()
+        self.bot_brain_recorder = BotBrainRecorder()  # NEW: Bot Brain
+        
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"🎬 VAR System 2.0 initialized (Dual Movie) → {output_dir}/")
+2. Update on_trade_closed() Method
+File: 
+brain_var_recorder.py
+
+Location: In VARRecorder.on_trade_closed() method, after fetching frames
+
+FIND:
+
+# 2. Fetch frames (5min intervals)
+            frames = self.frame_recorder.fetch_frames(
+                trade_data['symbol'],
+                start_time,
+                end_time
+            )
             
-            if (current['indicators']['exhaustion_pct'] &lt; 30 and
-                current['indicators']['adx'] &gt; previous['indicators']['adx'] and
-                current['price']['high'] - current['price']['low'] &gt; 
-                previous['price']['high'] - previous['price']['low']):
+            if not frames or len(frames) &lt; 3:
+                print(f"   ⚠️ Insufficient frames ({len(frames)}), saving partial...")
+                self._save_partial(trade_data, frames, "Insufficient historical data")
+                return
+            
+            print(f"   📹 Recorded {len(frames)} frames")
+            
+            # 3. Calculate velocities &amp; accelerations
+            analysis = self.movie_analyzer.analyze_frames(frames)
+REPLACE WITH:
+
+# 2. Fetch frames (5min intervals)
+            frames = self.frame_recorder.fetch_frames(
+                trade_data['symbol'],
+                start_time,
+                end_time
+            )
+            
+            if not frames or len(frames) &lt; 3:
+                print(f"   ⚠️ Insufficient frames ({len(frames)}), saving partial...")
+                self._save_partial(trade_data, frames, "Insufficient historical data")
+                return
+            
+            print(f"   📹 Market: {len(frames)} frames")
+            
+            # 2.5. Record bot brain decision at each frame (NEW)
+            print(f"   🧠 Recording bot brain...")
+            for frame in frames:
+                bot_decision = self.bot_brain_recorder.record_decision_at_frame(
+                    symbol=trade_data['symbol'],
+                    frame_data=frame['indicators'],
+                    direction=trade_data['direction']
+                )
                 
-                return current['timestamp']
-        
-        return None
-    
-    @staticmethod
-    def detect_price_peak(frames):
-        """
-        Frame con precio más alto.
-        """
-        if not frames:
-            return None
-        
-        max_frame = max(frames, key=lambda f: f['price']['high'])
-        return max_frame['timestamp']
-    
-    @staticmethod
-    def detect_bot_analysis_time(frames, entry_time):
-        """
-        Estima cuándo el bot "decidió" analizar.
-        
-        Típicamente ~2min antes de entry.
-        """
-        # Simple heuristic: entry_time - 2min
-        return entry_time - timedelta(minutes=2)
-    
-    @staticmethod
-    def calculate_timing_metrics(events, trade_data):
-        """
-        Calcula métricas de timing.
-        
-        Returns:
-            dict - {
-                'entry_timing': 'EARLY'/'PERFECT'/'LATE',
-                'entry_delay_min': int,
-                'exit_timing': 'EARLY'/'PERFECT'/'LATE',
-                'exit_early_min': int
-            }
-        """
-        metrics = {}
-        
-        explosion_start = events.get('explosion_detected')
-        entry_time = trade_data['entry_time']
-        price_peak = events.get('price_peak')
-        exit_time = trade_data['exit_time']
-        
-        # Entry timing
-        if explosion_start:
-            delay = (entry_time - explosion_start).total_seconds() / 60
-            metrics['entry_delay_min'] = int(delay)
+                # Add to frame
+                frame['bot_brain'] = bot_decision
             
-            if delay &lt; 5:
-                metrics['entry_timing'] = 'EARLY'
-            elif delay &lt; 15:
-                metrics['entry_timing'] = 'PERFECT'
-            else:
-                metrics['entry_timing'] = 'LATE'
-        
-        # Exit timing
-        if price_peak:
-            early = (price_peak - exit_time).total_seconds() / 60
-            metrics['exit_early_min'] = int(early)
+            print(f"   🧠 Brain: {len(frames)} decisions recorded")
             
-            if early &gt; 10:
-                metrics['exit_timing'] = 'EARLY'
-            elif early &gt; -5:
-                metrics['exit_timing'] = 'PERFECT'
-            else:
-                metrics['exit_timing'] = 'LATE'
-        
-        return metrics
-Class 4: TradeMovie
-Purpose: Reconstruct complete movie and generate analysis
+            # 3. Calculate velocities &amp; accelerations (market only)
+            analysis = self.movie_analyzer.analyze_frames(frames)
+📁 JSON OUTPUT FORMAT
+3. Update TradeMovie._generate_frames()
+File: 
+brain_var_recorder.py
 
-Methods:
+Location: In TradeMovie._generate_frames() method
 
-class TradeMovie:
-    def __init__(self, trade_data, frames, velocities, accelerations, events):
-        self.trade_data = trade_data
-        self.frames = frames
-        self.velocities = velocities
-        self.accelerations = accelerations
-        self.events = events
-    
-    def generate_json(self):
-        """
-        Genera JSON completo con toda la info.
-        """
-        return {
-            'meta': self._generate_meta(),
-            'timeline': self._generate_timeline(),
-            'frames': self._generate_frames(),
-            'velocities': self.velocities,
-            'accelerations': self.accelerations,
-            'analysis': self._generate_analysis()
-        }
-    
-    def _generate_meta(self):
-        """Meta info del trade."""
-        return {
-            'trade_id': self.trade_data['trade_id'],
-            'symbol': self.trade_data['symbol'],
-            'outcome': self.trade_data['outcome'],
-            'pnl_pct': self.trade_data['pnl_pct'],
-            'pnl_usd': self.trade_data.get('pnl_usd', 0),
-            'entry_time': self.trade_data['entry_time'].isoformat(),
-            'exit_time': self.trade_data['exit_time'].isoformat(),
-            'duration_min': int((self.trade_data['exit_time'] - 
-                                self.trade_data['entry_time']).total_seconds() / 60),
-            'direction': self.trade_data['direction']
-        }
-    
-    def _generate_timeline(self):
-        """Timeline con eventos marcados."""
-        return {
-            'recording_start': self.frames[0]['timestamp'].isoformat(),
-            'explosion_detected': self.events.get('explosion_detected', '').isoformat() if self.events.get('explosion_detected') else None,
-            'bot_analyzed': self.events.get('bot_analyzed', '').isoformat() if self.events.get('bot_analyzed') else None,
-            'entry': self.trade_data['entry_time'].isoformat(),
-            'price_peak': self.events.get('price_peak', '').isoformat() if self.events.get('price_peak') else None,
-            'exit': self.trade_data['exit_time'].isoformat(),
-            'recording_end': self.frames[-1]['timestamp'].isoformat()
-        }
-    
-    def _generate_frames(self):
-        """
-        Frames con relative_min agregado.
-        """
+FIND:
+
+def _generate_frames(self):
+        """Frames con relative_min agregado."""
         entry_time = self.trade_data['entry_time']
         
         formatted_frames = []
@@ -443,11 +413,43 @@ class TradeMovie:
             })
         
         return formatted_frames
-    
-    def _generate_analysis(self):
-        """
-        Análisis crítico: binary decisions vs time ladder.
-        """
+REPLACE WITH:
+
+def _generate_frames(self):
+        """Frames con relative_min, market, y bot_brain."""
+        entry_time = self.trade_data['entry_time']
+        
+        formatted_frames = []
+        for frame in self.frames:
+            relative_min = int((frame['timestamp'] - entry_time).total_seconds() / 60)
+            
+            # NEW: Split into market and bot_brain
+            formatted_frame = {
+                'timestamp': frame['timestamp'].isoformat(),
+                'relative_min': relative_min,
+                'market': {
+                    'price': frame['price'],
+                    'indicators': frame['indicators']
+                }
+            }
+            
+            # Add bot_brain if available
+            if 'bot_brain' in frame:
+                formatted_frame['bot_brain'] = frame['bot_brain']
+            
+            formatted_frames.append(formatted_frame)
+        
+        return formatted_frames
+4. Add Analysis Section
+File: 
+brain_var_recorder.py
+
+Location: In TradeMovie._generate_analysis() method, at the end
+
+FIND:
+
+def _generate_analysis(self):
+        """Análisis crítico: binary decisions vs time ladder."""
         analysis = {}
         
         # Timing metrics
@@ -464,457 +466,459 @@ class TradeMovie:
         analysis['root_cause'] = self._identify_root_cause()
         
         return analysis
+REPLACE WITH:
+
+def _generate_analysis(self):
+        """Análisis crítico: binary decisions vs time ladder + bot brain analysis."""
+        analysis = {}
+        
+        # Timing metrics
+        timing = EventDetector.calculate_timing_metrics(self.events, self.trade_data)
+        analysis.update(timing)
+        
+        # Binary decisions analysis
+        analysis['binary_decisions'] = self._analyze_binary_decisions()
+        
+        # Time Ladder verdict
+        analysis['time_ladder_would_say'] = self._time_ladder_verdict()
+        
+        # Root cause
+        analysis['root_cause'] = self._identify_root_cause()
+        
+        # NEW: Bot brain analysis
+        analysis['bugs_detected'] = self._detect_bugs()
+        analysis['confidence_trajectory'] = self._analyze_confidence_trajectory()
+        analysis['factor_contributions'] = self._analyze_factor_contributions()
+        
+        return analysis
+5. Add Bug Detection Methods
+File: 
+brain_var_recorder.py
+
+Location: Add new methods to 
+TradeMovie
+ class, before 
+_get_frame_at_time()
+
+ADD THESE NEW METHODS:
+
+def _detect_bugs(self):
+        """
+        Detects bugs automatically from bot_brain frames.
+        
+        Returns:
+            list of detected bugs
+        """
+        bugs = []
+        
+        # Collect all bot_brain data
+        brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
+        
+        if not brain_frames:
+            return bugs
+        
+        # BUG 1: Factor never used
+        factor_usage = {}
+        for brain in brain_frames:
+            for factor in brain.get('confidence_factors', []):
+                name = factor['name']
+                value = factor['value']
+                
+                if name not in factor_usage:
+                    factor_usage[name] = []
+                factor_usage[name].append(value)
+        
+        for factor_name, values in factor_usage.items():
+            if all(v == 0 for v in values):
+                bugs.append({
+                    'bug': f'{factor_name.upper()}_NEVER_USED',
+                    'evidence': f'{factor_name} factor = 0 pts in ALL {len(values)} frames',
+                    'impact': f'Bot cannot evaluate {factor_name} in decisions',
+                    'fix': f'Implement {factor_name} factor in evaluate_confidence()',
+                    'severity': 'HIGH'
+                })
+        
+        # BUG 2: Multiple threshold crossings (indecisive)
+        confidences = [b.get('total_confidence', 0) for b in brain_frames]
+        threshold = 40
+        
+        crossings = []
+        for i in range(1, len(confidences)):
+            if confidences[i-1] &lt; threshold &lt;= confidences[i]:
+                crossings.append(i)
+            elif confidences[i-1] &gt;= threshold &gt; confidences[i]:
+                crossings.append(i)
+        
+        if len(crossings) &gt; 2:
+            bugs.append({
+                'bug': 'MULTIPLE_THRESHOLD_CROSSINGS',
+                'evidence': f'Confidence crossed {threshold}% threshold {len(crossings)} times',
+                'impact': 'Indecisive bot, threshold too close to noise',
+                'fix': f'Adjust threshold or increase signal-to-noise ratio',
+                'severity': 'MEDIUM'
+            })
+        
+        # BUG 3: Contradictory factor values at entry
+        entry_brain = next((f.get('bot_brain', {}) for f in self.frames 
+                           if f.get('relative_min') == 0), None)
+        
+        if entry_brain:
+            for factor in entry_brain.get('confidence_factors', []):
+                reason_lower = factor.get('reason', '').lower()
+                value = factor.get('value', 0)
+                
+                # Check for contradictions
+                negative_signals = ['closing', 'cayendo', 'débil', 'contradice', 'bajando']
+                if any(sig in reason_lower for sig in negative_signals) and value &gt; 0:
+                    bugs.append({
+                        'bug': f'{factor["name"].upper()}_BONUS_ON_NEGATIVE_SIGNAL',
+                        'evidence': f"{factor['name']} gave +{value} pts despite '{factor['reason']}'",
+                        'impact': 'Bot rewards negative market signals',
+                        'fix': f'Check {factor["name"]} calculation logic',
+                        'severity': 'HIGH'
+                    })
+        
+        return bugs
     
-    def _analyze_binary_decisions(self):
+    def _analyze_confidence_trajectory(self):
         """
-        Identifica decisiones binarias que se tomaron.
+        Analyzes how confidence evolved over time.
+        
+        Returns:
+            dict with frames, values, interpretation
         """
-        decisions = []
+        brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
         
-        # Entry frame
-        entry_frame = self._get_frame_at_time(self.trade_data['entry_time'])
-        if not entry_frame:
-            return decisions
+        if not brain_frames:
+            return {}
         
-        exh = entry_frame['indicators']['exhaustion_pct']
-        room = entry_frame['indicators']['room_pct']
-        grid = entry_frame['indicators'].get('grid_position', 50)
+        # Extract relative times and confidences
+        times = [f.get('relative_min', 0) for f in self.frames if 'bot_brain' in f]
+        confidences = [b.get('total_confidence', 0) for b in brain_frames]
         
-        # Exhaustion threshold
-        if exh &lt; 85:
-            exh_vel = self.velocities['exhaustion']['value']
-            decisions.append(
-                f"Exhaustion {exh:.0f}% &lt; 85% threshold → APPROVED "
-                f"(pero velocity +{exh_vel:.1f} {'era CRÍTICA' if exh_vel &gt; 5 else 'era alta'})"
-            )
+        # Find threshold crossing
+        threshold = 40
+        crossing_time = None
+        for i, (t, c) in enumerate(zip(times, confidences)):
+            if i &gt; 0 and confidences[i-1] &lt; threshold &lt;= c:
+                crossing_time = t
+                break
         
-        # Room threshold
-        if room &gt; 0.5:
-            room_vel = self.velocities['room']['value']
-            decisions.append(
-                f"Room {room:.1f}% &gt; 0.5% threshold → APPROVED "
-                f"(pero velocity {room_vel:.2f} {'cerrando rápido' if room_vel &lt; -0.1 else 'OK'})"
-            )
-        
-        # Grid threshold
-        if grid &lt; 75:
-            grid_vel = self.velocities.get('grid_position', {}).get('value', 0)
-            decisions.append(
-                f"Grid {grid:.0f}% &lt; 75% threshold → APPROVED "
-                f"(pero velocity +{grid_vel:.1f} acercándose)" if grid_vel &gt; 0 else
-                f"Grid {grid:.0f}% &lt; 75% threshold → APPROVED (velocity OK)"
-            )
-        
-        return decisions
-    
-    def _time_ladder_verdict(self):
-        """
-        Qué diría Time Ladder viendo las trayectorias.
-        """
-        exh_vel = self.velocities['exhaustion']['value']
-        room_vel = self.velocities['room']['value']
-        adx_vel = self.velocities['adx']['value']
-        
-        # Criterios Time Ladder
-        red_flags = []
-        
-        if exh_vel &gt; 5:
-            red_flags.append("Exhaustion quemándose brutal")
-        if room_vel &lt; -0.2:
-            red_flags.append("Room cerrando rápido")
-        if adx_vel &lt; -1:
-            red_flags.append("ADX cayendo")
-        
-        if len(red_flags) &gt;= 2:
-            return f"WAIT - {', '.join(red_flags)}"
-        elif len(red_flags) == 1:
-            return f"CAUTION - {red_flags[0]}"
+        # Interpretation
+        if crossing_time is not None:
+            if crossing_time &lt; -10:
+                interpretation = f"Confidence crossed {threshold}% at {crossing_time}min (EARLY), entered later at 0min"
+            elif crossing_time &lt; 0:
+                interpretation = f"Confidence crossed {threshold}% at {crossing_time}min (JUST before entry)"
+            elif crossing_time == 0:
+                interpretation = f"Confidence crossed {threshold}% exactly at entry (0min)"
+            else:
+                interpretation = f"Entered BEFORE confidence crossed {threshold}% (at {crossing_time}min)"
         else:
-            return "ENTER - Trayectorias sostenibles"
-    
-    def _identify_root_cause(self):
-        """
-        Identifica causa raíz del outcome.
-        """
-        if self.trade_data['outcome'] == 'WIN':
-            return "N/A (trade exitoso)"
+            avg_conf = sum(confidences) / len(confidences) if confidences else 0
+            if avg_conf &lt; threshold:
+                interpretation = f"Confidence NEVER crossed {threshold}% (avg: {avg_conf:.0f}%)"
+            else:
+                interpretation = f"Confidence always &gt; {threshold}% (avg: {avg_conf:.0f}%)"
         
-        # Para losses, analizar
-        exh_vel = self.velocities['exhaustion']['value']
-        room_vel = self.velocities['room']['value']
-        
-        if exh_vel &gt; 5 and room_vel &lt; -0.2:
-            return "BINARY_THINKING - Thresholds aprobaron pero trayectorias insostenibles"
-        elif self.analysis['entry_timing'] == 'LATE':
-            return "LATE_ENTRY - Entró después de la explosión"
-        elif self.analysis['exit_timing'] == 'EARLY':
-            return "EARLY_EXIT - Salió antes del pico"
-        else:
-            return "UNKNOWN - Requiere análisis manual"
-    
-    def _get_frame_at_time(self, target_time):
-        """Helper para encontrar frame en timestamp específico."""
-        for frame in self.frames:
-            if abs((frame['timestamp'] - target_time).total_seconds()) &lt; 60:
-                return frame
-        return None
-Class 5: VARRecorder (Main)
-Purpose: Orchestrator - called when trade closes
-
-Methods:
-
-import os
-import json
-from datetime import datetime, timedelta
-class VARRecorder:
-    def __init__(self, output_dir='trade_recordings'):
-        self.output_dir = output_dir
-        self.frame_recorder = FrameRecorder()
-        self.movie_analyzer = MovieAnalyzer()
-        self.event_detector = EventDetector()
-        
-        # Create output directory
-        os.makedirs(output_dir, exist_ok=True)
-    
-    def on_trade_closed(self, trade_data):
-        """
-        Main entry point - called when trade closes.
-        
-        Args:
-            trade_data: dict - {
-                'trade_id': int,
-                'symbol': str,
-                'outcome': 'WIN'/'LOSS',
-                'pnl_pct': float,
-                'pnl_usd': float,
-                'entry_time': datetime,
-                'exit_time': datetime,
-                'direction': 'BULLISH'/'BEARISH'
-            }
-        """
-        try:
-            print(f"\n🎬 VAR Recording trade #{trade_data['trade_id']} {trade_data['symbol']}...")
-            
-            # 1. Define timerange
-            start_time = trade_data['entry_time'] - timedelta(minutes=30)
-            end_time = trade_data['exit_time'] + timedelta(minutes=10)
-            
-            # 2. Fetch frames
-            frames = self.frame_recorder.fetch_frames(
-                trade_data['symbol'],
-                start_time,
-                end_time
-            )
-            
-            if not frames:
-                print(f"   ⚠️ No frames available for {trade_data['symbol']}")
-                return
-            
-            print(f"   📹 Recorded {len(frames)} frames")
-            
-            # 3. Calculate velocities &amp; accelerations
-            analysis = self.movie_analyzer.analyze_frames(frames)
-            
-            # 4. Detect events
-            events = {
-                'explosion_detected': self.event_detector.detect_explosion_start(frames),
-                'price_peak': self.event_detector.detect_price_peak(frames),
-                'bot_analyzed': self.event_detector.detect_bot_analysis_time(
-                    frames, trade_data['entry_time']
-                )
-            }
-            
-            # 5. Reconstruct movie
-            movie = TradeMovie(
-                trade_data,
-                frames,
-                analysis['velocities'],
-                analysis['accelerations'],
-                events
-            )
-            
-            # 6. Generate JSON
-            movie_json = movie.generate_json()
-            
-            # 7. Save to file
-            filename = self._generate_filename(trade_data)
-            filepath = os.path.join(self.output_dir, filename)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(movie_json, f, indent=2, ensure_ascii=False)
-            
-            print(f"   ✅ Saved: {filename}")
-            
-        except Exception as e:
-            print(f"   ❌ VAR Error: {str(e)}")
-            # NO crashear el backtest - solo logear
-    
-    def _generate_filename(self, trade_data):
-        """
-        Genera nombre de archivo descriptivo.
-        
-        Format: trade_XXX_SYMBOL_OUTCOME_DATE.json
-        Example: trade_142_1000CAT_LOSS_20260103.json
-        """
-        trade_id = str(trade_data['trade_id']).zfill(3)
-        symbol = trade_data['symbol'].replace('/', '').replace(':', '')
-        outcome = trade_data['outcome']
-        date = trade_data['exit_time'].strftime('%Y%m%d')
-        
-        return f"trade_{trade_id}_{symbol}_{outcome}_{date}.json"
-🔗 INTEGRATION
-In backtest_real.py
-Location: After trade exit logic
-
-# At top of file
-from brain_var_recorder import VARRecorder
-# In main() or __init__
-var_recorder = VARRecorder(output_dir='trade_recordings')
-# In trade exit logic (around line 450-500)
-def simulate_trade_outcome(...):
-    # ... existing logic ...
-    
-    # After determining outcome
-    pnl_pct = ...
-    outcome = 'WIN' if pnl_pct &gt; 0 else 'LOSS'
-    
-    # NEW: Record movie
-    var_recorder.on_trade_closed({
-        'trade_id': trade_count,
-        'symbol': symbol,
-        'outcome': outcome,
-        'pnl_pct': pnl_pct,
-        'pnl_usd': pnl_usd,
-        'entry_time': entry_time,  # Already have this
-        'exit_time': exit_time,    # Already have this
-        'direction': direction
-    })
-    
-    # Continue with existing logic...
-Critical: This runs AFTER trade closes, doesn't block decision loop
-
-📊 TESTING STRATEGY
-Phase 1: Unit Tests
-Test each class independently:
-
-# test_frame_recorder.py
-def test_fetch_frames():
-    recorder = FrameRecorder()
-    frames = recorder.fetch_frames(
-        'BTC/USDT:USDT',
-        datetime.now() - timedelta(hours=1),
-        datetime.now()
-    )
-    assert len(frames) &gt; 0
-    assert 'price' in frames[0]
-    assert 'indicators' in frames[0]
-# test_movie_analyzer.py
-def test_calculate_velocity():
-    values = [10, 12, 14, 16, 18]
-    velocity = MovieAnalyzer.calculate_velocity(values)
-    assert velocity == 2.0  # +2 per frame
-# test_event_detector.py
-def test_detect_price_peak():
-    frames = [...]  # Mock frames
-    peak = EventDetector.detect_price_peak(frames)
-    assert peak is not None
-Phase 2: Integration Test
-Run 5-trade backtest:
-
-# Modify backtest_real.py to only run 5 trades
-TARGET_TRADES = 5
-python tools/backtest_real.py
-Expected:
-
-5 JSON files in trade_recordings/
-Each file has complete structure
-No crashes
-Phase 3: Validation
-Manually review 1 JSON:
-
-import json
-with open('trade_recordings/trade_001_BTCUSDT_WIN_20260103.json') as f:
-    movie = json.load(f)
-# Validate structure
-assert 'meta' in movie
-assert 'frames' in movie
-assert 'velocities' in movie
-assert 'analysis' in movie
-# Validate frames
-assert len(movie['frames']) &gt; 0
-assert movie['frames'][0]['relative_min'] &lt; 0  # Before entry
-# Validate velocities
-assert 'adx' in movie['velocities']
-assert 'exhaustion' in movie['velocities']
-# Validate analysis
-assert 'entry_timing' in movie['analysis']
-assert 'binary_decisions' in movie['analysis']
-⚠️ ERROR HANDLING
-Graceful Degradation
-def on_trade_closed(self, trade_data):
-    try:
-        frames = self.frame_recorder.fetch_frames(...)
-    except Exception as e:
-        print(f"   ⚠️ Could not fetch frames: {e}")
-        # Save partial data instead of crashing
-        partial_movie = {
-            'meta': self._generate_meta(trade_data),
-            'error': str(e),
-            'frames': [],
-            'note': 'Partial recording due to data fetch failure'
+        return {
+            'frames': times,
+            'values': [round(c, 1) for c in confidences],
+            'threshold': threshold,
+            'crossing_time': crossing_time,
+            'interpretation': interpretation
         }
-        self._save_partial(partial_movie, trade_data)
-        return  # Don't crash backtest
-Missing Indicators
-def _calculate_indicators(self, symbol, candle):
-    indicators = {}
     
-    try:
-        indicators['adx'] = calculate_adx(...)
-    except:
-        indicators['adx'] = None  # Mark as missing
+    def _analyze_factor_contributions(self):
+        """
+        Analyzes contribution of each factor across all frames.
+        
+        Returns:
+            dict with factor stats
+        """
+        brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
+        
+        if not brain_frames:
+            return {}
+        
+        factor_stats = {}
+        
+        # Collect all factor values
+        for brain in brain_frames:
+            for factor in brain.get('confidence_factors', []):
+                name = factor['name']
+                value = factor['value']
+                
+                if name not in factor_stats:
+                    factor_stats[name] = []
+                factor_stats[name].append(value)
+        
+        # Calculate stats
+        contributions = {}
+        for name, values in factor_stats.items():
+            contributions[name] = {
+                'range': [round(min(values), 1), round(max(values), 1)],
+                'avg': round(sum(values) / len(values), 1),
+                'impact': self._classify_impact(values)
+            }
+        
+        return contributions
     
-    try:
-        indicators['exhaustion_pct'] = calculate_exhaustion(...)
-    except:
-        indicators['exhaustion_pct'] = None
-    
-    return indicators
-📈 OPTIMIZATION
-Performance Considerations
-Problem: Fetching 60+ frames per trade is slow
+    def _classify_impact(self, values):
+        """Classifies factor impact based on value distribution."""
+        if not values:
+            return 'NONE'
+        
+        avg = sum(values) / len(values)
+        max_val = max(values)
+        min_val = min(values)
+        range_val = max_val - min_val
+        
+        # All zeros = not used
+        if max_val == 0:
+            return 'NONE - BUG: never used'
+        
+        # High average = strong contributor
+        if avg &gt; 10:
+            return 'HIGH - strong contributor'
+        
+        # Large range = dynamic factor
+        if range_val &gt; 15:
+            return 'DYNAMIC - high variance'
+        
+        # Medium average
+        if avg &gt; 5:
+            return 'MEDIUM - moderate contributor'
+        
+        return 'LOW - minor contributor'
+🧪 TESTING
+Test 1: Compilation
+python -m py_compile brain_var_recorder.py
+Expected: No errors
 
-Solutions:
+Test 2: 5-Trade Backtest
+Modify backtest:
 
-Sampling (MVP)
+TARGET_TRADES = 5
+Run:
 
-Fetch every 5min instead of 1min
-60 frames → 12 frames
-Velocities still accurate
-Caching (Phase 2)
+python tools/backtest_real.py
+Expected output:
 
-Use FrameStorage if available
-Only fetch what's not cached
-Async (Phase 3)
+🎬 VAR System 2.0 initialized (Dual Movie) → trade_recordings/
+...
+🎬 VAR Recording trade #1 BTC/USDT:USDT...
+   📹 Market: 52 frames
+   🧠 Recording bot brain...
+   🧠 Brain: 52 decisions recorded
+   📹 Recorded 52 frames
+   ✅ Saved: trade_001_BTCUSDT_WIN_20260103.json
+Test 3: JSON Structure Validation
+Open any JSON:
 
-Record in background thread
-Don't block backtest
-Recommendation: Start with sampling, optimize later
+{
+  "meta": {...},
+  "timeline": {...},
+  "frames": [
+    {
+      "timestamp": "...",
+      "relative_min": -30,
+      "market": {
+        "price": {...},
+        "indicators": {...}
+      },
+      "bot_brain": {
+        "confidence_factors": [...],
+        "total_confidence": 33,
+        "decision": "WAIT",
+        "decision_reason": "..."
+      }
+    }
+  ],
+  "analysis": {
+    "bugs_detected": [...],
+    "confidence_trajectory": {...},
+    "factor_contributions": {...}
+  }
+}
+Test 4: Bug Detection
+Check bugs_detected in any LOSS trade:
 
-✅ SUCCESS CRITERIA
-Must Have
- brain_var_recorder.py created with 5 classes
- Integrated in backtest_real.py
- 5-trade test generates 5 JSON files
- Each JSON has complete structure (meta, frames, velocities, analysis)
- No crashes on missing data
- Backtest slowdown &lt; 30%
-Nice to Have
- Interpretations for all velocity values
- Event detection (explosion, peak) working
- Binary decisions analysis populated
- Time Ladder verdict accurate
-Validation Checks
-# After 5-trade test
-ls trade_recordings/
-# Should show: trade_001_*.json ... trade_005_*.json
-python -c "
-import json
-with open('trade_recordings/trade_001_BTCUSDT_WIN_20260103.json') as f:
-    m = json.load(f)
-    print(f'Frames: {len(m[\"frames\"])}')
-    print(f'Velocities: {list(m[\"velocities\"].keys())}')
-    print(f'Events: {list(m[\"timeline\"].keys())}')
-    print(f'Analysis: {list(m[\"analysis\"].keys())}')
-"
-📝 DELIVERABLES
-brain_var_recorder.py - Complete implementation
-Integration guide - How to add to backtest
-Example JSON - One real trade recording
-Testing report - Results from 5-trade test
-CHANGELOG entry - Document VAR implementation
-🎯 IMPLEMENTATION STEPS
-Step 1: Create brain_var_recorder.py skeleton
-"""
-BRAIN VAR RECORDER v1.0
-=======================
-Video Action Replay - Records complete trade "movies"
-for Time Ladder trajectory analysis.
-"""
-class FrameRecorder:
-    pass
-class MovieAnalyzer:
-    pass
-class EventDetector:
-    pass
-class TradeMovie:
-    pass
-class VARRecorder:
-    pass
-Step 2: Implement FrameRecorder
-fetch_frames()
-_calculate_indicators()
-Error handling
-Step 3: Implement MovieAnalyzer
-calculate_velocity()
-calculate_acceleration()
-analyze_frames()
-_interpret_velocity()
-Step 4: Implement EventDetector
-detect_explosion_start()
-detect_price_peak()
-calculate_timing_metrics()
-Step 5: Implement TradeMovie
-generate_json()
-_generate_meta()
-_generate_timeline()
-_generate_frames()
-_generate_analysis()
-Step 6: Implement VARRecorder
+Should find at least one bug automatically, for example:
+
+"bugs_detected": [
+  {
+    "bug": "EXHAUSTION_NEVER_USED",
+    "evidence": "Exhaustion factor = 0 pts in ALL 52 frames",
+    "severity": "HIGH"
+  }
+]
+⚠️ KNOWN LIMITATIONS
+1. Performance Impact
+Problem: Recording bot brain adds ~50% overhead
+Mitigation: Already using 5min sampling (12 frames/hour)
+Alternative: Could add flag to disable bot brain if too slow
+
+2. Synthetic ladder_analysis
+Problem: We build minimal ladder_analysis, not complete one
+Impact: Some factors might not calculate correctly
+Solution: Acceptable - we mainly care about confidence factors
+
+3. UnifiedVision dependency
+Problem: Relies on UnifiedVision API staying stable
+Impact: If evaluate_confidence() signature changes, breaks
+Solution: Version lock or adapt when needed
+
+📊 SUCCESS CRITERIA
+After implementation, verify:
+
+ BotBrainRecorder class added to 
+brain_var_recorder.py
+ VARRecorder.__init__() creates bot_brain_recorder instance
+ 
 on_trade_closed()
-_generate_filename()
-Error handling
-Step 7: Integration
-Add to backtest_real.py
+ records bot_brain for each frame
+ 
+_generate_frames()
+ outputs market + bot_brain structure
+ _detect_bugs(), _analyze_confidence_trajectory(), _analyze_factor_contributions() methods added
+ 5-trade test generates 5 JSONs with bot_brain data
+ bugs_detected has at least 1 bug in any LOSS trade
+ confidence_trajectory shows how confidence evolved
+ factor_contributions shows which factors contributed most
+ No crashes during backtest
+🚀 IMPLEMENTATION ORDER
+Add BotBrainRecorder class (new code after EventDetector)
+Update VARRecorder.init() (add bot_brain_recorder)
+Update on_trade_closed() (record brain decisions)
+Update _generate_frames() (market + bot_brain structure)
+Update _generate_analysis() (add brain analysis)
+Add bug detection methods (3 new methods)
 Test with 5 trades
-Step 8: Validation
-Review generated JSONs
-Verify structure
-Check velocities
-Validate analysis
-⏱️ ESTIMATED TIME
-Step 1-2: 1 hour
-Step 3: 1 hour
-Step 4: 45min
-Step 5: 1 hour
-Step 6: 45min
-Step 7-8: 45min
-Total: ~5-6 hours
+Validate JSON structure
+Check bugs_detected
+Run 500-trade backtest (if all tests pass)
+📈 ESTIMATED TIMES
+Step	Time
+Add BotBrainRecorder	1h
+Update VARRecorder	30min
+Update JSON generation	30min
+Add bug detection	1h
+Testing &amp; debugging	1h
+TOTAL	4 hours
+🎯 DELIVERABLES
+✅ Complete implementation plan (this document)
+⏳ Modified 
+brain_var_recorder.py
+ with all changes
+⏳ 5 test JSONs with bot_brain data
+⏳ Testing report validating all features
+⏳ CHANGELOG entry
+💡 EXAMPLE OUTPUT
+Sample JSON Fragment
+{
+  "frames": [
+    {
+      "timestamp": "2025-12-15T14:00:00",
+      "relative_min": -30,
+      "market": {
+        "price": {"close": 0.0040},
+        "indicators": {
+          "adx": 18.5,
+          "exhaustion_pct": 15.0,
+          "room_pct": 4.8
+        }
+      },
+      "bot_brain": {
+        "confidence_factors": [
+          {"name": "ADX", "value": 7.4, "reason": "ADX 18.5, base calculation"},
+          {"name": "Velas", "value": 2.0, "reason": "Ratio 1.05"},
+          {"name": "Momentum", "value": 3.0, "reason": "Age 1, delta 0"},
+          {"name": "Exhaustion", "value": 0, "reason": "Fresh 15%"},
+          {"name": "Room", "value": 9.8, "reason": "4.8% amplio"}
+        ],
+        "total_confidence": 22.2,
+        "decision": "WAIT",
+        "decision_reason": "Confidence 22.2% &lt; 40% threshold"
+      }
+    },
+    
+    {
+      "timestamp": "2025-12-15T14:30:00",
+      "relative_min": 0,
+      "market": {
+        "indicators": {
+          "adx": 28.0,
+          "exhaustion_pct": 72.0,
+          "room_pct": 1.2
+        }
+      },
+      "bot_brain": {
+        "confidence_factors": [
+          {"name": "ADX", "value": 13.0, "reason": "ADX 28.0"},
+          {"name": "Velas", "value": 10.0, "reason": "Ratio 1.15"},
+          {"name": "Momentum", "value": 12.0, "reason": "Age 4"},
+          {"name": "Exhaustion", "value": 0, "reason": "Mature 72%"},
+          {"name": "Room", "value": 10.0, "reason": "1.2% &gt; 1.0%"}
+        ],
+        "total_confidence": 45.0,
+        "decision": "ENTER",
+        "decision_reason": "Confidence 45.0% &gt;= 40% threshold"
+      }
+    }
+  ],
+  
+  "analysis": {
+    "bugs_detected": [
+      {
+        "bug": "EXHAUSTION_NEVER_USED",
+        "evidence": "Exhaustion factor = 0 pts in ALL 52 frames",
+        "impact": "Bot cannot evaluate exhaustion in decisions",
+        "fix": "Implement exhaustion factor in evaluate_confidence()",
+        "severity": "HIGH"
+      }
+    ],
+    
+    "confidence_trajectory": {
+      "frames": [-30, -25, -20, -15, -10, -5, 0],
+      "values": [22.2, 25.0, 28.5, 35.0, 38.0, 42.0, 45.0],
+      "threshold": 40,
+      "crossing_time": -5,
+      "interpretation": "Confidence crossed 40% at -5min (JUST before entry)"
+    },
+    
+    "factor_contributions": {
+      "ADX": {
+        "range": [7.4, 13.0],
+        "avg": 10.1,
+        "impact": "MEDIUM - moderate contributor"
+      },
+      "Exhaustion": {
+        "range": [0, 0],
+        "avg": 0,
+        "impact": "NONE - BUG: never used"
+      },
+      "Room": {
+        "range": [6.0, 10.0],
+        "avg": 8.2,
+        "impact": "MEDIUM - moderate contributor"
+      }
+    }
+  }
+}
+✅ READY FOR IMPLEMENTATION
+Status: Plan complete, código propuesto listo
+Next: Avísame cuando quieras que implemente (edite archivos)
+Alternative: Puedes implementar manualmente siguiendo este plan
 
-🚀 NEXT STEPS AFTER VAR
-Once VAR is working:
+Este plan es completo y ejecutable. Todos los bloques de código están listos para copy-paste en los lugares indicados.
 
-Run 150-trade backtest
-Analyze recordings manually
-Identify common patterns in losses:
-High exhaustion velocity
-Room closing fast
-ADX deceleration
-Implement trajectory-based checks
-Replace binary thresholds one by one
-VAR is the foundation. Without it, Time Ladder is impossible.
-
-❓ QUESTIONS BEFORE IMPLEMENTATION
-Sampling rate: Every 1min or every 5min? (Recommend 5min for MVP)
-Indicator subset: All indicators or just key ones? (Recommend key: ADX, exhaustion, room, spread)
-Error handling: Save partial data or skip failed trades? (Recommend partial)
-Output location: trade_recordings/ or data/trade_recordings/? (Your choice)
-Ready to implement when you approve this plan.
+¿Procedo con la implementación o prefieres revisar/ajustar algo primero?
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 27,956<br>
-    Generado: 2026-01-03 01:47:41
+    Total caracteres: 29,625<br>
+    Generado: 2026-01-03 10:54:19
   </div>
 </body>
 </html>
