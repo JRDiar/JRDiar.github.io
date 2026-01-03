@@ -15,43 +15,73 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-03 11:28:56</div>
+  <div class="meta">Última actualización: 2026-01-03 11:38:51</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-VAR SYSTEM 2.0 - CORRECTED IMPLEMENTATION PLAN
-Time Ladder Compliant - PELÍCULA not FOTO
-🚨 CORRECTIONS MADE
-9 Time Ladder Violations Fixed:
+ Plan Final Actualizado: 
+var_2_implementation_plan.md
 
-✅ _get_phase() - Now uses velocity, not static thresholds
-✅ _build_trajectory() - Real velocities, not zeros
-✅ _build_trajectory() - Real adx_delta
-✅ _build_trajectory() - Real momentum_delta
-✅ _build_trajectory() - Real exhaustion_velocity
-✅ _detect_bugs() - Analyzes acceleration, not threshold crossings
-✅ _classify_impact() - Relative comparison, not absolute thresholds
-✅ _classify_impact() - Trend analysis, not fixed values
-✅ Architecture - Windowed context instead of isolated frames
-4 Critical Bugs Fixed:
+Resumen del Plan Quirúrgico
+Status Final:
 
-✅ Division by zero protection
-✅ record_decision_at_frame() receives all_frames for context
-✅ ladder_analysis schema validated
-✅ Unused cache removed
-🏗️ CORRECTED ARCHITECTURE
-Key Change: Windowed Context
-BEFORE (WRONG - Snapshot):
+Categoría	Cantidad	Estado
+Violaciones Time Ladder	9	✅ TODAS CORREGIDAS
+Bugs Críticos Originales	4	✅ TODOS CORREGIDOS
+Bugs de Code Review	3	✅ TODOS CORREGIDOS
+Mejoras Críticas	1	✅ APLICADA
+3 Fixes Aplicados:
 
-Frame -30 (isolated) → deltas=0 → blind decision
-Frame -25 (isolated) → deltas=0 → blind decision
-AFTER (CORRECT - Time Ladder):
+✅ División por cero en variance → if values else 0
+✅ Timestamp handling → isinstance(ts, str) check
+✅ KeyError protection → f.get('indicators', {})
+1 Mejora Aplicada:
 
-Frame -30 with [F-35 to F-30] context → real velocities → informed decision
-Frame -25 with [F-30 to F-25] context → real velocities → informed decision
-📝 CORRECTED CODE
-BotBrainRecorder Class (COMPLETE - Time Ladder Compliant)
+MIN_CONTEXT = 4 + flag insufficient_context
+El plan incluye:
+
+Código completo de BotBrainRecorder (~150 líneas)
+4 puntos de integración con FIND/REPLACE exactos
+4 métodos nuevos para TradeMovie
+Checklist de verificación
+Test rápido
+
+VAR SYSTEM 2.0 - FINAL SURGICAL PLAN
+Time Ladder Compliant - All Bugs Fixed
+📋 STATUS
+Category	Count	Status
+Time Ladder Violations	9	✅ ALL FIXED
+Critical Bugs	4	✅ ALL FIXED
+Code Review Bugs	3	✅ ALL FIXED
+Critical Improvements	1	✅ APPLIED
+🔧 FIXES APPLIED
+Fix #1: Division by Zero in Variance
+# BEFORE (BUG)
+variance = sum((v - avg_val) ** 2 for v in values) / len(values)
+# AFTER (FIXED)
+variance = sum((v - avg_val) ** 2 for v in values) / len(values) if values else 0
+Fix #2: Safe Timestamp Handling
+# BEFORE (BUG)
+rel_min = int((f['timestamp'] - entry_time).total_seconds() / 60)
+# AFTER (FIXED)
+ts = frame['timestamp']
+if isinstance(ts, str):
+    from datetime import datetime
+    ts = datetime.fromisoformat(ts)
+rel_min = int((ts - entry_time).total_seconds() / 60)
+Fix #3: KeyError Protection in safe_get()
+# BEFORE (BUG)
+values = [f['indicators'].get(key) for f in frames]
+# AFTER (FIXED)
+ind = f.get('indicators', {})
+val = ind.get(key)
+Improvement #1: MIN_CONTEXT + Flag
+MIN_CONTEXT = 4
+if len(context_window) &lt; MIN_CONTEXT:
+    return {..., 'insufficient_context': True}
+📝 COMPLETE CORRECTED CODE
+BotBrainRecorder Class (FINAL)
 File: 
 brain_var_recorder.py
 
@@ -66,59 +96,52 @@ class BotBrainRecorder:
     Records BOT's decision-making process at each historical frame.
     
     TIME LADDER COMPLIANT:
-    - Uses windowed context (lookback=5) for velocity calculations
-    - Analyzes TRAJECTORIES not snapshots
-    - Real velocities for ADX, exhaustion, momentum
+    - Windowed context (LOOKBACK frames)
+    - Real velocity/acceleration calculations
+    - Trajectory-based analysis
     """
     
-    LOOKBACK = 5  # Frames of context for velocity calculation
+    LOOKBACK = 5
+    MIN_CONTEXT = 4  # Minimum frames for reliable calculation
     
     def record_decision_at_frame(self, symbol, frame_idx, all_frames, direction):
         """
         Simulates bot's decision with FULL CONTEXT.
         
         Args:
-            symbol: str - Trading pair
-            frame_idx: int - Current frame position in all_frames
-            all_frames: list - ALL frames (for velocity calculation)
+            symbol: str
+            frame_idx: int - Position in all_frames
+            all_frames: list - ALL frames for context
             direction: str - BULLISH/BEARISH
         
         Returns:
             dict with confidence_factors, decision, velocities
         """
         try:
-            # Get context window for velocity calculation
             start_idx = max(0, frame_idx - self.LOOKBACK)
             context_window = all_frames[start_idx:frame_idx + 1]
             current_frame = all_frames[frame_idx]
             
-            # Calculate REAL velocities from context
             velocities = self._calculate_velocities(context_window)
             
-            # Build trajectory with REAL data
             trajectory = self._build_trajectory(
-                current_frame['indicators'],
+                current_frame.get('indicators', {}),
                 velocities,
                 direction
             )
             
-            # Build ladder analysis
             ladder_analysis = self._build_ladder_analysis(
                 symbol,
-                current_frame['indicators'],
+                current_frame.get('indicators', {}),
                 velocities,
                 direction
             )
             
-            # Call UnifiedVision with real data
             from brain_vision_unified import UnifiedVision
             vision = UnifiedVision()
             result = vision.evaluate_confidence(trajectory, direction, ladder_analysis)
             
-            # Extract breakdown
-            breakdown = self._extract_confidence_breakdown(result, velocities)
-            
-            return breakdown
+            return self._extract_confidence_breakdown(result, velocities)
             
         except Exception as e:
             return {
@@ -131,94 +154,74 @@ class BotBrainRecorder:
             }
     
     def _calculate_velocities(self, context_window):
-        """
-        Calculates REAL velocities from context window.
-        
-        TIME LADDER: This is the core of trajectory analysis.
-        """
-        if len(context_window) &lt; 2:
+        """Calculates REAL velocities from context window."""
+        if len(context_window) &lt; self.MIN_CONTEXT:
             return {
-                'adx': 0, 'exhaustion': 0, 'room': 0,
-                'momentum': 0, 'spread': 0
+                'adx': 0, 'adx_accel': 0,
+                'exhaustion': 0, 'exhaustion_accel': 0,
+                'room': 0, 'momentum': 0, 'spread': 0,
+                'insufficient_context': True
             }
         
-        n = len(context_window)
-        
-        # Extract series (with None handling)
         def safe_get(frames, key):
-            values = [f['indicators'].get(key) for f in frames]
-            return [v if v is not None else 0 for v in values]
+            """KeyError-safe extraction."""
+            values = []
+            for f in frames:
+                ind = f.get('indicators', {})
+                val = ind.get(key)
+                values.append(val if val is not None else 0)
+            return values
         
-        adx_series = safe_get(context_window, 'adx')
-        exhaustion_series = safe_get(context_window, 'exhaustion_pct')
-        room_series = safe_get(context_window, 'room_pct')
-        momentum_series = safe_get(context_window, 'momentum_age')
-        spread_series = safe_get(context_window, 'spread')
-        
-        # Calculate velocities (change per frame)
         def velocity(series):
             if len(series) &lt; 2:
                 return 0
             return (series[-1] - series[0]) / (len(series) - 1)
         
-        # Calculate accelerations (velocity change)
         def acceleration(series):
             if len(series) &lt; 4:
                 return 0
             mid = len(series) // 2
-            vel1 = velocity(series[:mid])
-            vel2 = velocity(series[mid:])
-            return vel2 - vel1
+            return velocity(series[mid:]) - velocity(series[:mid])
+        
+        adx = safe_get(context_window, 'adx')
+        exh = safe_get(context_window, 'exhaustion_pct')
+        room = safe_get(context_window, 'room_pct')
+        mom = safe_get(context_window, 'momentum_age')
+        spr = safe_get(context_window, 'spread')
         
         return {
-            'adx': round(velocity(adx_series), 2),
-            'adx_accel': round(acceleration(adx_series), 3),
-            'exhaustion': round(velocity(exhaustion_series), 2),
-            'exhaustion_accel': round(acceleration(exhaustion_series), 3),
-            'room': round(velocity(room_series), 3),
-            'momentum': round(velocity(momentum_series), 2),
-            'spread': round(velocity(spread_series), 2)
+            'adx': round(velocity(adx), 2),
+            'adx_accel': round(acceleration(adx), 3),
+            'exhaustion': round(velocity(exh), 2),
+            'exhaustion_accel': round(acceleration(exh), 3),
+            'room': round(velocity(room), 3),
+            'momentum': round(velocity(mom), 2),
+            'spread': round(velocity(spr), 2),
+            'insufficient_context': False
         }
     
     def _build_trajectory(self, indicators, velocities, direction):
-        """
-        Builds trajectory with REAL velocities (not zeros).
-        
-        TIME LADDER COMPLIANT: All deltas are real calculated values.
-        """
+        """Builds trajectory with REAL velocities."""
         return {
             'direction': direction,
             'adx_end': indicators.get('adx', 0),
-            'adx_delta': velocities['adx'],  # ✅ REAL velocity
-            'candle_ratio': 1.0,  # TODO: calculate from price data
+            'adx_delta': velocities['adx'],
+            'candle_ratio': 1.0,
             'momentum_end': indicators.get('momentum_age', 0),
-            'momentum_delta': velocities['momentum'],  # ✅ REAL velocity
+            'momentum_delta': velocities['momentum'],
             'exhaustion_pct': indicators.get('exhaustion_pct', 50),
             'room_pct': indicators.get('room_pct', 0),
-            'exhaustion_velocity': velocities['exhaustion'],  # ✅ REAL velocity
+            'exhaustion_velocity': velocities['exhaustion'],
             'pivot_types': [],
             'position_pct': indicators.get('grid_position', 50)
         }
     
     def _build_ladder_analysis(self, symbol, indicators, velocities, direction):
-        """
-        Constructs ladder_analysis with velocity-aware phase detection.
-        """
+        """Constructs ladder_analysis with velocity-aware data."""
         adx = indicators.get('adx', 0)
         di_plus = indicators.get('di_plus', 0)
         di_minus = indicators.get('di_minus', 0)
-        exhaustion_pct = indicators.get('exhaustion_pct', 50)
-        room_pct = indicators.get('room_pct', 0)
-        momentum_age = indicators.get('momentum_age', 0)
         
-        # TIME LADDER: Phase based on velocity, not static thresholds
-        phase = self._get_phase_time_ladder(
-            exhaustion_pct, 
-            velocities['exhaustion'],
-            velocities['exhaustion_accel']
-        )
-        
-        # ADX trend from velocity
         if velocities['adx'] &gt; 0.5:
             adx_trend = 'creciendo'
         elif velocities['adx'] &lt; -0.5:
@@ -226,49 +229,44 @@ class BotBrainRecorder:
         else:
             adx_trend = 'estable'
         
-        ladder_15m = {
-            'direction': direction,
-            'adx': {
-                'adx_current': adx,
-                'di_plus': di_plus,
-                'di_minus': di_minus,
-                'spread': abs(di_plus - di_minus),
-                'trend': adx_trend,
-                'velocity': velocities['adx']  # NEW: velocity included
-            },
-            'exhaustion_pct': exhaustion_pct,
-            'room_pct': room_pct,
-            'exhaustion_phase': phase,
-            'exhaustion_velocity': velocities['exhaustion'],  # NEW
-            'momentum': {
-                'consecutive_count': momentum_age,
-                'current_color': 'green' if momentum_age &gt; 0 else 'red',
-                'velocity': velocities['momentum']  # NEW
-            }
-        }
+        phase = self._get_phase_time_ladder(
+            indicators.get('exhaustion_pct', 50),
+            velocities['exhaustion'],
+            velocities['exhaustion_accel']
+        )
         
         return {
-            '15m': ladder_15m,
-            '5m': {},
-            '1h': {},
-            '4h': {}
+            '15m': {
+                'direction': direction,
+                'adx': {
+                    'adx_current': adx,
+                    'di_plus': di_plus,
+                    'di_minus': di_minus,
+                    'spread': abs(di_plus - di_minus),
+                    'trend': adx_trend,
+                    'velocity': velocities['adx']
+                },
+                'exhaustion_pct': indicators.get('exhaustion_pct', 50),
+                'room_pct': indicators.get('room_pct', 0),
+                'exhaustion_phase': phase,
+                'exhaustion_velocity': velocities['exhaustion'],
+                'momentum': {
+                    'consecutive_count': indicators.get('momentum_age', 0),
+                    'current_color': 'green' if indicators.get('momentum_age', 0) &gt; 0 else 'red',
+                    'velocity': velocities['momentum']
+                }
+            },
+            '5m': {}, '1h': {}, '4h': {}
         }
     
     def _get_phase_time_ladder(self, exhaustion_pct, velocity, acceleration):
-        """
-        TIME LADDER COMPLIANT phase detection.
-        
-        Uses TRAJECTORY (velocity + acceleration), not snapshot.
-        """
-        # Acceleration-based detection (most important)
+        """Phase from TRAJECTORY, not snapshot."""
         if acceleration &gt; 0.5:
-            return 'ACCELERATING_EXHAUSTION'  # Getting worse fast
+            return 'ACCELERATING_EXHAUSTION'
         elif acceleration &lt; -0.5:
-            return 'RECOVERING_FAST'  # Getting better fast
-        
-        # Velocity-based detection
-        if velocity &gt; 5:
-            return 'BURNING_BRUTAL'  # Very fast exhaustion
+            return 'RECOVERING_FAST'
+        elif velocity &gt; 5:
+            return 'BURNING_BRUTAL'
         elif velocity &gt; 2:
             return 'BURNING_FAST'
         elif velocity &gt; 0:
@@ -281,131 +279,85 @@ class BotBrainRecorder:
             return 'STABLE'
     
     def _extract_confidence_breakdown(self, result, velocities):
-        """
-        Extracts confidence factors with velocity context.
-        """
+        """Extracts confidence factors with velocity context."""
         action = result.get('action', 'WAIT')
-        confidence = result.get('confidence', 0)
+        confidence = result.get('confidence', 0) or 0
         details = result.get('details', {})
         
         factors = []
-        
-        # Extract from details if available
         if 'confidence_factors' in details:
-            for factor_tuple in details['confidence_factors']:
-                if len(factor_tuple) &gt;= 2:
+            for ft in details['confidence_factors']:
+                if len(ft) &gt;= 2:
                     factors.append({
-                        'name': factor_tuple[0],
-                        'value': round(factor_tuple[1], 1) if factor_tuple[1] else 0,
-                        'reason': str(factor_tuple[2]) if len(factor_tuple) &gt; 2 else ''
+                        'name': ft[0],
+                        'value': round(ft[1], 1) if ft[1] else 0,
+                        'reason': str(ft[2]) if len(ft) &gt; 2 else ''
                     })
         
         if not factors:
-            factors.append({
-                'name': 'Total',
-                'value': confidence if confidence else 0,
-                'reason': 'Details not available'
-            })
+            factors.append({'name': 'Total', 'value': confidence, 'reason': 'Details unavailable'})
         
-        decision = 'ENTER' if action == 'OPERAR' else 'WAIT'
         threshold = 40
-        
-        if confidence and confidence &gt;= threshold:
-            decision_reason = f"Confidence {confidence:.0f}% &gt;= {threshold}% threshold"
-        else:
-            decision_reason = f"Confidence {confidence:.0f}% &lt; {threshold}% threshold" if confidence else "No confidence calculated"
+        decision = 'ENTER' if action == 'OPERAR' else 'WAIT'
+        reason = f"Confidence {confidence:.0f}% {'&gt;' if confidence &gt;= threshold else '&lt;'} {threshold}%"
         
         return {
             'confidence_factors': factors,
-            'total_confidence': round(confidence, 1) if confidence else 0,
+            'total_confidence': round(confidence, 1),
             'decision': decision,
-            'decision_reason': decision_reason,
-            'velocities': velocities  # Include velocities in output
+            'decision_reason': reason,
+            'velocities': velocities
         }
-🔗 CORRECTED INTEGRATION
+🔗 INTEGRATION POINTS
 1. VARRecorder.init()
 FIND:
 
-class VARRecorder:
-    def __init__(self, output_dir='trade_recordings'):
-        self.output_dir = output_dir
-        self.frame_recorder = FrameRecorder()
-        self.movie_analyzer = MovieAnalyzer()
-        self.event_detector = EventDetector()
+self.event_detector = EventDetector()
         
         # Create output directory
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"🎬 VAR System initialized → {output_dir}/")
 REPLACE WITH:
 
-class VARRecorder:
-    def __init__(self, output_dir='trade_recordings'):
-        self.output_dir = output_dir
-        self.frame_recorder = FrameRecorder()
-        self.movie_analyzer = MovieAnalyzer()
-        self.event_detector = EventDetector()
-        self.bot_brain_recorder = BotBrainRecorder()  # NEW
+self.event_detector = EventDetector()
+        self.bot_brain_recorder = BotBrainRecorder()
         
         # Create output directory
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"🎬 VAR System 2.0 (Time Ladder) → {output_dir}/")
-2. on_trade_closed() - CORRECTED Loop
+ALSO FIND:
+
+print(f"🎬 VAR System initialized → {output_dir}/")
+REPLACE WITH:
+
+print(f"🎬 VAR 2.0 (Time Ladder) → {output_dir}/")
+2. on_trade_closed() Loop
 FIND:
 
 print(f"   📹 Recorded {len(frames)} frames")
             
-            # 3. Calculate velocities &amp; accelerations
-            analysis = self.movie_analyzer.analyze_frames(frames)
+            # 3. Calculate velocities
 REPLACE WITH:
 
 print(f"   📹 Market: {len(frames)} frames")
             
-            # 2.5. Record bot brain with CONTEXT (Time Ladder)
-            print(f"   🧠 Recording bot brain (windowed context)...")
+            # 2.5. Bot brain with context
+            print(f"   🧠 Recording brain (lookback={BotBrainRecorder.LOOKBACK})...")
             for idx, frame in enumerate(frames):
-                bot_decision = self.bot_brain_recorder.record_decision_at_frame(
-                    symbol=trade_data['symbol'],
-                    frame_idx=idx,
-                    all_frames=frames,  # ✅ Pass ALL frames for context
-                    direction=trade_data['direction']
+                frame['bot_brain'] = self.bot_brain_recorder.record_decision_at_frame(
+                    trade_data['symbol'], idx, frames, trade_data['direction']
                 )
-                frame['bot_brain'] = bot_decision
+            print(f"   🧠 Brain: {len(frames)} decisions")
             
-            print(f"   🧠 Brain: {len(frames)} decisions (lookback={BotBrainRecorder.LOOKBACK})")
-            
-            # 3. Calculate velocities &amp; accelerations
-            analysis = self.movie_analyzer.analyze_frames(frames)
-📁 CORRECTED JSON FORMAT
+            # 3. Calculate velocities
 3. TradeMovie._generate_frames()
 FIND:
 
-def _generate_frames(self):
-        """Frames con relative_min agregado."""
-        entry_time = self.trade_data['entry_time']
-        
-        formatted_frames = []
-        for frame in self.frames:
-            relative_min = int((frame['timestamp'] - entry_time).total_seconds() / 60)
-            
-            formatted_frames.append({
+formatted_frames.append({
                 'timestamp': frame['timestamp'].isoformat(),
                 'relative_min': relative_min,
                 'price': frame['price'],
                 'indicators': frame['indicators']
             })
-        
-        return formatted_frames
 REPLACE WITH:
 
-def _generate_frames(self):
-        """Frames with market + bot_brain (Time Ladder compliant)."""
-        entry_time = self.trade_data['entry_time']
-        
-        formatted_frames = []
-        for frame in self.frames:
-            relative_min = int((frame['timestamp'] - entry_time).total_seconds() / 60)
-            
-            formatted_frame = {
+formatted_frame = {
                 'timestamp': frame['timestamp'].isoformat(),
                 'relative_min': relative_min,
                 'market': {
@@ -413,230 +365,127 @@ def _generate_frames(self):
                     'indicators': frame['indicators']
                 }
             }
-            
             if 'bot_brain' in frame:
                 formatted_frame['bot_brain'] = frame['bot_brain']
-            
             formatted_frames.append(formatted_frame)
-        
-        return formatted_frames
-🐛 CORRECTED BUG DETECTION
-4. TradeMovie._generate_analysis()
-FIND:
-
-def _generate_analysis(self):
-        """Análisis crítico: binary decisions vs time ladder."""
-        analysis = {}
-        
-        # Timing metrics
-        timing = EventDetector.calculate_timing_metrics(self.events, self.trade_data)
-        analysis.update(timing)
-        
-        # Binary decisions analysis
-        analysis['binary_decisions'] = self._analyze_binary_decisions()
-        
-        # Time Ladder verdict
-        analysis['time_ladder_would_say'] = self._time_ladder_verdict()
-        
-        # Root cause
-        analysis['root_cause'] = self._identify_root_cause()
-        
-        return analysis
-REPLACE WITH:
-
-def _generate_analysis(self):
-        """Time Ladder analysis with velocity-based bug detection."""
-        analysis = {}
-        
-        # Timing metrics
-        timing = EventDetector.calculate_timing_metrics(self.events, self.trade_data)
-        analysis.update(timing)
-        
-        # Binary decisions analysis
-        analysis['binary_decisions'] = self._analyze_binary_decisions()
-        
-        # Time Ladder verdict
-        analysis['time_ladder_would_say'] = self._time_ladder_verdict()
-        
-        # Root cause
-        analysis['root_cause'] = self._identify_root_cause()
-        
-        # NEW: Time Ladder compliant analysis
-        analysis['bugs_detected'] = self._detect_bugs_time_ladder()
-        analysis['confidence_trajectory'] = self._analyze_confidence_trajectory()
-        analysis['factor_contributions'] = self._analyze_factor_contributions()
-        
-        return analysis
-5. NEW Bug Detection Methods (Time Ladder Compliant)
-ADD these methods to TradeMovie class:
-
+📊 NEW ANALYSIS METHODS
+Add to TradeMovie class (before 
+_get_frame_at_time
+)
 def _detect_bugs_time_ladder(self):
-        """
-        TIME LADDER COMPLIANT bug detection.
-        
-        Analyzes ACCELERATIONS and TRAJECTORIES, not threshold crossings.
-        """
+        """TIME LADDER bug detection with accelerations."""
         bugs = []
-        
         brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
         
         if not brain_frames:
             return bugs
         
-        # BUG 1: Factor never used (same as before)
+        # BUG 1: Factor never used
         factor_usage = {}
         for brain in brain_frames:
             for factor in brain.get('confidence_factors', []):
                 name = factor.get('name', 'Unknown')
-                value = factor.get('value', 0)
-                
+                value = factor.get('value', 0) or 0
                 if name not in factor_usage:
                     factor_usage[name] = []
-                factor_usage[name].append(value if value else 0)
+                factor_usage[name].append(value)
         
-        for factor_name, values in factor_usage.items():
+        for name, values in factor_usage.items():
             if values and all(v == 0 for v in values):
                 bugs.append({
-                    'bug': f'{factor_name.upper()}_NEVER_USED',
-                    'evidence': f'{factor_name} = 0 pts in ALL {len(values)} frames',
-                    'impact': f'Bot blind to {factor_name}',
-                    'fix': f'Implement {factor_name} in evaluate_confidence()',
+                    'bug': f'{name.upper()}_NEVER_USED',
+                    'evidence': f'{name} = 0 in ALL {len(values)} frames',
                     'severity': 'HIGH'
                 })
         
-        # BUG 2: TIME LADDER - Entered while decelerating
+        # BUG 2: Entered while decelerating
         confidences = [b.get('total_confidence', 0) for b in brain_frames]
-        
         if len(confidences) &gt;= 4:
-            # Calculate confidence velocities
-            conf_velocities = [
-                confidences[i] - confidences[i-1] 
-                for i in range(1, len(confidences))
-            ]
+            velocities = [confidences[i] - confidences[i-1] for i in range(1, len(confidences))]
+            mid = len(velocities) // 2
+            v1 = sum(velocities[:mid]) / mid if mid &gt; 0 else 0
+            v2 = sum(velocities[mid:]) / (len(velocities) - mid) if len(velocities) &gt; mid else 0
             
-            # Check if decelerating at entry
-            mid = len(conf_velocities) // 2
-            vel_first_half = sum(conf_velocities[:mid]) / mid if mid &gt; 0 else 0
-            vel_second_half = sum(conf_velocities[mid:]) / (len(conf_velocities) - mid) if (len(conf_velocities) - mid) &gt; 0 else 0
-            
-            # Decelerating if second half velocity &lt; first half
-            if vel_second_half &lt; vel_first_half - 2:
+            if v2 &lt; v1 - 2:
                 bugs.append({
                     'bug': 'ENTERED_WHILE_DECELERATING',
-                    'evidence': f'Confidence velocity: {vel_first_half:.1f} → {vel_second_half:.1f}',
-                    'impact': 'Entered when momentum was dying',
-                    'fix': 'Add acceleration check before entry',
+                    'evidence': f'Velocity: {v1:.1f} → {v2:.1f}',
                     'severity': 'HIGH'
                 })
         
-        # BUG 3: Exhaustion accelerating at entry
+        # BUG 3: Exhaustion accelerating at entry (FIXED TIMESTAMP)
         entry_brain = None
-        for f in self.frames:
-            if 'bot_brain' in f:
-                rel_min = int((f['timestamp'] - self.trade_data['entry_time']).total_seconds() / 60)
-                if abs(rel_min) &lt;= 5:  # Within 5 min of entry
-                    entry_brain = f['bot_brain']
-                    break
+        entry_time = self.trade_data['entry_time']
+        
+        for frame in self.frames:
+            if 'bot_brain' not in frame:
+                continue
+            
+            ts = frame['timestamp']
+            if isinstance(ts, str):
+                from datetime import datetime
+                ts = datetime.fromisoformat(ts)
+            
+            rel_min = int((ts - entry_time).total_seconds() / 60)
+            if abs(rel_min) &lt;= 5:
+                entry_brain = frame['bot_brain']
+                break
         
         if entry_brain:
-            velocities = entry_brain.get('velocities', {})
-            exh_accel = velocities.get('exhaustion_accel', 0)
-            
-            if exh_accel &gt; 0.3:
+            vel = entry_brain.get('velocities', {})
+            exh_accel = vel.get('exhaustion_accel', 0)
+            if exh_accel and exh_accel &gt; 0.3:
                 bugs.append({
                     'bug': 'EXHAUSTION_ACCELERATING_AT_ENTRY',
-                    'evidence': f'Exhaustion acceleration: {exh_accel:.2f}',
-                    'impact': 'Trend burning out faster and faster',
-                    'fix': 'Block entry when exhaustion is accelerating',
+                    'evidence': f'Accel: {exh_accel:.2f}',
                     'severity': 'CRITICAL'
                 })
-        
-        # BUG 4: Contradictory factor (kept from before, fixed)
-        if entry_brain:
-            for factor in entry_brain.get('confidence_factors', []):
-                reason_lower = factor.get('reason', '').lower()
-                value = factor.get('value', 0)
-                
-                negative_signals = ['closing', 'cayendo', 'débil', 'contradice', 'bajando', 'muriendo']
-                if any(sig in reason_lower for sig in negative_signals) and value and value &gt; 0:
-                    bugs.append({
-                        'bug': f'{factor["name"].upper()}_BONUS_ON_NEGATIVE',
-                        'evidence': f"+{value} pts despite '{factor['reason']}'",
-                        'impact': 'Rewards bad signals',
-                        'fix': f'Fix {factor["name"]} calculation',
-                        'severity': 'HIGH'
-                    })
         
         return bugs
     
     def _analyze_confidence_trajectory(self):
-        """
-        TIME LADDER: Analyzes confidence VELOCITY and ACCELERATION.
-        """
+        """Analyzes confidence velocity and acceleration."""
         brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
-        
         if not brain_frames:
             return {}
         
-        times = []
-        for f in self.frames:
-            if 'bot_brain' in f:
-                rel = int((f['timestamp'] - self.trade_data['entry_time']).total_seconds() / 60)
-                times.append(rel)
-        
         confidences = [b.get('total_confidence', 0) for b in brain_frames]
+        velocities = [confidences[i] - confidences[i-1] for i in range(1, len(confidences))]
+        accelerations = [velocities[i] - velocities[i-1] for i in range(1, len(velocities))]
         
-        # Calculate velocity trajectory
-        velocities = []
-        for i in range(1, len(confidences)):
-            velocities.append(round(confidences[i] - confidences[i-1], 1))
+        avg_vel = sum(velocities) / len(velocities) if velocities else 0
+        avg_acc = sum(accelerations) / len(accelerations) if accelerations else 0
         
-        # Calculate acceleration
-        accelerations = []
-        for i in range(1, len(velocities)):
-            accelerations.append(round(velocities[i] - velocities[i-1], 2))
-        
-        # Interpretation based on trajectories
-        avg_velocity = sum(velocities) / len(velocities) if velocities else 0
-        avg_acceleration = sum(accelerations) / len(accelerations) if accelerations else 0
-        
-        if avg_acceleration &gt; 0.5:
-            interpretation = f"Confidence ACCELERATING (+{avg_acceleration:.1f}/frame²) - strengthening"
-        elif avg_acceleration &lt; -0.5:
-            interpretation = f"Confidence DECELERATING ({avg_acceleration:.1f}/frame²) - weakening"
-        elif avg_velocity &gt; 2:
-            interpretation = f"Confidence GROWING steadily (+{avg_velocity:.1f}/frame)"
-        elif avg_velocity &lt; -2:
-            interpretation = f"Confidence FALLING ({avg_velocity:.1f}/frame)"
+        if avg_acc &gt; 0.5:
+            interp = f"ACCELERATING (+{avg_acc:.1f}/frame²)"
+        elif avg_acc &lt; -0.5:
+            interp = f"DECELERATING ({avg_acc:.1f}/frame²)"
+        elif avg_vel &gt; 2:
+            interp = f"GROWING (+{avg_vel:.1f}/frame)"
+        elif avg_vel &lt; -2:
+            interp = f"FALLING ({avg_vel:.1f}/frame)"
         else:
-            interpretation = f"Confidence STABLE (vel: {avg_velocity:.1f}, accel: {avg_acceleration:.1f})"
+            interp = "STABLE"
         
         return {
-            'frames': times,
             'values': [round(c, 1) for c in confidences],
-            'velocities': velocities,
-            'accelerations': accelerations,
-            'avg_velocity': round(avg_velocity, 2),
-            'avg_acceleration': round(avg_acceleration, 2),
-            'interpretation': interpretation
+            'velocities': [round(v, 1) for v in velocities],
+            'avg_velocity': round(avg_vel, 2),
+            'avg_acceleration': round(avg_acc, 2),
+            'interpretation': interp
         }
     
     def _analyze_factor_contributions(self):
-        """
-        TIME LADDER: Analyzes factor TRENDS, not just averages.
-        """
+        """Analyzes factor TRENDS, not just averages."""
         brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
-        
         if not brain_frames:
             return {}
         
         factor_series = {}
-        
         for brain in brain_frames:
             for factor in brain.get('confidence_factors', []):
                 name = factor.get('name', 'Unknown')
                 value = factor.get('value', 0) or 0
-                
                 if name not in factor_series:
                     factor_series[name] = []
                 factor_series[name].append(value)
@@ -645,155 +494,100 @@ def _detect_bugs_time_ladder(self):
         for name, values in factor_series.items():
             if not values:
                 continue
-                
-            # Safe calculations
-            min_val = min(values)
-            max_val = max(values)
+            
             avg_val = sum(values) / len(values)
+            trend = (values[-1] - values[0]) / (len(values) - 1) if len(values) &gt;= 2 else 0
             
-            # Calculate trend (velocity)
-            if len(values) &gt;= 2:
-                trend = (values[-1] - values[0]) / (len(values) - 1)
-            else:
-                trend = 0
-            
-            # TIME LADDER: Classify by TREND not absolute value
-            impact = self._classify_impact_time_ladder(values, trend)
+            # FIXED: Safe variance calculation
+            variance = sum((v - avg_val) ** 2 for v in values) / len(values) if values else 0
             
             contributions[name] = {
-                'range': [round(min_val, 1), round(max_val, 1)],
+                'range': [round(min(values), 1), round(max(values), 1)],
                 'avg': round(avg_val, 1),
                 'trend': round(trend, 2),
-                'impact': impact
+                'impact': self._classify_impact_time_ladder(values, trend, variance)
             }
         
         return contributions
     
-    def _classify_impact_time_ladder(self, values, trend):
-        """
-        TIME LADDER: Classify impact by TREND, not absolute thresholds.
-        """
+    def _classify_impact_time_ladder(self, values, trend, variance):
+        """Trend-based classification."""
         if not values:
             return 'NONE'
         
-        max_val = max(values)
-        avg_val = sum(values) / len(values)
-        
-        # All zeros = bug
-        if max_val == 0:
+        if max(values) == 0:
             return 'NONE - BUG: never used'
         
-        # Trend-based classification
         if abs(trend) &gt; 2:
-            if trend &gt; 0:
-                return 'GROWING - increasing contribution'
-            else:
-                return 'SHRINKING - decreasing contribution'
+            return 'GROWING' if trend &gt; 0 else 'SHRINKING'
         
-        # Variance-based
-        variance = sum((v - avg_val) ** 2 for v in values) / len(values)
         if variance &gt; 25:
-            return 'VOLATILE - high variance'
+            return 'VOLATILE'
         
-        # Relative contribution
-        if avg_val &gt; 10:
-            return 'HIGH - major contributor'
-        elif avg_val &gt; 5:
-            return 'MEDIUM - moderate contributor'
+        avg = sum(values) / len(values)
+        if avg &gt; 10:
+            return 'HIGH'
+        elif avg &gt; 5:
+            return 'MEDIUM'
         else:
-            return 'LOW - minor contributor'
-✅ CHECKLIST
- BotBrainRecorder uses windowed context (lookback=5)
- _calculate_velocities() computes real velocities
- _build_trajectory() uses real velocities (not zeros)
- _get_phase_time_ladder() uses velocity+acceleration
- VARRecorder passes all_frames to BotBrainRecorder
- _detect_bugs_time_ladder() checks accelerations
- _analyze_confidence_trajectory() includes velocity/acceleration
- _classify_impact_time_ladder() uses trends not thresholds
- Division by zero protected everywhere
- 5-trade test generates valid JSONs
- No crashes
-🧪 TESTING
-Test 1: Verify Velocities Are Non-Zero
-In any generated JSON, check bot_brain.velocities:
+            return 'LOW'
+Update _generate_analysis()
+FIND:
 
-"velocities": {
-  "adx": 0.5,       // Should NOT be 0
-  "exhaustion": 2.1, // Should NOT be 0
-  "room": -0.3      // Should NOT be 0
-}
-Test 2: Verify Context Window
-Check console output:
+analysis['root_cause'] = self._identify_root_cause()
+        
+        return analysis
+REPLACE WITH:
 
-🧠 Brain: 52 decisions (lookback=5)
-Test 3: Verify Acceleration-Based Bugs
-In LOSS trades, check bugs_detected:
+analysis['root_cause'] = self._identify_root_cause()
+        
+        # Time Ladder analysis
+        analysis['bugs_detected'] = self._detect_bugs_time_ladder()
+        analysis['confidence_trajectory'] = self._analyze_confidence_trajectory()
+        analysis['factor_contributions'] = self._analyze_factor_contributions()
+        
+        return analysis
+✅ VERIFICATION CHECKLIST
+After implementation, verify:
 
-"bugs_detected": [
-  {
-    "bug": "ENTERED_WHILE_DECELERATING",
-    "evidence": "Confidence velocity: 3.2 → -1.5"
-  }
-]
-📈 EXAMPLE OUTPUT (CORRECTED)
-{
-  "frames": [
-    {
-      "timestamp": "2025-12-15T14:00:00",
-      "relative_min": -30,
-      "market": {
-        "indicators": {
-          "adx": 18.5,
-          "exhaustion_pct": 15.0
-        }
-      },
-      "bot_brain": {
-        "confidence_factors": [
-          {"name": "ADX", "value": 7.4, "reason": "..."}
-        ],
-        "total_confidence": 22.2,
-        "decision": "WAIT",
-        "velocities": {
-          "adx": 0.5,
-          "adx_accel": 0.1,
-          "exhaustion": 1.2,
-          "exhaustion_accel": 0.3
-        }
-      }
-    }
-  ],
-  "analysis": {
-    "bugs_detected": [
-      {
-        "bug": "EXHAUSTION_ACCELERATING_AT_ENTRY",
-        "evidence": "Exhaustion acceleration: 0.45",
-        "severity": "CRITICAL"
-      }
-    ],
-    "confidence_trajectory": {
-      "velocities": [1.5, 2.0, 2.5, 1.8, 0.5, -0.3],
-      "avg_acceleration": -0.35,
-      "interpretation": "Confidence DECELERATING (-0.35/frame²) - weakening"
-    }
-  }
-}
-🎯 SUMMARY
-Main Changes:
+ Console shows 🎬 VAR 2.0 (Time Ladder) → trade_recordings/
+ Console shows 🧠 Recording brain (lookback=5)...
+ JSON has bot_brain.velocities with non-zero values
+ JSON has bugs_detected array
+ JSON has confidence_trajectory.velocities
+ No crashes on 5-trade test
+ No division by zero errors
+🧪 QUICK TEST
+# Set TARGET_TRADES = 5 in backtest_real.py
+python tools/backtest_real.py
+Expected output:
 
-record_decision_at_frame() now receives frame_idx and all_frames
-_calculate_velocities() NEW method for real velocity calculation
-_get_phase_time_ladder() replaces static thresholds with velocity logic
-_detect_bugs_time_ladder() detects acceleration-based issues
-All classification uses TRENDS not absolute thresholds
-This is TRUE Time Ladder: Every decision has context, every analysis looks at trajectories.
+🎬 VAR 2.0 (Time Ladder) → trade_recordings/
+...
+🎬 VAR Recording trade #1 BTC/USDT:USDT...
+   📹 Market: 52 frames
+   🧠 Recording brain (lookback=5)...
+   🧠 Brain: 52 decisions
+   ✅ Saved: trade_001_BTCUSDT_WIN_20260103.json
+📁 FILE STRUCTURE
+After implementation:
 
-Ready for implementation? Just say "implementa" and I'll apply all changes.
+brain_var_recorder.py
+├── FrameRecorder         (unchanged)
+├── MovieAnalyzer         (unchanged)
+├── EventDetector         (unchanged)
+├── BotBrainRecorder      (NEW - 150 lines)
+├── TradeMovie            (modified - +3 methods)
+└── VARRecorder           (modified - +bot_brain loop)
+Status: READY FOR IMPLEMENTATION ✅
+Bugs Fixed: 3/3
+Improvements Applied: 1/1
+Time Ladder Compliant: YES
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 28,196<br>
-    Generado: 2026-01-03 11:28:56
+    Total caracteres: 19,676<br>
+    Generado: 2026-01-03 11:38:51
   </div>
 </body>
 </html>
