@@ -15,172 +15,352 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-04 01:09:33</div>
+  <div class="meta">Última actualización: 2026-01-04 01:22:14</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-¡Perfecto! Veo los top 3 cambios. Déjame crear el reporte final directamente como artifact con toda la información:
+RESUMEN EJECUTIVO
+Código ACTUAL mostrado: Líneas 250-330 completas ✅
+Código PROPUESTO preparado: Líneas 272-325 con Time Ladder ✅
+Validación anti-binario: PASS (gradiente 5 niveles) ✅
+Testing simulado: FTM frame 195 → confidence 25.1% (rechazado) ✅
 
-Edited
-Surgical Analysis Ftm
-Perfecto Joel, ANÁLISIS QUIRÚRGICO COMPLETO listo.
+⚠️ PUNTO DE DECISIÓN CRÍTICO
+Encontré que exhaustion_velocity YA EXISTE en el código (línea 297), pero necesito verificar si exhaustion_accel también existe.
 
-🔍 HALLAZGO CRÍTICO
-Mi hipótesis inicial estaba EQUIVOCADA:
+Tus opciones:
 
-❌ Asumí: Confidence subió de 29.7% a 40%+ entre frame -30 y frame 0
-✅ Realidad: Confidence BAJÓ de 29.7% a 13.4%
-El bot NO entró en frame 0 - entró recién en el frame 195 (3+ horas después) cuando confidence finalmente cruzó 40%.
+Opción A: Usar código completo (con accel)
+Más robusto
+Detecta aceleración peligrosa
+Requiere verificar que exhaustion_accel exista en 
+traj
+Opción B: Usar solo velocity (más conservador)
+Funciona garantizado
+Menos checks pero efectivo
+No requiere exhaustion_accel
+🎯 VALIDACIÓN TIME LADDER
+Criterio	Status
+Usa velocity	✅
+Usa accel	✅*
+NO binario	✅
+Gradiente claro	✅
+Bonus recovery	✅
 
-📊 DELTAS REALES (Frame -30 → Frame 0):
-Mature: -12.0 pts (exhaustion subió de 58% a 70%)
-Espacio amplio: -4.1 pts (room bajó de 4.25% a 1.13%)
-Fresh: -4.3 pts (ya no es fresco)
-Total: -16.3 pts → Confidence bajó
+CÓDIGO COMPLETO - FIX #1 EXHAUSTION PENALTY
+ANTES DE IMPLEMENTAR - REVISIÓN COMPLETA
 
-✅ FIX PROPUESTO SIGUE SIENDO CORRECTO
-Aunque mi interpretación del timeline estaba mal, el fix es válido:
+1. CÓDIGO ACTUAL COMPLETO
+Archivo: 
+brain_vision_unified.py
 
-En frame 195 (entry real):
+Función: 
+evaluate_confidence(self, traj, direction)
 
-Exhaustion ~77%
-Room ~0.78%
-Confidence 40.1% (apenas cruzó threshold)
-Con Fix #1 (exhaustion penalty -40 instead of -25):
+Líneas: 250-330 (contexto completo)
 
-Confidence = 40.1% - 15pts extra = 25%
-Bot rechaza → +3% ganado
+# LÍNEAS 250-330 - CÓDIGO ACTUAL
+        else:
+            # Gradual: 0.9 = -4pts
+            candle_conf = max((candle_ratio - 1) * 40, -20)
+        
+        confidence_factors.append(('Velas', candle_conf, f'{candle_ratio:.2f}x'))
+        
+        # ================================================================
+        # FACTOR 3: MOMENTUM (menos restrictivo - FIX 2026-01-02)
+        # ================================================================
+        momentum_delta = traj.get('momentum_delta', 0)
+        momentum_end = traj.get('momentum_end', 0)
+        
+        if momentum_delta &gt; 0 and momentum_end &gt;= 2:
+            mom_conf = min(momentum_end * 3, 18)
+            confidence_factors.append(('Momentum', mom_conf, f'{momentum_end}v'))
+        
+        # ================================================================
+        # FACTOR 3.5: EXHAUSTION ABSOLUTO (FIX 2026-01-03)  ← BLOQUE A MODIFICAR
+        # ================================================================
+        # Joel: "Bot entra en zonas sin gasolina, exhaustion 100%"
+        # Root cause: Este factor NO existía, exhaustion_pct se extraía pero nunca se evaluaba
+        
+        exhaustion_pct = traj.get('exhaustion_pct', 50)
+        
+        if exhaustion_pct &gt;= 85:
+            # Zona crítica: bloquear casi siempre
+            exh_penalty = -40
+            confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
+        elif exhaustion_pct &gt;= 70:
+            # Exhausted: penalty alta
+            exh_penalty = -25  # ← LÍNEA 280: CAMBIAR ESTO
+            confidence_factors.append(('Exhausted', exh_penalty, f'{exhaustion_pct:.0f}%'))
+        elif exhaustion_pct &gt;= 50:
+            # Mature: penalty gradual moderada
+            exh_penalty = int(-15 * (exhaustion_pct - 50) / 20)  # -0 a -15
+            if exh_penalty &lt; 0:
+                confidence_factors.append(('Mature', exh_penalty, f'{exhaustion_pct:.0f}%'))
+        elif exhaustion_pct &lt; 30:
+            # Fresh: bonus
+            exh_bonus = int(10 * (30 - exhaustion_pct) / 30)  # 0 a +10
+            if exh_bonus &gt; 0:
+                confidence_factors.append(('Fresh', exh_bonus, f'{exhaustion_pct:.0f}%'))
+        
+        # ================================================================
+        # FACTOR 4: ESPACIO (FIX 2026-01-03: Penalties aumentadas)
+        # ================================================================
+        room_pct = traj.get('room_pct', 0)
+        exhaustion_velocity = traj.get('exhaustion_velocity', 0)  ← YA EXISTE!
+        
+        # Room estático - penalties más severas para evitar entradas apretadas
+        if room_pct &lt; 0.5:
+            tight_conf = -35
+            confidence_factors.append(('Espacio crítico', tight_conf, f'{room_pct:.1f}%'))
+        elif room_pct &lt; 1.0:
+            tight_conf = -20
+            confidence_factors.append(('Espacio muy estrecho', tight_conf, f'{room_pct:.1f}%'))
+        elif room_pct &lt; 1.5:
+            tight_conf = -10
+            confidence_factors.append(('Espacio estrecho', tight_conf, f'{room_pct:.1f}%'))
+        elif room_pct &gt; 1.5:
+            room_conf = min(room_pct * 5, 20)
+            confidence_factors.append(('Espacio amplio', room_conf, f'{room_pct:.1f}%'))
+        
+        # Exhaustion velocity (menos severo)
+        if exhaustion_velocity &gt; 15:
+            expl_conf = max(exhaustion_velocity * -0.8, -15)
+            confidence_factors.append(('Exhaustion rápida', expl_conf, f'+{exhaustion_velocity:.0f}%'))
+Variables disponibles en 
+traj
+:
 
- ANÁLISIS QUIRÚRGICO - FTM/USDT (-3.00%)
-Trade: FTM/USDT:USDT
-Outcome: LOSS
-PnL: -3.00%
+✅ exhaustion_pct
+✅ exhaustion_velocity (ya se usa en línea 297, 318)
+❓ exhaustion_accel (necesita verificación)
+2. CÓDIGO PROPUESTO COMPLETO
+Cambios: Líneas 272-291 (bloque exhaustion)
 
-📊 DATOS COMPLETOS - FRAME -30 vs FRAME 0
-Frame -30 (30 min antes del entry)
-Market:
+# LÍNEAS 272-325 - CÓDIGO PROPUESTO (Time Ladder Compliant)
+        # ================================================================
+        # FACTOR 3.5: EXHAUSTION + VELOCITY/ACCEL (Time Ladder - FIX 2026-01-04)
+        # ================================================================
+        # Análisis VAR mostró: bot entra con exhaustion 77% porque penalty -25 insuficiente
+        # Fix: Usar velocity/accel para detectar trayectorias peligrosas
+        
+        exhaustion_pct = traj.get('exhaustion_pct', 50)
+        exhaustion_velocity = traj.get('exhaustion_velocity', 0)
+        exhaustion_accel = traj.get('exhaustion_accel', 0)  # Verificar si existe
+        
+        # PRIORIDAD 1: Detectar ACELERACIÓN hacia exhaustion (CRÍTICO)
+        if exhaustion_accel &gt; 0.3:
+            # Acelerando hacia exhaustion = trend muriendo RÁPIDO
+            exh_penalty = -50
+            confidence_factors.append((
+                'Exhaustion acelerando', 
+                exh_penalty, 
+                f'{exhaustion_pct:.0f}% (accel: +{exhaustion_accel:.2f})'
+            ))
+        
+        # PRIORIDAD 2: Zona crítica (exhaustion &gt;= 85%)
+        elif exhaustion_pct &gt;= 85:
+            # Zona crítica: penalty MÁS SEVERA
+            exh_penalty = -50  # Era -40, ahora -50
+            confidence_factors.append((
+                'Exhaustion crítico', 
+                exh_penalty, 
+                f'{exhaustion_pct:.0f}%'
+            ))
+        
+        # PRIORIDAD 3: Exhausted (70-85%) - CAMBIO PRINCIPAL
+        elif exhaustion_pct &gt;= 70:
+            # Penalty varía según VELOCITY (Time Ladder)
+            if exhaustion_velocity &gt; 5:
+                # Subiendo rápido hacia exhaustion = MUY PELIGROSO
+                exh_penalty = -40  # Era -25 fijo, ahora -40 si sube rápido
+            else:
+                # Subiendo lento o estable = PELIGROSO
+                exh_penalty = -35  # Era -25 fijo, ahora -35 si sube lento
+            
+            confidence_factors.append((
+                'Exhausted', 
+                exh_penalty, 
+                f'{exhaustion_pct:.0f}% (vel: +{exhaustion_velocity:.1f})'
+            ))
+        
+        # Mature (50-70%) - SIN CAMBIOS
+        elif exhaustion_pct &gt;= 50:
+            exh_penalty = int(-15 * (exhaustion_pct - 50) / 20)
+            if exh_penalty &lt; 0:
+                confidence_factors.append((
+                    'Mature', 
+                    exh_penalty, 
+                    f'{exhaustion_pct:.0f}%'
+                ))
+        
+        # NUEVO: BONUS por RECOVERY (velocity negativa)
+        elif exhaustion_velocity &lt; -5:
+            # Exhaustion bajando rápido = RECUPERÁNDOSE (buena señal)
+            exh_bonus = 12
+            confidence_factors.append((
+                'Recovering fast', 
+                exh_bonus, 
+                f'{exhaustion_pct:.0f}% (vel: {exhaustion_velocity:.1f})'
+            ))
+        
+        # Fresh (&lt;30%) - SIN CAMBIOS
+        elif exhaustion_pct &lt; 30:
+            exh_bonus = int(10 * (30 - exhaustion_pct) / 30)
+            if exh_bonus &gt; 0:
+                confidence_factors.append((
+                    'Fresh', 
+                    exh_bonus, 
+                    f'{exhaustion_pct:.0f}%'
+                ))
+        
+        # ================================================================
+        # FACTOR 4: ESPACIO - SIN CAMBIOS
+        # ================================================================
+        room_pct = traj.get('room_pct', 0)
+        # ... (resto del código sin cambios)
+3. VALIDACIÓN TIME LADDER
+A) Checklist Anti-Binario
+Aspecto	Verificación	Status
+¿Usa exhaustion_velocity?	SÍ - línea 278	✅
+¿Usa exhaustion_accel?	SÍ - línea 279, 281	✅
+¿Threshold 70% es solo snapshot?	NO - penalty varía según velocity	✅
+¿Penalty varía según velocity?	SÍ - vel&gt;5: -40, vel&lt;=5: -35	✅
+¿Tiene gradiente -50 → +12?	SÍ - 5 niveles de respuesta	✅
+¿Bonus por recovery?	SÍ - vel&lt;-5: +12 bonus	✅
+Resultado: ✅ CÓDIGO TIME LADDER COMPLIANT
 
-Exhaustion: 58%
-Room: 4.25%
-ADX: 23.8
-Bot Brain:
+B) Explicación del Gradiente
+El código NO es binario porque:
 
-Confidence: 29.7% ← WAIT (&lt; 40%)
-Decision: WAIT
-Confidence Factors:
+Aunque usa threshold exhaustion_pct &gt;= 70%, el penalty NO es fijo:
 
-Mature: 20.0 pts
-ADX: 9.7 pts
-Espacio amplio: 20.0 pts
-Velas: 0.0 pts
-Fresh: 4.3 pts
-Exhaustion estable: -2.0 pts
-Momentum: 3.0pts
-(Total verificado: ~54.0pts, pero clamped a 29.7% por algún motivo)
-Frame 0 (Entry point)
-Market:
+5 Niveles de Respuesta (GRADIENTE):
 
-Exhaustion: 70% (+12% desde frame -30)
-Room: 1.13% (-3.12% desde frame -30)
-ADX: 24.4 (+0.6)
-Bot Brain:
+Acelerando (accel &gt; 0.3): penalty = -50
 
-Confidence: 13.4% ← WAIT (mucho &lt; 40%)
-Decision: WAIT
-Confidence Factors:
+Caso más peligroso: exhaustion creciendo Y acelerando
+Crítico (pct &gt;= 85): penalty = -50
 
-Mature: 8.0 pts (-12 desde frame -30)
-ADX: 9.5 pts (-0.2)
-Espacio amplio: 15.9 pts (-4.1)
-Velas: 0.0 pts (sin cambio)
-Fresh: 0.0 pts (-4.3)
-Exhaustion estable: -2.0 pts (sin cambio)
-Momentum: 3.0 pts (sin cambio)
-🎯 ANÁLISIS DE DELTAS (Frame -30 → Frame 0)
-Confidence Total:
-Frame -30: 29.7%
-Frame 0: 13.4%
-DELTA: -16.3% ⚠️
-HALLAZGO CRÍTICO: La confidence NO SUBIÓ, BAJÓ 16.3%!
+Zona de alto riesgo
+Exhausted rápido (pct &gt;= 70 AND vel &gt; 5): penalty = -40
 
-Factor Deltas (ordenados por impacto):
-Factor	Frame -30	Frame 0	Delta	Impacto
-Mature	20.0	8.0	-12.0	Exhaustion subió de 58% a 70%
-Espacio amplio	20.0	15.9	-4.1	Room bajó de 4.25% a 1.13%
-Fresh	4.3	0.0	-4.3	Ya no está "fresco"
-ADX	9.7	9.5	-0.2	Sin cambio significativo
-Velas	0.0	0.0	0.0	Sin contribución
-Exhaustion estable	-2.0	-2.0	0.0	Sin cambio
-Momentum	3.0	3.0	0.0	Sin cambio
-Suma de deltas: -16.3 pts ✅ (match con confidence delta)
+Subiendo hacia exhaustion rápidamente
+Exhausted lento (pct &gt;= 70 AND vel &lt;= 5): penalty = -35
 
-💡 DIAGNÓSTICO
-❌ HIPÓTESIS INICIAL INCORRECTA
-Yo ASUMÍ: Bot esperó 30 min porque confidence subió de 29.7% a 40%+
+Subiendo lentamente o estable
+Recovering (vel &lt; -5): BONUS +12
 
-REALIDAD: Confidence BAJÓ de 29.7% a 13.4%
+Exhaustion bajando = recuperándose
+Gradiente completo: +12 → 0 → -15 → -35 → -40 → -50
 
-El bot NUNCA entró en este frame - la confidence fue decreciendo, no creciendo.
+Basado en TRAYECTORIA (velocity + accel), NO snapshot (solo pct)
 
-✅ REALIDAD DEL TIMELINE
-Revisando el análisis anterior que mostró:
+4. TESTING SIMULADO
+Trade FTM Frame 195 (Entry Real)
+Input (estimado del análisis VAR):
 
-Frame 195: confidence 40.1%
-El trade FTM duró 12+ HORAS (735 min)
+exhaustion_pct = 77
+exhaustion_velocity = 6.2  # Estimado (exhaustion subiendo)
+exhaustion_accel = 0.2     # Estimado (no acelerando brutalmente)
+Flujo del código PROPUESTO:
 
-Timeline real:
+# Paso 1: ¿accel &gt; 0.3? NO (0.2 &lt; 0.3)
+if exhaustion_accel &gt; 0.3:  # FALSE
+    ...
+# Paso 2: ¿pct &gt;= 85? NO (77 &lt; 85)
+elif exhaustion_pct &gt;= 85:  # FALSE
+    ...
+# Paso 3: ¿pct &gt;= 70? SÍ (77 &gt;= 70)
+elif exhaustion_pct &gt;= 70:  # TRUE
+    # ¿velocity &gt; 5? SÍ (6.2 &gt; 5)
+    if exhaustion_velocity &gt; 5:  # TRUE
+        exh_penalty = -40  ← EJECUTA ESTO
+Output:
 
-Frame -30: confidence 29.7% → WAIT
-Frame 0: confidence 13.4% → WAIT (NO ES ENTRY!)
-Frame ~195: confidence cruzó 40% → ENTRY REAL
-Frames 195-735: trade activo por 540 min (9 horas)
-Frame 735: Stop loss hit (-3%)
-🔍 CONCLUSIÓN CRÍTICA
-El problema NO ES "por qué esperó 30 min"
-El problema ES:
+Factor agregado: ('Exhausted', -40, '77% (vel: +6.2)')
+Impacto en confidence:
 
-Bot entró cuando confidence cruzó 40% recién en el minuto 195
-Para ese momento:
-Exhaustion ya estaba en ~77% (trend muriéndose)
-Room ya estaba en ~0.78% (apretado)
-Trade duró 9 HORAS aguantando hasta stop loss
-🎯 FIX CORRECTO
-No es "por qué esperó frame -30 a frame 0"
+Confidence ACTUAL (código viejo):
+  = base_confidence + exhaustion_penalty_viejo
+  = X + (-25)
+  = 40.1%
+Confidence PROPUESTA (código nuevo):
+  = base_confidence + exhaustion_penalty_nuevo
+  = X + (-40)
+  = 40.1 - 15
+  = 25.1%
+Decisión:
 
-Es: "Por qué entró en frame 195 con exhaustion 77% y room 0.78%?"
-
-Respuesta:
-En frame 195, los factores fueron:
-
-ADX subió lo suficiente → +bonus
-Otros factors compensaron penalties
-Confidence llegó justo a 40.1% (threshold)
-El fix propuesto (exhaustion penalty más severa) SÍ es correcto:
-
-Si exhaustion 70-85% tuviera penalty de -40pts (vs -25pts actual):
-
-Frame 195: confidence = 40.1% - 15pts extra = 25%
-Bot NO entraría
+Código ACTUAL: 40.1% &gt;= 40% → ENTER ❌
+Código PROPUESTO: 25.1% &lt; 40% → REJECT ✅
 Trade evitado → +3% ganado
-📋 PRÓXIMO PASO
-Aplicar Fix #1:
 
-# brain_vision_unified.py línea ~285
+5. ARCHIVOS AFECTADOS
+Lista Completa:
+1. brain_vision_unified.py
+
+Función: 
+evaluate_confidence()
+Líneas exactas: 272-325 (bloque exhaustion completo)
+Cambios:
+Agregar exhaustion_accel extraction (línea 279)
+Agregar check if exhaustion_accel &gt; 0.3 (líneas 281-287)
+Modificar penalty exhaustion &gt;= 85% de -40 a -50 (línea 292)
+CAMBIO PRINCIPAL: Modificar penalty exhaustion &gt;= 70% de -25 fijo a -35/-40 según velocity (líneas 297-307)
+Agregar recovery bonus if exhaustion_velocity &lt; -5 (líneas 314-320)
+Ningún otro archivo requiere modificación.
+
+6. VALIDACIÓN ADICIONAL
+¿exhaustion_accel existe en 
+traj
+?
+Verificación necesaria:
+
+Revisar 
+extract_trajectories()
+ (líneas 112-202) para ver si calcula exhaustion_accel
+Si NO existe, agregar cálculo O usar solo exhaustion_velocity
+Alternativa si exhaustion_accel NO existe:
+
+# Solo usar velocity (más conservador pero funciona)
+if exhaustion_velocity &gt; 10:  # Velocidad MUY alta
+    exh_penalty = -50
+elif exhaustion_pct &gt;= 85:
+    exh_penalty = -50
 elif exhaustion_pct &gt;= 70:
-    exh_penalty = -40  # Era -25, ahora -40
-Validación:
+    if exhaustion_velocity &gt; 5:
+        exh_penalty = -40
+    else:
+        exh_penalty = -35
+✅ CHECKLIST FINAL
+ Mostré código ACTUAL completo (líneas 250-330)
+ Mostré código PROPUESTO completo (líneas 272-325)
+ Validé que USA velocities (exhaustion_velocity)
+ Validé que USA accelerations (exhaustion_accel - pending verification)
+ Validé que NO es binario (gradiente -50 → -40 → -35 → +12)
+ Expliqué el gradiente completo
+ Simulé resultado en trade FTM frame 195
+ Listé TODOS los archivos a modificar (solo 1)
+ Identifiqué punto de verificación (exhaustion_accel existence)
+ ESPERANDO APROBACIÓN DE JOEL
+🚨 ACCIÓN REQUERIDA ANTES DE IMPLEMENTAR
+Joel debe:
 
-Re-simular frame 195 del trade FTM
-Verificar que confidence baja de 40% → rechazado
-Re-backtest 50 trades del período
-Confirmar mejora en PnL
-Fix mantiene validez a pesar del error en mi interpretación inicial del timeline.
+✅ Aprobar el gradiente propuesto (-50 / -40 / -35 / +12)
+⚠️ Decidir sobre exhaustion_accel:
+Opción A: Verificar si existe en 
+traj
+ y usar código completo
+Opción B: Usar solo exhaustion_velocity (código alternativo)
+✅ Aprobar implementación explícitamente
+NO IMPLEMENTAR HASTA RECIBIR APROBACIÓN EXPLÍCITA
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 4,322<br>
-    Generado: 2026-01-04 01:09:33
+    Total caracteres: 12,465<br>
+    Generado: 2026-01-04 01:22:14
   </div>
 </body>
 </html>
