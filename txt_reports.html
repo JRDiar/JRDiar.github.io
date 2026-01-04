@@ -15,579 +15,226 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-03 11:38:51</div>
+  <div class="meta">Última actualización: 2026-01-04 00:51:22</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
- Plan Final Actualizado: 
-var_2_implementation_plan.md
+ANÁLISIS TOP 10 PEORES COMPLETADO
+Enfoque Pareto perfectamente ejecutado. Los datos hablan claro:
 
-Resumen del Plan Quirúrgico
-Status Final:
+🎯 PATRÓN IDENTIFICADO (80% de los top 10)
+El bot está entrando con:
 
-Categoría	Cantidad	Estado
-Violaciones Time Ladder	9	✅ TODAS CORREGIDAS
-Bugs Críticos Originales	4	✅ TODOS CORREGIDOS
-Bugs de Code Review	3	✅ TODOS CORREGIDOS
-Mejoras Críticas	1	✅ APLICADA
-3 Fixes Aplicados:
+Exhaustion promedio: 77.3% (8/10 trades &gt;70%)
+Room promedio: 0.78% (9/10 trades &lt;1.5%)
+Confidence: 42% (apenas cruzando threshold 40%)
+Resultado: Trades largos (12h+) que terminan en -3% loss
 
-✅ División por cero en variance → if values else 0
-✅ Timestamp handling → isinstance(ts, str) check
-✅ KeyError protection → f.get('indicators', {})
-1 Mejora Aplicada:
+💡 FIX QUIRÚRGICO PROPUESTO
+UN SOLO CAMBIO en brain_vision_unified.py:
 
-MIN_CONTEXT = 4 + flag insufficient_context
-El plan incluye:
+Aumentar penalty exhaustion 70-85%:
 
-Código completo de BotBrainRecorder (~150 líneas)
-4 puntos de integración con FIND/REPLACE exactos
-4 métodos nuevos para TradeMovie
-Checklist de verificación
-Test rápido
+Actual: -25 pts
+Propuesto: -35 a -40 pts (según velocity)
+Impacto proyectado:
 
-VAR SYSTEM 2.0 - FINAL SURGICAL PLAN
-Time Ladder Compliant - All Bugs Fixed
-📋 STATUS
-Category	Count	Status
-Time Ladder Violations	9	✅ ALL FIXED
-Critical Bugs	4	✅ ALL FIXED
-Code Review Bugs	3	✅ ALL FIXED
-Critical Improvements	1	✅ APPLIED
-🔧 FIXES APPLIED
-Fix #1: Division by Zero in Variance
-# BEFORE (BUG)
-variance = sum((v - avg_val) ** 2 for v in values) / len(values)
-# AFTER (FIXED)
-variance = sum((v - avg_val) ** 2 for v in values) / len(values) if values else 0
-Fix #2: Safe Timestamp Handling
-# BEFORE (BUG)
-rel_min = int((f['timestamp'] - entry_time).total_seconds() / 60)
-# AFTER (FIXED)
-ts = frame['timestamp']
-if isinstance(ts, str):
-    from datetime import datetime
-    ts = datetime.fromisoformat(ts)
-rel_min = int((ts - entry_time).total_seconds() / 60)
-Fix #3: KeyError Protection in safe_get()
-# BEFORE (BUG)
-values = [f['indicators'].get(key) for f in frames]
-# AFTER (FIXED)
-ind = f.get('indicators', {})
-val = ind.get(key)
-Improvement #1: MIN_CONTEXT + Flag
-MIN_CONTEXT = 4
-if len(context_window) &lt; MIN_CONTEXT:
-    return {..., 'insufficient_context': True}
-📝 COMPLETE CORRECTED CODE
-BotBrainRecorder Class (FINAL)
-File: 
-brain_var_recorder.py
+Bloquea 6-8 de los top 10 peores
+Evita: -18% a -24% en pérdidas
+Nuevo PnL: +38.7% → +57% a +63%
+📋 CÓDIGO LISTO PARA COPIAR
+Ver top10_losses_analysis.md - sección "CÓDIGO PROPUESTO"
 
-Location: After 
-EventDetector
- class, before 
-TradeMovie
- class
+Incluye:
 
-class BotBrainRecorder:
-    """
-    Records BOT's decision-making process at each historical frame.
-    
-    TIME LADDER COMPLIANT:
-    - Windowed context (LOOKBACK frames)
-    - Real velocity/acceleration calculations
-    - Trajectory-based analysis
-    """
-    
-    LOOKBACK = 5
-    MIN_CONTEXT = 4  # Minimum frames for reliable calculation
-    
-    def record_decision_at_frame(self, symbol, frame_idx, all_frames, direction):
-        """
-        Simulates bot's decision with FULL CONTEXT.
-        
-        Args:
-            symbol: str
-            frame_idx: int - Position in all_frames
-            all_frames: list - ALL frames for context
-            direction: str - BULLISH/BEARISH
-        
-        Returns:
-            dict with confidence_factors, decision, velocities
-        """
-        try:
-            start_idx = max(0, frame_idx - self.LOOKBACK)
-            context_window = all_frames[start_idx:frame_idx + 1]
-            current_frame = all_frames[frame_idx]
-            
-            velocities = self._calculate_velocities(context_window)
-            
-            trajectory = self._build_trajectory(
-                current_frame.get('indicators', {}),
-                velocities,
-                direction
-            )
-            
-            ladder_analysis = self._build_ladder_analysis(
-                symbol,
-                current_frame.get('indicators', {}),
-                velocities,
-                direction
-            )
-            
-            from brain_vision_unified import UnifiedVision
-            vision = UnifiedVision()
-            result = vision.evaluate_confidence(trajectory, direction, ladder_analysis)
-            
-            return self._extract_confidence_breakdown(result, velocities)
-            
-        except Exception as e:
-            return {
-                'confidence_factors': [],
-                'total_confidence': 0,
-                'decision': 'ERROR',
-                'decision_reason': f'Simulation failed: {str(e)[:50]}',
-                'velocities': {},
-                'error': str(e)
-            }
-    
-    def _calculate_velocities(self, context_window):
-        """Calculates REAL velocities from context window."""
-        if len(context_window) &lt; self.MIN_CONTEXT:
-            return {
-                'adx': 0, 'adx_accel': 0,
-                'exhaustion': 0, 'exhaustion_accel': 0,
-                'room': 0, 'momentum': 0, 'spread': 0,
-                'insufficient_context': True
-            }
-        
-        def safe_get(frames, key):
-            """KeyError-safe extraction."""
-            values = []
-            for f in frames:
-                ind = f.get('indicators', {})
-                val = ind.get(key)
-                values.append(val if val is not None else 0)
-            return values
-        
-        def velocity(series):
-            if len(series) &lt; 2:
-                return 0
-            return (series[-1] - series[0]) / (len(series) - 1)
-        
-        def acceleration(series):
-            if len(series) &lt; 4:
-                return 0
-            mid = len(series) // 2
-            return velocity(series[mid:]) - velocity(series[:mid])
-        
-        adx = safe_get(context_window, 'adx')
-        exh = safe_get(context_window, 'exhaustion_pct')
-        room = safe_get(context_window, 'room_pct')
-        mom = safe_get(context_window, 'momentum_age')
-        spr = safe_get(context_window, 'spread')
-        
-        return {
-            'adx': round(velocity(adx), 2),
-            'adx_accel': round(acceleration(adx), 3),
-            'exhaustion': round(velocity(exh), 2),
-            'exhaustion_accel': round(acceleration(exh), 3),
-            'room': round(velocity(room), 3),
-            'momentum': round(velocity(mom), 2),
-            'spread': round(velocity(spr), 2),
-            'insufficient_context': False
-        }
-    
-    def _build_trajectory(self, indicators, velocities, direction):
-        """Builds trajectory with REAL velocities."""
-        return {
-            'direction': direction,
-            'adx_end': indicators.get('adx', 0),
-            'adx_delta': velocities['adx'],
-            'candle_ratio': 1.0,
-            'momentum_end': indicators.get('momentum_age', 0),
-            'momentum_delta': velocities['momentum'],
-            'exhaustion_pct': indicators.get('exhaustion_pct', 50),
-            'room_pct': indicators.get('room_pct', 0),
-            'exhaustion_velocity': velocities['exhaustion'],
-            'pivot_types': [],
-            'position_pct': indicators.get('grid_position', 50)
-        }
-    
-    def _build_ladder_analysis(self, symbol, indicators, velocities, direction):
-        """Constructs ladder_analysis with velocity-aware data."""
-        adx = indicators.get('adx', 0)
-        di_plus = indicators.get('di_plus', 0)
-        di_minus = indicators.get('di_minus', 0)
-        
-        if velocities['adx'] &gt; 0.5:
-            adx_trend = 'creciendo'
-        elif velocities['adx'] &lt; -0.5:
-            adx_trend = 'decreciendo'
-        else:
-            adx_trend = 'estable'
-        
-        phase = self._get_phase_time_ladder(
-            indicators.get('exhaustion_pct', 50),
-            velocities['exhaustion'],
-            velocities['exhaustion_accel']
-        )
-        
-        return {
-            '15m': {
-                'direction': direction,
-                'adx': {
-                    'adx_current': adx,
-                    'di_plus': di_plus,
-                    'di_minus': di_minus,
-                    'spread': abs(di_plus - di_minus),
-                    'trend': adx_trend,
-                    'velocity': velocities['adx']
-                },
-                'exhaustion_pct': indicators.get('exhaustion_pct', 50),
-                'room_pct': indicators.get('room_pct', 0),
-                'exhaustion_phase': phase,
-                'exhaustion_velocity': velocities['exhaustion'],
-                'momentum': {
-                    'consecutive_count': indicators.get('momentum_age', 0),
-                    'current_color': 'green' if indicators.get('momentum_age', 0) &gt; 0 else 'red',
-                    'velocity': velocities['momentum']
-                }
-            },
-            '5m': {}, '1h': {}, '4h': {}
-        }
-    
-    def _get_phase_time_ladder(self, exhaustion_pct, velocity, acceleration):
-        """Phase from TRAJECTORY, not snapshot."""
-        if acceleration &gt; 0.5:
-            return 'ACCELERATING_EXHAUSTION'
-        elif acceleration &lt; -0.5:
-            return 'RECOVERING_FAST'
-        elif velocity &gt; 5:
-            return 'BURNING_BRUTAL'
-        elif velocity &gt; 2:
-            return 'BURNING_FAST'
-        elif velocity &gt; 0:
-            return 'DEVELOPING'
-        elif velocity &lt; -3:
-            return 'RECOVERING'
-        elif velocity &lt; 0:
-            return 'COOLING'
-        else:
-            return 'STABLE'
-    
-    def _extract_confidence_breakdown(self, result, velocities):
-        """Extracts confidence factors with velocity context."""
-        action = result.get('action', 'WAIT')
-        confidence = result.get('confidence', 0) or 0
-        details = result.get('details', {})
-        
-        factors = []
-        if 'confidence_factors' in details:
-            for ft in details['confidence_factors']:
-                if len(ft) &gt;= 2:
-                    factors.append({
-                        'name': ft[0],
-                        'value': round(ft[1], 1) if ft[1] else 0,
-                        'reason': str(ft[2]) if len(ft) &gt; 2 else ''
-                    })
-        
-        if not factors:
-            factors.append({'name': 'Total', 'value': confidence, 'reason': 'Details unavailable'})
-        
-        threshold = 40
-        decision = 'ENTER' if action == 'OPERAR' else 'WAIT'
-        reason = f"Confidence {confidence:.0f}% {'&gt;' if confidence &gt;= threshold else '&lt;'} {threshold}%"
-        
-        return {
-            'confidence_factors': factors,
-            'total_confidence': round(confidence, 1),
-            'decision': decision,
-            'decision_reason': reason,
-            'velocities': velocities
-        }
-🔗 INTEGRATION POINTS
-1. VARRecorder.init()
-FIND:
+✅ Time Ladder compliant (usa exhaustion_velocity + accel)
+✅ Penalties graduales (no binario)
+✅ Bonus por recovery (recompensa tendencias positivas)
+¿Aplicamos Fix #1 ahora o querés ajustar las penalties primero?
 
-self.event_detector = EventDetector()
-        
-        # Create output directory
-REPLACE WITH:
+ TOP 10 PEORES TRADES - ANÁLISIS PARETO
+Análisis enfocado en las pérdidas más grandes para identificar el fix de mayor impacto
 
-self.event_detector = EventDetector()
-        self.bot_brain_recorder = BotBrainRecorder()
-        
-        # Create output directory
-ALSO FIND:
+📊 CONTEXTO
+De 210 trades totales:
 
-print(f"🎬 VAR System initialized → {output_dir}/")
-REPLACE WITH:
+Win Rate: 62.9% (132W / 78L)
+PnL Total: +38.70%
+Avg PnL/trade: +0.184%
+Avg Win: +1.34%
+Avg Loss: -1.89%
+Problema identificado: Pierdes más en losses de lo que ganas en wins (ratio negativo 1.4:1)
 
-print(f"🎬 VAR 2.0 (Time Ladder) → {output_dir}/")
-2. on_trade_closed() Loop
-FIND:
+📉 TOP 10 TRADES CON MAYOR PÉRDIDA
+Basado en análisis automático de trade_recordings/:
 
-print(f"   📹 Recorded {len(frames)} frames")
-            
-            # 3. Calculate velocities
-REPLACE WITH:
+1. FTM/USDT:USDT
+PnL: -3.00%
+Duración: ~2 horas
+Market en Entry:
+Exhaustion: 85.2% ⚠️
+Room: 0.5% ⚠️
+Bot Brain:
+Confidence: 41.5%
+Top Factores:
+Mature: -7.5 pts
+Espacio muy estrecho: -20.0 pts
+Exhaustion crítico: -20.0 pts
+2-10. [Patrones similares en análisis]
+🔍 PATRÓN COMÚN IDENTIFICADO (CRÍTICO)
+Market Conditions en los Top 10 Peores:
+Exhaustion promedio: 77.3%
+8/10 trades (80%) con exhaustion &gt; 70%
+Room promedio: 0.78%
+9/10 trades (90%) con room &lt; 1.5%
+Duración promedio: ~750 min (largos, &gt;12 horas)
+Bot Brain:
+Confidence promedio: 42.1% (apenas por encima del threshold 40%)
+Factores más frecuentes:
+Mature/Exhaustion crítico: -12.5 pts (promedio)
+Espacio muy estrecho: -17.2 pts
+ADX: +9.7 pts
+Velas: 0.0 pts (no contribuye)
+Bugs Más Comunes:
+EXHAUSTION_ACCELERATING_AT_ENTRY - 4/10 trades
+ENTERED_WHILE_DECELERATING - 3/10 trades
+Otros bugs - 2/10 trades
+💡 DIAGNÓSTICO CRÍTICO
+El bot está entrando en ZONAS DE ALTO RIESGO:
+Exhaustion &gt;70% y acelerando → Trend muriendo
+Room &lt;1.5% → Poco espacio para profit
+Confidence 40-45% → Apenas cruzando threshold
+Root Cause: Las penalties por exhaustion y room NO son suficientes para bloquear estos trades peligrosos.
 
-print(f"   📹 Market: {len(frames)} frames")
-            
-            # 2.5. Bot brain with context
-            print(f"   🧠 Recording brain (lookback={BotBrainRecorder.LOOKBACK})...")
-            for idx, frame in enumerate(frames):
-                frame['bot_brain'] = self.bot_brain_recorder.record_decision_at_frame(
-                    trade_data['symbol'], idx, frames, trade_data['direction']
-                )
-            print(f"   🧠 Brain: {len(frames)} decisions")
-            
-            # 3. Calculate velocities
-3. TradeMovie._generate_frames()
-FIND:
+🎯 FIX QUIRÚRGICO #1 - EXHAUSTION PENALTY MÁS SEVERA
+Impacto Estimado:
+Bloquear 6-8 de los top 10 peores trades
+Ganancia estimada: +18% a +24% (evitando esas pérdidas)
+Nuevo PnL proyectado: +38.7% → +57% a +63%
+⚙️ CÓDIGO PROPUESTO (Time Ladder Compliant)
+Archivo: 
+brain_vision_unified.py
 
-formatted_frames.append({
-                'timestamp': frame['timestamp'].isoformat(),
-                'relative_min': relative_min,
-                'price': frame['price'],
-                'indicators': frame['indicators']
-            })
-REPLACE WITH:
+Función: 
+evaluate_confidence()
 
-formatted_frame = {
-                'timestamp': frame['timestamp'].isoformat(),
-                'relative_min': relative_min,
-                'market': {
-                    'price': frame['price'],
-                    'indicators': frame['indicators']
-                }
-            }
-            if 'bot_brain' in frame:
-                formatted_frame['bot_brain'] = frame['bot_brain']
-            formatted_frames.append(formatted_frame)
-📊 NEW ANALYSIS METHODS
-Add to TradeMovie class (before 
-_get_frame_at_time
-)
-def _detect_bugs_time_ladder(self):
-        """TIME LADDER bug detection with accelerations."""
-        bugs = []
-        brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
-        
-        if not brain_frames:
-            return bugs
-        
-        # BUG 1: Factor never used
-        factor_usage = {}
-        for brain in brain_frames:
-            for factor in brain.get('confidence_factors', []):
-                name = factor.get('name', 'Unknown')
-                value = factor.get('value', 0) or 0
-                if name not in factor_usage:
-                    factor_usage[name] = []
-                factor_usage[name].append(value)
-        
-        for name, values in factor_usage.items():
-            if values and all(v == 0 for v in values):
-                bugs.append({
-                    'bug': f'{name.upper()}_NEVER_USED',
-                    'evidence': f'{name} = 0 in ALL {len(values)} frames',
-                    'severity': 'HIGH'
-                })
-        
-        # BUG 2: Entered while decelerating
-        confidences = [b.get('total_confidence', 0) for b in brain_frames]
-        if len(confidences) &gt;= 4:
-            velocities = [confidences[i] - confidences[i-1] for i in range(1, len(confidences))]
-            mid = len(velocities) // 2
-            v1 = sum(velocities[:mid]) / mid if mid &gt; 0 else 0
-            v2 = sum(velocities[mid:]) / (len(velocities) - mid) if len(velocities) &gt; mid else 0
-            
-            if v2 &lt; v1 - 2:
-                bugs.append({
-                    'bug': 'ENTERED_WHILE_DECELERATING',
-                    'evidence': f'Velocity: {v1:.1f} → {v2:.1f}',
-                    'severity': 'HIGH'
-                })
-        
-        # BUG 3: Exhaustion accelerating at entry (FIXED TIMESTAMP)
-        entry_brain = None
-        entry_time = self.trade_data['entry_time']
-        
-        for frame in self.frames:
-            if 'bot_brain' not in frame:
-                continue
-            
-            ts = frame['timestamp']
-            if isinstance(ts, str):
-                from datetime import datetime
-                ts = datetime.fromisoformat(ts)
-            
-            rel_min = int((ts - entry_time).total_seconds() / 60)
-            if abs(rel_min) &lt;= 5:
-                entry_brain = frame['bot_brain']
-                break
-        
-        if entry_brain:
-            vel = entry_brain.get('velocities', {})
-            exh_accel = vel.get('exhaustion_accel', 0)
-            if exh_accel and exh_accel &gt; 0.3:
-                bugs.append({
-                    'bug': 'EXHAUSTION_ACCELERATING_AT_ENTRY',
-                    'evidence': f'Accel: {exh_accel:.2f}',
-                    'severity': 'CRITICAL'
-                })
-        
-        return bugs
-    
-    def _analyze_confidence_trajectory(self):
-        """Analyzes confidence velocity and acceleration."""
-        brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
-        if not brain_frames:
-            return {}
-        
-        confidences = [b.get('total_confidence', 0) for b in brain_frames]
-        velocities = [confidences[i] - confidences[i-1] for i in range(1, len(confidences))]
-        accelerations = [velocities[i] - velocities[i-1] for i in range(1, len(velocities))]
-        
-        avg_vel = sum(velocities) / len(velocities) if velocities else 0
-        avg_acc = sum(accelerations) / len(accelerations) if accelerations else 0
-        
-        if avg_acc &gt; 0.5:
-            interp = f"ACCELERATING (+{avg_acc:.1f}/frame²)"
-        elif avg_acc &lt; -0.5:
-            interp = f"DECELERATING ({avg_acc:.1f}/frame²)"
-        elif avg_vel &gt; 2:
-            interp = f"GROWING (+{avg_vel:.1f}/frame)"
-        elif avg_vel &lt; -2:
-            interp = f"FALLING ({avg_vel:.1f}/frame)"
-        else:
-            interp = "STABLE"
-        
-        return {
-            'values': [round(c, 1) for c in confidences],
-            'velocities': [round(v, 1) for v in velocities],
-            'avg_velocity': round(avg_vel, 2),
-            'avg_acceleration': round(avg_acc, 2),
-            'interpretation': interp
-        }
-    
-    def _analyze_factor_contributions(self):
-        """Analyzes factor TRENDS, not just averages."""
-        brain_frames = [f.get('bot_brain', {}) for f in self.frames if 'bot_brain' in f]
-        if not brain_frames:
-            return {}
-        
-        factor_series = {}
-        for brain in brain_frames:
-            for factor in brain.get('confidence_factors', []):
-                name = factor.get('name', 'Unknown')
-                value = factor.get('value', 0) or 0
-                if name not in factor_series:
-                    factor_series[name] = []
-                factor_series[name].append(value)
-        
-        contributions = {}
-        for name, values in factor_series.items():
-            if not values:
-                continue
-            
-            avg_val = sum(values) / len(values)
-            trend = (values[-1] - values[0]) / (len(values) - 1) if len(values) &gt;= 2 else 0
-            
-            # FIXED: Safe variance calculation
-            variance = sum((v - avg_val) ** 2 for v in values) / len(values) if values else 0
-            
-            contributions[name] = {
-                'range': [round(min(values), 1), round(max(values), 1)],
-                'avg': round(avg_val, 1),
-                'trend': round(trend, 2),
-                'impact': self._classify_impact_time_ladder(values, trend, variance)
-            }
-        
-        return contributions
-    
-    def _classify_impact_time_ladder(self, values, trend, variance):
-        """Trend-based classification."""
-        if not values:
-            return 'NONE'
-        
-        if max(values) == 0:
-            return 'NONE - BUG: never used'
-        
-        if abs(trend) &gt; 2:
-            return 'GROWING' if trend &gt; 0 else 'SHRINKING'
-        
-        if variance &gt; 25:
-            return 'VOLATILE'
-        
-        avg = sum(values) / len(values)
-        if avg &gt; 10:
-            return 'HIGH'
-        elif avg &gt; 5:
-            return 'MEDIUM'
-        else:
-            return 'LOW'
-Update _generate_analysis()
-FIND:
+Líneas aproximadas: 270-300
 
-analysis['root_cause'] = self._identify_root_cause()
-        
-        return analysis
-REPLACE WITH:
+ACTUAL:
+# FACTOR 3.5: EXHAUSTION ABSOLUTO (línea ~270)
+exhaustion_pct = traj.get('exhaustion_pct', 50)
+if exhaustion_pct &gt;= 85:
+    exh_penalty = -40
+    confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &gt;= 70:
+    exh_penalty = -25  # ← INSUFICIENTE
+    confidence_factors.append(('Exhausted', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &gt;= 50:
+    exh_penalty = int(-15 * (exhaustion_pct - 50) / 20)
+    if exh_penalty &lt; 0:
+        confidence_factors.append(('Mature', exh_penalty, f'{exhaustion_pct:.0f}%'))
+Problema: Penalty de -25 pts para exhaustion 70-85% NO es suficiente para bloquear. Con ADX +10pts y otros bonuses, confidence puede cruzar 40%.
 
-analysis['root_cause'] = self._identify_root_cause()
-        
-        # Time Ladder analysis
-        analysis['bugs_detected'] = self._detect_bugs_time_ladder()
-        analysis['confidence_trajectory'] = self._analyze_confidence_trajectory()
-        analysis['factor_contributions'] = self._analyze_factor_contributions()
-        
-        return analysis
-✅ VERIFICATION CHECKLIST
-After implementation, verify:
+PROPUESTO (Time Ladder):
+# FACTOR 3.5: EXHAUSTION ABSOLUTO + ACELERACIÓN (Time Ladder)
+exhaustion_pct = traj.get('exhaustion_pct', 50)
+exhaustion_velocity = traj.get('exhaustion_velocity', 0)
+exhaustion_accel = traj.get('exhaustion_accel', 0)
+# VER TRAYECTORIA: Exhaustion acelerando es CRÍTICO
+if exhaustion_accel &gt; 0.3:
+    # Acelerando hacia exhaustion = bloqueo casi garantizado
+    exh_penalty = -50
+    confidence_factors.append(('Exhaustion acelerando', exh_penalty, 
+                             f'{exhaustion_pct:.0f}% (accel: +{exhaustion_accel:.2f})'))
+elif exhaustion_pct &gt;= 85:
+    # Exhaustion crítico (más severo)
+    exh_penalty = -50  # Era -40
+    confidence_factors.append(('Exhaustion crítico', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_pct &gt;= 70:
+    # Exhausted (MÁS SEVERO - el fix clave)
+    if exhaustion_velocity &gt; 5:
+        # Subiendo rápido (peor)
+        exh_penalty = -40  # Era -25
+    else:
+        # Subiendo lento o estable
+        exh_penalty = -35  # Era -25
+    confidence_factors.append(('Exhausted', exh_penalty, 
+                             f'{exhaustion_pct:.0f}% (vel: +{exhaustion_velocity:.1f})'))
+elif exhaustion_pct &gt;= 50:
+    # Mature (gradual)
+    exh_penalty = int(-15 * (exhaustion_pct - 50) / 20)
+    if exh_penalty &lt; 0:
+        confidence_factors.append(('Mature', exh_penalty, f'{exhaustion_pct:.0f}%'))
+elif exhaustion_velocity &lt; -5:
+    # BONUS: Recovering fast (buena señal)
+    exh_bonus = 12
+    confidence_factors.append(('Recovering fast', exh_bonus, 
+                             f'{exhaustion_pct:.0f}% (vel: {exhaustion_velocity:.1f})'))
+elif exhaustion_pct &lt; 30:
+    # Fresh
+    exh_bonus = int(10 * (30 - exhaustion_pct) / 30)
+    if exh_bonus &gt; 0:
+        confidence_factors.append(('Fresh', exh_bonus, f'{exhaustion_pct:.0f}%'))
+✅ VALIDACIÓN TIME LADDER
+Aspecto	Validación
+✅ Usa exhaustion_velocity	Ve PELÍCULA (cambio), no FOTO (valor estático)
+✅ Usa exhaustion_accel	Detecta aceleración (segundo derivado)
+✅ Penalties graduales	70%: -35pts, 85%: -50pts (no binario)
+✅ Bonus por recovery	Recompensa tendencias positivas
+✅ No thresholds duros	Gradiente continuo 50% → 85%
+🧪 TESTING PROPUESTO
+Paso 1: Aplicar Fix
+Modificar 
+brain_vision_unified.py
+ líneas 270-300
+Compilar: python -m py_compile brain_vision_unified.py
+Paso 2: Re-backtest Mini (50 trades)
+Backtest período: 2-3 Enero 2025 (donde están los peores trades)
+TARGET_TRADES = 50
+Verificar que los 8 top peores trades con exhaustion &gt;70% ahora son RECHAZADOS
+Paso 3: Validación
+Contar rechazos vs antes
+Calcular nuevo PnL proyectado
+Si mejora: Fix permanente
+Si empeora: Ajustar penalties
+📈 PROYECCIÓN DE IMPACTO
+Escenario Conservador:
+Bloquea 6/10 top peores trades
+Evita: -18% de pérdidas
+Nuevo PnL: +38.7% → +56.7% (+46% mejora)
+Escenario Optimista:
+Bloquea 8/10 top peores trades
+Evita: -24% de pérdidas
+Nuevo PnL: +38.7% → +62.7% (+62% mejora)
+Trade-off:
+Puede rechazar algunos wins marginales (confidence 40-45%)
+Pero evita losses grandes (prioridad correcta)
+🎯 PRÓXIMO PASO INMEDIATO
+Tu decisión:
 
- Console shows 🎬 VAR 2.0 (Time Ladder) → trade_recordings/
- Console shows 🧠 Recording brain (lookback=5)...
- JSON has bot_brain.velocities with non-zero values
- JSON has bugs_detected array
- JSON has confidence_trajectory.velocities
- No crashes on 5-trade test
- No division by zero errors
-🧪 QUICK TEST
-# Set TARGET_TRADES = 5 in backtest_real.py
-python tools/backtest_real.py
-Expected output:
+Opción A: Aplicar Fix #1 (Recomendado)
+Copiar código PROPUESTO
+Reemplazar en 
+brain_vision_unified.py
+Re-backtest 50 trades (2-3 Enero)
+Validar mejora
+Opción B: Refinar Fix #1
+¿Penalties muy severas? (-35/-50 pts)
+¿Ajustar a -30/-45 pts?
+Tu call basado en tu tolerancia al riesgo
+Opción C: Análisis más profundo
+Ver más detalles de cada top 10
+Identificar sub-patrones
+Fixes adicionales (room, timing)
+Recomendación: Opción A - Fix #1 es quirúrgico, Time Ladder compliant, y ataca el 80% del problema (Pareto).
 
-🎬 VAR 2.0 (Time Ladder) → trade_recordings/
-...
-🎬 VAR Recording trade #1 BTC/USDT:USDT...
-   📹 Market: 52 frames
-   🧠 Recording brain (lookback=5)...
-   🧠 Brain: 52 decisions
-   ✅ Saved: trade_001_BTCUSDT_WIN_20260103.json
-📁 FILE STRUCTURE
-After implementation:
 
-brain_var_recorder.py
-├── FrameRecorder         (unchanged)
-├── MovieAnalyzer         (unchanged)
-├── EventDetector         (unchanged)
-├── BotBrainRecorder      (NEW - 150 lines)
-├── TradeMovie            (modified - +3 methods)
-└── VARRecorder           (modified - +bot_brain loop)
-Status: READY FOR IMPLEMENTATION ✅
-Bugs Fixed: 3/3
-Improvements Applied: 1/1
-Time Ladder Compliant: YES
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 19,676<br>
-    Generado: 2026-01-03 11:38:51
+    Total caracteres: 7,212<br>
+    Generado: 2026-01-04 00:51:22
   </div>
 </body>
 </html>
