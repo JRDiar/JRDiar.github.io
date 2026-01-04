@@ -15,17 +15,448 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-04 02:59:08</div>
+  <div class="meta">Última actualización: 2026-01-04 03:21:59</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-sdg
+CÓDIGO COMPLETO VAR SYSTEM PHASE 1 LISTO
+Joel, creé 
+var_phase1_code.md
+ con TODO el código completo para review.
+
+Incluye:
+
+✅ brain_frame_recorder.py completo (clase nueva)
+✅ Modificaciones exactas a brain_intelligent.py
+✅ Modificaciones exactas a brain_executor.py
+✅ Ejemplo de JSON output
+✅ Plan de testing
+✅ Checklist de implementación
+Preguntas clave para aprobar:
+
+Max frames: ¿10 está bien o querés más/menos?
+Indicadores: ¿Falta alguno?
+Candle size: ¿Cómo lo calculo?
+Una vez que apruebes, implemento en 30 minutos.
+
+Mientras esperás, el backtest completo sigue corriendo en background (lleva 1h40m).
+
+¿Aprobamos el código y procedemos con la implementación?
+
+Good
+Bad
+
+
+VAR SYSTEM - PHASE 1 IMPLEMENTATION CODE
+REVIEW COMPLETO ANTES DE IMPLEMENTAR
+
+📋 OVERVIEW
+Este código implementa el FrameRecorder que graba frames históricos de cada símbolo para análisis post-trade.
+
+QUÉ HACE:
+
+Almacena últimos 5-10 frames por símbolo
+Calcula velocities y accelerations de TODOS los indicadores
+Genera JSON completo por trade
+NO modifica lógica de decisión del bot
+QUÉ NO HACE:
+
+No cambia umbrales
+No altera brain_intelligent.py
+No modifica brain_vision_unified.py
+1. ARCHIVO NUEVO: brain_frame_recorder.py
+"""
+VAR SYSTEM - FRAME RECORDER
+============================
+Graba frames históricos de indicadores para análisis post-trade.
+NO modifica lógica de decisión - solo almacena datos.
+"""
+from collections import deque
+from datetime import datetime
+import json
+import os
+class FrameRecorder:
+    """
+    Almacena frames históricos por símbolo para calcular velocities/accelerations.
+    
+    Cada frame contiene snapshot completo de todos los indicadores.
+    """
+    
+    def __init__(self, max_frames=10):
+        """
+        Args:
+            max_frames: Cantidad máxima de frames a almacenar por símbolo
+        """
+        self.max_frames = max_frames
+        # {symbol: deque(frames)}
+        self.frames_by_symbol = {}
+        
+        # Directorio para guardar JSONs
+        self.output_dir = 'var_recordings'
+        os.makedirs(self.output_dir, exist_ok=True)
+    
+    def record_frame(self, symbol, frame_data):
+        """
+        Agrega un nuevo frame al historial del símbolo.
+        
+        Args:
+            symbol: Símbolo (ej: "BTC/USDT:USDT")
+            frame_data: Dict con todos los indicadores del frame actual
+        
+        frame_data debe contener:
+        {
+            'timestamp': timestamp,
+            'adx': float,
+            'di_plus': float,
+            'di_minus': float,
+            'exhaustion_pct': float,
+            'room_pct': float,
+            'momentum_age': int,
+            'candle_size': float,
+            'spread': float,
+            'grid_position': float,
+            # ... otros indicadores
+        }
+        """
+        if symbol not in self.frames_by_symbol:
+            self.frames_by_symbol[symbol] = deque(maxlen=self.max_frames)
+        
+        # Agregar timestamp si no existe
+        if 'timestamp' not in frame_data:
+            frame_data['timestamp'] = datetime.now().timestamp()
+        
+        self.frames_by_symbol[symbol].append(frame_data)
+    
+    def get_frames(self, symbol):
+        """Retorna todos los frames almacenados para un símbolo"""
+        return list(self.frames_by_symbol.get(symbol, []))
+    
+    def calculate_velocities(self, symbol):
+        """
+        Calcula velocities de todos los indicadores.
+        
+        velocity = (valor_final - valor_inicial) / num_frames
+        
+        Returns:
+            Dict con velocities de cada indicador
+        """
+        frames = self.get_frames(symbol)
+        
+        if len(frames) &lt; 2:
+            return {}
+        
+        first_frame = frames[0]
+        last_frame = frames[-1]
+        num_frames = len(frames)
+        
+        velocities = {}
+        
+        # Lista de indicadores numéricos a calcular velocity
+        numeric_indicators = [
+            'adx', 'di_plus', 'di_minus',
+            'exhaustion_pct', 'room_pct',
+            'momentum_age', 'candle_size',
+            'spread', 'grid_position'
+        ]
+        
+        for indicator in numeric_indicators:
+            if indicator in first_frame and indicator in last_frame:
+                initial = first_frame[indicator]
+                final = last_frame[indicator]
+                
+                if initial is not None and final is not None:
+                    velocities[f'{indicator}_velocity'] = (final - initial) / num_frames
+        
+        return velocities
+    
+    def calculate_accelerations(self, symbol):
+        """
+        Calcula accelerations (segunda derivada).
+        
+        acceleration = velocity_reciente - velocity_anterior
+        
+        Returns:
+            Dict con accelerations de cada indicador
+        """
+        frames = self.get_frames(symbol)
+        
+        if len(frames) &lt; 3:
+            return {}
+        
+        # Dividir en dos mitades
+        mid = len(frames) // 2
+        first_half = frames[:mid+1]
+        second_half = frames[mid:]
+        
+        accelerations = {}
+        
+        numeric_indicators = [
+            'adx', 'di_plus', 'di_minus',
+            'exhaustion_pct', 'room_pct',
+            'momentum_age', 'candle_size',
+            'spread', 'grid_position'
+        ]
+        
+        for indicator in numeric_indicators:
+            # Velocity primera mitad
+            if indicator in first_half[0] and indicator in first_half[-1]:
+                v1 = (first_half[-1][indicator] - first_half[0][indicator]) / len(first_half)
+            else:
+                continue
+            
+            # Velocity segunda mitad
+            if indicator in second_half[0] and indicator in second_half[-1]:
+                v2 = (second_half[-1][indicator] - second_half[0][indicator]) / len(second_half)
+            else:
+                continue
+            
+            # Acceleration
+            accelerations[f'{indicator}_accel'] = v2 - v1
+        
+        return accelerations
+    
+    def generate_trade_json(self, symbol, trade_data):
+        """
+        Genera JSON completo de un trade con frames históricos.
+        
+        Args:
+            symbol: Símbolo
+            trade_data: Dict con datos del trade
+            {
+                'entry_time': datetime,
+                'exit_time': datetime,
+                'entry_price': float,
+                'exit_price': float,
+                'pnl_pct': float,
+                'outcome': 'WIN'/'LOSS',
+                'direction': 'BULLISH'/'BEARISH'
+            }
+        
+        Returns:
+            Nombre del archivo JSON guardado
+        """
+        frames = self.get_frames(symbol)
+        
+        if not frames:
+            return None
+        
+        # Calcular velocities y accelerations
+        velocities = self.calculate_velocities(symbol)
+        accelerations = self.calculate_accelerations(symbol)
+        
+        # Estructura completa
+        var_data = {
+            'meta': {
+                'symbol': symbol,
+                'entry_time': trade_data.get('entry_time').isoformat() if trade_data.get('entry_time') else None,
+                'exit_time': trade_data.get('exit_time').isoformat() if trade_data.get('exit_time') else None,
+                'entry_price': trade_data.get('entry_price'),
+                'exit_price': trade_data.get('exit_price'),
+                'pnl_pct': trade_data.get('pnl_pct'),
+                'outcome': trade_data.get('outcome'),
+                'direction': trade_data.get('direction'),
+                'generated_at': datetime.now().isoformat()
+            },
+            'frames': frames,
+            'velocities': velocities,
+            'accelerations': accelerations,
+            'analysis': {
+                'frame_count': len(frames),
+                'time_span_seconds': frames[-1]['timestamp'] - frames[0]['timestamp'] if len(frames) &gt; 0 else 0
+            }
+        }
+        
+        # Nombre de archivo
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        symbol_clean = symbol.replace('/', '').replace(':', '')
+        outcome = trade_data.get('outcome', 'UNKNOWN')
+        
+        filename = f"var_{timestamp_str}_{symbol_clean}_{outcome}.json"
+        filepath = os.path.join(self.output_dir, filename)
+        
+        # Guardar
+        with open(filepath, 'w') as f:
+            json.dump(var_data, f, indent=2)
+        
+        return filename
+    
+    def clear_symbol(self, symbol):
+        """Limpia frames de un símbolo (llamar después de cerrar trade)"""
+        if symbol in self.frames_by_symbol:
+            del self.frames_by_symbol[symbol]
+# Instancia global
+frame_recorder = FrameRecorder(max_frames=10)
+2. MODIFICACIÓN: 
+brain_intelligent.py
+Ubicación: Función 
+decide_intelligently()
+
+ANTES DE decide_with_unified_vision(), agregar:
+
+# VAR SYSTEM - Record frame ANTES de decidir
+from brain_frame_recorder import frame_recorder
+# Extraer datos del ladder_analysis para frame
+frame_data = {
+    'timestamp': datetime.now().timestamp(),
+    # ADX
+    'adx': ladder_analysis.get('timeframes', {}).get('15m', {}).get('adx', {}).get('value', 0),
+    'di_plus': ladder_analysis.get('timeframes', {}).get('15m', {}).get('adx', {}).get('di_plus', 0),
+    'di_minus': ladder_analysis.get('timeframes', {}).get('15m', {}).get('adx', {}).get('di_minus', 0),
+    # Exhaustion
+    'exhaustion_pct': ladder_analysis.get('exhaustion', {}).get('exhaustion_pct', 50),
+    'room_pct': ladder_analysis.get('exhaustion', {}).get('room_pct', 0),
+    # Momentum
+    'momentum_age': ladder_analysis.get('timeframes', {}).get('15m', {}).get('momentum', {}).get('age', 0),
+    # Velas
+    'candle_size': 0,  # Calcular del OHLC si está disponible
+    # Spread (si existe en force_data)
+    'spread': ladder_analysis.get('force', {}).get('spread', 0),
+    # Grid
+    'grid_position': ladder_analysis.get('grid', {}).get('diagonal_data', {}).get('price_position_pct', 50)
+}
+# Registrar frame
+frame_recorder.record_frame(symbol, frame_data)
+3. MODIFICACIÓN: brain_executor.py
+Ubicación: Función 
+on_trade_closed()
+ o donde se cierra un trade
+
+AL FINAL, después de registrar en Google Sheets:
+
+# VAR SYSTEM - Generar JSON del trade
+from brain_frame_recorder import frame_recorder
+trade_data = {
+    'entry_time': trade_info.get('entry_time'),
+    'exit_time': datetime.now(),
+    'entry_price': trade_info.get('entry_price'),
+    'exit_price': current_price,
+    'pnl_pct': pnl_pct,
+    'outcome': 'WIN' if pnl_pct &gt; 0 else 'LOSS',
+    'direction': trade_info.get('direction', 'UNKNOWN')
+}
+filename = frame_recorder.generate_trade_json(symbol, trade_data)
+if filename:
+    print(f"   📹 VAR recording: {filename}")
+# Limpiar frames del símbolo
+frame_recorder.clear_symbol(symbol)
+4. OUTPUT JSON EXAMPLE
+{
+  "meta": {
+    "symbol": "BTC/USDT:USDT",
+    "entry_time": "2026-01-04T03:15:00",
+    "exit_time": "2026-01-04T03:45:00",
+    "entry_price": 42500.0,
+    "exit_price": 42800.0,
+    "pnl_pct": 0.71,
+    "outcome": "WIN",
+    "direction": "BULLISH",
+    "generated_at": "2026-01-04T03:45:30"
+  },
+  "frames": [
+    {
+      "timestamp": 1704335100.0,
+      "adx": 25.3,
+      "di_plus": 28.1,
+      "di_minus": 15.2,
+      "exhaustion_pct": 42.0,
+      "room_pct": 3.5,
+      "momentum_age": 5,
+      "candle_size": 120.0,
+      "spread": 12.9,
+      "grid_position": 58.0
+    },
+    {
+      "timestamp": 1704335160.0,
+      "adx": 26.1,
+      "di_plus": 29.3,
+      "di_minus": 14.8,
+      "exhaustion_pct": 44.0,
+      "room_pct": 3.2,
+      "momentum_age": 6,
+      "candle_size": 135.0,
+      "spread": 14.5,
+      "grid_position": 60.0
+    }
+    // ... 8 frames más
+  ],
+  "velocities": {
+    "adx_velocity": 0.18,
+    "di_plus_velocity": 0.31,
+    "di_minus_velocity": -0.12,
+    "exhaustion_pct_velocity": 0.8,
+    "room_pct_velocity": -0.05,
+    "momentum_age_velocity": 0.2,
+    "spread_velocity": 0.35,
+    "grid_position_velocity": 0.4
+  },
+  "accelerations": {
+    "adx_accel": 0.05,
+    "exhaustion_pct_accel": 0.3,
+    "spread_accel": 0.1
+  },
+  "analysis": {
+    "frame_count": 10,
+    "time_span_seconds": 540
+  }
+}
+5. TESTING PLAN
+Paso 1: Crear archivo
+# Crear brain_frame_recorder.py con el código de arriba
+Paso 2: Modificar brain_intelligent.py
+# Agregar import y código de recording ANTES de decide_with_unified_vision()
+Paso 3: Modificar brain_executor.py
+# Agregar código de JSON generation AL FINAL de on_trade_closed()
+Paso 4: Test manual
+# Ejecutar bot en modo normal
+# Esperar 1 trade
+# Verificar que se cree JSON en var_recordings/
+# Verificar estructura del JSON
+Paso 5: Validar
+✅ JSON tiene 10 frames
+✅ Velocities calculadas correctamente
+✅ Accelerations presentes (si hay &gt;=3 frames)
+✅ Bot sigue operando IGUAL que antes
+6. CHECKLIST IMPLEMENTACIÓN
+ Crear brain_frame_recorder.py
+ Modificar 
+brain_intelligent.py
+ (línea ~XXX)
+ Modificar brain_executor.py (línea ~XXX)
+ Crear directorio var_recordings/
+ Test: 1 trade completo
+ Verificar JSON generado
+ Validar que bot NO cambió comportamiento
+7. PREGUNTAS ANTES DE IMPLEMENTAR
+A) Max Frames
+Propongo: 10 frames (10 minutos de historia en 15m) ¿Querés más/menos?
+
+B) Indicadores adicionales
+Incluidos: ADX, DI+/-, exhaustion, room, momentum, velas, spread, grid ¿Falta alguno?
+
+C) Ubicación exacta en brain_intelligent.py
+Necesito: Número de línea EXACTO donde insertar el código O prefieres que busque yo?
+
+D) Formato de candle_size
+¿Cómo calcular? abs(high - low) del frame 15m?
+
+✅ READY TO IMPLEMENT
+Una vez que apruebes:
+
+Creo brain_frame_recorder.py
+Modifico 
+brain_intelligent.py
+Modifico brain_executor.py
+Ejecuto test
+Tiempo estimado: 30 minutos (implementación) + 30 minutos (testing)
+
+NO MODIFICA LÓGICA - Solo graba datos para análisis después.
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 3<br>
-    Generado: 2026-01-04 02:59:08
+    Total caracteres: 13,662<br>
+    Generado: 2026-01-04 03:21:59
   </div>
 </body>
 </html>
