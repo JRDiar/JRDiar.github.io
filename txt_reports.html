@@ -15,17 +15,130 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-05 01:37:26</div>
+  <div class="meta">Última actualización: 2026-01-12 13:51:05</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-asdad
+# Análisis Detallado de Arquitectura - BrainTrader v5.0 (Sniper Real-Time)
+
+Este documento detalla la estructura, lógica y funcionamiento del sistema actual `BrainTrader v5.0`, diseñado para facilitar su migración y evolución hacia una versión más avanzada.
+
+## 1. Estructura General y Flujo de Ejecución
+
+El sistema opera bajo un modelo de **Orquestación Centralizada con Ejecución Distribuida**, enfocado en el análisis continuo ("Sniper Mode").
+
+### Módulos Principales
+*   **`bot_main.py`**: Punto de entrada. Inicializa la conexión, el logging y el bucle principal. Ejecuta el ciclo `RealtimeSniper`.
+*   **`brain_sniper_realtime.py` (The Sniper)**:
+    *   Gestiona el escaneo continuo de monedas en lotes (`batches`).
+    *   Mantiene dos colas:
+        *   **Priority Queue**: Monedas con setups listos o casi listos ("Perfect Setup").
+        *   **Waiting List**: Monedas con *Fuerza* detectada pero esperando confirmación técnica.
+    *   Tiene autoridad para "promover" o "degradar" monedas dinámicamente.
+*   **`brain_intelligent.py` (The Orchestrator)**:
+    *   Coordina el flujo de análisis cognitivo.
+    *   Ejecuta fases secuenciales: Percepción -&gt; Detección Lateral -&gt; Validación Matemática -&gt; Memoria -&gt; Visión Unificada.
+*   **`brain_vision_unified.py` (The Decision Maker)**:
+    *   Cerebro final que toma la decisión de entrada.
+    *   Evalúa "trayectorias" (evolución de datos) en lugar de valores estáticos.
+    *   Emite un veredicto de confianza (0-100%).
+*   **`brain_analyzer.py` (The Analyst)**:
+    *   Calcula indicadores técnicos y estructura para cada timeframe (4H, 1H, 15M, 5M).
+    *   Implementa el sistema "Time Ladder" (penalizaciones graduales en lugar de bloqueos binarios).
+*   **`brain_pattern_intelligence.py` (The Charter)**:
+    *   Detecta patrones geométricos y estructurales (Triángulos, Flags, Doble Techos, HH/HL).
+
+---
+
+## 2. Lógica de Trading y Filtros
+
+El sistema utiliza una filosofía de **"Física de Mercado + Estructura"**. No se basa en una sola señal, sino en la convergencia de múltiples factores.
+
+### A. Filtros e Indicadores Clave
+| Indicador | Configuración | Función |
+| :--- | :--- | :--- |
+| **ADX** | Periodo 14 | Mide la fuerza de la tendencia. Valor &gt; 25 (ideal &gt; 30) se busca para "Market Force". |
+| **DI+/DI-** | Periodo 14 | Determina la dirección. `Spread` (diferencia) &gt; 5.0 es requerido para evitar lateralización. |
+| **Momentum** | LazyBear Type | Barras verdes/rojas. Buscan alineación de color y conteo consecutivo (&gt;= 3 barras). |
+| **ZigZag** | Custom/TTI | Detecta pivotes (HH, HL, LH, LL) para confirmar estructura de mercado. |
+| **Exhaustion** | Custom | Mide qué tan extendido está el precio respecto a EMAs y si hay espacio para correr. |
+| **Grid Diagonal** | Custom | Mide la posición del precio dentro de un canal dinámico (0-100%). Evita comprar en techo (&gt;80%) o vender en piso (&lt;20%). |
+
+### B. Sistema "Time Ladder" (Escalera de Tiempo)
+En lugar de decir "SI ADX &lt; 25 -&gt; BLOQUEAR", el sistema aplica **penalizaciones**:
+*   *ADX bajo*: -10 a -20 puntos de score.
+*   *Lateralización*: -30 puntos.
+*   *Contradicción de Momentum*: -20 puntos.
+*   *Espacio estrecho (Room)*: -15 puntos.
+
+Esto permite que un setup "imperfecto" pero con mucha fuerza en otros aspectos pueda ser operado.
+
+### C. Visión Unificada (Unified Vision)
+Evalúa la "película" de los datos (trayectoria):
+1.  **ADX Delta**: ¿Está subiendo la fuerza?
+2.  **Candle Ratio**: ¿Están creciendo las velas a favor?
+3.  **Momentum Age**: ¿Es un movimiento joven (nacimiento) o viejo (agotamiento)?
+4.  **Exhaustion Velocity**: ¿Qué tan rápido nos acercamos al límite?
+
+**Threshold de Entrada:** Se requiere un Score Combinado &gt;= **60** (aunque internamente UnifiedVision empieza a aprobar desde 40 con 'WAIT', el Sniper busca setup perfecto).
+
+---
+
+## 3. Temporalidades y Jerarquía
+
+El bot utiliza una estructura piramidal de análisis:
+
+1.  **4H (Macro / Bias)**: Define la tendencia mayor y el "clima".
+    *   *Rol*: Si 4H es alcista, los shorts en 15M tienen penalización severa.
+2.  **1H (Confirmación)**: Valida la fuerza intermedia.
+    *   *Rol*: Busca "Momentum Drive" (ADX &gt; 30 sostenido).
+3.  **15M (Contexto Táctico)**: Genera las señales de advertencia y contexto.
+    *   *Rol*: Detecta patrones (Flags, Triángulos) y lateralización.
+4.  **5M (Ejecución / Veto)**: Toma la decisión final y precisión de entrada.
+    *   *Rol*: El sistema de "5M Veto" puede bloquear una entrada si detecta colapso repentino de fuerza o momentum opuesto, incluso si 15M se ve bien.
+
+---
+
+## 4. Módulos de Decisión Avanzada
+
+### `brain_pattern_intelligence.py`
+Detecta patrones con lógica jerárquica:
+*   **Estructura de Mercado**: HH/HL (Higher High/Low). Es la base.
+*   **Reversal**: Doble Techo/Suelo.
+*   **Continuación**: Banderas (Flags) y Triángulos.
+*   **Momentum Drive**: Patrón especial de pura fuerza (ADX &gt; 30 + Aceleración).
+
+### `brain_movie_engine.py` (Concepto Avanzado)
+Intenta analizar la "coherencia narrativa" entre temporalidades.
+*   Si 5M dice "Compra" pero 1H dice "Fuerza Muriendo", el Movie Engine recomienda rechazar.
+*   Analiza fases: *Explosion Nascent* -&gt; *Sustained* -&gt; *Climax* -&gt; *Fading* -&gt; *Dying*.
+
+---
+
+## 5. Gestión de Riesgo Dinámica
+
+El bot no usa un tamaño de posición fijo, sino basado en **Confianza**:
+*   **Tier Alto (Score 60-100)**: 15% del capital (Setups Perfectos).
+*   **Tier Medio (Score 50-60)**: 10% del capital.
+*   **Tier Bajo (Score 40-50)**: 5% del capital (Exploración).
+
+*   **Stop Loss**: Dinámico (multiplicador ATR o Estructura), típicamente ~2.0% - 2.5%.
+*   **Take Profit**: Basado en R/R ratio (mínimo 2:1).
+
+## 6. Recomendaciones para Migración/Copia Avanzada
+
+Para crear una versión avanzada "fiel":
+1.  **Preservar la Arquitectura de "Capas"**: No mezclar la lógica de indicadores (Analyzer) con la lógica de decisión (Vision/Intelligent).
+2.  **Integrar el Movie Engine**: Actualmente corre en paralelo. La versión avanzada debería hacer que el `MovieEngine` sea el *único* juez de la calidad de la tendencia, reemplazando chequeos estáticos.
+3.  **Refinar el "Grid Diagonal"**: Es potente para evitar compras en topes, asegurarse de que esté bien calibrado para cada activo.
+4.  **Sistema de Eventos**: Migrar de un loop `while True` a un sistema basado en eventos (Websockets) para mayor velocidad de reacción ("Real-Time" real).
+
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 5<br>
-    Generado: 2026-01-05 01:37:26
+    Total caracteres: 6,361<br>
+    Generado: 2026-01-12 13:51:05
   </div>
 </body>
 </html>
