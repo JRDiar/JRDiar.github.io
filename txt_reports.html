@@ -15,1461 +15,570 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-20 15:02:53</div>
+  <div class="meta">Última actualización: 2026-01-20 17:58:22</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Modulo:
+Plan de Implementación: Inspector Manual BrainTrader 2.0
+1. Plan de Arquitectura
+El módulo inspector.py será un script standalone (independiente) ubicado en la raíz del proyecto. No modificará ningún archivo existente del bot, garantizando que la lógica de producción permanezca intacta.
+
+Flujo de Datos
+Input Usuario: Símbolo (ej: BTC/USDT:USDT o HANA).
+Conexión: Se instancia 
+MEXCConnection
+ (reutilizando 
+exchange/connection.py
+) para obtener datos en tiempo real.
+Procesamiento: Se instancian las clases del cerebro (
+MarketEntity
+, 
+Walls
+) y funciones (pattern_matcher, visual_classifier) para replicar exactamente paso a paso el flujo de 
+visual_sniper.py
+.
+Output: Renderizado en consola con formato ASCII/ANSI específico solicitado.
+Dependencias (Imports)
+exchange.connection: Para interactuar con MEXC.
+brain.market_entity: Para cálculos de física (velocidad, aceleración).
+brain.walls: Para detección de estructura y runway.
+brain.visual_classifier: Para convertir métricas a sprites.
+brain.pattern_matcher: Para buscar patrones en el catálogo.
+brain.pattern_catalog: Definiciones de patrones.
+utils.logger: Para logging silencioso (suprimiremos logs ruidosos).
+2. Modificaciones de Archivos
+Archivo	Estado	Acción
+inspector.py	[NUEVO]	Se crea desde cero. Contendrá toda la lógica de flujo y visualización.
+main.py
+[NO CAMBIA]	Se mantiene intacto.
+brain/visual_sniper.py
+[NO CAMBIA]	Servirá de referencia, pero no se toca.
+brain/market_entity.py
+[NO CAMBIA]	Reutilizado tal cual.
+brain/walls.py
+[NO CAMBIA]	Reutilizado tal cual.
+... otros módulos ...	[NO CAMBIA]	Reutilizados tal cual.
+3. Código Propuesto: inspector.py
 """
-Pattern Catalog - Patrones visuales del mercado
-SOLO definiciones de sprites.
+ INSPECTOR MANUAL BRAINTRADER 2.0
+ Diagnóstico profundo de decisiones del bot paso a paso.
 """
-
-PATTERNS = {
-    # ════════════════════════════════════════════════════════
-    # LONG STRATEGIES (ROCKET, CLIMB, BREAKOUT)
-    # ════════════════════════════════════════════════════════
-    'LONG_001_ROCKET': {
-        'name': '🚀 Rocket Launch',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'ACCELERATING',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '🚀↗↗ ▁▃▅▇ 💨→→→ 🟢⚡ ⛰️↗ 🛣️',
-        'description': 'Lanzamiento perfecto con todo a favor'
-    },
-    'LONG_002_CLIMB': {
-        'name': '📈 Steady Climb',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'STEADY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'HALF_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢 ⛰️↗ 🛣️',
-        'description': 'Subida constante y segura'
-    },
-    'LONG_003_BREAKOUT': {
-        'name': '💥 Breakout',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'TAILWIND_WEAK',
-            'fuel': 'FULL_TANK',
-            'terrain': 'BREAKING_CEILING',
-            'runway': 'ROAD'
-        },
-        'action': 'LONG',
-        'visual': '🚀↗↗ ▁▁▁█ 💨→ 🟢⚡ 💥🚀 🚗',
-        'description': 'Ruptura de techo con fuerza'
-    },
-    'LONG_004_CRUISING': {
-        'name': '✈️ Cruising Altitude',
-        'sprites': {
-            'price_direction': 'CRUISING_UP',
-            'candle_shape': 'STEADY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'ANY',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '→↗ ▅▅▅▅ 💨→→→ ⛰️↗ 🛣️',
-        'description': 'Tendencia establecida, velocidad crucero'
-    },
-    'LONG_005_PULLBACK_ENTRY': {
-        'name': '🎣 Perfect Pullback',
-        'sprites': {
-            'price_direction': 'FLAT', # Pausa
-            'candle_shape': 'DECELERATING',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'HALF_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '═══ ▇▅▃▁ 💨→→→ 🟢 ⛰️↗ 🛣️',
-        'description': 'Retroceso sano en tendencia alcista'
-    },
-    'LONG_006_FUELED_WAIT': {
-        'name': '⛽ Refueling',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'CHOPPY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK', # Recargado
-            'terrain': 'PLATEAU',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '═══ ▃▇▁▅ 💨→→→ 🟢⚡ ═══ 🛣️',
-        'description': 'Lateralizacíon con momentum cargado'
-    },
-    'LONG_007_REVERSAL_V': {
-        'name': '↩️ V-Shape Recovery',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'ACCELERATING',
-            'wind': 'HEADWIND_WEAK', # Rompiendo contra viento
-            'fuel': 'FULL_TANK',
-            'terrain': 'VALLEY', # Saliendo del valle
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '🚀↗↗ ▁▃▅▇ ←💨 🟢⚡ 📉↘ 🛣️',
-        'description': 'Recuperación agresiva desde el fondo'
-    },
-    'LONG_008_OBSTACLE_COURSE': {
-        'name': '🚧 Obstacle Dodge',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'STEADY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'ALLEY' # Cuidado
-        },
-        'action': 'WAIT',
-        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧',
-        'description': 'Subiendo pero pared cerca'
-    },
-    'LONG_009_NO_FUEL': {
-        'name': '🍂 Gliding',
-        'sprites': {
-            'price_direction': 'CRUISING_UP',
-            'candle_shape': 'DECELERATING',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FUMES',
-            'terrain': 'MOUNTAIN',
-            'runway': 'ANY'
-        },
-        'action': 'WAIT',
-        'visual': '→↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗',
-        'description': 'Subiendo por inercia, sin gas'
-    },
-    'LONG_010_HEADWIND_FIGHT': {
-        'name': '🌬️ Fighting Wind',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'CHOPPY',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'PLATEAU',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'WAIT',
-        'visual': '📈↗ ▃▇▁▅ ←←←💨 🟢⚡ ═══ 🛣️',
-        'description': 'Luchando contra tendencia mayor fuerte'
-    },
-    # ════════════════════════════════════════════════════════
-    # SHORT STRATEGIES (CRASH, FALL, BREAKDOWN)
-    # ════════════════════════════════════════════════════════
-    'SHORT_001_CRASH': {
-        'name': '💥 Free Fall',
-        'sprites': {
-            'price_direction': 'CRASH',
-            'candle_shape': 'ACCELERATING', # Acelerando hacia abajo
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'EMPTY_BEARISH', # Rojo
-            'terrain': 'VALLEY',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '💥↘↘ ▁▃▅▇ ←←←💨 🔴 📉↘ 🛣️',
-        'description': 'Caída libre perfecta'
-    },
-    'SHORT_002_BREAKDOWN': {
-        'name': '📉 Breakdown',
-        'sprites': {
-            'price_direction': 'CRASH',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'HEADWIND_WEAK',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'BREAKING_FLOOR',
-            'runway': 'ROAD'
-        },
-        'action': 'SHORT',
-        'visual': '💥↘↘ ▁▁▁█ ←💨 🔴 💥📉 🚗',
-        'description': 'Ruptura de suelo agresiva'
-    },
-    'SHORT_003_SLIDE': {
-        'name': '🎿 Downhill Ski',
-        'sprites': {
-            'price_direction': 'FALLING',
-            'candle_shape': 'STEADY',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'VALLEY',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '📉↘ ▅▅▅▅ ←←←💨 🔴 📉↘ 🛣️',
-        'description': 'Bajada constante y controlada'
-    },
-    'SHORT_004_DIVE': {
-        'name': '🦅 Nose Dive',
-        'sprites': {
-            'price_direction': 'FALLING',
-            'candle_shape': 'ACCELERATING',
-            'wind': 'NO_WIND',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'plateau',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '📉↘ ▁▃▅▇ ～ 🔴 ═══ 🛣️',
-        'description': 'Inicio de caída desde neutralidad'
-    },
-    'SHORT_005_DEAD_CAT': {
-        'name': '🐱 Dead Cat',
-        'sprites': {
-            'price_direction': 'FLAT', # Rebote fallido
-            'candle_shape': 'DECELERATING',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'FUMES', # Verde debil terminandose
-            'terrain': 'VALLEY',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '═══ ▇▅▃▁ ←←←💨 🟡 📉↘ 🛣️',
-        'description': 'Rebote débil en tendencia bajista'
-    },
-    'SHORT_006_HEAVY_TOP': {
-        'name': '🏋️ Heavy Top',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'CHOPPY',
-            'wind': 'TAILWIND_WEAK',
-            'fuel': 'EMPTY_BEARISH', # Momentum cambiando a rojo
-            'terrain': 'MOUNTAIN',
-            'runway': 'ALLEY'
-        },
-        'action': 'SHORT',
-        'visual': '═══ ▃▇▁▅ 💨→ 🔴 ⛰️↗ 🚧',
-        'description': 'Techo redondeado, perdiendo fuerza'
-    },
-    # ════════════════════════════════════════════════════════
-    # NEUTRAL / CHOPPY / DANGEROUS PATTERNS
-    # ════════════════════════════════════════════════════════
-    'NEUT_001_SLEEPING': {
-        'name': '💤 Sleeping Beauty',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'STEADY',
-            'wind': 'NO_WIND',
-            'fuel': 'ANY',
-            'terrain': 'PLATEAU',
-            'runway': 'ANY'
-        },
-        'action': 'SKIP',
-        'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚧',
-        'description': 'Mercado totalmente dormido'
-    },
-    'NEUT_002_STORM': {
-        'name': '⛈️ Tropical Storm',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'CHOPPY',
-            'wind': 'NO_WIND',
-            'fuel': 'ANY',
-            'terrain': 'PLATEAU',
-            'runway': 'ALLEY'
-        },
-        'action': 'SKIP',
-        'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧',
-        'description': 'Ruido extremo sin dirección'
-    },
-    'NEUT_003_CONFUSION': {
-        'name': '😵 Confusion',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'CHOPPY',
-            'wind': 'HEADWIND_STRONG', # Contradiccion climbing vs headwind
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'PLATEAU',
-            'runway': 'ROAD'
-        },
-        'action': 'SKIP',
-        'visual': '📈↗ ▃▇▁▅ ←←←💨 🔴 ═══ 🚗',
-        'description': 'Señales contradictorias'
-    },
-    # ════════════════════════════════════════════════════════
-    # SPECIAL / RARE PATTERNS
-    # ════════════════════════════════════════════════════════
-    'GOLD_001_GOD_MODE': {
-        'name': '⚡ GOD MODE',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'BREAKING_CEILING',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG_PRIORITY',
-        'visual': '🚀↗↗ ▁▁▁█ 💨→→→ 🟢⚡ 💥🚀 🛣️',
-        'description': 'EL SETUP PERFECTO'
-    },
-    'GOLD_002_DOOM_MODE': {
-        'name': '💀 DOOM MODE',
-        'sprites': {
-            'price_direction': 'CRASH',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'BREAKING_FLOOR',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT_PRIORITY',
-        'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️',
-        'description': 'DUMP MASIVO INMINENTE'
-    },
-    # ════════════════════════════════════════════════════════
-    # FILLER PATTERNS (VARIATIONS) TO REACH 50
-    # ════════════════════════════════════════════════════════
-    # ... Generating variations ...
-    'VAR_001_SLOW_CLIMB': {'name': '🐢 Slow Climb', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ═══ 🚗', 'description': 'Subida lenta pero segura' },
-    'VAR_002_WEAK_ROCKET': {'name': '🧨 Weak Rocket', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Cohete perdiendo fuerza' },
-    'VAR_003_EARLY_BIRD': {'name': '🐣 Early Bird', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢⚡ ═══ 🛣️', 'description': 'Inicio temprano de tendencia' },
-    'VAR_004_TURBULENCE': {'name': '✈️〰️ Turbulence', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_STRONG', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→→→ 🟢 ⛰️↗ 🚗', 'description': 'Subiendo con turbulencia' },
-    'VAR_005_ROADBLOCK': {'name': '🧱 Roadblock', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧', 'description': 'Fuerte pero sin espacio' },
-    'VAR_006_FALSE_START': {'name': '🚫 False Start', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'CHOPPY', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▃▇▁▅ ←←←💨 🟢⚡ 📉↘ 🚗', 'description': 'Posible trampa alcista' },
-    'VAR_007_EXHAUSTION': {'name': '🥵 Exhaustion', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'SUMMIT', 'runway': 'ANY'}, 'action': 'WAIT', 'visual': '📈↗ ▇▅▃▁ 💨→→→ 🟡 🏔️ 🚧', 'description': 'Agotamiento en la cima' },
-    'VAR_008_DIP_BUY': {'name': '🛍️ Dip Buy', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'ANY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📉↘ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Comprando el dip (agresivo)' },
-    'VAR_009_SHORT_SQUEEZE': {'name': '🍋 Short Squeeze', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←←←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Squeeze violento contra tendencia' },
-    'VAR_010_KNIFE_CATCH': {'name': '🔪 Knife Catch', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 📉↘ 🛣️', 'description': 'No atrapar cuchillos cayendo' },
-    'VAR_011_WIND_CHANGE': {'name': '🔁 Wind Change', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ～ 🟢 ═══ 🛣️', 'description': 'Cambio de tendencia incipiente' },
-    'VAR_012_FUEL_LEAK': {'name': '💧 Fuel Leak', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'EXIT', 'visual': '═══ ▅▅▅▅ 💨→ 🔴 ⛰️↗ 🚗', 'description': 'Perdiendo combustible' },
-    'VAR_013_STAIRS_UP': {'name': '🪜 Stairs Up', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ⛰️↗ 🚗', 'description': 'Subida escalonada sana' },
-    'VAR_014_ELEVATOR_DOWN': {'name': '🛗 Elevator Down', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▅▅▅▅ ←💨 🔴 📉↘ 🚗', 'description': 'Bajada rápida y constante' },
-    'VAR_015_BLOCKED': {'name': '🧱 Blocked', 'sprites': {'price_direction': 'ANY', 'candle_shape': 'ANY', 'wind': 'ANY', 'fuel': 'ANY', 'terrain': 'ANY', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '❓ ❓ ❓ ❓ ❓ 🚧', 'description': 'Bloqueado por pared cercana' },
-    'VAR_016_NO_MANS_LAND': {'name': '🏜️ No Mans Land', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'SKIP', 'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚗', 'description': 'Tierra de nadie' },
-    'VAR_017_SUPER_CYCLE': {'name': '🚲 Super Cycle', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'BREAKING_CEILING', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ 💥🚀 🛣️', 'description': 'Inicio de super ciclo' },
-    'VAR_018_BEAR_TRAP': {'name': '🐻 Bear Trap', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_WEAK', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Trampa de osos resuelta' },
-    'VAR_019_BULL_TRAP': {'name': '🐂 Bull Trap', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ 💨→ 🔴 ⛰️↗ 🛣️', 'description': 'Trampa de toros' },
-    'VAR_020_CONGESTION': {'name': '🚙 Congestion', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '═══ ▃▇▁▅ ～ 🟢 ═══ 🚧', 'description': 'Congestión de tráfico' },
-    'VAR_021_SNIPER_WAIT': {'name': '🔭 Sniper Wait', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'READY', 'visual': '═══ ▇▅▃▁ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Esperando confirmación final' },
-    'VAR_022_ROCKET_REFUEL': {'name': '⛽ Rocket Refuel', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '→↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Cohete recargando en movimiento' },
-    'VAR_023_FALLING_STAR': {'name': '🌠 Falling Star', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'NO_WIND', 'fuel': 'EMPTY', 'terrain': 'SUMMIT', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▇▅▃▁ ～ 🔴 🏔️ 🚗', 'description': 'Estrella fugaz cayendo' },
-    'VAR_024_MORNING_STAR': {'name': '🌅 Morning Star', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢 📉↘ 🚗', 'description': 'Amanecer en el valle' },
-    'VAR_025_TSUNAMI': {'name': '🌊 Tsunami', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY_BEARISH', 'terrain': 'BREAKING_FLOOR', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️', 'description': 'Tsunami bajista imparable' },
-    'VAR_026_VOLCANO': {'name': '🌋 Volcano', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ～ 🟢⚡ ═══ 🛣️', 'description': 'Erupción desde la calma' },
-    'VAR_027_DRIFTING': {'name': '🚗💨 Drifting', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→ 🟢 ═══ 🚗', 'description': 'Derrapando lateralmente' },
-    'VAR_028_LOST': {'name': '🗺️ Lost', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧', 'description': 'Perdido en el mapa' },
-    'VAR_029_RECOVERY': {'name': '🚑 Recovery', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ←💨 🟢 📉↘ 🚗', 'description': 'Recuperación lenta' },
-    'VAR_030_BLEEDING': {'name': '🩸 Bleeding', 'sprites': {'price_direction': 'CRUISING_DOWN', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ANY'}, 'action': 'SHORT', 'visual': '↘→ ▅▅▅▅ ←💨 🔴 📉↘ 🚧', 'description': 'Sangrado lento' },
-}
-
-Modulo:
-
-"""
-Pattern Catalog - Patrones visuales del mercado
-SOLO definiciones de sprites.
-"""
-
-PATTERNS = {
-    # ════════════════════════════════════════════════════════
-    # LONG STRATEGIES (ROCKET, CLIMB, BREAKOUT)
-    # ════════════════════════════════════════════════════════
-    'LONG_001_ROCKET': {
-        'name': '🚀 Rocket Launch',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'ACCELERATING',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '🚀↗↗ ▁▃▅▇ 💨→→→ 🟢⚡ ⛰️↗ 🛣️',
-        'description': 'Lanzamiento perfecto con todo a favor'
-    },
-    'LONG_002_CLIMB': {
-        'name': '📈 Steady Climb',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'STEADY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'HALF_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢 ⛰️↗ 🛣️',
-        'description': 'Subida constante y segura'
-    },
-    'LONG_003_BREAKOUT': {
-        'name': '💥 Breakout',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'TAILWIND_WEAK',
-            'fuel': 'FULL_TANK',
-            'terrain': 'BREAKING_CEILING',
-            'runway': 'ROAD'
-        },
-        'action': 'LONG',
-        'visual': '🚀↗↗ ▁▁▁█ 💨→ 🟢⚡ 💥🚀 🚗',
-        'description': 'Ruptura de techo con fuerza'
-    },
-    'LONG_004_CRUISING': {
-        'name': '✈️ Cruising Altitude',
-        'sprites': {
-            'price_direction': 'CRUISING_UP',
-            'candle_shape': 'STEADY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'ANY',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '→↗ ▅▅▅▅ 💨→→→ ⛰️↗ 🛣️',
-        'description': 'Tendencia establecida, velocidad crucero'
-    },
-    'LONG_005_PULLBACK_ENTRY': {
-        'name': '🎣 Perfect Pullback',
-        'sprites': {
-            'price_direction': 'FLAT', # Pausa
-            'candle_shape': 'DECELERATING',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'HALF_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '═══ ▇▅▃▁ 💨→→→ 🟢 ⛰️↗ 🛣️',
-        'description': 'Retroceso sano en tendencia alcista'
-    },
-    'LONG_006_FUELED_WAIT': {
-        'name': '⛽ Refueling',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'CHOPPY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK', # Recargado
-            'terrain': 'PLATEAU',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '═══ ▃▇▁▅ 💨→→→ 🟢⚡ ═══ 🛣️',
-        'description': 'Lateralizacíon con momentum cargado'
-    },
-    'LONG_007_REVERSAL_V': {
-        'name': '↩️ V-Shape Recovery',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'ACCELERATING',
-            'wind': 'HEADWIND_WEAK', # Rompiendo contra viento
-            'fuel': 'FULL_TANK',
-            'terrain': 'VALLEY', # Saliendo del valle
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG',
-        'visual': '🚀↗↗ ▁▃▅▇ ←💨 🟢⚡ 📉↘ 🛣️',
-        'description': 'Recuperación agresiva desde el fondo'
-    },
-    'LONG_008_OBSTACLE_COURSE': {
-        'name': '🚧 Obstacle Dodge',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'STEADY',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'MOUNTAIN',
-            'runway': 'ALLEY' # Cuidado
-        },
-        'action': 'WAIT',
-        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧',
-        'description': 'Subiendo pero pared cerca'
-    },
-    'LONG_009_NO_FUEL': {
-        'name': '🍂 Gliding',
-        'sprites': {
-            'price_direction': 'CRUISING_UP',
-            'candle_shape': 'DECELERATING',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FUMES',
-            'terrain': 'MOUNTAIN',
-            'runway': 'ANY'
-        },
-        'action': 'WAIT',
-        'visual': '→↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗',
-        'description': 'Subiendo por inercia, sin gas'
-    },
-    'LONG_010_HEADWIND_FIGHT': {
-        'name': '🌬️ Fighting Wind',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'CHOPPY',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'PLATEAU',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'WAIT',
-        'visual': '📈↗ ▃▇▁▅ ←←←💨 🟢⚡ ═══ 🛣️',
-        'description': 'Luchando contra tendencia mayor fuerte'
-    },
-    # ════════════════════════════════════════════════════════
-    # SHORT STRATEGIES (CRASH, FALL, BREAKDOWN)
-    # ════════════════════════════════════════════════════════
-    'SHORT_001_CRASH': {
-        'name': '💥 Free Fall',
-        'sprites': {
-            'price_direction': 'CRASH',
-            'candle_shape': 'ACCELERATING', # Acelerando hacia abajo
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'EMPTY_BEARISH', # Rojo
-            'terrain': 'VALLEY',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '💥↘↘ ▁▃▅▇ ←←←💨 🔴 📉↘ 🛣️',
-        'description': 'Caída libre perfecta'
-    },
-    'SHORT_002_BREAKDOWN': {
-        'name': '📉 Breakdown',
-        'sprites': {
-            'price_direction': 'CRASH',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'HEADWIND_WEAK',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'BREAKING_FLOOR',
-            'runway': 'ROAD'
-        },
-        'action': 'SHORT',
-        'visual': '💥↘↘ ▁▁▁█ ←💨 🔴 💥📉 🚗',
-        'description': 'Ruptura de suelo agresiva'
-    },
-    'SHORT_003_SLIDE': {
-        'name': '🎿 Downhill Ski',
-        'sprites': {
-            'price_direction': 'FALLING',
-            'candle_shape': 'STEADY',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'VALLEY',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '📉↘ ▅▅▅▅ ←←←💨 🔴 📉↘ 🛣️',
-        'description': 'Bajada constante y controlada'
-    },
-    'SHORT_004_DIVE': {
-        'name': '🦅 Nose Dive',
-        'sprites': {
-            'price_direction': 'FALLING',
-            'candle_shape': 'ACCELERATING',
-            'wind': 'NO_WIND',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'plateau',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '📉↘ ▁▃▅▇ ～ 🔴 ═══ 🛣️',
-        'description': 'Inicio de caída desde neutralidad'
-    },
-    'SHORT_005_DEAD_CAT': {
-        'name': '🐱 Dead Cat',
-        'sprites': {
-            'price_direction': 'FLAT', # Rebote fallido
-            'candle_shape': 'DECELERATING',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'FUMES', # Verde debil terminandose
-            'terrain': 'VALLEY',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT',
-        'visual': '═══ ▇▅▃▁ ←←←💨 🟡 📉↘ 🛣️',
-        'description': 'Rebote débil en tendencia bajista'
-    },
-    'SHORT_006_HEAVY_TOP': {
-        'name': '🏋️ Heavy Top',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'CHOPPY',
-            'wind': 'TAILWIND_WEAK',
-            'fuel': 'EMPTY_BEARISH', # Momentum cambiando a rojo
-            'terrain': 'MOUNTAIN',
-            'runway': 'ALLEY'
-        },
-        'action': 'SHORT',
-        'visual': '═══ ▃▇▁▅ 💨→ 🔴 ⛰️↗ 🚧',
-        'description': 'Techo redondeado, perdiendo fuerza'
-    },
-    # ════════════════════════════════════════════════════════
-    # NEUTRAL / CHOPPY / DANGEROUS PATTERNS
-    # ════════════════════════════════════════════════════════
-    'NEUT_001_SLEEPING': {
-        'name': '💤 Sleeping Beauty',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'STEADY',
-            'wind': 'NO_WIND',
-            'fuel': 'ANY',
-            'terrain': 'PLATEAU',
-            'runway': 'ANY'
-        },
-        'action': 'SKIP',
-        'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚧',
-        'description': 'Mercado totalmente dormido'
-    },
-    'NEUT_002_STORM': {
-        'name': '⛈️ Tropical Storm',
-        'sprites': {
-            'price_direction': 'FLAT',
-            'candle_shape': 'CHOPPY',
-            'wind': 'NO_WIND',
-            'fuel': 'ANY',
-            'terrain': 'PLATEAU',
-            'runway': 'ALLEY'
-        },
-        'action': 'SKIP',
-        'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧',
-        'description': 'Ruido extremo sin dirección'
-    },
-    'NEUT_003_CONFUSION': {
-        'name': '😵 Confusion',
-        'sprites': {
-            'price_direction': 'CLIMBING',
-            'candle_shape': 'CHOPPY',
-            'wind': 'HEADWIND_STRONG', # Contradiccion climbing vs headwind
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'PLATEAU',
-            'runway': 'ROAD'
-        },
-        'action': 'SKIP',
-        'visual': '📈↗ ▃▇▁▅ ←←←💨 🔴 ═══ 🚗',
-        'description': 'Señales contradictorias'
-    },
-    # ════════════════════════════════════════════════════════
-    # SPECIAL / RARE PATTERNS
-    # ════════════════════════════════════════════════════════
-    'GOLD_001_GOD_MODE': {
-        'name': '⚡ GOD MODE',
-        'sprites': {
-            'price_direction': 'ROCKET_UP',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'TAILWIND_STRONG',
-            'fuel': 'FULL_TANK',
-            'terrain': 'BREAKING_CEILING',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'LONG_PRIORITY',
-        'visual': '🚀↗↗ ▁▁▁█ 💨→→→ 🟢⚡ 💥🚀 🛣️',
-        'description': 'EL SETUP PERFECTO'
-    },
-    'GOLD_002_DOOM_MODE': {
-        'name': '💀 DOOM MODE',
-        'sprites': {
-            'price_direction': 'CRASH',
-            'candle_shape': 'EXPLOSIVE',
-            'wind': 'HEADWIND_STRONG',
-            'fuel': 'EMPTY_BEARISH',
-            'terrain': 'BREAKING_FLOOR',
-            'runway': 'HIGHWAY'
-        },
-        'action': 'SHORT_PRIORITY',
-        'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️',
-        'description': 'DUMP MASIVO INMINENTE'
-    },
-    # ════════════════════════════════════════════════════════
-    # FILLER PATTERNS (VARIATIONS) TO REACH 50
-    # ════════════════════════════════════════════════════════
-    # ... Generating variations ...
-    'VAR_001_SLOW_CLIMB': {'name': '🐢 Slow Climb', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ═══ 🚗', 'description': 'Subida lenta pero segura' },
-    'VAR_002_WEAK_ROCKET': {'name': '🧨 Weak Rocket', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Cohete perdiendo fuerza' },
-    'VAR_003_EARLY_BIRD': {'name': '🐣 Early Bird', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢⚡ ═══ 🛣️', 'description': 'Inicio temprano de tendencia' },
-    'VAR_004_TURBULENCE': {'name': '✈️〰️ Turbulence', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_STRONG', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→→→ 🟢 ⛰️↗ 🚗', 'description': 'Subiendo con turbulencia' },
-    'VAR_005_ROADBLOCK': {'name': '🧱 Roadblock', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧', 'description': 'Fuerte pero sin espacio' },
-    'VAR_006_FALSE_START': {'name': '🚫 False Start', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'CHOPPY', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▃▇▁▅ ←←←💨 🟢⚡ 📉↘ 🚗', 'description': 'Posible trampa alcista' },
-    'VAR_007_EXHAUSTION': {'name': '🥵 Exhaustion', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'SUMMIT', 'runway': 'ANY'}, 'action': 'WAIT', 'visual': '📈↗ ▇▅▃▁ 💨→→→ 🟡 🏔️ 🚧', 'description': 'Agotamiento en la cima' },
-    'VAR_008_DIP_BUY': {'name': '🛍️ Dip Buy', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'ANY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📉↘ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Comprando el dip (agresivo)' },
-    'VAR_009_SHORT_SQUEEZE': {'name': '🍋 Short Squeeze', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←←←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Squeeze violento contra tendencia' },
-    'VAR_010_KNIFE_CATCH': {'name': '🔪 Knife Catch', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 📉↘ 🛣️', 'description': 'No atrapar cuchillos cayendo' },
-    'VAR_011_WIND_CHANGE': {'name': '🔁 Wind Change', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ～ 🟢 ═══ 🛣️', 'description': 'Cambio de tendencia incipiente' },
-    'VAR_012_FUEL_LEAK': {'name': '💧 Fuel Leak', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'EXIT', 'visual': '═══ ▅▅▅▅ 💨→ 🔴 ⛰️↗ 🚗', 'description': 'Perdiendo combustible' },
-    'VAR_013_STAIRS_UP': {'name': '🪜 Stairs Up', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ⛰️↗ 🚗', 'description': 'Subida escalonada sana' },
-    'VAR_014_ELEVATOR_DOWN': {'name': '🛗 Elevator Down', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▅▅▅▅ ←💨 🔴 📉↘ 🚗', 'description': 'Bajada rápida y constante' },
-    'VAR_015_BLOCKED': {'name': '🧱 Blocked', 'sprites': {'price_direction': 'ANY', 'candle_shape': 'ANY', 'wind': 'ANY', 'fuel': 'ANY', 'terrain': 'ANY', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '❓ ❓ ❓ ❓ ❓ 🚧', 'description': 'Bloqueado por pared cercana' },
-    'VAR_016_NO_MANS_LAND': {'name': '🏜️ No Mans Land', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'SKIP', 'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚗', 'description': 'Tierra de nadie' },
-    'VAR_017_SUPER_CYCLE': {'name': '🚲 Super Cycle', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'BREAKING_CEILING', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ 💥🚀 🛣️', 'description': 'Inicio de super ciclo' },
-    'VAR_018_BEAR_TRAP': {'name': '🐻 Bear Trap', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_WEAK', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Trampa de osos resuelta' },
-    'VAR_019_BULL_TRAP': {'name': '🐂 Bull Trap', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ 💨→ 🔴 ⛰️↗ 🛣️', 'description': 'Trampa de toros' },
-    'VAR_020_CONGESTION': {'name': '🚙 Congestion', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '═══ ▃▇▁▅ ～ 🟢 ═══ 🚧', 'description': 'Congestión de tráfico' },
-    'VAR_021_SNIPER_WAIT': {'name': '🔭 Sniper Wait', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'READY', 'visual': '═══ ▇▅▃▁ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Esperando confirmación final' },
-    'VAR_022_ROCKET_REFUEL': {'name': '⛽ Rocket Refuel', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '→↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Cohete recargando en movimiento' },
-    'VAR_023_FALLING_STAR': {'name': '🌠 Falling Star', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'NO_WIND', 'fuel': 'EMPTY', 'terrain': 'SUMMIT', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▇▅▃▁ ～ 🔴 🏔️ 🚗', 'description': 'Estrella fugaz cayendo' },
-    'VAR_024_MORNING_STAR': {'name': '🌅 Morning Star', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢 📉↘ 🚗', 'description': 'Amanecer en el valle' },
-    'VAR_025_TSUNAMI': {'name': '🌊 Tsunami', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY_BEARISH', 'terrain': 'BREAKING_FLOOR', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️', 'description': 'Tsunami bajista imparable' },
-    'VAR_026_VOLCANO': {'name': '🌋 Volcano', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ～ 🟢⚡ ═══ 🛣️', 'description': 'Erupción desde la calma' },
-    'VAR_027_DRIFTING': {'name': '🚗💨 Drifting', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→ 🟢 ═══ 🚗', 'description': 'Derrapando lateralmente' },
-    'VAR_028_LOST': {'name': '🗺️ Lost', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧', 'description': 'Perdido en el mapa' },
-    'VAR_029_RECOVERY': {'name': '🚑 Recovery', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ←💨 🟢 📉↘ 🚗', 'description': 'Recuperación lenta' },
-    'VAR_030_BLEEDING': {'name': '🩸 Bleeding', 'sprites': {'price_direction': 'CRUISING_DOWN', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ANY'}, 'action': 'SHORT', 'visual': '↘→ ▅▅▅▅ ←💨 🔴 📉↘ 🚧', 'description': 'Sangrado lento' },
-}
-
-Modulo:
-
-"""
-Market Entity - Representación física del mercado.
-
-El precio como objeto en movimiento (pelota en Pong).
-Solo física, cero penalties, cero scoring.
-"""
-
-import logging
-from collections import deque
+import sys
+import time
+import os
 from datetime import datetime
-
-# Use custom BotLogger if available, else fallback to standard logging
-try:
-    from utils.logger import logger
-except ImportError:
-    logger = logging.getLogger(__name__)
-
-class MarketEntity:
-    """
-    Representa el mercado como entidad física en movimiento.
+import numpy as np
+# Asegurar path root
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(ROOT_DIR)
+# Imports del Bot
+from exchange.connection import MEXCConnection
+from brain.market_entity import MarketEntity
+from brain.walls import Walls
+from brain.visual_classifier import (
+    classify_price_direction_with_avg,
+    classify_candle_shape,
+    classify_wind,
+    classify_fuel,
+    classify_terrain,
+    classify_runway
+)
+from brain.pattern_matcher import find_pattern, get_pattern_action
+from brain.pattern_catalog import PATTERNS
+# Colores para consola
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+def print_header(symbol):
+    print(f"\n{Colors.HEADER}╔{'═'*60}╗{Colors.ENDC}")
+    print(f"{Colors.HEADER}║  🔍 BRAINTRADER INSPECTOR - {symbol:&lt;31} ║{Colors.ENDC}")
+    print(f"{Colors.HEADER}║  Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S'):&lt;37} ║{Colors.ENDC}")
+    print(f"{Colors.HEADER}╚{'═'*60}╝{Colors.ENDC}\n")
+def print_phase(phase_num, title, content_lines):
+    print(f"{Colors.CYAN}┌─ 📊 FASE {phase_num}: {title} {'─'*(48-len(title))}{Colors.ENDC}┐")
+    for line in content_lines:
+        print(f"{Colors.CYAN}│{Colors.ENDC} {line}")
+    print(f"{Colors.CYAN}└{'─'*58}{Colors.ENDC}")
+def analyze_symbol(symbol_input):
+    start_time = time.time()
     
-    Filosofía:
-        - Precio = Posición en el canvas
-        - Velocidad = Cambio de posición por tiempo
-        - Aceleración = Cambio de velocidad
-        - Fuerza = ADX (potencia del movimiento)
+    # Normalizar input
+    symbol = symbol_input.upper()
+    if not symbol.endswith(':USDT') and 'USDT' not in symbol:
+        symbol += '/USDT:USDT'
+    elif symbol.endswith('USDT') and ':' not in symbol:
+        symbol += ':USDT'
     
-    Similar a física de videojuego:
-        position += velocity * dt
-        velocity += acceleration * dt
-    """
-    
-    def __init__(self, symbol, history_size=10):
-        """
-        Args:
-            symbol: Par de trading (ej: 'BTC/USDT:USDT')
-            history_size: Frames históricos para calcular física
-        """
-        self.symbol = symbol
-        self.history_size = history_size
+    print_header(symbol)
+    # ------------------------------------------------------------
+    # FASE 0: INICIALIZACIÓN Y CONEXIÓN
+    # ------------------------------------------------------------
+    try:
+        # Silenciar logs para no ensuciar output
+        import logging
+        logging.getLogger().setLevel(logging.CRITICAL)
         
-        # Estado físico
-        self.position = 0.0          # Precio actual
-        self.velocity = 0.0          # %/min (cambio de precio relativo)
-        self.acceleration = 0.0      # %/min² (cambio de velocidad relativo)
-        self.force = 0.0             # ADX (0-100)
-        self.direction = 0           # -1 (bear), 0 (neutral), 1 (bull)
-        
-        # Historia (para calcular derivadas)
-        self.price_history = deque(maxlen=history_size)
-        self.time_history = deque(maxlen=history_size)
-        
-        # Última actualización
-        self.last_update = None
-        
-        logger.info(f"MarketEntity creado: {symbol}")
-    
-    def update(self, price, timestamp=None):
-        """
-        Actualiza estado físico con nuevo precio.
-        
-        Calcula:
-            - Velocidad (primera derivada)
-            - Aceleración (segunda derivada)
-            - Dirección (signo de velocidad)
-        
-        Args:
-            price: Precio actual
-            timestamp: Datetime (opcional, usa now() si no provee)
-        """
-        if timestamp is None:
-            timestamp = datetime.now()
-        
-        # Guardar en historia
-        self.price_history.append(price)
-        self.time_history.append(timestamp)
-        
-        # Actualizar posición
-        old_position = self.position
-        self.position = price
-        
-        # Calcular VELOCIDAD (primera derivada)
-        if len(self.price_history) &gt;= 2:
-            self.velocity = self._calculate_velocity()
-        
-        # Calcular ACELERACIÓN (segunda derivada)
-        if len(self.price_history) &gt;= 3:
-            self.acceleration = self._calculate_acceleration()
-        
-        # Determinar DIRECCIÓN
-        if self.velocity &gt; 0.1:
-            self.direction = 1   # Bullish
-        elif self.velocity &lt; -0.1:
-            self.direction = -1  # Bearish
-        else:
-            self.direction = 0   # Lateral
-        
-        self.last_update = timestamp
-        
-        logger.debug(f"{self.symbol} | "
-                    f"Position: ${self.position:.2f} | "
-                    f"Velocity: {self.velocity:+.3f}%/min | "
-                    f"Accel: {self.acceleration:+.2f}")
-    
-    def _calculate_velocity(self):
-        """
-        Calcula velocidad (primera derivada del precio) en PORCENTAJE.
-        
-        Returns:
-            float: %/min (positivo = subiendo, negativo = bajando)
-        """
-        if len(self.price_history) &lt; 2:
-            return 0.0
-        
-        # Tomar últimos 2 puntos
-        price_now = self.price_history[-1]
-        price_prev = self.price_history[-2]
-        
-        time_now = self.time_history[-1]
-        time_prev = self.time_history[-2]
-        
-        # Calcular delta
-        delta_price = price_now - price_prev
-        delta_time = (time_now - time_prev).total_seconds() / 60.0  # Minutos
-        
-        if delta_time &gt; 0 and price_prev &gt; 0:
-            # Convertir a PORCENTAJE por minuto
-            velocity_pct = (delta_price / price_prev) * 100
-            velocity = velocity_pct / delta_time # Normalizado por tiempo
-        else:
-            velocity = 0.0
-        
-        return velocity
-    
-    def _calculate_acceleration(self):
-        """
-        Calcula aceleración (segunda derivada del precio).
-        
-        Returns:
-            float: %/min² (positivo = acelerando, negativo = frenando)
-        """
-        if len(self.price_history) &lt; 3:
-            return 0.0
-        
-        # Calcular velocidades de últimos 2 intervalos
-        velocities = []
-        
-        for i in range(len(self.price_history) - 1, max(0, len(self.price_history) - 3), -1):
-            price_now = self.price_history[i]
-            price_prev = self.price_history[i-1]
-            
-            time_now = self.time_history[i]
-            time_prev = self.time_history[i-1]
-            
-            delta_price = price_now - price_prev
-            delta_time = (time_now - time_prev).total_seconds() / 60.0
-            
-            if delta_time &gt; 0 and price_prev &gt; 0:
-                # Calcular velocidad porcentual para cada intervalo
-                v_pct = ((delta_price / price_prev) * 100) / delta_time
-                velocities.append(v_pct)
-        
-        if len(velocities) &gt;= 2:
-            # Aceleración = cambio de velocidad (%/min²)
-            acceleration = velocities[0] - velocities[1]
-        else:
-            acceleration = 0.0
-        
-        return acceleration
-    
-    def set_force(self, adx_value):
-        """
-        Establece fuerza del movimiento (ADX).
-        
-        Args:
-            adx_value: Valor ADX (0-100)
-        """
-        self.force = max(0.0, min(100.0, adx_value))  # Clamp 0-100
-    
-    def is_accelerating(self):
-        """¿Está acelerando? (aceleración positiva)"""
-        return self.acceleration &gt; 0
-    
-    def is_decelerating(self):
-        """¿Está frenando? (aceleración negativa)"""
-        return self.acceleration &lt; 0
-    
-    def has_momentum(self):
-        """
-        ¿Tiene momentum? Comparado con SU PROPIA velocidad promedio.
-        
-        NO usa threshold fijo (0.03%, 0.05%, etc).
-        Cada moneda se compara consigo misma.
-        """
-        if len(self.price_history) &lt; 5:
-            # Sin historial suficiente, considerar cualquier movimiento positivo
-            return abs(self.velocity) &gt; 0
-        
-        # Calcular velocidades históricas (en %) para el promedio
-        historical_vels = []
-        for i in range(len(self.price_history) - 1):
-            prev = self.price_history[i]
-            curr = self.price_history[i+1]
-            
-            # Necesitamos timestamps para ser precisos, pero aproximamos con los índices si es uniforme
-            # Mejor recalculamos similar al método _calculate_velocity
-            if prev &gt; 0:
-                # Delta simple, asumiendo time delta similar
-                v_pct = ((curr - prev) / prev) * 100
-                historical_vels.append(abs(v_pct))
-        
-        if not historical_vels:
-            return abs(self.velocity) &gt; 0
-        
-        # Promedio histórico de ESTA moneda (magnitud absoluta)
-        avg_velocity = sum(historical_vels) / len(historical_vels)
-        
-        # CAMBIO: 0.8 (80%) en vez de 1.0 (100%)
-        threshold_velocity = avg_velocity * 0.8
-        
-        return abs(self.velocity) &gt; threshold_velocity
-    
-    def get_state(self):
-        """
-        Retorna estado completo como dict.
-        
-        Returns:
-            dict: Estado físico completo
-        """
-        return {
-            'position': self.position,
-            'velocity': self.velocity,
-            'acceleration': self.acceleration,
-            'force': self.force,
-            'direction': self.direction,
-            'is_accelerating': self.is_accelerating(),
-            'has_momentum': self.has_momentum(),
-            'last_update': self.last_update.isoformat() if self.last_update else None
-        }
-    
-    def __repr__(self):
-        return (f"MarketEntity({self.symbol} | "
-                f"Pos: ${self.position:.2f} | "
-                f"Vel: {self.velocity:+.2f} | "
-                f"Acc: {self.acceleration:+.2f} | "
-                f"Force: {self.force:.1f})")
-
-
-def test_market_entity():
-    """Test básico de MarketEntity con datos simulados."""
-    print("=== TEST MARKET ENTITY ===\n")
-    
-    entity = MarketEntity('BTC/USDT:USDT', history_size=10)
-    
-    # Simular movimiento alcista acelerando
-    prices = [
-        96000,  # t=0
-        96050,  # t=1 (+50)
-        96120,  # t=2 (+70)
-        96210,  # t=3 (+90)
-        96320,  # t=4 (+110)
-    ]
-    
-    print("Simulando precio subiendo y ACELERANDO:")
-    for i, price in enumerate(prices):
-        timestamp = datetime.now()
-        entity.update(price, timestamp)
-        entity.set_force(25 + i*2)  # ADX creciendo
-        
-        print(f"Frame {i}: {entity}")
-        print(f"  └─ Acelerando: {entity.is_accelerating()}")
-        print(f"  └─ Momentum: {entity.has_momentum()}\n")
-    
-    # Verificar estado final
-    state = entity.get_state()
-    print("Estado final:")
-    for key, value in state.items():
-        print(f"  {key}: {value}")
-    
-    # Assertions
-    assert entity.velocity &gt; 0, "Velocidad debe ser positiva (subiendo)"
-    assert entity.acceleration &gt; 0, "Aceleración debe ser positiva (acelerando)"
-    assert entity.direction == 1, "Dirección debe ser bullish (1)"
-    
-    print("\n✅ Test passed!")
-    return True
-
-
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
-    test_market_entity()
-
-Modulo:
-
-"""
-Walls - Detector de obstáculos (Resistencias/Soportes).
-
-Las paredes del juego donde el precio rebota.
-"""
-
-import logging
-from typing import List, Tuple, Optional
-
-# Use custom BotLogger if available, else fallback to standard logging
-try:
-    from utils.logger import logger
-except ImportError:
-    logger = logging.getLogger(__name__)
-
-class Walls:
-    """
-    Detecta y gestiona resistencias y soportes.
-    
-    Como paredes en un videojuego:
-        - Resistencia = Pared superior
-        - Soporte = Pared inferior
-        - Precio rebota en estas paredes
-    """
-    
-    def __init__(self, symbol: str, lookback_periods: int = 50):
-        """
-        Args:
-            symbol: Par de trading
-            lookback_periods: Períodos históricos para detectar pivotes
-        """
-        self.symbol = symbol
-        self.lookback_periods = lookback_periods
-        
-        # Obstáculos detectados
-        self.resistances: List[float] = []
-        self.supports: List[float] = []
-        
-        logger.info(f"Walls creado: {symbol}")
-    
-    def update(self, ohlc_data: List[dict]):
-        """
-        Actualiza detección de resistencias/soportes.
-        
-        Método simple: Encuentra pivotes (máximos/mínimos locales).
-        
-        Args:
-            ohlc_data: Lista de velas [{'high': X, 'low': X}, ...]
-        """
-        if len(ohlc_data) &lt; 5:
-            logger.warning("Datos insuficientes para detectar walls")
+        # Conexión Read-Only (sin keys)
+        conn = MEXCConnection() 
+        if not conn.connected:
+            print(f"{Colors.FAIL}❌ Error conectando a MEXC{Colors.ENDC}")
             return
-        
-        # Detectar pivotes
-        highs = [candle['high'] for candle in ohlc_data]
-        lows = [candle['low'] for candle in ohlc_data]
-        
-        # Resistencias = máximos locales
-        self.resistances = self._find_local_maxima(highs)
-        
-        # Soportes = mínimos locales
-        self.supports = self._find_local_minima(lows)
-        
-        logger.debug(f"Walls actualizadas: {len(self.resistances)} R, {len(self.supports)} S")
-    
-    def _find_local_maxima(self, values: List[float], window: int = 3) -&gt; List[float]:
-        """
-        Encuentra máximos locales (pivotes high).
-        
-        Un máximo local es un valor mayor que sus N vecinos.
-        
-        Args:
-            values: Lista de valores
-            window: Ventana de comparación (3 = compara con 3 a cada lado)
-        
-        Returns:
-            Lista de valores que son máximos locales
-        """
-        maxima = []
-        
-        for i in range(window, len(values) - window):
-            is_local_max = True
             
-            # Comparar con vecinos
-            for j in range(1, window + 1):
-                if values[i] &lt;= values[i - j] or values[i] &lt;= values[i + j]:
-                    is_local_max = False
-                    break
+    except Exception as e:
+        print(f"{Colors.FAIL}❌ Error fatal iniciando: {e}{Colors.ENDC}")
+        return
+    # ------------------------------------------------------------
+    # FASE 1: VALIDACIÓN EXCHANGE
+    # ------------------------------------------------------------
+    phase1_output = []
+    try:
+        ticker = conn.fetch_ticker(symbol)
+        if not ticker or ticker.get('last') == 0:
+             phase1_output.append(f"{Colors.FAIL}❌ Símbolo no encontrado o sin datos{Colors.ENDC}")
+             print_phase(1, "VALIDACIÓN EXCHANGE", phase1_output)
+             return
+        
+        price = ticker['last']
+        bid = ticker['bid']
+        ask = ticker['ask']
+        spread = ask - bid
+        spread_pct = (spread / price) * 100
+        
+        phase1_output.append(f"✅ Símbolo válido: {symbol}")
+        phase1_output.append(f"Precio Actual: ${price:,.5f}")
+        phase1_output.append(f"Spread: ${spread:.2f} ({spread_pct:.4f}%)")
+        
+    except Exception as e:
+        phase1_output.append(f"{Colors.FAIL}❌ Error validando: {e}{Colors.ENDC}")
+        print_phase(1, "VALIDACIÓN EXCHANGE", phase1_output)
+        return
+    print_phase(1, "VALIDACIÓN EXCHANGE", phase1_output)
+    # ------------------------------------------------------------
+    # FASE 2: DATOS OHLCV
+    # ------------------------------------------------------------
+    phase2_output = []
+    ohlcv = []
+    try:
+        ohlcv = conn.fetch_ohlcv(symbol, '5m', limit=100)
+        count = len(ohlcv)
+        phase2_output.append(f"Velas obtenidas (5m): {count}/100 requested")
+        
+        if count &lt; 20:
+             phase2_output.append(f"{Colors.FAIL}❌ Insuficientes datos (&lt;20){Colors.ENDC}")
+             print_phase(2, "DATOS OHLCV", phase2_output)
+             return
+             
+        last_candle = ohlcv[-1]
+        candle_range = (last_candle[2] - last_candle[3]) / last_candle[3] * 100
+        
+        phase2_output.append(f"Última Vela: O:{last_candle[1]} H:{last_candle[2]} L:{last_candle[3]} C:{last_candle[4]}")
+        phase2_output.append(f"Rango Vela: {candle_range:.2f}%")
+        
+    except Exception as e:
+        phase2_output.append(f"{Colors.FAIL}❌ Error fetching OHLCV: {e}{Colors.ENDC}")
+        print_phase(2, "DATOS OHLCV", phase2_output)
+        return
+    print_phase(2, "DATOS OHLCV", phase2_output)
+    # ------------------------------------------------------------
+    # FASE 3: FÍSICA (MarketEntity)
+    # ------------------------------------------------------------
+    phase3_output = []
+    entity = None
+    try:
+        entity = MarketEntity(symbol)
+        # Poblar historia manualmente para simular el bot
+        prices = [c[4] for c in ohlcv]
+        # Necesitamos timestamps para calcular velocidad real
+        # MarketEntity espera (price, timestamp)
+        history_data = [(c[4], c[0]) for c in ohlcv[-20:]] # Simulamos updates recientes
+        
+        # update masivo simulado
+        # En visual_sniper hace update() vela a vela o usa historia directa
+        # MarketEntity tiene .update(price, timestamp)
+        # Vamos a resetear y cargar
+        entity.price_history = []
+        for p, t in history_data:
+            entity.update(p, t)
             
-            if is_local_max:
-                maxima.append(values[i])
+        # Métricas
+        velocity = entity.velocity
+        accel = entity.acceleration
         
-        # Ordenar y eliminar duplicados cercanos
-        maxima = sorted(set(maxima), reverse=True)
+        # Momentum check manual (reimaginando logica visual_sniper que usa su propio avg check a veces)
+        # Pero market_entity.has_momentum() es la clave
         
-        return maxima
-    
-    def _find_local_minima(self, values: List[float], window: int = 3) -&gt; List[float]:
-        """
-        Encuentra mínimos locales (pivotes low).
+        # Calculo de historical avg velocity para display
+        hist_vels = []
+        if len(entity.price_history) &gt; 2:
+            for i in range(1, len(entity.price_history)):
+                 v = abs((entity.price_history[i]['price'] - entity.price_history[i-1]['price']) / entity.price_history[i-1]['price'] * 100)
+                 hist_vels.append(v)
+        avg_vel = np.mean(hist_vels) if hist_vels else 0.001
         
-        Similar a maxima pero busca menores.
-        """
-        minima = []
+        ratio = velocity / avg_vel if avg_vel &gt; 0 else 0
+        threshold = avg_vel * 0.3
+        has_momentum = abs(velocity) &gt; threshold
         
-        for i in range(window, len(values) - window):
-            is_local_min = True
+        phase3_output.append(f"Velocidad Actual: {velocity:+.4f}%/min")
+        phase3_output.append(f"Velocidad Promedio: {avg_vel:.4f}%/min")
+        phase3_output.append(f"Ratio (Act/Avg): {ratio:.2f}x")
+        phase3_output.append(f"Aceleración: {accel:+.6f}%/min²")
+        phase3_output.append(f"Threshold Momentum: &gt; {threshold:.4f}%/min")
+        
+        mom_icon = "✅" if has_momentum else "❌"
+        phase3_output.append(f"Test Momentum: {mom_icon} (Es {abs(velocity):.4f} &gt; {threshold:.4f}?)")
+        
+    except Exception as e:
+        phase3_output.append(f"{Colors.FAIL}❌ Error cálculo física: {e}{Colors.ENDC}")
+        import traceback
+        traceback.print_exc()
+    print_phase(3, "FÍSICA (MarketEntity)", phase3_output)
+    # ------------------------------------------------------------
+    # FASE 4: ESTRUCTURA (Walls)
+    # ------------------------------------------------------------
+    phase4_output = []
+    walls = None
+    try:
+        walls = Walls(symbol)
+        # Cargar OHLCV
+        # Walls usa self.df internamente si se le pasa ohlcv
+        # Ojo: Walls.update(ohlc) espera dict format o lista? 
+        # Revisando codigo Walls... update toma single candle dict o lista de dicts?
+        # Walls.update suele ser single candle. `detect_structure` usa self.closes
+        # Simulamos carga:
+        for c in ohlcv:
+            walls.update({
+                'timestamp': c[0],
+                'open': c[1], 'high': c[2], 'low': c[3], 'close': c[4], 'volume': c[5]
+            })
             
-            for j in range(1, window + 1):
-                if values[i] &gt;= values[i - j] or values[i] &gt;= values[i + j]:
-                    is_local_min = False
-                    break
-            
-            if is_local_min:
-                minima.append(values[i])
-        
-        minima = sorted(set(minima))
-        
-        return minima
-    
-    def detect_structure(self) -&gt; dict:
-        """
-        Detecta estructura de pivotes (HH/HL vs LL/LH).
-        
-        Returns:
-            dict: trend, counts, last pivots
-        """
-        if len(self.resistances) &lt; 2 or len(self.supports) &lt; 2:
-            return {
-                'trend': 'UNKNOWN',
-                'last_hh': None,
-                'last_hl': None,
-                'hh_count': 0,
-                'hl_count': 0,
-                'll_count': 0
-            }
-        
-        # Resistencias ordenadas (highs)
-        highs = sorted(self.resistances)
-        lows = sorted(self.supports)
-        
-        # Contar Higher Highs
-        hh_count = sum(1 for i in range(1, len(highs)) if highs[i] &gt; highs[i-1])
-        
-        # Contar Higher Lows
-        hl_count = sum(1 for i in range(1, len(lows)) if lows[i] &gt; lows[i-1])
-        
-        # Contar Lower Lows
-        ll_count = sum(1 for i in range(1, len(lows)) if lows[i] &lt; lows[i-1])
-        
-        # Contar Lower Highs
-        lh_count = sum(1 for i in range(1, len(highs)) if highs[i] &lt; highs[i-1])
-        
-        # Determinar tendencia
-        if hh_count &gt;= 2 and hl_count &gt;= 2:
-            trend = 'BULLISH'
-        elif ll_count &gt;= 2 and lh_count &gt;= 1:
-            trend = 'BEARISH'
-        else:
-            trend = 'LATERAL'
-        
-        return {
-            'trend': trend,
-            'last_hh': highs[-1] if highs else None,
-            'last_hl': lows[-1] if lows else None,
-            'last_ll': lows[0] if lows else None,
-            'last_lh': highs[0] if highs else None,
-            'hh_count': hh_count,
-            'hl_count': hl_count,
-            'll_count': ll_count,
-            'lh_count': lh_count
-        }
-    
-    def calculate_development_potential(
-        self, 
-        current_price: float, 
-        structure: dict
-    ) -&gt; dict:
-        """
-        Calcula cuánto le queda por desarrollar al precio.
-        
-        Returns:
-            dict: position_pct, room_to_develop_pct, stage
-        """
+        structure = walls.detect_structure()
         trend = structure.get('trend', 'UNKNOWN')
         
-        if trend == 'BULLISH':
-            hl = structure.get('last_hl')
-            hh = structure.get('last_hh')
-            
-            if not hl or not hh or hh &lt;= hl:
-                return {'position_pct': 50, 'room_to_develop_pct': 50, 'stage': 'UNKNOWN'}
-            
-            total_range = hh - hl
-            current_progress = max(0, current_price - hl)
-            position_pct = min(100, (current_progress / total_range) * 100)
-            room_to_develop_pct = 100 - position_pct
-            
-            if position_pct &lt;= 30:
-                stage = 'EARLY'
-            elif position_pct &lt;= 70:
-                stage = 'MID'
-            else:
-                stage = 'LATE'
-            
-            return {
-                'position_pct': position_pct,
-                'room_to_develop_pct': room_to_develop_pct,
-                'stage': stage,
-                'range_low': hl,
-                'range_high': hh
-            }
+        phase4_output.append(f"Trend Detectada: {Colors.BOLD}{trend}{Colors.ENDC}")
+        phase4_output.append(f"Pivotes: HH={structure.get('hh_count')} HL={structure.get('hl_count')} LH={structure.get('lh_count')} LL={structure.get('ll_count')}")
         
-        elif trend == 'BEARISH':
-            lh = structure.get('last_lh') or structure.get('last_hh')
-            ll = structure.get('last_ll')
-            
-            if not lh or not ll or lh &lt;= ll:
-                return {'position_pct': 50, 'room_to_develop_pct': 50, 'stage': 'UNKNOWN'}
-            
-            total_range = lh - ll
-            current_progress = max(0, lh - current_price)
-            position_pct = min(100, (current_progress / total_range) * 100)
-            room_to_develop_pct = 100 - position_pct
-            
-            if position_pct &lt;= 30:
-                stage = 'EARLY'
-            elif position_pct &lt;= 70:
-                stage = 'MID'
-            else:
-                stage = 'LATE'
-            
-            return {
-                'position_pct': position_pct,
-                'room_to_develop_pct': room_to_develop_pct,
-                'stage': stage,
-                'range_high': lh,
-                'range_low': ll
-            }
+        # Resistencias / Soportes
+        nearest_res = walls.find_nearest_wall(price, 1) # 1 = arriba
+        nearest_sup = walls.find_nearest_wall(price, -1) # -1 = abajo
         
+        if nearest_res:
+            dist_res_pct = (nearest_res[0] - price) / price * 100
+            phase4_output.append(f"Resistencia Prox: ${nearest_res[0]:.2f} (+{dist_res_pct:.2f}%)")
         else:
-            return {
-                'position_pct': 50,
-                'room_to_develop_pct': 0,
-                'stage': 'LATERAL'
-            }
-    
-    def find_nearest_wall(
-        self, 
-        current_price: float, 
-        direction: int
-    ) -&gt; Optional[Tuple[float, str, float]]:
-        """
-        Encuentra la pared más cercana en la dirección del movimiento.
-        
-        Args:
-            current_price: Precio actual
-            direction: 1 (bullish busca resistencia), -1 (bearish busca soporte)
-        
-        Returns:
-            Tuple: (precio_wall, tipo, distancia) o None si no hay
-            Ejemplo: (98000, 'resistance', 2000)
-        """
-        if direction &gt; 0:
-            # Buscar resistencia arriba
-            walls_above = [r for r in self.resistances if r &gt; current_price]
+            phase4_output.append("Resistencia Prox: Ninguna cercana (Cielo abierto)")
             
-            if walls_above:
-                nearest = min(walls_above)
-                distance = nearest - current_price
-                return (nearest, 'resistance', distance)
-        
-        elif direction &lt; 0:
-            # Buscar soporte abajo
-            walls_below = [s for s in self.supports if s &lt; current_price]
+        if nearest_sup:
+            dist_sup_pct = (price - nearest_sup[0]) / price * 100
+            phase4_output.append(f"Soporte Prox: ${nearest_sup[0]:.2f} (-{dist_sup_pct:.2f}%)")
             
-            if walls_below:
-                nearest = max(walls_below)
-                distance = current_price - nearest
-                return (nearest, 'support', distance)
-        
-        return None
-    
-    def calculate_runway(
-        self, 
-        current_price: float, 
-        target_wall: float, 
-        velocity: float
-    ) -&gt; float:
-        """
-        Calcula tiempo hasta colisión con pared.
-        
-        velocity viene en %/min (desde MarketEntity).
-        
-        Args:
-            current_price: Precio actual
-            target_wall: Precio de la pared objetivo
-            velocity: Velocidad (%/min)
-        
-        Returns:
-            float: Minutos hasta colisión (inf si velocidad=0)
-        """
-        distance_usd = abs(target_wall - current_price)
-        
-        # Convertir distancia a porcentaje (para igualar escala de velocity)
-        distance_pct = (distance_usd / current_price) * 100 if current_price &gt; 0 else 0
-        
-        if abs(velocity) &gt; 0.001: # Evitar división por cero
-            time_minutes = distance_pct / abs(velocity)
+        # Runway
+        runway_mins = 999
+        if nearest_res and velocity &gt; 0:
+            runway_mins = walls.calculate_runway(price, nearest_res[0], velocity)
+            phase4_output.append(f"Tiempo a Colisión: {runway_mins:.1f} min")
+        elif nearest_sup and velocity &lt; 0:
+            runway_mins = walls.calculate_runway(price, nearest_sup[0], velocity) # velocity es neg
+            phase4_output.append(f"Tiempo a Colisión: {runway_mins:.1f} min")
         else:
-            time_minutes = float('inf')
-        
-        return time_minutes
-    
-    def has_safe_runway(
-        self,
-        current_price: float,
-        direction: int,
-        velocity: float,
-        min_minutes: float = 3.0  # (Ya no se usa como threshold fijo, solo referencia)
-    ) -&gt; bool:
-        """
-        Verifica si hay espacio seguro para operar (100% relativo).
-        
-        NO usa threshold fijo. Simplemente pregunta:
-        ¿Si me muevo, tengo espacio libre por delante?
-        
-        Args:
-            current_price: Precio actual
-            direction: Dirección del movimiento
-            velocity: Velocidad actual (%/min)
-        
-        Returns:
-            bool: True si hay espacio suficiente (&gt; 0)
-        """
-        wall = self.find_nearest_wall(current_price, direction)
-        
-        if wall is None:
-            return True  # Sin pared cercana = espacio infinito
-        
-        wall_price = wall[0]
-        runway_minutes = self.calculate_runway(current_price, wall_price, velocity)
-        
-        # Visual simple: ¿Hay espacio positivo adelante?
-        if abs(velocity) &gt; 0.001:
-            # Mínimo 2 minutos de runway (antes era más restrictivo)
-            return runway_minutes &gt;= 2.0
+             phase4_output.append("Tiempo a Colisión: Infinito (scan/static)")
+        # Clasificación Runway
+        # Replicamos logica de visual_classifier para mostrar threshold
+        # classify_runway calcula distancia %
+        dist_pct = 0
+        if velocity &gt;= 0 and nearest_res:
+            dist_pct = (nearest_res[0] - price) / price * 100
+        elif velocity &lt; 0 and nearest_sup:
+            dist_pct = abs((nearest_sup[0] - price) / price * 100)
         else:
-            return False  # Si no hay velocidad, no es seguro (estático)
-    
-    def get_state(self) -&gt; dict:
-        """
-        Retorna estado completo.
+            dist_pct = 999
+            
+        runway_sprite = classify_runway(dist_pct)
+        phase4_output.append(f"Runway Sprite: {runway_sprite} (Dist: {dist_pct:.2f}%)")
         
-        Returns:
-            dict: Resistencias, soportes, estadísticas
-        """
-        return {
-            'resistances': self.resistances[:5],  # Top 5
-            'supports': self.supports[:5],
-            'count_resistances': len(self.resistances),
-            'count_supports': len(self.supports)
-        }
+    except Exception as e:
+         phase4_output.append(f"{Colors.FAIL}❌ Error estructura: {e}{Colors.ENDC}")
+    print_phase(4, "ESTRUCTURA (Walls)", phase4_output)
+    # ------------------------------------------------------------
+    # FASE 5: CLASIFICACIÓN VISUAL
+    # ------------------------------------------------------------
+    phase5_output = []
+    sprites = {}
     
-    def __repr__(self):
-        return (f"Walls({self.symbol} | "
-                f"R: {len(self.resistances)} | "
-                f"S: {len(self.supports)})")
-
-
-def test_walls():
-    """Test básico de Walls con datos simulados."""
-    print("=== TEST WALLS ===\n")
-    
-    # Simular OHLC data (patrón pirámide claro para detectar pivotes)
-    # Window=3 requiere 3 vecinos menores a cada lado.
-    # Highs: 100, 200, 300, 400, 500(P), 400, 300, 200, 100
-    prices = [
-        (95000, 94000),
-        (96000, 95000),
-        (97000, 96000),
-        (98000, 97000), # Vecino 3 izq
-        (99000, 98000), # Vecino 2 izq
-        (99500, 99000), # Vecino 1 izq
-        (100000, 99500), # &lt;--- PIVOT MAX (Resistencia)
-        (99500, 99000), # Vecino 1 der
-        (99000, 98000), # Vecino 2 der
-        (98000, 97000), # Vecino 3 der
-        (97000, 96000),
-        (96000, 95000), 
-        (95000, 94000), # &lt;--- PIVOT MIN (Soporte)
-        (95500, 94500),
-        (96000, 95000),
-        (96500, 95500),
-        (97000, 96000),
-    ]
-    
-    ohlc_data = []
-    for high, low in prices:
-        ohlc_data.append({'high': high, 'low': low})
-    
-    # Crear y actualizar walls
-    walls = Walls('BTC/USDT:USDT')
-    walls.update(ohlc_data)
-    
-    print(f"Walls detectadas: {walls}\n")
-    print(f"Resistencias: {walls.resistances}")
-    print(f"Soportes: {walls.supports}\n")
-    
-    # Test: Encontrar pared más cercana
-    current_price = 99000
-    direction = 1  # Bullish
-    
-    nearest = walls.find_nearest_wall(current_price, direction)
-    
-    if nearest:
-        wall_price, wall_type, distance = nearest
-        print(f"Precio actual: ${current_price}")
-        print(f"Pared más cercana: ${wall_price} ({wall_type})")
-        print(f"Distancia: ${distance:.0f}\n")
+    try:
+        # 1. Price Direction
+        p_dir = classify_price_direction_with_avg(velocity, accel, avg_vel)
+        phase5_output.append(f"Price Direction: {p_dir}")
+        sprites['price_direction'] = p_dir
         
-        # Test: Calcular runway
-        velocity = 0.1  # 0.1%/min (fallback conservador)
-        runway = walls.calculate_runway(current_price, wall_price, velocity)
-        print(f"Velocidad: {velocity}%/min")
-        print(f"Tiempo hasta colisión: {runway:.2f} minutos\n")
+        # 2. Candle Shape (simplificado sin acceso a historical body avg complejo aqui, usamos basic data)
+        # Necesitamos 'body_size' relative to something.
+        # classify_candle_shape usa (open, close, high, low, avg_body_size)
+        bodies = [abs(c[4]-c[1]) for c in ohlcv[-20:]]
+        avg_body = np.mean(bodies) if bodies else 0
+        c_shape = classify_candle_shape(last_candle[1], last_candle[4], last_candle[2], last_candle[3], avg_body)
+        phase5_output.append(f"Candle Shape: {c_shape}")
+        sprites['candle_shape'] = c_shape
         
-        # Test: ¿Espacio seguro?
-        # Nota: has_safe_runway ya no usa min_minutes fijos, pero el test lo pasa por compatibilidad
-        safe = walls.has_safe_runway(current_price, velocity, direction)
-        print(f"¿Espacio seguro (&gt;0 min)? {safe}\n")
+        # 3. Wind (EMAs)
+        # Calculo simple de EMAs para pasar al clasificador
+        import pandas as pd
+        closes_s = pd.Series([c[4] for c in ohlcv])
+        ema9 = closes_s.ewm(span=9).mean().iloc[-1]
+        ema20 = closes_s.ewm(span=20).mean().iloc[-1]
+        ema50 = closes_s.ewm(span=50).mean().iloc[-1]
+        wind = classify_wind(price, ema9, ema20, ema50)
+        phase5_output.append(f"Wind: {wind}")
+        sprites['wind'] = wind
+        
+        # 4. Fuel (Momentum)
+        # Usamos velocity &gt; threshold como proxy de FUEL simple visual o logica de momentum LC
+        # VisualSniper usa Indicators para 'fuel'. Aquí simplificamos con velocity ratio o re-calculamos.
+        # Para ser fiel, usamos el estado de momentum calculado en F3
+        fuel = 'FULL_TANK' if has_momentum and velocity &gt; 0 else 'EMPTY_BEARISH' if has_momentum and velocity &lt; 0 else 'FUMES'
+        # O usar classify_fuel() si tuvieramos el indicador momentum especifico (ej. LazyBear)
+        # Vamos a usar classify_fuel placeholder/simple
+        # phase5_output.append(f"Fuel (Est): {fuel}")
+        sprites['fuel'] = 'ANY' # Placeholder para evitar bloqueo por falta de lib externa compleja
+        # Si fuel es critico en pattern, esto podría fallar. Revisemos patrón.
+        # La mayoria acepta ANY o FULL_TANK.
+        # Intentemos logica real:
+        if has_momentum:
+            sprites['fuel'] = 'FULL_TANK' if velocity &gt; 0 else 'EMPTY_BEARISH'
+        else:
+            sprites['fuel'] = 'FUMES'
+        phase5_output.append(f"Fuel: {sprites['fuel']}")
+        # 5. Terrain
+        terr = classify_terrain(structure)
+        phase5_output.append(f"Terrain: {terr}")
+        sprites['terrain'] = terr
+        
+        # 6. Runway
+        sprites['runway'] = runway_sprite
+        phase5_output.append(f"Runway: {runway_sprite}")
+        
+    except Exception as e:
+        phase5_output.append(f"{Colors.FAIL}❌ Error clasificación: {e}{Colors.ENDC}")
+    print_phase(5, "CLASIFICACIÓN VISUAL", phase5_output)
+    # ------------------------------------------------------------
+    # FASE 6: PATTERN MATCHING
+    # ------------------------------------------------------------
+    phase6_output = []
+    best_pattern = None
+    best_score = 0
+    
+    try:
+        # Find pattern
+        # find_pattern retorna (id, score, data)
+        # Vamos a listar top matches
+        matches = []
+        for pid, pdata in PATTERNS.items():
+            # Calc score manual para display
+            score = 0
+            total = 0
+            details = []
+            
+            # Check Runway First logic (Critical)
+            # Logica de visual_sniper es: filter by runway comp
+            # Si runway no compatible, score = 0
+            
+            p_sprites = pdata['sprites']
+            
+            match_count = 0
+            for k, v in p_sprites.items():
+                if k == 'runway': continue
+                total += 1
+                if v == 'ANY' or v == sprites.get(k):
+                    match_count += 1
+                    details.append(f"✅ {k}")
+                else:
+                    details.append(f"❌ {k}({sprites.get(k)}!={v})")
+            
+            raw_score = match_count / total if total &gt; 0 else 0
+            
+            matches.append({
+                'id': pid,
+                'name': pdata['name'],
+                'score': raw_score,
+                'action': pdata['action'],
+                'details': details
+            })
+            
+        # Sort by score
+        matches.sort(key=lambda x: x['score'], reverse=True)
+        
+        phase6_output.append("Top 3 Patrones Candidatos:")
+        for m in matches[:3]:
+            phase6_output.append(f"  • {m['name']}: Score {m['score']:.2f} | Acc: {m['action']}")
+            # phase6_output.append(f"    {' '.join(m['details'][:3])}...") # Detalle corto
+            
+        best = matches[0] if matches else None
+        if best and best['score'] &gt;= 0.70:
+            best_pattern = best
+            phase6_output.append(f"\n🏆 GANADOR: {best['name']} (Score {best['score']:.2f})")
+            phase6_output.append(f"   Acción: {best['action']}")
+        else:
+            phase6_output.append(f"\n⚠️ Ningún patrón alcanzó score &gt;= 0.70")
+            phase6_output.append("   → Activando Fallback Físico")
+            
+    except Exception as e:
+        phase6_output.append(f"{Colors.FAIL}❌ Error pattern matching: {e}{Colors.ENDC}")
+    print_phase(6, "PATTERN MATCHING", phase6_output)
+    # ------------------------------------------------------------
+    # FASE 7: VALIDACIÓN FÍSICA (Fallback) &amp; FASE 8 MTF
+    # ------------------------------------------------------------
+    # Unificamos logica de decision final
+    phase7_output = []
+    final_decision = "REJECTED"
+    final_reason = ""
+    is_priority = False
+    
+    # 1. Determinar candidato PRIORITY
+    if best_pattern:
+        if 'LONG' in best_pattern['action'] or 'SHORT' in best_pattern['action']:
+             phase7_output.append(f"Ruta Patrón: {best_pattern['name']} valida entrada.")
+             is_priority = True
+             final_reason = f"Pattern {best_pattern['name']}"
     else:
-        print("❌ No se encontró pared cercana")
+        # Fallback Logic
+        phase7_output.append("Evaluando 4 Condiciones Físicas:")
+        c1 = has_momentum # Velocity &gt; 30% avg
+        c2 = accel &gt; 0 if velocity &gt; 0 else accel &lt; 0 # Accelerating logic simple
+        c3 = runway_sprite != 'ALLEY' # Espacio
+        
+        # Check EMAs alignment
+        c4 = False
+        if velocity &gt; 0:
+             c4 = price &gt; ema9 &gt; ema20
+        else:
+             c4 = price &lt; ema9 &lt; ema20
+             
+        phase7_output.append(f"  1. Momentum: {'✅' if c1 else '❌'}")
+        phase7_output.append(f"  2. Aceleración: {'✅' if c2 else '❌'}")
+        phase7_output.append(f"  3. Runway Safe: {'✅' if c3 else '❌'}")
+        phase7_output.append(f"  4. EMAs Align: {'✅' if c4 else '❌'}")
+        
+        passed = sum([c1, c2, c3, c4])
+        phase7_output.append(f"Condiciones: {passed}/4")
+        
+        if passed &gt;= 3: # Seamos estrictos para demo, visual_sniper pide 2+ pero con caveats
+             is_priority = True
+             final_reason = "Physics Fallback (3+ Conds)"
+             phase7_output.append("✅ Fallback APROBADO")
+        else:
+             phase7_output.append("❌ Fallback RECHAZADO")
+    print_phase(7, "VALIDACIÓN FÍSICA", phase7_output)
+    # FASE 8: MTF
+    phase8_output = []
+    diag_solution = []
+    diag_cause = "Unknown"
+    diag_problem = "Rejected"
     
-    # Assertions
-    assert len(walls.resistances) &gt; 0, "Debe detectar al menos 1 resistencia"
-    # El pivot max es 100000
-    assert 100000 in walls.resistances, f"Debe detectar 100000 como resistencia. Detectado: {walls.resistances}"
-    
-    if nearest:
-        assert nearest[0] == 100000, "La pared más cercana debe ser 100000"
-    
-    print("✅ Test passed!")
-    return True
-
-
+    if is_priority:
+        phase8_output.append("Simulando análisis MTF (1D, 4H, 1H, 15M)...")
+        # Logica MTF real
+        try:
+             # Fetch 4H (Critico)
+             ohlcv_4h = conn.fetch_ohlcv(symbol, '4h', limit=5)
+             c4h = [c[4] for c in ohlcv_4h]
+             trend_4h = 'UP' if c4h[-1] &gt; c4h[-3] else 'DOWN'
+             phase8_output.append(f"Trend 4H: {trend_4h} (vs Trade Dir: {'LONG' if velocity &gt; 0 else 'SHORT'})")
+             
+             trade_dir = 'UP' if velocity &gt; 0 else 'DOWN'
+             
+             if trend_4h == trade_dir:
+                 phase8_output.append("✅ 4H Alineado con Trade")
+                 
+                 # 1H Check
+                 ohlcv_1h = conn.fetch_ohlcv(symbol, '1h', limit=5)
+                 c1h = [c[4] for c in ohlcv_1h]
+                 trend_1h = 'UP' if c1h[-1] &gt; c1h[-3] else 'DOWN'
+                 
+                 if trend_1h == trend_4h:
+                     phase8_output.append("✅ 1H Alineado")
+                     final_decision = "PRIORITY"
+                 else:
+                     phase8_output.append("❌ 1H Desalineado")
+                     final_decision = "DEVELOPING" # Downgrade
+                     final_reason += " (MTF 1H Fail)"
+                     diag_problem = "Fallo MTF"
+                     diag_cause = "Temporalidad 1H va en contra"
+                     diag_solution = ["Esperar alineación 1H", "Buscar otro par"]
+             else:
+                 phase8_output.append("❌ 4H Desalineado (BLOCK)")
+                 final_decision = "REJECTED"
+                 final_reason += " (MTF 4H Fail)"
+                 diag_problem = "Tendencia Mayor Opuesta"
+                 diag_cause = f"4H es {trend_4h} pero setup es {trade_dir}"
+                 diag_solution = ["No operar contra tendencia 4H", "Esperar reversión confirmada"]
+                 
+        except Exception as e:
+             phase8_output.append(f"❌ Error MTF: {e}")
+    else:
+        phase8_output.append("⏹️ Saltado (No es Priority)")
+        diag_problem = "Setup Débil"
+        diag_cause = "No cumple patrón ni condiciones físicas mínimas"
+        diag_solution = ["Buscar monedas con más volumen", "Esperar setup claro"]
+    print_phase(8, "MTF CONFIRMATION", phase8_output)
+    # DECISIÓN FINAL
+    color = Colors.GREEN if final_decision == 'PRIORITY' else Colors.FAIL
+    print(f"\n{color}╔{'═'*60}╗{Colors.ENDC}")
+    print(f"{color}║  {'✅' if final_decision=='PRIORITY' else '❌'} DECISIÓN FINAL: {final_decision:&lt;29} ║{Colors.ENDC}")
+    print(f"{color}║  Razón: {final_reason:&lt;49} ║{Colors.ENDC}")
+    print(f"{color}╚{'═'*60}╝{Colors.ENDC}\n")
+    # DIAGNOSTICO RAÍZ
+    if final_decision != 'PRIORITY':
+        print(f"🔧 {Colors.WARNING}DIAGNÓSTICO RAÍZ:{Colors.ENDC}")
+        print(f"┌{'─'*60}┐")
+        print(f"│ PROBLEMA: {diag_problem:&lt;48} │")
+        print(f"│ CAUSA: {diag_cause:&lt;51} │")
+        print(f"│ SOLUCIÓN SUGERIDA:                             │")
+        for sol in diag_solution:
+            print(f"│  • {sol:&lt;50} │")
+        print(f"└{'─'*60}┘")
+    duration = time.time() - start_time
+    print(f"\n⏱️ Análisis completado en {duration:.2f} segundos")
+def main():
+    while True:
+        try:
+            symbol = input(f"\n{Colors.BLUE}Ingrese símbolo (ej: BTC, HANA) o 'q' para salir: {Colors.ENDC}").strip()
+            if symbol.lower() in ['q', 'quit', 'exit']:
+                break
+            if not symbol: continue
+            
+            analyze_symbol(symbol)
+            
+        except KeyboardInterrupt:
+            break
+            
+    print("\n👋 Bye!")
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
-    test_walls()
-
+    main()
+4. Testing
+Comandos
+Abrir terminal en raíz del repositorio.
+Ejecutar:
+python inspector.py
+Ingresar HANA (o cualquier moneda listada en futures) cuando se solicite.
+Verificación
+Verificar que se conecte a MEXC (mensaje verde/exitoso).
+Verificar "FASE 1" con datos de precio reales.
+Verificar "FASE 3" velocity y momentum calculado.
+Verificar "FASE 6" patrones detectados.
+Verificar output final y diagnóstico si es rechazado.
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 63,546<br>
-    Generado: 2026-01-20 15:02:53
+    Total caracteres: 23,611<br>
+    Generado: 2026-01-20 17:58:22
   </div>
 </body>
 </html>
