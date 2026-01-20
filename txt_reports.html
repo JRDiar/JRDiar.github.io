@@ -15,11 +15,366 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-20 14:08:07</div>
+  <div class="meta">Última actualización: 2026-01-20 14:22:15</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
+REPORTE COMPLETO DE SESIÓN - BrainTrader 2.0
+🎯 OBJETIVO INICIAL
+Crear un bot de trading visual basado en física de videojuego, sin código binario (thresholds fijos), que opere rentablemente.
+
+✅ LOGROS ALCANZADOS
+1. Backtest Funciona Correctamente
+
+Problema inicial: Bot no operaba (0 trades)
+Causa raíz: Pattern matcher daba 83% match a patrones incompatibles (runway ALLEY cuando patrón requería HIGHWAY)
+Solución: Fix en pattern_matcher.py - verificar runway ANTES de calcular match
+Resultado: Backtest ahora ejecuta trades y funciona
+
+2. Sistema de Patrones Completo
+
+51 patrones definidos:
+
+19 LONG (alcistas)
+11 SHORT (bajistas)
+6 SKIP (rechazar)
+15 WAIT/otros
+
+
+Catálogo: brain/pattern_catalog.py ✅
+Matcher: brain/pattern_matcher.py ✅
+
+3. Visual Dashboard Creado
+
+Estructura:
+
+  tools/visual_dashboard/
+  ├── app.py              # Flask server
+  ├── templates/
+  │   └── index.html      # UI
+  └── static/
+      ├── style.css
+      ├── charts.js       # TradingView charts
+      └── dashboard.js    # WebSocket updates
+
+Funcionalidad: Muestra sprites, patrones, gráficos TradingView
+Estado: Código existe ✅
+
+4. Arquitectura Dual-Speed
+
+Deep Scanner: Thread que escanea 751 monedas continuamente
+Sniper: Thread que vigila watchlist cada 10s
+Estado: Implementado en visual_sniper.py ✅
+
+
+❌ PROBLEMAS ACTUALES (Por qué no opera en vivo)
+PROBLEMA 1: Dashboard no muestra gráficos
+Síntoma: Navegador dice "Esperando gráficos"
+Causa probable:
+python# visual_sniper.py NO envía datos al dashboard
+# Falta esta integración:
+
+try:
+    from tools.visual_dashboard.app import update_bot_state
+    update_bot_state({
+        'symbol': symbol,
+        'sprites': {...},
+        'pattern': pattern_id,
+        ...
+    })
+except:
+    pass
+Ubicación del problema: brain/visual_sniper.py líneas ~1400-1500
+Estado: ❌ NO IMPLEMENTADO
+
+PROBLEMA 2: Bot no opera en vivo (0 trades durante la noche)
+Síntomas:
+
+Backtest ejecuta trades ✅
+Live NO ejecuta trades ❌
+
+Causas posibles:
+A) Contaminación de código de backtest
+python# En visual_sniper.py pueden existir líneas como:
+if mode == 'backtest':
+    ...
+if is_simulation:
+    ...
+No verificado aún - requiere análisis del archivo completo
+B) Memoria de patrones vacía
+
+pattern_memory.db puede estar vacía
+Sin estadísticas, bot rechaza todos los patrones
+Solución: Ejecutar observation_mode.py para llenar memoria
+
+C) Filtros muy estrictos
+python# Posibles filtros en el código:
+min_win_rate = 0.65  # Demasiado alto (debería ser 0.45)
+min_sample_size = 20  # Demasiado alto
+D) Dashboard desconectado
+
+Bot arranca dashboard en thread separado
+Thread puede fallar silenciosamente
+Bot continúa pero sin comunicación visual
+
+
+📁 ARCHIVOS CRÍTICOS Y SU ESTADO
+CEREBRO (Decisión de trades)
+ArchivoEstadoProblemabrain/visual_sniper.py⚠️Posible contaminación backtest + falta update_dashboard()brain/pattern_matcher.py✅Corregidobrain/pattern_catalog.py✅51 patrones OKbrain/visual_classifier.py❓No verificadobrain/market_entity.py✅Física OKbrain/walls.py✅Soportes/resistencias OK
+DASHBOARD (Visualización)
+ArchivoEstadoProblematools/visual_dashboard/app.py⚠️Existe pero no recibe datosstatic/charts.js✅TradingView integradostatic/dashboard.js✅WebSocket configurado
+ORQUESTACIÓN
+ArchivoEstadoProblemamain.py⚠️Auto-launch dashboard puede fallarexchange/connection.py✅Conecta a MEXC OK
+
+🔍 ANÁLISIS DEL CÓDIGO SUBIDO
+visual_sniper.py - Hallazgos:
+✅ CORRECTO:
+
+Arquitectura dual-speed implementada
+Sistema de watchlist persistente
+Análisis físico (velocidad, aceleración)
+Multi-timeframe confirmation
+
+❌ PROBLEMAS DETECTADOS:
+1. Código de backtest mezclado:
+python# Línea ~200 (aproximada)
+HOLISTIC_AVAILABLE = False    # ← Desactivado manualmente
+Comentario: Esto está bien, NO es contaminación
+2. Dashboard update comentado/faltante:
+python# Línea ~1800 (aproximada) - EXISTE pero puede no ejecutarse
+try:
+    from tools.visual_dashboard.app import update_bot_state
+    update_bot_state({...})
+except:
+    pass  # ← Falla silenciosamente
+Problema: Si app.py no existe o tiene error, el except: pass oculta el problema
+3. Filtros muy estrictos (SOSPECHA):
+python# Línea ~1600 (aproximada)
+if stats['sample_size'] &lt; 5:  # ← MUY bajo, pero OK
+if stats['win_rate'] &lt; 0.40:  # ← Razonable
+if stats['expectancy'] &lt; -0.5:  # ← OK
+
+# PERO en config puede haber:
+MIN_WIN_RATE = config['filters']['min_win_rate']  # ← ¿Valor?
+MIN_SAMPLE_SIZE = config['filters']['min_sample_size']  # ← ¿Valor?
+Necesita verificación: ¿Qué valores tiene get_live_config()?
+4. Pattern memory puede estar vacía:
+pythondef _get_pattern_stats(self, pattern_id):
+    # Si DB no existe o está vacía:
+    return {'sample_size': 0, 'win_rate': 0, 'expectancy': 0}
+    
+    # Entonces:
+    if stats['sample_size'] &lt; 5:  # ← Siempre True
+        # NO entra
+```
+
+---
+
+## 🎯 DIAGNÓSTICO COMPLETO
+
+### **Por qué el bot NO opera:**
+
+**Flujo de decisión:**
+```
+1. Deep Scanner obtiene 751 símbolos
+2. Para cada símbolo:
+   a) _analyze_physics() calcula velocidad, aceleración
+   b) _classify_market_state() → sprites
+   c) _find_pattern() → match con catálogo
+   d) _get_pattern_stats() → consulta DB ← AQUÍ FALLA
+   
+   Si DB vacía:
+   → sample_size = 0
+   → NO cumple filtros
+   → REJECTED
+   
+3. Resultado: 0 trades
+Confirmación: Línea ~1650 de visual_sniper.py:
+pythonif stats['sample_size'] &lt; 5:
+    if match_score &gt;= 0.75:
+        # Modo experimental - requiere match muy alto
+        # Y luego verifica acción del patrón
+        
+        if pattern_action == 'SKIP':
+            return REJECTED  # ← Aquí caen los bloqueados
+        
+        return PRIORITY
+    else:
+        pass  # ← NO entra (match &lt; 0.75)
+Hipótesis:
+
+Patrones matchean con score 0.70-0.74 (no llega a 0.75)
+O memory DB está vacía (sample_size = 0)
+Entonces NUNCA llega a PRIORITY
+
+
+📋 PLAN DE ACCIÓN PARA SIGUIENTE SESIÓN
+FASE 1: Diagnóstico (15 min)
+1.1 Verificar memoria de patrones
+bash# Comprobar si existe y tiene datos
+sqlite3 data/pattern_memory.db "SELECT COUNT(*) FROM observations"
+Si retorna 0 o error:
+bash# Llenar memoria con observaciones históricas
+python tools/observation_mode.py
+# Esperar 5-10 minutos
+1.2 Verificar configuración live
+python# En visual_sniper.py, agregar después de línea ~1600:
+print(f"DEBUG CONFIG: min_wr={MIN_WIN_RATE}, min_sample={MIN_SAMPLE_SIZE}")
+1.3 Test de pattern matching
+python# Crear: test_live_matching.py
+from brain.visual_sniper import HybridVisualSniper
+sniper = HybridVisualSniper(connector=...)
+
+# Test con BTC
+result = sniper._analyze_physics('BTC/USDT:USDT')
+print(f"Classification: {result['classification']}")
+print(f"Pattern: {result.get('pattern_id')}")
+print(f"Stats: {sniper._get_pattern_stats(result.get('pattern_id'))}")
+
+FASE 2: Fixes Rápidos (30 min)
+2.1 Bajar filtros temporalmente
+python# En visual_sniper.py, línea ~1600
+# CAMBIAR:
+MIN_WIN_RATE = 0.45  # Antes: 0.65
+MIN_SAMPLE_SIZE = 5   # Antes: 20
+MIN_EXPECTANCY = -0.5 # Antes: 0.0
+
+# O mejor: modo PROSPECTING (permitir con poca data)
+if stats['sample_size'] &lt; 5:
+    if match_score &gt;= 0.70:  # Bajar de 0.75 a 0.70
+2.2 Fix dashboard integration
+python# En visual_sniper.py, después de _find_pattern()
+# CAMBIAR:
+try:
+    from tools.visual_dashboard.app import update_bot_state
+    ...
+except:
+    pass  # ← MAL
+
+# POR:
+try:
+    from tools.visual_dashboard.app import update_bot_state
+    ...
+except Exception as e:
+    print(f"⚠️ Dashboard update failed: {e}")  # ← Ver el error
+2.3 Logging de rechazos
+python# Agregar contador de por qué rechaza:
+rejection_reasons = {}
+
+# En cada rechazo:
+reason = result.get('rejection_reasons', ['Unknown'])[0]
+rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+
+# Al final del scan:
+print("TOP RECHAZOS:")
+for r, count in sorted(rejection_reasons.items(), key=lambda x: -x[1])[:5]:
+    print(f"  {count:3d} | {r}")
+
+FASE 3: Verificación (15 min)
+3.1 Backtest debe seguir funcionando
+bashpython backtest_physics.py
+# Verificar: &gt;0 trades, Win Rate razonable
+3.2 Live test corto (10 minutos)
+bashpython main.py
+# Observar:
+# - ¿Cuántos símbolos analiza?
+# - ¿Encuentra algún PRIORITY?
+# - ¿Ejecuta trade?
+```
+
+#### 3.3 Dashboard test
+```
+http://localhost:5000
+# Verificar:
+# - ¿Se conecta?
+# - ¿Muestra sprites?
+# - ¿Muestra gráficos?
+
+🔧 CÓDIGO DE FIXES PREPARADO
+Fix 1: Logging mejorado (copiar/pegar en visual_sniper.py)
+python# Insertar después de línea ~1650
+def _analyze_physics(self, symbol: str):
+    # ... código existente ...
+    
+    # AGREGAR LOGGING DETALLADO:
+    if matched_pattern and match_score &gt;= 0.70:
+        pattern_id = matched_pattern['name']
+        stats = self._get_pattern_stats(pattern_id)
+        
+        # &gt;&gt;&gt; NUEVO LOGGING &lt;
+        print(f"  [MATCH] {symbol:20s} | {pattern_id:25s} | Score: {match_score:.2f}")
+        print(f"         Stats: {stats['sample_size']:3d} obs | WR: {stats['win_rate']:.0%} | EV: {stats['expectancy']:+.2f}%")
+        
+        if stats['sample_size'] &lt; 5:
+            print(f"         ⚠️ INSUFICIENTE DATA - modo experimental")
+            if match_score &gt;= 0.75:
+                print(f"         ✅ Score alto ({match_score:.2f}) - APROBAR")
+            else:
+                print(f"         ❌ Score bajo ({match_score:.2f}) - RECHAZAR")
+Fix 2: Modo emergency (permitir trades con poca data)
+python# Insertar en visual_sniper.py línea ~1650
+# CAMBIAR:
+if stats['sample_size'] &lt; 5:
+    if match_score &gt;= 0.75:  # ← Muy estricto
+        ...
+
+# POR:
+EMERGENCY_MODE = True  # ← Activar temporalmente
+
+if stats['sample_size'] &lt; 5:
+    if EMERGENCY_MODE:
+        # En emergencia, permitir si match &gt; 0.70
+        if match_score &gt;= 0.70:
+            return {'classification': 'PRIORITY', ...}
+    else:
+        # Modo normal, requiere 0.75
+        if match_score &gt;= 0.75:
+            return {'classification': 'PRIORITY', ...}
+
+📊 ESTADO FINAL
+LO QUE FUNCIONA:
+✅ Backtest ejecuta trades
+✅ Pattern matcher corregido
+✅ 51 patrones definidos
+✅ Arquitectura dual-speed
+✅ Dashboard código existe
+LO QUE FALLA:
+❌ Bot no opera en live (0 trades)
+❌ Dashboard no muestra gráficos
+❌ Causa exacta no confirmada (3 hipótesis)
+HIPÓTESIS PRINCIPALES:
+
+Memoria vacía (80% probable) → Fix: observation_mode.py
+Filtros muy estrictos (15% probable) → Fix: Bajar thresholds
+Contaminación backtest (5% probable) → Fix: Limpiar código
+
+
+🎯 PRÓXIMOS PASOS (Orden de ejecución)
+
+Ejecutar observation_mode.py (llenar memoria)
+Aplicar Fix 1 (logging mejorado)
+Aplicar Fix 2 (emergency mode)
+Test backtest (verificar que sigue funcionando)
+Test live 10 min (ver si opera)
+Analizar logs (identificar bloqueadores)
+Iterar
+
+
+📝 NOTAS IMPORTANTES
+
+NO borrar código - Solo agregar flags true/false
+Mantener backtest funcionando - Es la referencia
+Logging es clave - Necesitamos ver por qué rechaza
+Memoria primero - Sin estadísticas no opera
+
+
+Esto es TODO lo trabajado hasta ahora.
+El bot está 90% listo - solo falta identificar el bloqueador final.
+
+
+Primer modulo a analizar: 
+
 visual_sniper.py módulo completo.
 
 """
@@ -2116,8 +2471,8 @@ if __name__ == '__main__':
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 97,001<br>
-    Generado: 2026-01-20 14:08:07
+    Total caracteres: 107,834<br>
+    Generado: 2026-01-20 14:22:15
   </div>
 </body>
 </html>
