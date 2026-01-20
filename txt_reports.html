@@ -15,2414 +15,1461 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-20 14:32:07</div>
+  <div class="meta">Última actualización: 2026-01-20 15:02:53</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-REPORTE COMPLETO DE SESIÓN - BrainTrader 2.0
-🎯 OBJETIVO INICIAL
-Crear un bot de trading visual basado en física de videojuego, sin código binario (thresholds fijos), que opere rentablemente.
-✅ LOGROS ALCANZADOS
-1. Backtest Funciona Correctamente
-Problema inicial: Bot no operaba (0 trades)
-Causa raíz: Pattern matcher daba 83% match a patrones incompatibles (runway ALLEY cuando patrón requería HIGHWAY)
-Solución: Fix en pattern_matcher.py - verificar runway ANTES de calcular match
-Resultado: Backtest ahora ejecuta trades y funciona
-2. Sistema de Patrones Completo
-51 patrones definidos:
-19 LONG (alcistas)
-11 SHORT (bajistas)
-6 SKIP (rechazar)
-15 WAIT/otros
-Catálogo: brain/pattern_catalog.py ✅
-Matcher: brain/pattern_matcher.py ✅
-
-3. Visual Dashboard Creado
-Estructura:
-  tools/visual_dashboard/
-  ├── app.py              # Flask server
-  ├── templates/
-  │   └── index.html      # UI
-  └── static/
-      ├── style.css
-      ├── charts.js       # TradingView charts
-      └── dashboard.js    # WebSocket updates
-Funcionalidad: Muestra sprites, patrones, gráficos TradingView
-Estado: Código existe ✅
-4. Arquitectura Dual-Speed
-Deep Scanner: Thread que escanea 751 monedas continuamente
-Sniper: Thread que vigila watchlist cada 10s
-Estado: Implementado en visual_sniper.py ✅
-❌ PROBLEMAS ACTUALES (Por qué no opera en vivo)
-PROBLEMA 1: Dashboard no muestra gráficos
-Síntoma: Navegador dice "Esperando gráficos"
-Causa probable:
-python# visual_sniper.py NO envía datos al dashboard
-# Falta esta integración:
-
-try:
-    from tools.visual_dashboard.app import update_bot_state
-    update_bot_state({
-        'symbol': symbol,
-        'sprites': {...},
-        'pattern': pattern_id,
-        ...
-    })
-except:
-    pass
-Ubicación del problema: brain/visual_sniper.py líneas ~1400-1500
-Estado: ❌ NO IMPLEMENTADO
-
-PROBLEMA 2: Bot no opera en vivo (0 trades durante la noche)
-Síntomas:
-
-Backtest ejecuta trades ✅
-Live NO ejecuta trades ❌
-
-Causas posibles:
-A) Contaminación de código de backtest
-python# En visual_sniper.py pueden existir líneas como:
-if mode == 'backtest':
-    ...
-if is_simulation:
-    ...
-No verificado aún - requiere análisis del archivo completo
-B) Memoria de patrones vacía
-
-pattern_memory.db puede estar vacía
-Sin estadísticas, bot rechaza todos los patrones
-Solución: Ejecutar observation_mode.py para llenar memoria
-
-C) Filtros muy estrictos
-python# Posibles filtros en el código:
-min_win_rate = 0.65  # Demasiado alto (debería ser 0.45)
-min_sample_size = 20  # Demasiado alto
-D) Dashboard desconectado
-
-Bot arranca dashboard en thread separado
-Thread puede fallar silenciosamente
-Bot continúa pero sin comunicación visual
-📁 ARCHIVOS CRÍTICOS Y SU ESTADO
-CEREBRO (Decisión de trades)
-ArchivoEstadoProblemabrain/visual_sniper.py⚠️Posible contaminación backtest + falta update_dashboard()brain/pattern_matcher.py✅Corregidobrain/pattern_catalog.py✅51 patrones OKbrain/visual_classifier.py❓No verificadobrain/market_entity.py✅Física OKbrain/walls.py✅Soportes/resistencias OK
-DASHBOARD (Visualización)
-ArchivoEstadoProblematools/visual_dashboard/app.py⚠️Existe pero no recibe datosstatic/charts.js✅TradingView integradostatic/dashboard.js✅WebSocket configurado
-ORQUESTACIÓN
-ArchivoEstadoProblemamain.py⚠️Auto-launch dashboard puede fallarexchange/connection.py✅Conecta a MEXC OK
-🔍 ANÁLISIS DEL CÓDIGO SUBIDO
-visual_sniper.py - Hallazgos:
-✅ CORRECTO:
-Arquitectura dual-speed implementada
-Sistema de watchlist persistente
-Análisis físico (velocidad, aceleración)
-Multi-timeframe confirmation
-❌ PROBLEMAS DETECTADOS:
-1. Código de backtest mezclado:
-python# Línea ~200 (aproximada)
-HOLISTIC_AVAILABLE = False    # ← Desactivado manualmente
-Comentario: Esto está bien, NO es contaminación
-2. Dashboard update comentado/faltante:
-python# Línea ~1800 (aproximada) - EXISTE pero puede no ejecutarse
-try:
-    from tools.visual_dashboard.app import update_bot_state
-    update_bot_state({...})
-except:
-    pass  # ← Falla silenciosamente
-Problema: Si app.py no existe o tiene error, el except: pass oculta el problema
-3. Filtros muy estrictos (SOSPECHA):
-python# Línea ~1600 (aproximada)
-if stats['sample_size'] &lt; 5:  # ← MUY bajo, pero OK
-if stats['win_rate'] &lt; 0.40:  # ← Razonable
-if stats['expectancy'] &lt; -0.5:  # ← OK
-# PERO en config puede haber:
-MIN_WIN_RATE = config['filters']['min_win_rate']  # ← ¿Valor?
-MIN_SAMPLE_SIZE = config['filters']['min_sample_size']  # ← ¿Valor?
-Necesita verificación: ¿Qué valores tiene get_live_config()?
-4. Pattern memory puede estar vacía:
-pythondef _get_pattern_stats(self, pattern_id):
-    # Si DB no existe o está vacía:
-    return {'sample_size': 0, 'win_rate': 0, 'expectancy': 0}
-  
-    # Entonces:
-    if stats['sample_size'] &lt; 5:  # ← Siempre True
-        # NO entra
-```
-
----
-## 🎯 DIAGNÓSTICO COMPLETO
-### **Por qué el bot NO opera:**
-**Flujo de decisión:**
-```
-1. Deep Scanner obtiene 751 símbolos
-2. Para cada símbolo:
-   a) _analyze_physics() calcula velocidad, aceleración
-   b) _classify_market_state() → sprites
-   c) _find_pattern() → match con catálogo
-   d) _get_pattern_stats() → consulta DB ← AQUÍ FALLA
-   
-   Si DB vacía:
-   → sample_size = 0
-   → NO cumple filtros
-   → REJECTED
-   
-3. Resultado: 0 trades
-Confirmación: Línea ~1650 de visual_sniper.py:
-pythonif stats['sample_size'] &lt; 5:
-    if match_score &gt;= 0.75:
-        # Modo experimental - requiere match muy alto
-        # Y luego verifica acción del patrón
-        
-        if pattern_action == 'SKIP':
-            return REJECTED  # ← Aquí caen los bloqueados
-        
-        return PRIORITY
-    else:
-        pass  # ← NO entra (match &lt; 0.75)
-Hipótesis:
-
-Patrones matchean con score 0.70-0.74 (no llega a 0.75)
-O memory DB está vacía (sample_size = 0)
-Entonces NUNCA llega a PRIORITY
-📋 PLAN DE ACCIÓN PARA SIGUIENTE SESIÓN
-FASE 1: Diagnóstico (15 min)
-1.1 Verificar memoria de patrones
-bash# Comprobar si existe y tiene datos
-sqlite3 data/pattern_memory.db "SELECT COUNT(*) FROM observations"
-Si retorna 0 o error:
-bash# Llenar memoria con observaciones históricas
-python tools/observation_mode.py
-# Esperar 5-10 minutos
-1.2 Verificar configuración live
-python# En visual_sniper.py, agregar después de línea ~1600:
-print(f"DEBUG CONFIG: min_wr={MIN_WIN_RATE}, min_sample={MIN_SAMPLE_SIZE}")
-1.3 Test de pattern matching
-python# Crear: test_live_matching.py
-from brain.visual_sniper import HybridVisualSniper
-sniper = HybridVisualSniper(connector=...)
-# Test con BTC
-result = sniper._analyze_physics('BTC/USDT:USDT')
-print(f"Classification: {result['classification']}")
-print(f"Pattern: {result.get('pattern_id')}")
-print(f"Stats: {sniper._get_pattern_stats(result.get('pattern_id'))}")
-FASE 2: Fixes Rápidos (30 min)
-2.1 Bajar filtros temporalmente
-python# En visual_sniper.py, línea ~1600
-# CAMBIAR:
-MIN_WIN_RATE = 0.45  # Antes: 0.65
-MIN_SAMPLE_SIZE = 5   # Antes: 20
-MIN_EXPECTANCY = -0.5 # Antes: 0.0
-# O mejor: modo PROSPECTING (permitir con poca data)
-if stats['sample_size'] &lt; 5:
-    if match_score &gt;= 0.70:  # Bajar de 0.75 a 0.70
-2.2 Fix dashboard integration
-python# En visual_sniper.py, después de _find_pattern()
-# CAMBIAR:
-try:
-    from tools.visual_dashboard.app import update_bot_state
-    ...
-except:
-    pass  # ← MAL
-
-# POR:
-try:
-    from tools.visual_dashboard.app import update_bot_state
-    ...
-except Exception as e:
-    print(f"⚠️ Dashboard update failed: {e}")  # ← Ver el error
-2.3 Logging de rechazos
-python# Agregar contador de por qué rechaza:
-rejection_reasons = {}
-
-# En cada rechazo:
-reason = result.get('rejection_reasons', ['Unknown'])[0]
-rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
-
-# Al final del scan:
-print("TOP RECHAZOS:")
-for r, count in sorted(rejection_reasons.items(), key=lambda x: -x[1])[:5]:
-    print(f"  {count:3d} | {r}")
-
-FASE 3: Verificación (15 min)
-3.1 Backtest debe seguir funcionando
-bashpython backtest_physics.py
-# Verificar: &gt;0 trades, Win Rate razonable
-3.2 Live test corto (10 minutos)
-bashpython main.py
-# Observar:
-# - ¿Cuántos símbolos analiza?
-# - ¿Encuentra algún PRIORITY?
-# - ¿Ejecuta trade?
-```
-
-#### 3.3 Dashboard test
-```
-http://localhost:5000
-# Verificar:
-# - ¿Se conecta?
-# - ¿Muestra sprites?
-# - ¿Muestra gráficos?
-🔧 CÓDIGO DE FIXES PREPARADO
-Fix 1: Logging mejorado (copiar/pegar en visual_sniper.py)
-python# Insertar después de línea ~1650
-def _analyze_physics(self, symbol: str):
-    # ... código existente ...
-   
-    # AGREGAR LOGGING DETALLADO:
-    if matched_pattern and match_score &gt;= 0.70:
-        pattern_id = matched_pattern['name']
-        stats = self._get_pattern_stats(pattern_id)
-        
-        # &gt;&gt;&gt; NUEVO LOGGING &lt;
-        print(f"  [MATCH] {symbol:20s} | {pattern_id:25s} | Score: {match_score:.2f}")
-        print(f"         Stats: {stats['sample_size']:3d} obs | WR: {stats['win_rate']:.0%} | EV: {stats['expectancy']:+.2f}%")
-        
-        if stats['sample_size'] &lt; 5:
-            print(f"         ⚠️ INSUFICIENTE DATA - modo experimental")
-            if match_score &gt;= 0.75:
-                print(f"         ✅ Score alto ({match_score:.2f}) - APROBAR")
-            else:
-                print(f"         ❌ Score bajo ({match_score:.2f}) - RECHAZAR")
-Fix 2: Modo emergency (permitir trades con poca data)
-python# Insertar en visual_sniper.py línea ~1650
-# CAMBIAR:
-if stats['sample_size'] &lt; 5:
-    if match_score &gt;= 0.75:  # ← Muy estricto
-        ...
-
-# POR:
-EMERGENCY_MODE = True  # ← Activar temporalmente
-
-if stats['sample_size'] &lt; 5:
-    if EMERGENCY_MODE:
-        # En emergencia, permitir si match &gt; 0.70
-        if match_score &gt;= 0.70:
-            return {'classification': 'PRIORITY', ...}
-    else:
-        # Modo normal, requiere 0.75
-        if match_score &gt;= 0.75:
-            return {'classification': 'PRIORITY', ...}
-📊 ESTADO FINAL
-LO QUE FUNCIONA:
-✅ Backtest ejecuta trades
-✅ Pattern matcher corregido
-✅ 51 patrones definidos
-✅ Arquitectura dual-speed
-✅ Dashboard código existe
-LO QUE FALLA:
-❌ Bot no opera en live (0 trades)
-❌ Dashboard no muestra gráficos
-❌ Causa exacta no confirmada (3 hipótesis)
-HIPÓTESIS PRINCIPALES:
-Memoria vacía (80% probable) → Fix: observation_mode.py
-Filtros muy estrictos (15% probable) → Fix: Bajar thresholds
-Contaminación backtest (5% probable) → Fix: Limpiar código
-🎯 PRÓXIMOS PASOS (Orden de ejecución)
-Ejecutar observation_mode.py (llenar memoria)
-Aplicar Fix 1 (logging mejorado)
-Aplicar Fix 2 (emergency mode)
-Test backtest (verificar que sigue funcionando)
-Test live 10 min (ver si opera)
-Analizar logs (identificar bloqueadores)
-Iterar
-📝 NOTAS IMPORTANTES
-NO borrar código - Solo agregar flags true/false
-Mantener backtest funcionando - Es la referencia
-Logging es clave - Necesitamos ver por qué rechaza
-Memoria primero - Sin estadísticas no opera
-Esto es TODO lo trabajado hasta ahora.
-El bot está 90% listo - solo falta identificar el bloqueador final.
-Primer modulo para analizar: 
-visual_sniper.py módulo completo.
+Modulo:
 """
-Hybrid Visual Sniper System - Sniper Híbrido con Watchlist Persistente
-FILOSOFÍA:
-- 100% Visual (sin scoring numérico)
-- Watchlist persistente (memoria entre ciclos)
-- Full scan cada 30s (nuevos candidatos)
-- Re-análisis watchlist cada 5s (rápido)
-- Multi-timeframe para confirmar Priority
-FLUJO:
-Ciclo 1: Full Scan (700+) → Filtrar → Watchlist
-Ciclo 2-6: Re-analizar Watchlist (rápido)
-Ciclo 7: Full Scan de nuevo + Re-analizar Watchlist
+Pattern Catalog - Patrones visuales del mercado
+SOLO definiciones de sprites.
 """
-import numpy as np
-import time
-import threading
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+
+PATTERNS = {
+    # ════════════════════════════════════════════════════════
+    # LONG STRATEGIES (ROCKET, CLIMB, BREAKOUT)
+    # ════════════════════════════════════════════════════════
+    'LONG_001_ROCKET': {
+        'name': '🚀 Rocket Launch',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'ACCELERATING',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '🚀↗↗ ▁▃▅▇ 💨→→→ 🟢⚡ ⛰️↗ 🛣️',
+        'description': 'Lanzamiento perfecto con todo a favor'
+    },
+    'LONG_002_CLIMB': {
+        'name': '📈 Steady Climb',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'STEADY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'HALF_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢 ⛰️↗ 🛣️',
+        'description': 'Subida constante y segura'
+    },
+    'LONG_003_BREAKOUT': {
+        'name': '💥 Breakout',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'TAILWIND_WEAK',
+            'fuel': 'FULL_TANK',
+            'terrain': 'BREAKING_CEILING',
+            'runway': 'ROAD'
+        },
+        'action': 'LONG',
+        'visual': '🚀↗↗ ▁▁▁█ 💨→ 🟢⚡ 💥🚀 🚗',
+        'description': 'Ruptura de techo con fuerza'
+    },
+    'LONG_004_CRUISING': {
+        'name': '✈️ Cruising Altitude',
+        'sprites': {
+            'price_direction': 'CRUISING_UP',
+            'candle_shape': 'STEADY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'ANY',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '→↗ ▅▅▅▅ 💨→→→ ⛰️↗ 🛣️',
+        'description': 'Tendencia establecida, velocidad crucero'
+    },
+    'LONG_005_PULLBACK_ENTRY': {
+        'name': '🎣 Perfect Pullback',
+        'sprites': {
+            'price_direction': 'FLAT', # Pausa
+            'candle_shape': 'DECELERATING',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'HALF_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '═══ ▇▅▃▁ 💨→→→ 🟢 ⛰️↗ 🛣️',
+        'description': 'Retroceso sano en tendencia alcista'
+    },
+    'LONG_006_FUELED_WAIT': {
+        'name': '⛽ Refueling',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'CHOPPY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK', # Recargado
+            'terrain': 'PLATEAU',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '═══ ▃▇▁▅ 💨→→→ 🟢⚡ ═══ 🛣️',
+        'description': 'Lateralizacíon con momentum cargado'
+    },
+    'LONG_007_REVERSAL_V': {
+        'name': '↩️ V-Shape Recovery',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'ACCELERATING',
+            'wind': 'HEADWIND_WEAK', # Rompiendo contra viento
+            'fuel': 'FULL_TANK',
+            'terrain': 'VALLEY', # Saliendo del valle
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '🚀↗↗ ▁▃▅▇ ←💨 🟢⚡ 📉↘ 🛣️',
+        'description': 'Recuperación agresiva desde el fondo'
+    },
+    'LONG_008_OBSTACLE_COURSE': {
+        'name': '🚧 Obstacle Dodge',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'STEADY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'ALLEY' # Cuidado
+        },
+        'action': 'WAIT',
+        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧',
+        'description': 'Subiendo pero pared cerca'
+    },
+    'LONG_009_NO_FUEL': {
+        'name': '🍂 Gliding',
+        'sprites': {
+            'price_direction': 'CRUISING_UP',
+            'candle_shape': 'DECELERATING',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FUMES',
+            'terrain': 'MOUNTAIN',
+            'runway': 'ANY'
+        },
+        'action': 'WAIT',
+        'visual': '→↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗',
+        'description': 'Subiendo por inercia, sin gas'
+    },
+    'LONG_010_HEADWIND_FIGHT': {
+        'name': '🌬️ Fighting Wind',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'CHOPPY',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'PLATEAU',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'WAIT',
+        'visual': '📈↗ ▃▇▁▅ ←←←💨 🟢⚡ ═══ 🛣️',
+        'description': 'Luchando contra tendencia mayor fuerte'
+    },
+    # ════════════════════════════════════════════════════════
+    # SHORT STRATEGIES (CRASH, FALL, BREAKDOWN)
+    # ════════════════════════════════════════════════════════
+    'SHORT_001_CRASH': {
+        'name': '💥 Free Fall',
+        'sprites': {
+            'price_direction': 'CRASH',
+            'candle_shape': 'ACCELERATING', # Acelerando hacia abajo
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'EMPTY_BEARISH', # Rojo
+            'terrain': 'VALLEY',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '💥↘↘ ▁▃▅▇ ←←←💨 🔴 📉↘ 🛣️',
+        'description': 'Caída libre perfecta'
+    },
+    'SHORT_002_BREAKDOWN': {
+        'name': '📉 Breakdown',
+        'sprites': {
+            'price_direction': 'CRASH',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'HEADWIND_WEAK',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'BREAKING_FLOOR',
+            'runway': 'ROAD'
+        },
+        'action': 'SHORT',
+        'visual': '💥↘↘ ▁▁▁█ ←💨 🔴 💥📉 🚗',
+        'description': 'Ruptura de suelo agresiva'
+    },
+    'SHORT_003_SLIDE': {
+        'name': '🎿 Downhill Ski',
+        'sprites': {
+            'price_direction': 'FALLING',
+            'candle_shape': 'STEADY',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'VALLEY',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '📉↘ ▅▅▅▅ ←←←💨 🔴 📉↘ 🛣️',
+        'description': 'Bajada constante y controlada'
+    },
+    'SHORT_004_DIVE': {
+        'name': '🦅 Nose Dive',
+        'sprites': {
+            'price_direction': 'FALLING',
+            'candle_shape': 'ACCELERATING',
+            'wind': 'NO_WIND',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'plateau',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '📉↘ ▁▃▅▇ ～ 🔴 ═══ 🛣️',
+        'description': 'Inicio de caída desde neutralidad'
+    },
+    'SHORT_005_DEAD_CAT': {
+        'name': '🐱 Dead Cat',
+        'sprites': {
+            'price_direction': 'FLAT', # Rebote fallido
+            'candle_shape': 'DECELERATING',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'FUMES', # Verde debil terminandose
+            'terrain': 'VALLEY',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '═══ ▇▅▃▁ ←←←💨 🟡 📉↘ 🛣️',
+        'description': 'Rebote débil en tendencia bajista'
+    },
+    'SHORT_006_HEAVY_TOP': {
+        'name': '🏋️ Heavy Top',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'CHOPPY',
+            'wind': 'TAILWIND_WEAK',
+            'fuel': 'EMPTY_BEARISH', # Momentum cambiando a rojo
+            'terrain': 'MOUNTAIN',
+            'runway': 'ALLEY'
+        },
+        'action': 'SHORT',
+        'visual': '═══ ▃▇▁▅ 💨→ 🔴 ⛰️↗ 🚧',
+        'description': 'Techo redondeado, perdiendo fuerza'
+    },
+    # ════════════════════════════════════════════════════════
+    # NEUTRAL / CHOPPY / DANGEROUS PATTERNS
+    # ════════════════════════════════════════════════════════
+    'NEUT_001_SLEEPING': {
+        'name': '💤 Sleeping Beauty',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'STEADY',
+            'wind': 'NO_WIND',
+            'fuel': 'ANY',
+            'terrain': 'PLATEAU',
+            'runway': 'ANY'
+        },
+        'action': 'SKIP',
+        'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚧',
+        'description': 'Mercado totalmente dormido'
+    },
+    'NEUT_002_STORM': {
+        'name': '⛈️ Tropical Storm',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'CHOPPY',
+            'wind': 'NO_WIND',
+            'fuel': 'ANY',
+            'terrain': 'PLATEAU',
+            'runway': 'ALLEY'
+        },
+        'action': 'SKIP',
+        'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧',
+        'description': 'Ruido extremo sin dirección'
+    },
+    'NEUT_003_CONFUSION': {
+        'name': '😵 Confusion',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'CHOPPY',
+            'wind': 'HEADWIND_STRONG', # Contradiccion climbing vs headwind
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'PLATEAU',
+            'runway': 'ROAD'
+        },
+        'action': 'SKIP',
+        'visual': '📈↗ ▃▇▁▅ ←←←💨 🔴 ═══ 🚗',
+        'description': 'Señales contradictorias'
+    },
+    # ════════════════════════════════════════════════════════
+    # SPECIAL / RARE PATTERNS
+    # ════════════════════════════════════════════════════════
+    'GOLD_001_GOD_MODE': {
+        'name': '⚡ GOD MODE',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'BREAKING_CEILING',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG_PRIORITY',
+        'visual': '🚀↗↗ ▁▁▁█ 💨→→→ 🟢⚡ 💥🚀 🛣️',
+        'description': 'EL SETUP PERFECTO'
+    },
+    'GOLD_002_DOOM_MODE': {
+        'name': '💀 DOOM MODE',
+        'sprites': {
+            'price_direction': 'CRASH',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'BREAKING_FLOOR',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT_PRIORITY',
+        'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️',
+        'description': 'DUMP MASIVO INMINENTE'
+    },
+    # ════════════════════════════════════════════════════════
+    # FILLER PATTERNS (VARIATIONS) TO REACH 50
+    # ════════════════════════════════════════════════════════
+    # ... Generating variations ...
+    'VAR_001_SLOW_CLIMB': {'name': '🐢 Slow Climb', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ═══ 🚗', 'description': 'Subida lenta pero segura' },
+    'VAR_002_WEAK_ROCKET': {'name': '🧨 Weak Rocket', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Cohete perdiendo fuerza' },
+    'VAR_003_EARLY_BIRD': {'name': '🐣 Early Bird', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢⚡ ═══ 🛣️', 'description': 'Inicio temprano de tendencia' },
+    'VAR_004_TURBULENCE': {'name': '✈️〰️ Turbulence', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_STRONG', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→→→ 🟢 ⛰️↗ 🚗', 'description': 'Subiendo con turbulencia' },
+    'VAR_005_ROADBLOCK': {'name': '🧱 Roadblock', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧', 'description': 'Fuerte pero sin espacio' },
+    'VAR_006_FALSE_START': {'name': '🚫 False Start', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'CHOPPY', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▃▇▁▅ ←←←💨 🟢⚡ 📉↘ 🚗', 'description': 'Posible trampa alcista' },
+    'VAR_007_EXHAUSTION': {'name': '🥵 Exhaustion', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'SUMMIT', 'runway': 'ANY'}, 'action': 'WAIT', 'visual': '📈↗ ▇▅▃▁ 💨→→→ 🟡 🏔️ 🚧', 'description': 'Agotamiento en la cima' },
+    'VAR_008_DIP_BUY': {'name': '🛍️ Dip Buy', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'ANY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📉↘ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Comprando el dip (agresivo)' },
+    'VAR_009_SHORT_SQUEEZE': {'name': '🍋 Short Squeeze', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←←←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Squeeze violento contra tendencia' },
+    'VAR_010_KNIFE_CATCH': {'name': '🔪 Knife Catch', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 📉↘ 🛣️', 'description': 'No atrapar cuchillos cayendo' },
+    'VAR_011_WIND_CHANGE': {'name': '🔁 Wind Change', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ～ 🟢 ═══ 🛣️', 'description': 'Cambio de tendencia incipiente' },
+    'VAR_012_FUEL_LEAK': {'name': '💧 Fuel Leak', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'EXIT', 'visual': '═══ ▅▅▅▅ 💨→ 🔴 ⛰️↗ 🚗', 'description': 'Perdiendo combustible' },
+    'VAR_013_STAIRS_UP': {'name': '🪜 Stairs Up', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ⛰️↗ 🚗', 'description': 'Subida escalonada sana' },
+    'VAR_014_ELEVATOR_DOWN': {'name': '🛗 Elevator Down', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▅▅▅▅ ←💨 🔴 📉↘ 🚗', 'description': 'Bajada rápida y constante' },
+    'VAR_015_BLOCKED': {'name': '🧱 Blocked', 'sprites': {'price_direction': 'ANY', 'candle_shape': 'ANY', 'wind': 'ANY', 'fuel': 'ANY', 'terrain': 'ANY', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '❓ ❓ ❓ ❓ ❓ 🚧', 'description': 'Bloqueado por pared cercana' },
+    'VAR_016_NO_MANS_LAND': {'name': '🏜️ No Mans Land', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'SKIP', 'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚗', 'description': 'Tierra de nadie' },
+    'VAR_017_SUPER_CYCLE': {'name': '🚲 Super Cycle', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'BREAKING_CEILING', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ 💥🚀 🛣️', 'description': 'Inicio de super ciclo' },
+    'VAR_018_BEAR_TRAP': {'name': '🐻 Bear Trap', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_WEAK', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Trampa de osos resuelta' },
+    'VAR_019_BULL_TRAP': {'name': '🐂 Bull Trap', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ 💨→ 🔴 ⛰️↗ 🛣️', 'description': 'Trampa de toros' },
+    'VAR_020_CONGESTION': {'name': '🚙 Congestion', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '═══ ▃▇▁▅ ～ 🟢 ═══ 🚧', 'description': 'Congestión de tráfico' },
+    'VAR_021_SNIPER_WAIT': {'name': '🔭 Sniper Wait', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'READY', 'visual': '═══ ▇▅▃▁ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Esperando confirmación final' },
+    'VAR_022_ROCKET_REFUEL': {'name': '⛽ Rocket Refuel', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '→↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Cohete recargando en movimiento' },
+    'VAR_023_FALLING_STAR': {'name': '🌠 Falling Star', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'NO_WIND', 'fuel': 'EMPTY', 'terrain': 'SUMMIT', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▇▅▃▁ ～ 🔴 🏔️ 🚗', 'description': 'Estrella fugaz cayendo' },
+    'VAR_024_MORNING_STAR': {'name': '🌅 Morning Star', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢 📉↘ 🚗', 'description': 'Amanecer en el valle' },
+    'VAR_025_TSUNAMI': {'name': '🌊 Tsunami', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY_BEARISH', 'terrain': 'BREAKING_FLOOR', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️', 'description': 'Tsunami bajista imparable' },
+    'VAR_026_VOLCANO': {'name': '🌋 Volcano', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ～ 🟢⚡ ═══ 🛣️', 'description': 'Erupción desde la calma' },
+    'VAR_027_DRIFTING': {'name': '🚗💨 Drifting', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→ 🟢 ═══ 🚗', 'description': 'Derrapando lateralmente' },
+    'VAR_028_LOST': {'name': '🗺️ Lost', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧', 'description': 'Perdido en el mapa' },
+    'VAR_029_RECOVERY': {'name': '🚑 Recovery', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ←💨 🟢 📉↘ 🚗', 'description': 'Recuperación lenta' },
+    'VAR_030_BLEEDING': {'name': '🩸 Bleeding', 'sprites': {'price_direction': 'CRUISING_DOWN', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ANY'}, 'action': 'SHORT', 'visual': '↘→ ▅▅▅▅ ←💨 🔴 📉↘ 🚧', 'description': 'Sangrado lento' },
+}
+
+Modulo:
+
+"""
+Pattern Catalog - Patrones visuales del mercado
+SOLO definiciones de sprites.
+"""
+
+PATTERNS = {
+    # ════════════════════════════════════════════════════════
+    # LONG STRATEGIES (ROCKET, CLIMB, BREAKOUT)
+    # ════════════════════════════════════════════════════════
+    'LONG_001_ROCKET': {
+        'name': '🚀 Rocket Launch',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'ACCELERATING',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '🚀↗↗ ▁▃▅▇ 💨→→→ 🟢⚡ ⛰️↗ 🛣️',
+        'description': 'Lanzamiento perfecto con todo a favor'
+    },
+    'LONG_002_CLIMB': {
+        'name': '📈 Steady Climb',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'STEADY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'HALF_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢 ⛰️↗ 🛣️',
+        'description': 'Subida constante y segura'
+    },
+    'LONG_003_BREAKOUT': {
+        'name': '💥 Breakout',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'TAILWIND_WEAK',
+            'fuel': 'FULL_TANK',
+            'terrain': 'BREAKING_CEILING',
+            'runway': 'ROAD'
+        },
+        'action': 'LONG',
+        'visual': '🚀↗↗ ▁▁▁█ 💨→ 🟢⚡ 💥🚀 🚗',
+        'description': 'Ruptura de techo con fuerza'
+    },
+    'LONG_004_CRUISING': {
+        'name': '✈️ Cruising Altitude',
+        'sprites': {
+            'price_direction': 'CRUISING_UP',
+            'candle_shape': 'STEADY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'ANY',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '→↗ ▅▅▅▅ 💨→→→ ⛰️↗ 🛣️',
+        'description': 'Tendencia establecida, velocidad crucero'
+    },
+    'LONG_005_PULLBACK_ENTRY': {
+        'name': '🎣 Perfect Pullback',
+        'sprites': {
+            'price_direction': 'FLAT', # Pausa
+            'candle_shape': 'DECELERATING',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'HALF_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '═══ ▇▅▃▁ 💨→→→ 🟢 ⛰️↗ 🛣️',
+        'description': 'Retroceso sano en tendencia alcista'
+    },
+    'LONG_006_FUELED_WAIT': {
+        'name': '⛽ Refueling',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'CHOPPY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK', # Recargado
+            'terrain': 'PLATEAU',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '═══ ▃▇▁▅ 💨→→→ 🟢⚡ ═══ 🛣️',
+        'description': 'Lateralizacíon con momentum cargado'
+    },
+    'LONG_007_REVERSAL_V': {
+        'name': '↩️ V-Shape Recovery',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'ACCELERATING',
+            'wind': 'HEADWIND_WEAK', # Rompiendo contra viento
+            'fuel': 'FULL_TANK',
+            'terrain': 'VALLEY', # Saliendo del valle
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG',
+        'visual': '🚀↗↗ ▁▃▅▇ ←💨 🟢⚡ 📉↘ 🛣️',
+        'description': 'Recuperación agresiva desde el fondo'
+    },
+    'LONG_008_OBSTACLE_COURSE': {
+        'name': '🚧 Obstacle Dodge',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'STEADY',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'MOUNTAIN',
+            'runway': 'ALLEY' # Cuidado
+        },
+        'action': 'WAIT',
+        'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧',
+        'description': 'Subiendo pero pared cerca'
+    },
+    'LONG_009_NO_FUEL': {
+        'name': '🍂 Gliding',
+        'sprites': {
+            'price_direction': 'CRUISING_UP',
+            'candle_shape': 'DECELERATING',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FUMES',
+            'terrain': 'MOUNTAIN',
+            'runway': 'ANY'
+        },
+        'action': 'WAIT',
+        'visual': '→↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗',
+        'description': 'Subiendo por inercia, sin gas'
+    },
+    'LONG_010_HEADWIND_FIGHT': {
+        'name': '🌬️ Fighting Wind',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'CHOPPY',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'PLATEAU',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'WAIT',
+        'visual': '📈↗ ▃▇▁▅ ←←←💨 🟢⚡ ═══ 🛣️',
+        'description': 'Luchando contra tendencia mayor fuerte'
+    },
+    # ════════════════════════════════════════════════════════
+    # SHORT STRATEGIES (CRASH, FALL, BREAKDOWN)
+    # ════════════════════════════════════════════════════════
+    'SHORT_001_CRASH': {
+        'name': '💥 Free Fall',
+        'sprites': {
+            'price_direction': 'CRASH',
+            'candle_shape': 'ACCELERATING', # Acelerando hacia abajo
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'EMPTY_BEARISH', # Rojo
+            'terrain': 'VALLEY',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '💥↘↘ ▁▃▅▇ ←←←💨 🔴 📉↘ 🛣️',
+        'description': 'Caída libre perfecta'
+    },
+    'SHORT_002_BREAKDOWN': {
+        'name': '📉 Breakdown',
+        'sprites': {
+            'price_direction': 'CRASH',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'HEADWIND_WEAK',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'BREAKING_FLOOR',
+            'runway': 'ROAD'
+        },
+        'action': 'SHORT',
+        'visual': '💥↘↘ ▁▁▁█ ←💨 🔴 💥📉 🚗',
+        'description': 'Ruptura de suelo agresiva'
+    },
+    'SHORT_003_SLIDE': {
+        'name': '🎿 Downhill Ski',
+        'sprites': {
+            'price_direction': 'FALLING',
+            'candle_shape': 'STEADY',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'VALLEY',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '📉↘ ▅▅▅▅ ←←←💨 🔴 📉↘ 🛣️',
+        'description': 'Bajada constante y controlada'
+    },
+    'SHORT_004_DIVE': {
+        'name': '🦅 Nose Dive',
+        'sprites': {
+            'price_direction': 'FALLING',
+            'candle_shape': 'ACCELERATING',
+            'wind': 'NO_WIND',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'plateau',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '📉↘ ▁▃▅▇ ～ 🔴 ═══ 🛣️',
+        'description': 'Inicio de caída desde neutralidad'
+    },
+    'SHORT_005_DEAD_CAT': {
+        'name': '🐱 Dead Cat',
+        'sprites': {
+            'price_direction': 'FLAT', # Rebote fallido
+            'candle_shape': 'DECELERATING',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'FUMES', # Verde debil terminandose
+            'terrain': 'VALLEY',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT',
+        'visual': '═══ ▇▅▃▁ ←←←💨 🟡 📉↘ 🛣️',
+        'description': 'Rebote débil en tendencia bajista'
+    },
+    'SHORT_006_HEAVY_TOP': {
+        'name': '🏋️ Heavy Top',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'CHOPPY',
+            'wind': 'TAILWIND_WEAK',
+            'fuel': 'EMPTY_BEARISH', # Momentum cambiando a rojo
+            'terrain': 'MOUNTAIN',
+            'runway': 'ALLEY'
+        },
+        'action': 'SHORT',
+        'visual': '═══ ▃▇▁▅ 💨→ 🔴 ⛰️↗ 🚧',
+        'description': 'Techo redondeado, perdiendo fuerza'
+    },
+    # ════════════════════════════════════════════════════════
+    # NEUTRAL / CHOPPY / DANGEROUS PATTERNS
+    # ════════════════════════════════════════════════════════
+    'NEUT_001_SLEEPING': {
+        'name': '💤 Sleeping Beauty',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'STEADY',
+            'wind': 'NO_WIND',
+            'fuel': 'ANY',
+            'terrain': 'PLATEAU',
+            'runway': 'ANY'
+        },
+        'action': 'SKIP',
+        'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚧',
+        'description': 'Mercado totalmente dormido'
+    },
+    'NEUT_002_STORM': {
+        'name': '⛈️ Tropical Storm',
+        'sprites': {
+            'price_direction': 'FLAT',
+            'candle_shape': 'CHOPPY',
+            'wind': 'NO_WIND',
+            'fuel': 'ANY',
+            'terrain': 'PLATEAU',
+            'runway': 'ALLEY'
+        },
+        'action': 'SKIP',
+        'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧',
+        'description': 'Ruido extremo sin dirección'
+    },
+    'NEUT_003_CONFUSION': {
+        'name': '😵 Confusion',
+        'sprites': {
+            'price_direction': 'CLIMBING',
+            'candle_shape': 'CHOPPY',
+            'wind': 'HEADWIND_STRONG', # Contradiccion climbing vs headwind
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'PLATEAU',
+            'runway': 'ROAD'
+        },
+        'action': 'SKIP',
+        'visual': '📈↗ ▃▇▁▅ ←←←💨 🔴 ═══ 🚗',
+        'description': 'Señales contradictorias'
+    },
+    # ════════════════════════════════════════════════════════
+    # SPECIAL / RARE PATTERNS
+    # ════════════════════════════════════════════════════════
+    'GOLD_001_GOD_MODE': {
+        'name': '⚡ GOD MODE',
+        'sprites': {
+            'price_direction': 'ROCKET_UP',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'TAILWIND_STRONG',
+            'fuel': 'FULL_TANK',
+            'terrain': 'BREAKING_CEILING',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'LONG_PRIORITY',
+        'visual': '🚀↗↗ ▁▁▁█ 💨→→→ 🟢⚡ 💥🚀 🛣️',
+        'description': 'EL SETUP PERFECTO'
+    },
+    'GOLD_002_DOOM_MODE': {
+        'name': '💀 DOOM MODE',
+        'sprites': {
+            'price_direction': 'CRASH',
+            'candle_shape': 'EXPLOSIVE',
+            'wind': 'HEADWIND_STRONG',
+            'fuel': 'EMPTY_BEARISH',
+            'terrain': 'BREAKING_FLOOR',
+            'runway': 'HIGHWAY'
+        },
+        'action': 'SHORT_PRIORITY',
+        'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️',
+        'description': 'DUMP MASIVO INMINENTE'
+    },
+    # ════════════════════════════════════════════════════════
+    # FILLER PATTERNS (VARIATIONS) TO REACH 50
+    # ════════════════════════════════════════════════════════
+    # ... Generating variations ...
+    'VAR_001_SLOW_CLIMB': {'name': '🐢 Slow Climb', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ═══ 🚗', 'description': 'Subida lenta pero segura' },
+    'VAR_002_WEAK_ROCKET': {'name': '🧨 Weak Rocket', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Cohete perdiendo fuerza' },
+    'VAR_003_EARLY_BIRD': {'name': '🐣 Early Bird', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢⚡ ═══ 🛣️', 'description': 'Inicio temprano de tendencia' },
+    'VAR_004_TURBULENCE': {'name': '✈️〰️ Turbulence', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_STRONG', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→→→ 🟢 ⛰️↗ 🚗', 'description': 'Subiendo con turbulencia' },
+    'VAR_005_ROADBLOCK': {'name': '🧱 Roadblock', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🚧', 'description': 'Fuerte pero sin espacio' },
+    'VAR_006_FALSE_START': {'name': '🚫 False Start', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'CHOPPY', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '🚀↗↗ ▃▇▁▅ ←←←💨 🟢⚡ 📉↘ 🚗', 'description': 'Posible trampa alcista' },
+    'VAR_007_EXHAUSTION': {'name': '🥵 Exhaustion', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FUMES', 'terrain': 'SUMMIT', 'runway': 'ANY'}, 'action': 'WAIT', 'visual': '📈↗ ▇▅▃▁ 💨→→→ 🟡 🏔️ 🚧', 'description': 'Agotamiento en la cima' },
+    'VAR_008_DIP_BUY': {'name': '🛍️ Dip Buy', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'ANY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📉↘ ▇▅▃▁ 💨→→→ 🟡 ⛰️↗ 🛣️', 'description': 'Comprando el dip (agresivo)' },
+    'VAR_009_SHORT_SQUEEZE': {'name': '🍋 Short Squeeze', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←←←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Squeeze violento contra tendencia' },
+    'VAR_010_KNIFE_CATCH': {'name': '🔪 Knife Catch', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'WAIT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 📉↘ 🛣️', 'description': 'No atrapar cuchillos cayendo' },
+    'VAR_011_WIND_CHANGE': {'name': '🔁 Wind Change', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ～ 🟢 ═══ 🛣️', 'description': 'Cambio de tendencia incipiente' },
+    'VAR_012_FUEL_LEAK': {'name': '💧 Fuel Leak', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'EXIT', 'visual': '═══ ▅▅▅▅ 💨→ 🔴 ⛰️↗ 🚗', 'description': 'Perdiendo combustible' },
+    'VAR_013_STAIRS_UP': {'name': '🪜 Stairs Up', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'MOUNTAIN', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→ 🟢 ⛰️↗ 🚗', 'description': 'Subida escalonada sana' },
+    'VAR_014_ELEVATOR_DOWN': {'name': '🛗 Elevator Down', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▅▅▅▅ ←💨 🔴 📉↘ 🚗', 'description': 'Bajada rápida y constante' },
+    'VAR_015_BLOCKED': {'name': '🧱 Blocked', 'sprites': {'price_direction': 'ANY', 'candle_shape': 'ANY', 'wind': 'ANY', 'fuel': 'ANY', 'terrain': 'ANY', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '❓ ❓ ❓ ❓ ❓ 🚧', 'description': 'Bloqueado por pared cercana' },
+    'VAR_016_NO_MANS_LAND': {'name': '🏜️ No Mans Land', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'STEADY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'SKIP', 'visual': '═══ ▅▅▅▅ ～ 🟡 ═══ 🚗', 'description': 'Tierra de nadie' },
+    'VAR_017_SUPER_CYCLE': {'name': '🚲 Super Cycle', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'BREAKING_CEILING', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ 💨→→→ 🟢⚡ 💥🚀 🛣️', 'description': 'Inicio de super ciclo' },
+    'VAR_018_BEAR_TRAP': {'name': '🐻 Bear Trap', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_WEAK', 'fuel': 'FULL_TANK', 'terrain': 'VALLEY', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ←💨 🟢⚡ 📉↘ 🛣️', 'description': 'Trampa de osos resuelta' },
+    'VAR_019_BULL_TRAP': {'name': '🐂 Bull Trap', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'TAILWIND_WEAK', 'fuel': 'EMPTY', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ 💨→ 🔴 ⛰️↗ 🛣️', 'description': 'Trampa de toros' },
+    'VAR_020_CONGESTION': {'name': '🚙 Congestion', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'WAIT', 'visual': '═══ ▃▇▁▅ ～ 🟢 ═══ 🚧', 'description': 'Congestión de tráfico' },
+    'VAR_021_SNIPER_WAIT': {'name': '🔭 Sniper Wait', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'DECELERATING', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'READY', 'visual': '═══ ▇▅▃▁ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Esperando confirmación final' },
+    'VAR_022_ROCKET_REFUEL': {'name': '⛽ Rocket Refuel', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'STEADY', 'wind': 'TAILWIND_STRONG', 'fuel': 'FULL_TANK', 'terrain': 'MOUNTAIN', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '→↗ ▅▅▅▅ 💨→→→ 🟢⚡ ⛰️↗ 🛣️', 'description': 'Cohete recargando en movimiento' },
+    'VAR_023_FALLING_STAR': {'name': '🌠 Falling Star', 'sprites': {'price_direction': 'FALLING', 'candle_shape': 'DECELERATING', 'wind': 'NO_WIND', 'fuel': 'EMPTY', 'terrain': 'SUMMIT', 'runway': 'ROAD'}, 'action': 'SHORT', 'visual': '📉↘ ▇▅▃▁ ～ 🔴 🏔️ 🚗', 'description': 'Estrella fugaz cayendo' },
+    'VAR_024_MORNING_STAR': {'name': '🌅 Morning Star', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'ACCELERATING', 'wind': 'NO_WIND', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▁▃▅▇ ～ 🟢 📉↘ 🚗', 'description': 'Amanecer en el valle' },
+    'VAR_025_TSUNAMI': {'name': '🌊 Tsunami', 'sprites': {'price_direction': 'CRASH', 'candle_shape': 'EXPLOSIVE', 'wind': 'HEADWIND_STRONG', 'fuel': 'EMPTY_BEARISH', 'terrain': 'BREAKING_FLOOR', 'runway': 'HIGHWAY'}, 'action': 'SHORT', 'visual': '💥↘↘ ▁▁▁█ ←←←💨 🔴 💥📉 🛣️', 'description': 'Tsunami bajista imparable' },
+    'VAR_026_VOLCANO': {'name': '🌋 Volcano', 'sprites': {'price_direction': 'ROCKET_UP', 'candle_shape': 'EXPLOSIVE', 'wind': 'NO_WIND', 'fuel': 'FULL_TANK', 'terrain': 'PLATEAU', 'runway': 'HIGHWAY'}, 'action': 'LONG', 'visual': '🚀↗↗ ▁▁▁█ ～ 🟢⚡ ═══ 🛣️', 'description': 'Erupción desde la calma' },
+    'VAR_027_DRIFTING': {'name': '🚗💨 Drifting', 'sprites': {'price_direction': 'CRUISING_UP', 'candle_shape': 'CHOPPY', 'wind': 'TAILWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'PLATEAU', 'runway': 'ROAD'}, 'action': 'WAIT', 'visual': '→↗ ▃▇▁▅ 💨→ 🟢 ═══ 🚗', 'description': 'Derrapando lateralmente' },
+    'VAR_028_LOST': {'name': '🗺️ Lost', 'sprites': {'price_direction': 'FLAT', 'candle_shape': 'CHOPPY', 'wind': 'NO_WIND', 'fuel': 'FUMES', 'terrain': 'PLATEAU', 'runway': 'ALLEY'}, 'action': 'SKIP', 'visual': '═══ ▃▇▁▅ ～ 🟡 ═══ 🚧', 'description': 'Perdido en el mapa' },
+    'VAR_029_RECOVERY': {'name': '🚑 Recovery', 'sprites': {'price_direction': 'CLIMBING', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'HALF_TANK', 'terrain': 'VALLEY', 'runway': 'ROAD'}, 'action': 'LONG', 'visual': '📈↗ ▅▅▅▅ ←💨 🟢 📉↘ 🚗', 'description': 'Recuperación lenta' },
+    'VAR_030_BLEEDING': {'name': '🩸 Bleeding', 'sprites': {'price_direction': 'CRUISING_DOWN', 'candle_shape': 'STEADY', 'wind': 'HEADWIND_WEAK', 'fuel': 'EMPTY_BEARISH', 'terrain': 'VALLEY', 'runway': 'ANY'}, 'action': 'SHORT', 'visual': '↘→ ▅▅▅▅ ←💨 🔴 📉↘ 🚧', 'description': 'Sangrado lento' },
+}
+
+Modulo:
+
+"""
+Market Entity - Representación física del mercado.
+
+El precio como objeto en movimiento (pelota en Pong).
+Solo física, cero penalties, cero scoring.
+"""
+
 import logging
-import numpy as np
-# Logger
+from collections import deque
+from datetime import datetime
+
+# Use custom BotLogger if available, else fallback to standard logging
 try:
     from utils.logger import logger
 except ImportError:
     logger = logging.getLogger(__name__)
-# Holistic Analyzer - DESACTIVADO (usa thresholds binarios)
-# TODO: Usar solo física pura
-try:
-    from brain.holistic_analyzer import HolisticAnalyzer
-    # HOLISTIC_AVAILABLE = True  # ← DESACTIVADO
-    HOLISTIC_AVAILABLE = False    # ← Solo física pura
-except ImportError:
-    HOLISTIC_AVAILABLE = False
-# Physics modules (videogame)
-try:
-    from brain.market_entity import MarketEntity
-    from brain.walls import Walls
-    PHYSICS_AVAILABLE = True
-except ImportError:
-    PHYSICS_AVAILABLE = False
-# Technical indicators
-try:
-    from brain.indicators import Indicators
-    INDICATORS_AVAILABLE = True
-except ImportError:
-    INDICATORS_AVAILABLE = False
 
-# Visual States (Sprites)
-# Visual States (Sprites)
-try:
-    from brain.visual_states import (
-        resolve_state, 
-        PRICE_DIRECTION, CANDLE_SHAPE, WIND, FUEL, TERRAIN, RUNWAY
-    )
-    from brain.visual_patterns import PATTERNS
-    STATES_AVAILABLE = True
-except ImportError:
-    STATES_AVAILABLE = False
-
-
-class HybridVisualSniper:
+class MarketEntity:
     """
-    Sniper híbrido que combina:
-    - Eficiencia del bot viejo (watchlist persistente)
-    - Filosofía visual de BrainTrader 2.0 (geometría pura)
+    Representa el mercado como entidad física en movimiento.
     
-    NO USA:
-    - Scoring numérico
-    - Penalties/bonuses
-    - IF ADX &gt;= 25 (código binario)
+    Filosofía:
+        - Precio = Posición en el canvas
+        - Velocidad = Cambio de posición por tiempo
+        - Aceleración = Cambio de velocidad
+        - Fuerza = ADX (potencia del movimiento)
     
-    USA:
-    - Fuerza visual (velocidad/aceleración)
-    - Estructura (HH/HL, LL/LH)
-    - Distancia a paredes
-    - Multi-timeframe para confirmar
+    Similar a física de videojuego:
+        position += velocity * dt
+        velocity += acceleration * dt
     """
     
-    def __init__(self, connector=None):
+    def __init__(self, symbol, history_size=10):
         """
         Args:
-            connector: Objeto con connector.exchange que tiene MEXCConnection
+            symbol: Par de trading (ej: 'BTC/USDT:USDT')
+            history_size: Frames históricos para calcular física
         """
-        self.connector = connector
+        self.symbol = symbol
+        self.history_size = history_size
         
-        # ================================================================
-        # WATCHLIST PERSISTENTE (memoria entre ciclos)
-        # ================================================================
-        self.watchlist: Dict[str, dict] = {}  # {symbol: {data, analysis, added_at, checks}}
+        # Estado físico
+        self.position = 0.0          # Precio actual
+        self.velocity = 0.0          # %/min (cambio de precio relativo)
+        self.acceleration = 0.0      # %/min² (cambio de velocidad relativo)
+        self.force = 0.0             # ADX (0-100)
+        self.direction = 0           # -1 (bear), 0 (neutral), 1 (bull)
         
-        # ================================================================
-        # COLAS DE CLASIFICACIÓN
-        # ================================================================
-        self.priority_queue: List[dict] = []    # Setups perfectos → ENTRAR
-        self.developing_queue: List[dict] = []  # Setups madurando → VIGILAR
-        self.rejected_cache: Dict[str, datetime] = {}  # {symbol: timestamp}
+        # Historia (para calcular derivadas)
+        self.price_history = deque(maxlen=history_size)
+        self.time_history = deque(maxlen=history_size)
         
-        # ================================================================
-        # CONFIGURACIÓN DE TIEMPOS
-        # ================================================================
-        self.full_scan_interval = 30   # Segundos entre full scans (700+)
-        self.cycle_interval = 5        # Segundos entre re-análisis watchlist
-        self.reject_cooldown = 3       # Minutos en rejected antes de re-escanear (reducido de 10)
-        self.max_watchlist_size = 50   # Límite de watchlist
+        # Última actualización
+        self.last_update = None
         
-        # ================================================================
-        # ESTADO
-        # ================================================================
-        self.last_full_scan = None
-        self.scan_count = 0
-        self.cycle_count = 0
-        self.debug_mode = False  # &lt;&lt;&lt; PRODUCCIÓN: False para velocidad
+        logger.info(f"MarketEntity creado: {symbol}")
+    
+    def update(self, price, timestamp=None):
+        """
+        Actualiza estado físico con nuevo precio.
         
-        # ================================================================
-        # HOLISTIC ANALYZER (Visión completa)
-        # ================================================================
-        if HOLISTIC_AVAILABLE:
-            self.holistic_analyzer = HolisticAnalyzer()
-            print(f"  [SNIPER] 🎮 Holistic Analyzer ACTIVADO")
+        Calcula:
+            - Velocidad (primera derivada)
+            - Aceleración (segunda derivada)
+            - Dirección (signo de velocidad)
+        
+        Args:
+            price: Precio actual
+            timestamp: Datetime (opcional, usa now() si no provee)
+        """
+        if timestamp is None:
+            timestamp = datetime.now()
+        
+        # Guardar en historia
+        self.price_history.append(price)
+        self.time_history.append(timestamp)
+        
+        # Actualizar posición
+        old_position = self.position
+        self.position = price
+        
+        # Calcular VELOCIDAD (primera derivada)
+        if len(self.price_history) &gt;= 2:
+            self.velocity = self._calculate_velocity()
+        
+        # Calcular ACELERACIÓN (segunda derivada)
+        if len(self.price_history) &gt;= 3:
+            self.acceleration = self._calculate_acceleration()
+        
+        # Determinar DIRECCIÓN
+        if self.velocity &gt; 0.1:
+            self.direction = 1   # Bullish
+        elif self.velocity &lt; -0.1:
+            self.direction = -1  # Bearish
         else:
-            self.holistic_analyzer = None
+            self.direction = 0   # Lateral
         
-        print(f"  [SNIPER] Híbrido inicializado")
-        print(f"  [SNIPER] Full scan: cada {self.full_scan_interval}s")
-        print(f"  [SNIPER] Watchlist check: cada {self.cycle_interval}s")
+        self.last_update = timestamp
         
-        # ================================================================
-        # ARQUITECTURA DUAL-SPEED
-        # ================================================================
-        self.watchlist_lock = threading.Lock()  # Protección contra race conditions
-        
-        # Control de threads
-        self.deep_scan_thread = None
-        self.sniper_thread = None
-        self.stop_threads = threading.Event()  # Flag para detener threads
-        
-        # Configuración de timing
-        self.DEEP_SCAN_INTERVAL = 600  # 10 minutos entre scans completos
-        self.SNIPER_CHECK_INTERVAL = 10  # 10 segundos entre checks de watchlist
-        
-        logger.info("Arquitectura dual-speed inicializada")
+        logger.debug(f"{self.symbol} | "
+                    f"Position: ${self.position:.2f} | "
+                    f"Velocity: {self.velocity:+.3f}%/min | "
+                    f"Accel: {self.acceleration:+.2f}")
     
-    # ====================================================================
-    # CICLO PRINCIPAL
-    # ====================================================================
-    
-    # CICLO PRINCIPAL
-    # ====================================================================
-    
-    def scan_cycle(self) -&gt; Optional[dict]:
+    def _calculate_velocity(self):
         """
-        Ejecuta un ciclo de escaneo.
+        Calcula velocidad (primera derivada del precio) en PORCENTAJE.
         
         Returns:
-            dict: Setup Priority para entrar, o None si no hay
+            float: %/min (positivo = subiendo, negativo = bajando)
         """
-        self.cycle_count += 1
-        start_time = time.time()
+        if len(self.price_history) &lt; 2:
+            return 0.0
         
-        # Limpiar colas
-        self.priority_queue.clear()
-        self.developing_queue.clear()
-        self._clean_rejected_cache()
+        # Tomar últimos 2 puntos
+        price_now = self.price_history[-1]
+        price_prev = self.price_history[-2]
         
-        # ================================================================
-        # FASE 1: FULL SCAN (solo cada 30s)
-        # ================================================================
+        time_now = self.time_history[-1]
+        time_prev = self.time_history[-2]
         
-        should_full_scan = (
-            self.last_full_scan is None or
-            (datetime.now() - self.last_full_scan).total_seconds() &gt;= self.full_scan_interval
-        )
+        # Calcular delta
+        delta_price = price_now - price_prev
+        delta_time = (time_now - time_prev).total_seconds() / 60.0  # Minutos
         
-        if should_full_scan:
-            # Full scan puede retornar entry inmediato
-            immediate_entry = self._do_full_scan()
-            
-            if immediate_entry:
-                print(f"\n  &gt;&gt;&gt; ENTRADA INMEDIATA DESDE FULL SCAN &lt;&lt;&lt;")
-                return immediate_entry  # Retornar al main.py para ejecutar
+        if delta_time &gt; 0 and price_prev &gt; 0:
+            # Convertir a PORCENTAJE por minuto
+            velocity_pct = (delta_price / price_prev) * 100
+            velocity = velocity_pct / delta_time # Normalizado por tiempo
         else:
-            secs_since = (datetime.now() - self.last_full_scan).total_seconds()
-            print(f"\n  [CYCLE {self.cycle_count}] Skip full scan ({secs_since:.0f}s &lt; {self.full_scan_interval}s)")
+            velocity = 0.0
         
-        # ================================================================
-        # FASE 2: RE-ANALIZAR WATCHLIST (cada ciclo)
-        # ================================================================
-        
-        print(f"\n  [WATCHLIST] Re-analizando {len(self.watchlist)} monedas...")
-        
-        priority_found = None
-        symbols_to_remove = []
-        
-        for symbol, data in self.watchlist.items():
-            try:
-                # &gt;&gt;&gt; USAR PHYSICS (no holistic) para evitar conflicto de thresholds
-                analysis = self._analyze_physics(symbol)
-                
-                if analysis is None:
-                    # Fallback a holistic si physics falla
-                    analysis = self._analyze_symbol_quick(symbol)
-                
-                if analysis is None:
-                    continue
-                
-                # Actualizar datos en watchlist
-                data['last_analysis'] = analysis
-                data['checks'] += 1
-                
-                # Clasificar resultado
-                classification = analysis['classification']
-                
-                if classification == 'PRIORITY':
-                    # Setup perfecto encontrado
-                    self.priority_queue.append(analysis)
-                    
-                    # Confirmar con multi-timeframe
-                    if self._confirm_with_mtf(symbol, analysis):
-                        priority_found = analysis
-                        print(f"    ⭐ {symbol} → PRIORITY + MTF OK → ENTRAR")
-                    else:
-                        print(f"    ⭐ {symbol} → PRIORITY (sin MTF)")
-                        
-                elif classification == 'DEVELOPING':
-                    self.developing_queue.append(analysis)
-                    print(f"    🔄 {symbol} → DEVELOPING ({data['checks']} checks)")
-                    
-                elif classification == 'REJECTED':
-                    symbols_to_remove.append(symbol)
-                    self.rejected_cache[symbol] = datetime.now()
-                    print(f"    ❌ {symbol} → REJECTED (cooldown {self.reject_cooldown}min)")
-                    
-            except Exception as e:
-                logger.debug(f"Error analizando {symbol}: {e}")
-        
-        # Remover rejected de watchlist
-        for symbol in symbols_to_remove:
-            del self.watchlist[symbol]
-        
-        # ================================================================
-        # RESUMEN
-        # ================================================================
-        
-        duration = time.time() - start_time
-        
-        print(f"\n  {'='*50}")
-        print(f"  CYCLE {self.cycle_count} | {duration:.1f}s")
-        print(f"  Watchlist: {len(self.watchlist)} | Priority: {len(self.priority_queue)} | Developing: {len(self.developing_queue)}")
-        print(f"  {'='*50}")
-        
-        return priority_found
+        return velocity
     
-    def _deep_scanner_loop(self):
+    def _calculate_acceleration(self):
         """
-        Thread 1: Deep Scanner (Background) - Loop INFINITO.
-        Analiza 751 monedas cada 10 min.
-        """
-        logger.info("🔍 Deep Scanner thread iniciado")
-        
-        scan_number = 0
-        
-        while not self.stop_threads.is_set():
-            try:
-                scan_number += 1
-                scan_start = time.time()
-                
-                print(f"\n{'='*80}")
-                print(f"  🌊 DEEP SCAN #{scan_number}")
-                print(f"  ⏰ {datetime.now().strftime('%H:%M:%S')}")
-                print(f"  🔄 Analizando 751 monedas completas")
-                print(f"{'='*80}\n")
-                
-                # Ejecutar scan completo
-                self._do_full_scan()
-                
-                scan_duration = time.time() - scan_start
-                
-                print(f"\n{'='*80}")
-                print(f"  ✅ Deep Scan #{scan_number} completado")
-                print(f"  ⏱️  Duración: {scan_duration/60:.1f} minutos")
-                print(f"  📊 Watchlist actual: {len(self.watchlist)} monedas")
-                print(f"  ⏭️  Iniciando scan #{scan_number + 1} inmediatamente...")
-                print(f"{'='*80}\n")
-                
-                # ← SIN WAIT - vuelve inmediatamente al while (Modo Continuo)
-                # Solo una pausa microscópica para ceder CPU si fuera necesario
-                # time.sleep(1) 
-                
-            except KeyboardInterrupt:
-                logger.info("Deep Scanner interrumpido por usuario")
-                break
-                
-            except Exception as e:
-                logger.error(f"Error en deep scanner loop: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                
-                # NO morir, esperar 1 minuto y reintentar
-                logger.info("Reintentando en 1 minuto...")
-                self.stop_threads.wait(timeout=60)
-        
-        logger.info("🔍 Deep Scanner thread detenido")
-
-    def _sniper_loop(self):
-        """Thread 2: Sniper (Foreground) - Revisa watchlist cada 10s."""
-        logger.info("🎯 Sniper thread iniciado")
-        while not self.stop_threads.is_set():
-            try:
-                with self.watchlist_lock:
-                    watchlist_snapshot = dict(self.watchlist)
-                
-                if not watchlist_snapshot:
-                    self.stop_threads.wait(timeout=self.SNIPER_CHECK_INTERVAL)
-                    continue
-                
-                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🎯 Sniper: Revisando {len(watchlist_snapshot)} monedas calientes...")
-                priority_found = False
-                
-                for symbol, info in watchlist_snapshot.items():
-                    if info.get('classification') not in ['PRIORITY', 'DEVELOPING']:
-                        continue
-                    
-                    quick_check = self._quick_watchlist_check(symbol, info)
-                    if quick_check['classification'] == 'PRIORITY':
-                        print(f"  ✅ {symbol:12s} │ PRIORITY detectado")
-                        priority_found = True
-                        mtf_result = self._confirm_with_mtf(symbol, quick_check)
-                        if mtf_result: # Simplificado para usar el retorno booleano o dict de confirm_with_mtf
-                            print(f"  🎯 {symbol:12s} │ MTF confirmado → Señalizar")
-                            self._signal_trade_opportunity(symbol, quick_check)
-
-                if not priority_found:
-                    print(f"  ⏳ Sin setups perfectos aún")
-                self.stop_threads.wait(timeout=self.SNIPER_CHECK_INTERVAL)
-            except Exception as e:
-                logger.error(f"Error en sniper loop: {e}")
-                self.stop_threads.wait(timeout=5)
-        logger.info("🎯 Sniper thread detenido")
-
-    def _quick_watchlist_check(self, symbol: str, cached_info: dict) -&gt; dict:
-        """Chequeo rápido sin fetch pesado."""
-        try:
-            ticker = self.connector.exchange.fetch_ticker(symbol)
-            if not ticker: return {'classification': 'UNKNOWN'}
-            
-            price_change_5m = ticker.get('percentage', 0)
-            if abs(price_change_5m) &lt; 0.1:
-                return {'classification': 'DEVELOPING', 'reason': 'Se lateralizó'}
-            
-            # Verificar dirección
-            cached_direction = cached_info.get('last_analysis', {}).get('velocity_per_min', 0) # Usar last_analysis
-            cached_dir_sign = 1 if cached_direction &gt; 0 else -1
-            current_dir_sign = 1 if price_change_5m &gt; 0 else -1
-            
-            if cached_dir_sign != current_dir_sign:
-                return {'classification': 'REJECTED', 'reason': 'Invirtió dirección'}
-                
-            velocity = cached_info.get('last_analysis', {}).get('velocity_per_min', 0)
-            has_runway = cached_info.get('last_analysis', {}).get('has_runway', False)
-            
-            if abs(velocity) &gt; 0 and has_runway:
-                # Retornar una estructura que parezca analysis
-                base_analysis = cached_info.get('last_analysis', {}).copy()
-                base_analysis['classification'] = 'PRIORITY'
-                base_analysis['_immediate_entry'] = True
-                return base_analysis
-            else:
-                # Logging: qué le falta para ser PRIORITY
-                missing = []
-                if abs(velocity) &lt;= 0: missing.append('sin velocity')
-                if not has_runway: missing.append('sin runway')
-                logger.debug(f"🔄 {symbol:12s} DEVELOPING - Falta: {', '.join(missing) if missing else 'verificando setup'}")
-                return {'classification': 'DEVELOPING', 'reason': 'Falta runway o velocity'}
-        except Exception as e:
-            logger.error(f"Error quick check {symbol}: {e}")
-            return {'classification': 'UNKNOWN'}
-
-    def _signal_trade_opportunity(self, symbol: str, analysis: dict):
-        """Señaliza trade a main.py."""
-        opportunity = {'symbol': symbol, 'timestamp': datetime.now(), 'analysis': analysis}
-        with self.watchlist_lock:
-            if not hasattr(self, 'pending_opportunities'):
-                self.pending_opportunities = []
-            self.pending_opportunities.append(opportunity)
-        logger.info(f"🎯 Oportunidad señalizada: {symbol}")
-
-    def start_dual_speed(self):
-        """Inicia threads."""
-        self.stop_threads.clear()
-        self.deep_scan_thread = threading.Thread(target=self._deep_scanner_loop, name="DeepScanner", daemon=True)
-        self.deep_scan_thread.start()
-        self.sniper_thread = threading.Thread(target=self._sniper_loop, name="Sniper", daemon=True)
-        self.sniper_thread.start()
-        logger.info("✅ Arquitectura dual-speed activada")
-
-    def stop_dual_speed(self):
-        """Detiene threads."""
-        logger.info("Deteniendo threads...")
-        self.stop_threads.set()
-        if self.deep_scan_thread: self.deep_scan_thread.join(timeout=5)
-        if self.sniper_thread: self.sniper_thread.join(timeout=5)
-        logger.info("✅ Threads detenidos")
-
-    # ====================================================================
-    # FASE 1: FULL SCAN EXHAUSTIVO (TODAS las monedas, sin filtro)
-    # ====================================================================
-    
-    def _do_full_scan(self):
-        """
-        Ejecuta full scan EXHAUSTIVO de TODAS las monedas USDT.
-        
-        - SIN pre-filtro por volumen/cambio
-        - Orden alfabético (números primero, luego A-Z)
-        - Muestra análisis de CADA moneda
-        """
-        self.scan_count += 1
-        
-        if not self.connector or not hasattr(self.connector, 'exchange'):
-            print(f"  [!] Sin conexión a exchange")
-            return
-        
-        try:
-            # &gt;&gt;&gt; PASO 1: Obtener TODOS los tickers (sin filtrar)
-            print(f"\n  {'='*80}")
-            print(f"  FULL SCAN #{self.scan_count} - Obteniendo TODOS los futuros USDT...")
-            print(f"  {'='*80}")
-            
-            all_tickers = self.connector.exchange.fetch_futures_tickers()
-            
-            # Convertir a lista de candidatos (solo USDT perpetuos)
-            candidates = []
-            for ticker in all_tickers:
-                symbol = ticker.get('symbol', '')
-                if ':USDT' in symbol and symbol.endswith(':USDT'):
-                    candidates.append({
-                        'symbol': symbol,
-                        'volume_usd': ticker.get('quoteVolume', 0) or 0,
-                        'change_24h_pct': ticker.get('percentage', 0) or 0,
-                        'price': ticker.get('last', 0) or 0
-                    })
-            
-            print(f"  [SCAN] {len(candidates)} futuros USDT encontrados (SIN FILTRO)")
-            
-            # &gt;&gt;&gt; PASO 2: Ordenar alfabéticamente (números primero)
-            def sort_key(ticker):
-                symbol = ticker['symbol'].replace('/USDT:USDT', '')
-                # Si empieza con número, agregar prefijo "0_" para que vaya primero
-                if symbol and symbol[0].isdigit():
-                    return f"0_{symbol}"
-                else:
-                    return symbol
-            
-            candidates = sorted(candidates, key=sort_key)
-            print(f"  [ORDEN] Ordenadas alfabéticamente (números primero)")
-            
-            # &gt;&gt;&gt; PASO 3: Analizar TODAS mostrando proceso
-            print(f"\n  {'='*80}")
-            print(f"  [ANÁLISIS EXHAUSTIVO] Procesando {len(candidates)} monedas alfabéticamente:")
-            print(f"  {'='*80}\n")
-            
-            analyzed_count = 0
-            priority_count = 0  # FIX: Inicializar priority_count
-            rejected_count = 0
-            developing_count = 0
-            cooldown_count = 0
-            rejection_stats = {}  # Para tracking de razones
-            
-            for idx, ticker in enumerate(candidates, 1):
-                symbol_short = ticker['symbol'].replace('/USDT:USDT', '')
-                full_symbol = ticker['symbol']
-                
-                # Mostrar progreso cada 50 monedas
-                if idx % 50 == 0:
-                    print(f"\n  ━━━ Progreso: {idx}/{len(candidates)} ({idx/len(candidates)*100:.0f}%) ━━━\n")
-                
-                # &gt;&gt;&gt; MOSTRAR CADA MONEDA:
-                print(f"  [{idx:03d}] {symbol_short:12s} │ ", end='', flush=True)
-                
-                analyzed_count += 1
-                
-                # Check 1: ¿Ya está en watchlist? -&gt; NO SALTAR
-                # if full_symbol in self.watchlist:
-                #     print(f"👀 EN WATCHLIST")
-                #     continue
-                
-                # Check 2: ¿En cooldown? -&gt; NO SALTAR
-                # if full_symbol in self.rejected_cache:
-                #     time_ago = (datetime.now() - self.rejected_cache[full_symbol]).total_seconds() / 60
-                #     print(f"❄️  COOLDOWN ({time_ago:.0f}min)")
-                #     cooldown_count += 1
-                #     continue
-                
-                # &gt;&gt;&gt; ANALIZAR CON FÍSICA 100% VISUAL:
-                try:
-                    # Usar análisis físico puro (sin umbrales binarios)
-                    force_analysis = self._analyze_physics(full_symbol)
-                    
-                    # Fallback a análisis anterior si physics no disponible
-                    if force_analysis is None:
-                        force_analysis = self._analyze_symbol_quick(full_symbol)
-                    
-                    if not force_analysis:
-                        print(f"⚠️  Sin datos")
-                        continue
-                    
-                    classification = force_analysis.get('classification', 'UNKNOWN')
-                    holistic_quality = force_analysis.get('holistic_quality', 'UNKNOWN')
-                    force_level = force_analysis.get('force_level', 'UNKNOWN')
-                    
-                    # Formatear output según clasificación
-                    if classification == 'PRIORITY':
-                        priority_count += 1  # FIX: Usar priority_count
-                        
-                        # &gt;&gt;&gt; FÍSICA (Videojuego)
-                        vel = force_analysis.get('velocity_per_min', 0)
-                        accel = force_analysis.get('acceleration_per_min', 0)
-                        runway = force_analysis.get('runway_minutes', 999)
-                        wall_price = force_analysis.get('nearest_wall')
-                        wall_type = force_analysis.get('wall_type', 'wall')
-                        
-                        print(f"✅ PRIORITY")
-                        print(f"       ├─ Velocity: {vel:+.3f}%/min")
-                        print(f"       ├─ Acceleration: {accel:+.3f}%/min²")
-                        print(f"       ├─ Runway: {runway:.1f} min → {wall_type} ${wall_price:,.2f}" if wall_price else f"       ├─ Runway: ∞ (sin pared)")
-                        print(f"       └─ Force: {force_level}")
-                        
-                        # &gt;&gt;&gt; CONFIRMAR MTF INMEDIATAMENTE
-                        print(f"\n       [MTF] Verificando alineación...")
-                        mtf_ok = self._confirm_with_mtf(full_symbol, force_analysis)
-                        
-                        if mtf_ok:
-                            # ¡ENTRADA INMEDIATA! No esperar a terminar scan
-                            print(f"\n  🎯🎯🎯 ENTRADA CONFIRMADA: {symbol_short} 🎯🎯🎯")
-                            self.priority_queue.append(force_analysis)
-                            # Guardar para retornar al main
-                            force_analysis['_immediate_entry'] = True
-                        
-                        # Agregar a watchlist de todos modos
-                        with self.watchlist_lock:
-                            if len(self.watchlist) &lt; self.max_watchlist_size:
-                                self.watchlist[full_symbol] = {
-                                    'ticker_data': ticker,
-                                    'added_at': datetime.now(),
-                                    'last_analysis': force_analysis,
-                                    'checks': 0
-                                }
-                    
-                    elif classification == 'REJECTED':
-                        rejected_count += 1
-                        # Obtener razón de rechazo (de physics o holistic)
-                        rejection_reasons = force_analysis.get('rejection_reasons', [])
-                        if not rejection_reasons:
-                            holistic_view = force_analysis.get('holistic_view', {})
-                            force_data = holistic_view.get('force', {}) if holistic_view else {}
-                            rejection_reasons = force_data.get('rejection_reasons', [])
-                        main_reason = rejection_reasons[0] if rejection_reasons else f"Fuerza: {force_level}"
-                        print(f"❌ RECHAZADA │ {main_reason[:50]}")
-                        
-                        # Track rejection reasons for stats
-                        reason_key = main_reason[:40]  # Truncate for grouping
-                        rejection_stats[reason_key] = rejection_stats.get(reason_key, 0) + 1
-                        
-                        self.rejected_cache[full_symbol] = datetime.now()
-                    
-                    elif classification == 'DEVELOPING':
-                        developing_count += 1
-                        # Mostrar condiciones pasadas en vez de holistic_quality inexistente
-                        cond_passed = force_analysis.get('conditions_passed', '?')
-                        cond_total = force_analysis.get('conditions_total', '?')
-                        print(f"🔄 DESARROLLO │ [{cond_passed}/{cond_total}] │ {force_level}")
-                        
-                        # Agregar a watchlist para seguir vigilando
-                        with self.watchlist_lock:
-                            if len(self.watchlist) &lt; self.max_watchlist_size:
-                                self.watchlist[full_symbol] = {
-                                    'ticker_data': ticker,
-                                    'added_at': datetime.now(),
-                                    'last_analysis': force_analysis,
-                                    'checks': 0
-                                }
-                    
-                    else:
-                        print(f"❓ {classification} │ {force_level}")
-                
-                except Exception as e:
-                    print(f"❌ ERROR │ {str(e)[:35]}")
-            
-            # &gt;&gt;&gt; RESUMEN FINAL:
-            self.last_full_scan = datetime.now()
-            
-            print(f"\n{'='*80}")
-            print(f"📊 RESUMEN DEL SCAN:")
-            print(f"{'='*80}")
-            print(f"Total analizadas: {len(candidates)}") # self.connector.exchange.tickers count
-            print(f"✅ PRIORITY: {priority_count}")
-            print(f"🔄 DEVELOPING: {developing_count}")
-            print(f"❌ REJECTED: {rejected_count}")
-
-            if hasattr(self, 'rejection_stats'):
-                print(f"\n🔴 TOP RAZONES DE RECHAZO:")
-                sorted_reasons = sorted(
-                    self.rejection_stats.items(),
-                    key=lambda x: x[1],
-                    reverse=True
-                )
-                
-                for reason, count in sorted_reasons[:5]:
-                    pct = (count / rejected_count * 100) if rejected_count &gt; 0 else 0
-                    print(f"   [{count:3d}] {pct:5.1f}% │ {reason}")
-
-            print(f"{'='*80}\n")
-            
-            print(f"\n  {'='*80}")
-            print(f"  📊 RESUMEN DEL SCAN #{self.scan_count}")
-            print(f"  {'='*80}")
-            print(f"  Total candidatas:  {len(candidates)}")
-            print(f"  ❄️  En cooldown:     {cooldown_count}")
-            print(f"  🔍 Analizadas:      {analyzed_count}")
-            print(f"  {'─'*40}")
-            print(f"  ✅ PRIORITY:       {priority_count}")
-            print(f"  🔄 DEVELOPING:     {developing_count}")
-            print(f"  ❌ REJECTED:       {rejected_count}")
-            print(f"  👀 En Watchlist:   {len(self.watchlist)}")
-            
-            # TOP RAZONES DE RECHAZO
-            if rejection_stats:
-                print(f"\n  🔴 TOP RAZONES DE RECHAZO:")
-                sorted_reasons = sorted(rejection_stats.items(), key=lambda x: x[1], reverse=True)[:7]
-                for reason, count in sorted_reasons:
-                    pct = (count / rejected_count * 100) if rejected_count &gt; 0 else 0
-                    print(f"     [{count:3d}] {pct:5.1f}% │ {reason}")
-            
-            # DIAGNÓSTICO SI NO HAY ACCEPTED
-            
-            # ════════════════════════════════════════════════════════
-            # ENVIAR WATCHLIST AL DASHBOARD (PASO 3 - FIX MANDO)
-            # ════════════════════════════════════════════════════════
-            try:
-                from tools.visual_dashboard.app import update_bot_state
-                
-                watchlist_data = []
-                with self.watchlist_lock:
-                    for s, info in self.watchlist.items():
-                        watchlist_data.append({
-                            'symbol': s,
-                            'classification': info.get('classification', 'UNKNOWN')
-                        })
-                
-                update_bot_state({
-                    'watchlist': watchlist_data,
-                    'watchlist_count': len(watchlist_data)
-                })
-            except Exception:
-                pass
-            if priority_count == 0:
-                print(f"\n  ⚠️  DIAGNÓSTICO: 0 ACCEPTED")
-                if cooldown_count &gt; len(candidates) * 0.9:
-                    print(f"     └─ 🔴 {cooldown_count}/{len(candidates)} en cooldown ({cooldown_count/len(candidates)*100:.0f}%)")
-                    print(f"        → Reducir reject_cooldown (actual: {self.reject_cooldown}min)")
-                if rejected_count &gt; 0 and len(sorted_reasons) &gt; 0:
-                    top_reason = sorted_reasons[0][0]
-                    print(f"     └─ 🔴 Top blocker: '{top_reason}'")
-            
-            print(f"  {'='*80}\n")
-            
-            # &gt;&gt;&gt; RETORNAR ENTRIES INMEDIATOS (los que pasaron MTF)
-            immediate_entries = [a for a in self.priority_queue if a.get('_immediate_entry')]
-            if immediate_entries:
-                print(f"\n  🎯 {len(immediate_entries)} ENTRIES INMEDIATOS LISTOS")
-                return immediate_entries[0]  # Retornar el primero
-            
-            return None
-            
-        except Exception as e:
-            print(f"  [ERROR] Full scan: {e}")
-            logger.error(f"Full scan error: {e}")
-            return None
-    
-    # ====================================================================
-    # ANÁLISIS VISUAL RÁPIDO (5M) - 100% COMPARATIVO
-    # ====================================================================
-    
-    def _analyze_symbol_quick(self, symbol: str) -&gt; Optional[dict]:
-        """
-        Análisis visual de un símbolo.
-        
-        100% VISUAL - 100% COMPARATIVO - CERO UMBRALES BINARIOS
-        
-        NO usa: if speed &gt; 0.05, if range &lt; 1%
-        SÍ usa: if speed &gt; su_promedio, if range &lt; su_historia
+        Calcula aceleración (segunda derivada del precio).
         
         Returns:
-            dict con classification: 'PRIORITY', 'DEVELOPING', 'REJECTED'
+            float: %/min² (positivo = acelerando, negativo = frenando)
         """
-        try:
-            # ============================================================
-            # PASO 0: VALIDAR 4H PRIMERO (Fix VAR - sin esto entraba contra tendencia)
-            # ============================================================
-            try:
-                ohlcv_4h = self.connector.exchange.fetch_ohlcv(symbol, '4h', limit=100)
-                if ohlcv_4h and len(ohlcv_4h) &gt;= 10:
-                    closes_4h = np.array([c[4] for c in ohlcv_4h])
-                    
-                    # Calcular tendencia 4h simple
-                    avg_old = np.mean(closes_4h[-10:-5])
-                    avg_new = np.mean(closes_4h[-5:])
-                    
-                    # Calcular fuerza 4h (proxy ADX)
-                    velocity_4h = abs(closes_4h[-1] - closes_4h[-5])
-                    velocity_avg_4h = np.mean([abs(closes_4h[i] - closes_4h[i-5]) for i in range(5, len(closes_4h))])
-                    velocity_ratio_4h = velocity_4h / velocity_avg_4h if velocity_avg_4h &gt; 0 else 1
-                    
-                    # RECHAZAR si 4h es bajista o sin fuerza
-                    trend_4h_bearish = avg_new &lt; avg_old * 0.995  # Cayendo &gt;0.5%
-                    force_4h_weak = velocity_ratio_4h &lt; 1.5  # Sin fuerza en 4h
-                    
-                    if trend_4h_bearish:
-                        return {
-                            'symbol': symbol,
-                            'classification': 'REJECTED',
-                            'force_level': 'DEBIL',
-                            'trend': 'BEARISH_4H',
-                            'rejection_reasons': ['Tendencia 4h bajista - no entrar long'],
-                            'holistic_view': None,
-                            'timestamp': datetime.now()
-                        }
-            except Exception as e:
-                logger.debug(f"4h validation skipped for {symbol}: {e}")
+        if len(self.price_history) &lt; 3:
+            return 0.0
+        
+        # Calcular velocidades de últimos 2 intervalos
+        velocities = []
+        
+        for i in range(len(self.price_history) - 1, max(0, len(self.price_history) - 3), -1):
+            price_now = self.price_history[i]
+            price_prev = self.price_history[i-1]
             
-            # ============================================================
-            # PASO 1: Obtener velas 5M
-            # ============================================================
-            ohlcv = self.connector.exchange.fetch_ohlcv(symbol, '5m', limit=100)
+            time_now = self.time_history[i]
+            time_prev = self.time_history[i-1]
             
-            if not ohlcv or len(ohlcv) &lt; 25:
-                return None
+            delta_price = price_now - price_prev
+            delta_time = (time_now - time_prev).total_seconds() / 60.0
             
-            closes = np.array([c[4] for c in ohlcv])
-            highs = np.array([c[2] for c in ohlcv])
-            lows = np.array([c[3] for c in ohlcv])
-            current_price = closes[-1]
-            
-            # ============================================================
-            # 1. FUERZA - ¿Se mueve MÁS RÁPIDO que su promedio?
-            # ============================================================
-            
-            # Velocidad reciente (últimas 5 velas)
-            velocity_recent = abs(closes[-1] - closes[-5])
-            
-            # Velocidad promedio histórica (todas las velas disponibles)
-            velocity_history = []
-            for i in range(5, len(closes)):
-                v = abs(closes[i] - closes[i-5])
-                velocity_history.append(v)
-            velocity_avg = np.mean(velocity_history) if velocity_history else velocity_recent
-            
-            # Comparar: ¿Más rápido que lo normal?
-            if velocity_avg &gt; 0:
-                velocity_ratio = velocity_recent / velocity_avg
-            else:
-                velocity_ratio = 1.0
-            
-            # Clasificar fuerza RELATIVAMENTE
-            if velocity_ratio &gt; 2.5:
-                force_level = 'BRUTAL'    # Más del doble de lo normal
-            elif velocity_ratio &gt; 1.8:
-                force_level = 'FUERTE'    # Significativamente más rápido
-            elif velocity_ratio &gt; 1.2:
-                force_level = 'ACTIVA'    # Un poco más rápido que lo normal
-            elif velocity_ratio &gt; 0.7:
-                force_level = 'DEBIL'     # Normal o ligeramente más lento
-            else:
-                force_level = 'MUERTA'    # Mucho más lento que lo normal
-            
-            # &gt;&gt;&gt; FIX VAR: Solo BRUTAL y FUERTE son fuerza SUFICIENTE
-            # ACTIVA = insuficiente (46% de trades perdedores venían de ACTIVA)
-            has_force = force_level in ['BRUTAL', 'FUERTE']
-            
-            # ============================================================
-            # 2. ACELERACIÓN - ¿La velocidad CRECE respecto a antes?
-            # ============================================================
-            
-            # Velocidad de las últimas 3 velas
-            vel_now = closes[-1] - closes[-3]
-            # Velocidad de las 3 velas anteriores
-            vel_before = closes[-4] - closes[-6]
-            
-            # ============================================================
-            # PASO 4: ANÁLISIS VISUAL DE PATRONES (Non-Binary)
-            # ============================================================
-            
-            # 1. Clasificar mercado en sprites (Usando objetos ya creados)
-            # Pasamos todos los objetos para evitar recálculos
-            from brain.visual_classifier import classify_market
-            sprites = classify_market(symbol, entity, walls, tech_indicators, ohlcv)
-            
-            # 2. Buscar patrón
-            from brain.pattern_matcher import find_pattern, get_pattern_action
-            # find_pattern retorna (id, score, data)
-            pattern_id, match_score, pattern_data = find_pattern(sprites)
-            
-            # Reporte visual
-            if self.debug_mode:
-                self._print_visual_report(sprites, pattern_data, match_score)
-                
-            # 3. Filtrado inicial por Score
-            if match_score &lt; 0.70:
-                if self.debug_mode:
-                    print(f"       ❌ Score insuficiente: {match_score:.0%}")
-                return {
-                    'classification': 'REJECTED',
-                    'rejection_reasons': ['No matchea ningún patrón conocido (&gt;70%)']
-                }
-            
-            # 4. Consultar Memoria (Database Stats)
-            stats = self._get_pattern_stats(pattern_id)
-            
-            if self.debug_mode:
-                print(f"       🧠 Memoria: {stats['sample_size']} obs | WR: {stats['win_rate']:.0%} | EV: {stats['expectancy']:.2f}")
-
-            # 5. Decisión Final
-            # Si hay poca data, lo marcamos como DEVELOPING para que entre al watchlist
-            # y el trader humano (o modo observación) decida.
-            # OJO: Si sample_size &lt; 20, en teoría es "Desconocido/Riesgoso".
-            # Pero para que el bot OPERE ahora (sin esperar 1 semana), 
-            # podemos permitir si el patrón es explícitamente alcista en catálogo (Action LONG/PRIORITY)
-            
-            pattern_action = get_pattern_action(pattern_id)
-            
-            if stats['sample_size'] &lt; 20:
-                # FALLBACK: Si es el patrón GOD_MODE o ROCKET, le damos chance en watchlist
-                if 'PRIORITY' in pattern_action:
-                    return {
-                        'classification': 'PRIORITY',
-                        'trade_direction': 'LONG' if 'LONG' in pattern_action else 'SHORT',
-                        'reasons': [f'Patrón {pattern_id} (Data Insuficiente pero Alta Prioridad)']
-                    }
-                
-                return {
-                    'classification': 'DEVELOPING', # Entra a watchlist para stalking
-                    'reasons': [f'Patrón {pattern_id} - Muy pocos datos ({stats["sample_size"]})']
-                }
-            
-            # Si hay data suficiente, usamos estadística
-            if stats['win_rate'] &gt; 0.60 and stats['expectancy'] &gt; 0.5:
-                direction = 'LONG' if 'LONG' in pattern_action else 'SHORT'
-                if pattern_action == 'SKIP':
-                     return {
-                        'classification': 'REJECTED',
-                        'rejection_reasons': [f'Patrón {pattern_id} es SKIP']
-                    }
-                    
-                return {
-                    'classification': 'PRIORITY',
-                    'trade_direction': direction,
-                    'reasons': [f'Patrón {pattern_id} - Win rate {stats["win_rate"]*100:.0f}%']
-                }
-            
-            return {
-                'classification': 'REJECTED',
-                'rejection_reasons': [f'Patrón {pattern_id} - Estadística pobre (WR {stats["win_rate"]:.2f})']
-            }
-            
-            # ============================================================
-            # &gt;&gt;&gt; FÍSICA REAL (Videojuego) - Velocidad/Aceleración en USD/min
-            # ============================================================
-            
-            # Velocidad real en USD/min (5 velas de 5min = 25 min)
-            velocity_per_min = (closes[-1] - closes[-5]) / 25.0  # USD/min
-            
-            # Aceleración: cambio de velocidad
-            velocity_prev = (closes[-6] - closes[-10]) / 20.0 if len(closes) &gt;= 10 else 0
-            acceleration_per_min = velocity_per_min - velocity_prev  # USD/min²
-            
-            # Dirección física
-            physics_direction = 1 if velocity_per_min &gt; 0 else -1 if velocity_per_min &lt; 0 else 0
-            
-            # ============================================================
-            # 3. ESTRUCTURA - ¿Hay PROGRESIÓN clara? (HH/HL o LL/LH)
-            # ============================================================
-            
-            # Dividir en 3 segmentos y comparar
-            seg1 = closes[-15:-10]  # Más viejo
-            seg2 = closes[-10:-5]   # Medio
-            seg3 = closes[-5:]      # Más reciente
-            
-            avg1, avg2, avg3 = np.mean(seg1), np.mean(seg2), np.mean(seg3)
-            
-            # ¿Cada segmento es MAYOR que el anterior? (BULLISH)
-            if avg3 &gt; avg2 &gt; avg1:
-                trend = 'BULLISH'
-            # ¿Cada segmento es MENOR que el anterior? (BEARISH)
-            elif avg3 &lt; avg2 &lt; avg1:
-                trend = 'BEARISH'
-            else:
-                trend = 'RANGING'
-            
-            has_structure = trend in ['BULLISH', 'BEARISH']
-            
-            # ============================================================
-            # 4. NO LATERAL - ¿El rango actual es MAYOR que el histórico?
-            # ============================================================
-            
-            # Rango reciente (últimas 15 velas)
-            range_recent = max(highs[-15:]) - min(lows[-15:])
-            
-            # Rango histórico (promedio de rangos de 15 velas)
-            range_history = []
-            for i in range(15, len(closes)):
-                r = max(highs[i-15:i]) - min(lows[i-15:i])
-                range_history.append(r)
-            range_avg = np.mean(range_history) if range_history else range_recent
-            
-            # Comparar: ¿El rango actual es MENOR que el promedio? (= lateral)
-            if range_avg &gt; 0:
-                range_ratio = range_recent / range_avg
-            else:
-                range_ratio = 1.0
-            
-            # Lateral = rango actual es significativamente MENOR que lo normal
-            is_lateral = range_ratio &lt; 0.5  # Menos de la mitad del rango normal
-            
-            # ============================================================
-            # 5. WALLS - ¿Dónde están las paredes? ¿Tiene runway?
-            # ============================================================
-            
-            # Detectar soportes y resistencias (máximos/mínimos locales)
-            resistances = []
-            supports = []
-            window = 3
-            
-            for i in range(window, len(highs) - window):
-                # Resistencia = máximo local
-                is_max = all(highs[i] &gt; highs[i-j] and highs[i] &gt; highs[i+j] for j in range(1, window+1))
-                if is_max:
-                    resistances.append(highs[i])
-                
-                # Soporte = mínimo local
-                is_min = all(lows[i] &lt; lows[i-j] and lows[i] &lt; lows[i+j] for j in range(1, window+1))
-                if is_min:
-                    supports.append(lows[i])
-            
-            # Encontrar pared más cercana según dirección
-            direction = 1 if trend == 'BULLISH' else -1 if trend == 'BEARISH' else 0
-            
-            nearest_wall = None
-            distance_to_wall = float('inf')
-            wall_type = None
-            
-            if direction &gt; 0:  # Bullish - buscar resistencia arriba
-                walls_above = [r for r in resistances if r &gt; current_price]
-                if walls_above:
-                    nearest_wall = min(walls_above)
-                    distance_to_wall = nearest_wall - current_price
-                    wall_type = 'resistance'
-            elif direction &lt; 0:  # Bearish - buscar soporte abajo
-                walls_below = [s for s in supports if s &lt; current_price]
-                if walls_below:
-                    nearest_wall = max(walls_below)
-                    distance_to_wall = current_price - nearest_wall
-                    wall_type = 'support'
-            
-            else:
-                runway_ratio = float('inf')  # Sin pared = runway infinito
-            
-            # &gt;&gt;&gt; RUNWAY EN MINUTOS (Física real)
-            if abs(velocity_per_min) &gt; 0.0001 and distance_to_wall &lt; float('inf'):
-                runway_minutes = distance_to_wall / abs(velocity_per_min)
-            else:
-                runway_minutes = float('inf')  # Sin velocidad = infinito
-            
-            # ¿Tiene espacio? (mínimo 3 minutos de runway)
-            has_runway = runway_minutes &gt; 3.0 if runway_minutes &lt; float('inf') else True
-            
-            # ============================================================
-            # CLASIFICACIÓN VISUAL - PURA GEOMETRÍA + WALLS
-            # ============================================================
-            
-            # PRIORITY: Fuerza + Estructura + Acelera + No lateral + Tiene runway
-            if has_force and has_structure and is_accelerating and not is_lateral and has_runway:
-                classification = 'PRIORITY'
-                
-            # DEVELOPING: Tiene algo bueno pero le falta algo
-            elif (has_force or has_structure) and not is_lateral:
-                classification = 'DEVELOPING'
-                
-            # REJECTED: No tiene setup claro
-            # REJECTED: No tiene setup claro
-            else:
-                classification = 'REJECTED'
-                
-                # &gt;&gt;&gt; DIAGNOSTIC LOGGING FOR REJECTED &lt;&lt;&lt;
-                if self.debug_mode or True: # Force log for diagnosis
-                    rejection_reasons = []
-                    if not has_force: rejection_reasons.append(f"No Force (ADX:{adx:.1f})")
-                    if not has_structure: rejection_reasons.append(f"Bad Structure ({structure.get('trend','?')})")
-                    if not is_accelerating: rejection_reasons.append(f"Not Accelerating ({acceleration_per_min:.3f})")
-                    if is_lateral: rejection_reasons.append(f"Lateral (Range:{range_ratio:.2f})")
-                    if not has_runway: rejection_reasons.append(f"No Runway ({runway_minutes:.1f}m)")
-                    
-                    main_reason = rejection_reasons[0] if rejection_reasons else 'Unknown'
-                    
-                    # Logging detallado de por qué falló
-                    # logger.info(f"❌ {symbol} REJECTED: {main_reason}") 
-                    # Comentado para no saturar consola, se usa rejection_stats
-                    
-                    # Agregar a estadísticas globales
-                    if not hasattr(self, 'rejection_stats'):
-                        self.rejection_stats = {}
-                    
-                    if main_reason not in self.rejection_stats:
-                        self.rejection_stats[main_reason] = 0
-                    self.rejection_stats[main_reason] += 1
-            
-            # ============================================================
-            # ANÁLISIS HOLÍSTICO (Visión completa del mercado)
-            # ============================================================
-            holistic_view = None
-            
-            if self.holistic_analyzer and classification in ['PRIORITY', 'DEVELOPING']:
-                try:
-                    # Preparar datos para el analizador holístico
-                    structure_data = {
-                        'classification': trend,
-                        'highs': list(highs[-20:]),
-                        'lows': list(lows[-20:])
-                    }
-                    
-                    geometry_data = {
-                        'resistances': resistances,
-                        'supports': supports
-                    }
-                    
-                    # Calcular volumen promedio
-                    volumes = np.array([c[5] for c in ohlcv]) if len(ohlcv) &gt; 0 and len(ohlcv[0]) &gt; 5 else np.array([1])
-                    volume_current = volumes[-1] if len(volumes) &gt; 0 else 1
-                    volume_avg = np.mean(volumes) if len(volumes) &gt; 0 else 1
-                    
-                    volume_data = {
-                        'current': volume_current,
-                        'average': volume_avg
-                    }
-                    
-                    # Indicadores - calcular DI+/DI- aproximado desde precio
-                    # DI+ = fuerza alcista, DI- = fuerza bajista
-                    # Usamos velocity_ratio como proxy
-                    adx_proxy = velocity_ratio * 15  # Escalar a rango ADX
-                    
-                    # Calcular DI+/DI- desde cambios de precio
-                    price_changes = np.diff(closes[-20:])
-                    positive_moves = np.sum(price_changes[price_changes &gt; 0])
-                    negative_moves = abs(np.sum(price_changes[price_changes &lt; 0]))
-                    total_moves = positive_moves + negative_moves
-                    
-                    if total_moves &gt; 0:
-                        di_plus_proxy = (positive_moves / total_moves) * 40  # Escalar a 0-40
-                        di_minus_proxy = (negative_moves / total_moves) * 40
-                    else:
-                        di_plus_proxy = 20
-                        di_minus_proxy = 20
-                    
-                    # Ajustar según tendencia
-                    if trend == 'BULLISH':
-                        di_plus_proxy *= 1.2
-                        di_minus_proxy *= 0.8
-                    elif trend == 'BEARISH':
-                        di_plus_proxy *= 0.8
-                        di_minus_proxy *= 1.2
-                    
-                    indicators_data = {
-                        'adx': adx_proxy,
-                        'di_plus': di_plus_proxy,  # NUEVO
-                        'di_minus': di_minus_proxy,  # NUEVO
-                        'momentum': {
-                            'color': 'green' if vel_now &gt; 0 else 'red',
-                            'age': 3
-                        }
-                    }
-                    
-                    # Ejecutar análisis holístico
-                    holistic_view = self.holistic_analyzer.analyze_complete_picture(
-                        symbol=symbol,
-                        current_price=current_price,
-                        structure=structure_data,
-                        geometry=geometry_data,
-                        indicators=indicators_data,
-                        volume_data=volume_data
-                    )
-                    
-                    # Ajustar clasificación basado en holístico
-                    if holistic_view:
-                        setup_quality = holistic_view.get('setup_quality', 'RISKY')
-                        timing = holistic_view.get('timing', {})
-                        force_data = holistic_view.get('force', {})
-                        should_enter = timing.get('should_enter', True)
-                        timing_zone = timing.get('zone', 'UNKNOWN')
-                        passes_force_filters = force_data.get('passes_filters', True)
-                        force_rejection_reasons = force_data.get('rejection_reasons', [])
-                        
-                        # &gt;&gt;&gt; FILTRO DE FUERZA: Rechazar si DI+/DI- muy cercanos o ADX bajo
-                        if not passes_force_filters:
-                            classification = 'REJECTED'
-                            reason = force_rejection_reasons[0] if force_rejection_reasons else 'Fuerza insuficiente'
-                            logger.info(f"{symbol}: REJECTED por fuerza - {reason}")
-                        # &gt;&gt;&gt; FILTRO DE TIMING: Rechazar si zona roja o debe esperar
-                        elif not should_enter:
-                            classification = 'REJECTED'
-                            logger.info(f"{symbol}: REJECTED por timing - Zona {timing_zone}")
-                        elif setup_quality == 'PERFECT' and classification == 'DEVELOPING':
-                            classification = 'PRIORITY'  # Upgrade!
-                        elif setup_quality == 'BAD' and classification == 'PRIORITY':
-                            classification = 'DEVELOPING'  # Downgrade
-                            
-                except Exception as e:
-                    logger.debug(f"Error en análisis holístico {symbol}: {e}")
-            
-            return {
-                'symbol': symbol,
-                'price': current_price,
-                'force_level': force_level,
-                'velocity_ratio': velocity_ratio,
-                'is_accelerating': is_accelerating,
-                'trend': trend,
-                'range_ratio': range_ratio,
-                'is_lateral': is_lateral,
-                # &gt;&gt;&gt; PHYSICS (Videojuego)
-                'velocity_per_min': velocity_per_min,
-                'acceleration_per_min': acceleration_per_min,
-                'runway_minutes': runway_minutes if runway_minutes &lt; float('inf') else 999,
-                # WALLS
-                'nearest_wall': nearest_wall,
-                'wall_type': wall_type,
-                'distance_to_wall': distance_to_wall if distance_to_wall &lt; float('inf') else None,
-                'runway_ratio': runway_ratio if runway_ratio &lt; float('inf') else None,
-                'has_runway': has_runway,
-                # HOLISTIC
-                'holistic_view': holistic_view,
-                'holistic_score': holistic_view.get('total_score', 0) if holistic_view else 0,
-                'holistic_quality': holistic_view.get('setup_quality', 'UNKNOWN') if holistic_view else 'UNKNOWN',
-                'timing_zone': holistic_view.get('timing', {}).get('zone', 'UNKNOWN') if holistic_view else 'UNKNOWN',
-                'should_enter': holistic_view.get('timing', {}).get('should_enter', False) if holistic_view else False,
-                # CLASSIFICATION
-                'classification': classification,
-                'timestamp': datetime.now()
-            }
-            
-        except Exception as e:
-            logger.debug(f"Error en análisis de {symbol}: {e}")
-            return None
+            if delta_time &gt; 0 and price_prev &gt; 0:
+                # Calcular velocidad porcentual para cada intervalo
+                v_pct = ((delta_price / price_prev) * 100) / delta_time
+                velocities.append(v_pct)
+        
+        if len(velocities) &gt;= 2:
+            # Aceleración = cambio de velocidad (%/min²)
+            acceleration = velocities[0] - velocities[1]
+        else:
+            acceleration = 0.0
+        
+        return acceleration
     
-    # ====================================================================
-    # ANÁLISIS 100% FÍSICA (Sin umbrales binarios)
-    # ====================================================================
-    
-    def _update_dashboard(self, symbol, sprites, pattern_name, pattern_id, match_score, action, classification):
-        """Helper to send updates to visual dashboard without blocking."""
-        try:
-            from tools.visual_dashboard.app import update_bot_state
-            
-            dashboard_data = {
-                'symbol': symbol,
-                'sprites': sprites,
-                'pattern': pattern_name,
-                'pattern_id': pattern_id,
-                'match_score': match_score,
-                'action': action,
-                'classification': classification,
-                'timestamp': datetime.now().isoformat()
-            }
-            update_bot_state(dashboard_data)
-        except Exception:
-            pass
-
-    def _analyze_physics(self, symbol: str) -&gt; Optional[dict]:
+    def set_force(self, adx_value):
         """
-        Análisis 100% basado en física de videojuego.
+        Establece fuerza del movimiento (ADX).
         
-        USA:
-        - MarketEntity: velocity, acceleration, momentum
-        - Walls: resistencias, soportes, runway
-        
-        NO USA:
-        - Umbrales fijos (&gt;= 30, &gt;= 5)
-        - Scoring numérico
-        
-        TODO es COMPARATIVO vs historia propia.
+        Args:
+            adx_value: Valor ADX (0-100)
         """
-        if not PHYSICS_AVAILABLE:
-            print(f"    ⚠️  Physics modules not available")
-            return None
-        
-        try:
-            # ============================================================
-            # PASO 1: OBTENER DATOS
-            # ============================================================
-            if self.debug_mode:
-                print(f"\n    🔬 PHYSICS [{symbol}]")
-            
-            ohlcv = self.connector.exchange.fetch_ohlcv(symbol, '5m', limit=100)
-            
-            if not ohlcv or len(ohlcv) &lt; 20:
-                if self.debug_mode:
-                    print(f"    ❌ Datos insuficientes: {len(ohlcv) if ohlcv else 0} velas")
-                return None
-            
-            current_price = ohlcv[-1][4]  # Close
-            
-            if self.debug_mode:
-                print(f"       ├─ Precio: ${current_price:,.4f}")
-            
-            # ============================================================
-            # PASO 2: CREAR MARKETENTITY (Física del precio)
-            # ============================================================
-            entity = MarketEntity(symbol, history_size=15)
-            
-            # Alimentar con precios históricos (últimos 15)
-            for candle in ohlcv[-15:]:
-                price = candle[4]  # Close
-                timestamp = datetime.fromtimestamp(candle[0] / 1000)
-                entity.update(price, timestamp)
-            
-            if self.debug_mode:
-                print(f"       ├─ Velocity: {entity.velocity:+.4f}%/min")
-                print(f"       ├─ Accel: {entity.acceleration:+.4f}")
-                print(f"       ├─ Dir: {'↑' if entity.direction &gt; 0 else '↓' if entity.direction &lt; 0 else '→'}")
-            
-            # ============================================================
-            # PASO 3: CREAR WALLS (Obstáculos)
-            # ============================================================
-            walls = Walls(symbol, lookback_periods=50)
-            
-            # Convertir OHLCV a formato walls
-            ohlc_data = [{'high': c[2], 'low': c[3]} for c in ohlcv]
-            walls.update(ohlc_data)
-            
-            # ============================================================
-            # PASO 3.7: CALCULAR INDICADORES TÉCNICOS
-            # ============================================================
-            tech_indicators = None
-            if INDICATORS_AVAILABLE:
-                tech_indicators = Indicators.analyze_all(ohlcv)
-                
-                if self.debug_mode and tech_indicators:
-                    adx_data = tech_indicators.get('adx', {})
-                    mom_data = tech_indicators.get('momentum', {})
-                    emas_data = tech_indicators.get('emas', {})
-                    print(f"       ├─ ADX: {adx_data.get('adx', 0):.1f} (DI+:{adx_data.get('di_plus', 0):.1f}/DI-:{adx_data.get('di_minus', 0):.1f})")
-                    print(f"       ├─ Mom: {mom_data.get('color', '?')} ({mom_data.get('age', 0)}v)")
-                    print(f"       ├─ EMAs: {'✓ Aligned' if emas_data.get('aligned_bullish') else '✗ Not aligned'}")
-            
-            # ============================================================
-            # PASO 3.5: DETECTAR ESTRUCTURA (HH/HL vs LL/LH)
-            # ============================================================
-            structure = walls.detect_structure()
-            development = walls.calculate_development_potential(current_price, structure)
-            
-            if self.debug_mode:
-                print(f"       ├─ Trend: {structure['trend']} ({structure.get('hh_count',0)}HH/{structure.get('hl_count',0)}HL)")
-                print(f"       ├─ Stage: {development['stage']} ({development['position_pct']:.0f}% rec)")
-            
-            # ============================================================
-            # DIRECCIÓN DEL TRADE (LONG o SHORT según tendencia)
-            # ============================================================
-            
-            trend = structure.get('trend', 'UNKNOWN')
-            
-            if trend == 'UNKNOWN':
-                return {
-                    'symbol': symbol,
-                    'price': current_price,
-                    'classification': 'REJECTED',
-                    'force_level': 'DEBIL',
-                    'rejection_reasons': ['Tendencia UNKNOWN - sin dirección clara'],
-                    'timestamp': datetime.now(),
-                    'analysis_type': 'PHYSICS'
-                }
-            
-            # ────────────────────────────────────────────────────────────
-            # BULLISH = LONG (precio debe subir)
-            # ────────────────────────────────────────────────────────────
-            if trend == 'BULLISH':
-                trade_direction = 'LONG'
-                
-                # Para LONG: velocity debe ser POSITIVA (moviéndonos arriba)
-                # OJO: Permitimos velocity 0 momentánea si acc es brutal, pero idealmente &gt; 0
-                # Para LONG: velocity debe ser POSITIVA (moviéndonos arriba)
-                # OJO: Permitimos velocity 0 momentánea si acc es brutal, pero idealmente &gt; 0
-                if entity.velocity &lt; -0.01: # Tolerancia mínima
-                    # FIX: No rechazar automáticamente. Si la estructura es buena, es un PULLBACK.
-                    # Clasificar como DEVELOPING para que el Sniper vigile el giro.
-                    return {
-                        'symbol': symbol,
-                        'price': current_price,
-                        'classification': 'DEVELOPING',
-                        'force_level': 'ESPERANDO GIRO',
-                        'rejection_reasons': ['Tendencia alcista en retroceso (esperando giro)'],
-                        'timestamp': datetime.now(),
-                        'analysis_type': 'PHYSICS',
-                        'trade_direction': 'LONG'
-                    }
-                
-                # Para LONG: debe estar acelerando hacia arriba o manteninedo velocidad alta
-                # No rechazamos estricto por acc &lt;= 0 si velocity es muy alta, pero idealmente &gt; 0
-            
-            # ────────────────────────────────────────────────────────────
-            # BEARISH = SHORT (precio debe bajar)
-            # ────────────────────────────────────────────────────────────
-            elif trend == 'BEARISH':
-                trade_direction = 'SHORT'
-                
-                # Para SHORT: velocity debe ser NEGATIVA
-                # Para SHORT: velocity debe ser NEGATIVA
-                if entity.velocity &gt; 0.01:
-                    # FIX: No rechazar automáticamente. Si estructura es buena, es un RETROCESO ALCISTA en tendencia BAJISTA.
-                    # Clasificar como DEVELOPING para vigilar el giro a la baja.
-                    return {
-                        'symbol': symbol,
-                        'price': current_price,
-                        'classification': 'DEVELOPING',
-                        'force_level': 'ESPERANDO GIRO',
-                        'rejection_reasons': ['Tendencia bajista en rebote (esperando giro)'],
-                        'timestamp': datetime.now(),
-                        'analysis_type': 'PHYSICS',
-                        'trade_direction': 'SHORT'
-                    }
-                
-                # Para SHORT: aceleración idealmente negativa
-            
-            # ────────────────────────────────────────────────────────────
-            # LATERAL = Rechazar
-            # ────────────────────────────────────────────────────────────
-            elif trend == 'LATERAL':
-                 return {
-                    'symbol': symbol,
-                    'price': current_price,
-                    'classification': 'REJECTED',
-                    'force_level': 'DEBIL',
-                    'rejection_reasons': ['Tendencia LATERAL - sin dirección clara'],
-                    'timestamp': datetime.now(),
-                    'analysis_type': 'PHYSICS'
-                }
-            
-            # Caso raro
-            else:
-                 return {
-                    'symbol': symbol,
-                    'price': current_price,
-                    'classification': 'REJECTED',
-                    'force_level': 'DEBIL',
-                    'rejection_reasons': [f'Tendencia {trend} no reconocida'],
-                    'timestamp': datetime.now(),
-                    'analysis_type': 'PHYSICS'
-                }
-            
-            # &gt;&gt;&gt; LATE FILTER DESACTIVADO TEMPORALMENTE para testing
-            # Filtrar LATE stage (&gt;70% recorrido)
-            # if development['stage'] == 'LATE':
-            #     if self.debug_mode:
-            #         print(f"       └─ ❌ LATE stage ({development['position_pct']:.0f}%) → REJECTED")
-            #     return {
-            #         'symbol': symbol,
-            #         'price': current_price,
-            #         'classification': 'REJECTED',
-            #         'force_level': 'ACTIVA',
-            #         'rejection_reasons': [f"Stage LATE ({development['position_pct']:.0f}% recorrido)"],
-            #         'structure': structure,
-            #         'development': development,
-            #         'timestamp': datetime.now(),
-            #         'analysis_type': 'PHYSICS'
-            #     }
-            
-            # ============================================================
-            # PASO 4: CALCULAR MÉTRICAS COMPARATIVAS (No binarias)
-            # ============================================================
-            
-            # Velocidad histórica para comparar
-            velocities = []
-            for i in range(5, len(ohlcv)):
-                prev_price = ohlcv[i-5][4]
-                curr_price = ohlcv[i][4]
-                if prev_price &gt; 0:
-                    delta_usd = curr_price - prev_price
-                    v_pct = (delta_usd / prev_price) * 100
-                    v_per_min = abs(v_pct) / 25.0 # %/min
-                    velocities.append(v_per_min)
-            
-            velocity_avg = np.mean(velocities) if velocities else 0.001
-            velocity_current = abs(entity.velocity)
-            
-            # Ratio comparativo (vs su propia historia)
-            velocity_ratio = velocity_current / velocity_avg if velocity_avg &gt; 0 else 1
-            
-            # ============================================================
-            # PASO 4: CALCULAR ESTADOS VISUALES (SPRITES)
-            # ============================================================
-            # ============================================================
-            # PASO 4: CLASIFICADOR VISUAL (PASO 3)
-            # ============================================================
-            if STATES_AVAILABLE:
-                # Delegamos a método especializado
-                current_sprites = self._classify_market_state(entity, walls, ohlcv, tech_indicators, velocity_avg)
-                
-                # Match de Patrones (Fuzzy Logic - Step 4)
-                # ════════════════════════════════════════════════════════
-                # LEER CONFIGURACIÓN DEL DASHBOARD
-                # ════════════════════════════════════════════════════════
-                try:
-                    from tools.visual_dashboard.app import get_live_config
-                    config = get_live_config()
-                    
-                    # Usar valores del dashboard
-                    MIN_WIN_RATE = config['filters']['min_win_rate']
-                    MIN_SAMPLE_SIZE = config['filters']['min_sample_size']
-                    MIN_EXPECTANCY = config['filters']['min_expectancy']
-                    patterns_enabled = config['patterns_enabled']
-                    
-                except:
-                    # Dashboard no disponible, usar defaults
-                    MIN_WIN_RATE = 0.45
-                    MIN_SAMPLE_SIZE = 10
-                    MIN_EXPECTANCY = 0.0
-                    patterns_enabled = {}
-                
-                matched_pattern, match_score = self._find_pattern(current_sprites)
-
-                # ════════════════════════════════════════════════════════
-                # VISUAL DASHBOARD UPDATE
-                # ════════════════════════════════════════════════════════
-                try:
-                    from tools.visual_dashboard.app import update_bot_state
-                    
-                    p_name = matched_pattern['name'] if matched_pattern else None
-                    if matched_pattern and p_name in patterns_enabled and not patterns_enabled[p_name]:
-                        p_action = 'DISABLED' 
-                    else:
-                        p_action = matched_pattern.get('action', 'WAIT') if matched_pattern else 'WAIT'
-                    
-                    update_bot_state({
-                        'symbol': symbol,
-                        'sprites': current_sprites,
-                        'pattern': p_name,
-                        'match_score': match_score,
-                        'action': p_action
-                    })
-                except Exception as e:
-                    pass # Dashboard off
-
-                # Logging con formato "Uso Final"
-                if self.debug_mode:
-                     self._print_visual_report(current_sprites, matched_pattern, match_score)
-
-            # ============================================================
-
-            # ============================================================
-
-            # ============================================================
-            # PASO 5: DECISIÓN BASADA EN PATRONES (Primary Engine)
-            # ============================================================
-            
-            # 1. Si hay patrón fuerte, la estadística manda.
-            if matched_pattern and match_score &gt;= 0.70:
-                pattern_id = matched_pattern['name']
-                
-                # Check DASHBOARD DISABLE
-                if pattern_id in patterns_enabled and not patterns_enabled[pattern_id]:
-                    return {
-                        'classification': 'REJECTED',
-                        'rejection_reasons': [f'Patrón {pattern_id} DESHABILITADO en Dashboard'],
-                        'timestamp': datetime.now(),
-                        'analysis_type': 'PATTERN_ENGINE'
-                    }
-
-                stats = self._get_pattern_stats(pattern_id)
-                
-                # Criterios de Calidad Estadística (EXTREMOS - PROSPECTING MODE)
-                # min_samples -&gt; 5
-                # min_wr -&gt; 0.40
-                # min_exp -&gt; -0.5
-                
-                # DEBUG: Ver qué patrones llegan aquí
-                if self.debug_mode:
-                    print(f"       ✅ PATTERN MATCH: {pattern_id} (Score: {match_score:.2f}) | Stats: {stats['sample_size']} obs, {stats['win_rate']:.0%} WR")
-
-                # 1. Filtro de Muestra
-                if stats['sample_size'] &lt; 5:
-                    if match_score &gt;= 0.75:
-                        
-                        # ════════════════════════════════════════════════════════
-                        # RESPETAR DECISIÓN DEL PATRÓN
-                        # ════════════════════════════════════════════════════════
-                        # Si el patrón dice SKIP (ej: VAR_015_BLOCKED),
-                        # NO forzar entrada. El patrón existe para rechazar setups.
-                        
-                        pattern_action = matched_pattern.get('action', 'SKIP')
-                        
-                        if pattern_action == 'SKIP':
-                            
-                            # Update Dashboard even on rejection
-                            self._update_dashboard(symbol, sprites, pattern_name, pattern_id, match_score, 'SKIP', 'REJECTED')
-                            
-                            return {
-                                'classification': 'REJECTED',
-                                'rejection_reasons': [
-                                    f'Patrón {pattern_id}: Acción definida como SKIP',
-                                    'Setup bloqueado por definición del patrón'
-                                ]
-                            }
-                        
-                        # Patrón dice LONG o SHORT → aprobar
-                        # Update Dashboard on approval
-                        self._update_dashboard(symbol, sprites, pattern_name, pattern_id, match_score, pattern_action, 'PRIORITY')
-
-                        return {
-                            'classification': 'PRIORITY',
-                            'trade_direction': pattern_action,  # LONG o SHORT
-                            'pattern_id': pattern_id,
-                            'reasons': [
-                                f'Patrón {pattern_id}',
-                                f'Match: {match_score*100:.0f}%',
-                                f'Acción: {pattern_action}'
-                            ],
-                            'timestamp': datetime.now(),
-                            'analysis_type': 'PATTERN_ENGINE_EXP',
-                            'pattern_info': matched_pattern
-                        }
-                    else:
-                        pass
-
-                # 2. Filtro de Win Rate
-                elif stats['win_rate'] &lt; 0.40:
-                    if self.debug_mode:
-                        print(f"       └─ ❌ REJECTED: Patrón {pattern_id} tiene WR excesivamente bajo ({stats['win_rate']:.0%})")
-                    pass
-
-                # 3. Filtro de Expectancy (No perder DEMASIADO dinero)
-                elif stats['expectancy'] &lt; -0.5:
-                    if self.debug_mode:
-                        print(f"       └─ ❌ REJECTED: Patrón {pattern_id} es ruinoso ({stats['expectancy']:.2f}%)")
-                    pass
-
-                # 4. APROBADO -&gt; PRIORITY
-                else:
-                    return {
-                        'symbol': symbol,
-                        'price': current_price,
-                        'classification': 'PRIORITY',
-                        'force_level': 'BRUTAL', # Asumimos fuerza por el patrón
-                        'rejection_reasons': [],
-                        'reasons': [
-                            f"Patrón {pattern_id}",
-                            f"WR {stats['win_rate']:.0%} ({stats['sample_size']} obs)",
-                            f"Exp {stats['expectancy']:+.2f}%"
-                        ],
-                        'timestamp': datetime.now(),
-                        'analysis_type': 'PATTERN_ENGINE',
-                        'trade_direction': matched_pattern['action'],
-                        'pattern_info': matched_pattern
-                    }
-
-            # ============================================================
-            # PASO 6: CONDICIONES FÍSICAS (Fallback / Secondary - SENSITIVE MODE)
-            # ============================================================
-            
-            # Si llegamos acá: patrones no dieron PRIORITY
-            # Usar física pura como bot viejo (pero RELATIVA)
-
-            conditions = {}
-            reasons = []
-            
-            # 1. ¿Tiene MOMENTUM? (bajado de 80% a 50% del promedio)
-            conditions['momentum'] = velocity_current &gt; (velocity_avg * 0.5)
-            if not conditions['momentum']:
-                reasons.append(f'Sin momentum (vel:{velocity_ratio:.1f}x promedio)')
-            
-            # 2. ¿Acelera O mantiene velocidad? (más permisivo)
-            is_moving_well = False
-            if trade_direction == 'LONG':
-                 is_moving_well = (
-                    entity.acceleration &gt; 0 or  # Acelera
-                    (velocity_current &gt; velocity_avg * 1.2 and entity.acceleration &gt; -0.01) # O va rápido y estable
-                 )
-            else: # SHORT
-                  is_moving_well = (
-                    entity.acceleration &lt; 0 or
-                    (velocity_current &gt; velocity_avg * 1.2 and entity.acceleration &lt; 0.01)
-                  )
-            
-            conditions['accelerating'] = is_moving_well
-            if not conditions['accelerating']:
-                reasons.append(f'No acelera bien (accel:{entity.acceleration:+.4f})')
-            
-            # 3. ¿Tiene algo de espacio? (bajado de 2 min a 1 min)
-            nearest_wall = walls.find_nearest_wall(current_price, entity.direction)
-            if nearest_wall:
-                wall_price, wall_type, distance = nearest_wall
-                runway_minutes = walls.calculate_runway(current_price, wall_price, abs(entity.velocity))
-                conditions['runway'] = runway_minutes &gt; 1.0  # 1 min mínimo
-                if not conditions['runway']:
-                    reasons.append(f'Pared muy cerca ({runway_minutes:.1f}min)')
-            else:
-                 conditions['runway'] = True
-
-            # 4. ¿EMAs ayudan? (más flexible) - Se require indicators data
-            emas_data = tech_indicators.get('emas', {}) if tech_indicators else {}
-            ema_21 = emas_data.get('EMA_21', 0)
-            ema_9 = emas_data.get('EMA_9', 0)
-            
-            emas_ok = False
-            if trade_direction == 'LONG':
-                 emas_ok = (current_price &gt; ema_21) or (ema_9 &gt; ema_21)
-            else:
-                 emas_ok = (current_price &lt; ema_21) or (ema_9 &lt; ema_21)
-            
-            conditions['emas'] = emas_ok
-            if not conditions['emas']:
-                 reasons.append('EMAs en contra')
-
-            # ============================================================
-            # PASO 7: DECISIÓN FÍSICA (más permisiva que antes)
-            # ============================================================
-            
-            physics_score = sum([
-                conditions.get('momentum', False),
-                conditions.get('accelerating', False),
-                conditions.get('runway', False),
-                conditions.get('emas', False)
-            ])
-            
-            # Dirección correcta siempre requerida
-            moving_right_way = False
-            if trade_direction == 'LONG':
-                 moving_right_way = entity.direction &gt; 0
-            else: # SHORT
-                 moving_right_way = entity.direction &lt; 0
-
-            # Logging detallado
-            if self.debug_mode:
-                print(f"       ⏱️ PHYSICS FALLBACK: {physics_score}/4 conditions")
-                print(f"         Momentum: {conditions.get('momentum')} (vel&gt;0.5x avg)")
-                print(f"         Moving:   {conditions.get('accelerating')} (acc&gt;0 or fast)")
-                print(f"         Runway:   {conditions.get('runway')} (&gt;1min)")
-                print(f"         EMAs:     {conditions.get('emas')}")
-            
-            # Necesita 2 de 4 (SUPER SENSITIVE MODE - antes 3/4) + Dirección Correcta
-            if moving_right_way and physics_score &gt;= 2:
-                classification = 'PRIORITY'
-                force_level = 'FUERTE'
-                reasons = [f'Física geométrica ({physics_score}/4 ok)', f'Vel: {entity.velocity:.3f}%/min']
-                
-                return {
-                    'symbol': symbol,
-                    'price': current_price,
-                    'classification': 'PRIORITY',
-                    'force_level': force_level,
-                    'rejection_reasons': [],
-                    'reasons': reasons,
-                    'timestamp': datetime.now(),
-                    'analysis_type': 'PHYSICS_FALLBACK',
-                    'trade_direction': trade_direction
-                }
-            
-            else:
-                classification = 'REJECTED'
-                force_level = 'DEBIL'
-            
-            # The following lines are part of the original PASO 7 and are now superseded by the new PASO 7 logic.
-            # They are kept here to ensure the final return statement has access to these variables,
-            # but their values will be determined by the new PASO 7 logic.
-            # has_momentum = conditions.get('momentum', False)
-            # has_runway = conditions.get('runway', True)
-            
-            # Aceleración en la dirección correcta?
-            is_accelerating_bool = conditions.get('accelerating', False)
-            
-            # PRIORITY: Se mueve bien + acelera + tiene espacio
-            if moving_right_way and is_accelerating_bool and has_runway:
-                classification = 'PRIORITY'
-                force_level = 'BRUTAL' if has_momentum else 'FUERTE'
-                reasons = [] # Limpiar razones negativas si cumple todo
-            
-            # DEVELOPING: Se mueve bien + tiene espacio (pero no acelera)
-            elif moving_right_way and has_runway:
-                classification = 'DEVELOPING'
-                force_level = 'ACTIVA'
-            
-            # REJECTED: No cumple requisitos básicos
-            else:
-                classification = 'REJECTED'
-                force_level = 'DEBIL'
-            
-            if self.debug_mode:
-                dir_arrow = '↑' if trade_direction == 'LONG' else '↓'
-                status = f"{dir_arrow if moving_right_way else 'X'} {'⚡' if is_accelerating_bool else '—'} {'🛣️' if has_runway else '🧱'}"
-                print(f"       └─ {status} → {classification}")
-            
-            return {
-                'symbol': symbol,
-                'price': current_price,
-                'classification': classification,
-                'force_level': force_level,
-                # Physics
-                'velocity_per_min': entity.velocity,
-                'acceleration_per_min': entity.acceleration,
-                'velocity_ratio': velocity_ratio,
-                'direction': entity.direction,
-                # Walls
-                'nearest_wall': wall_price,
-                'wall_type': wall_type,
-                'runway_minutes': runway_minutes,
-                'has_runway': conditions.get('runway', False),
-                # Structure
-                'structure': structure,
-                'development': development,
-                # Conditions
-                'conditions': conditions,
-                'conditions_passed': passed,
-                'conditions_total': total,
-                'rejection_reasons': reasons if classification == 'REJECTED' else [],
-                # Technical Indicators
-                'indicators': tech_indicators,
-                # Meta
-                'timestamp': datetime.now(),
-                'timestamp': datetime.now(),
-                'analysis_type': 'PHYSICS',
-                'trade_direction': trade_direction  # &lt;&lt;&lt; IMPORTANTE: Pasar dirección
-            }
-            
-        except Exception as e:
-            if self.debug_mode:
-                print(f"       └─ ❌ ERROR: {e}")
-            logger.debug(f"Physics analysis error {symbol}: {e}")
-            return None
+        self.force = max(0.0, min(100.0, adx_value))  # Clamp 0-100
     
-    # ====================================================================
-    # CONFIRMACIÓN MULTI-TIMEFRAME
-    # ====================================================================
+    def is_accelerating(self):
+        """¿Está acelerando? (aceleración positiva)"""
+        return self.acceleration &gt; 0
     
-    def _confirm_with_mtf(self, symbol: str, analysis: dict) -&gt; bool:
+    def is_decelerating(self):
+        """¿Está frenando? (aceleración negativa)"""
+        return self.acceleration &lt; 0
+    
+    def has_momentum(self):
         """
-        Confirma Priority con Multi-Timeframe correcto.
+        ¿Tiene momentum? Comparado con SU PROPIA velocidad promedio.
         
-        LÓGICA:
-        - 1D = REFERENCIA (evitar correcciones de movimiento mayor)
-        - 4H = DEFINE TENDENCIA (la dirección real, 8-12h de contexto)
-        - 1H, 15M, 5M = Deben ALINEARSE con 4H
+        NO usa threshold fijo (0.03%, 0.05%, etc).
+        Cada moneda se compara consigo misma.
+        """
+        if len(self.price_history) &lt; 5:
+            # Sin historial suficiente, considerar cualquier movimiento positivo
+            return abs(self.velocity) &gt; 0
+        
+        # Calcular velocidades históricas (en %) para el promedio
+        historical_vels = []
+        for i in range(len(self.price_history) - 1):
+            prev = self.price_history[i]
+            curr = self.price_history[i+1]
+            
+            # Necesitamos timestamps para ser precisos, pero aproximamos con los índices si es uniforme
+            # Mejor recalculamos similar al método _calculate_velocity
+            if prev &gt; 0:
+                # Delta simple, asumiendo time delta similar
+                v_pct = ((curr - prev) / prev) * 100
+                historical_vels.append(abs(v_pct))
+        
+        if not historical_vels:
+            return abs(self.velocity) &gt; 0
+        
+        # Promedio histórico de ESTA moneda (magnitud absoluta)
+        avg_velocity = sum(historical_vels) / len(historical_vels)
+        
+        # CAMBIO: 0.8 (80%) en vez de 1.0 (100%)
+        threshold_velocity = avg_velocity * 0.8
+        
+        return abs(self.velocity) &gt; threshold_velocity
+    
+    def get_state(self):
+        """
+        Retorna estado completo como dict.
         
         Returns:
-            bool: True si todo alineado correctamente
+            dict: Estado físico completo
         """
-        try:
-            sym_short = symbol.replace('/USDT:USDT', '')
-            
-            # ============================================================
-            # PASO 1: CONTEXTO DIARIO (1D) - ¿Estamos en tendencia o corrección?
-            # ============================================================
-            ohlcv_1d = self.connector.exchange.fetch_ohlcv(symbol, '1d', limit=100)
-            
-            if ohlcv_1d and len(ohlcv_1d) &gt;= 7:
-                closes_1d = [c[4] for c in ohlcv_1d]
-                highs_1d = [c[2] for c in ohlcv_1d]
-                lows_1d = [c[3] for c in ohlcv_1d]
-                
-                # Tendencia 1D: comparar semana actual vs anterior
-                avg_week_old = np.mean(closes_1d[-14:-7]) if len(closes_1d) &gt;= 14 else np.mean(closes_1d[:7])
-                avg_week_new = np.mean(closes_1d[-7:])
-                
-                trend_1d = 'UP' if avg_week_new &gt; avg_week_old else 'DOWN'
-                
-                # ¿Es una corrección? (precio cayó desde máximo reciente)
-                recent_high = max(highs_1d[-7:])
-                current_price = closes_1d[-1]
-                correction_pct = (recent_high - current_price) / recent_high * 100
-                
-                is_correction = correction_pct &gt; 5  # &gt;5% de caída desde máximo
-                
-                if is_correction and trend_1d == 'DOWN':
-                    print(f"    [MTF] {sym_short}: ❌ 1D en corrección ({correction_pct:.1f}% desde máximo)")
-                    return False
-            else:
-                trend_1d = 'UNKNOWN'
-                is_correction = False
-            
-            # ============================================================
-            # PASO 2: TENDENCIA 4H - LA QUE DEFINE TODO
-            # ============================================================
-            ohlcv_4h = self.connector.exchange.fetch_ohlcv(symbol, '4h', limit=100)
-            
-            if not ohlcv_4h or len(ohlcv_4h) &lt; 6:
-                print(f"    [MTF] {sym_short}: ⚠️ Sin datos 4H")
-                return False
-            
-            closes_4h = [c[4] for c in ohlcv_4h]
-            
-            # Tendencia 4H (últimas 8-12 horas = 2-3 velas de 4h)
-            trend_4h = 'UP' if closes_4h[-1] &gt; closes_4h[-3] else 'DOWN'
-            
-            # Si 4H es bajista, NO entrar long
-            if trend_4h == 'DOWN':
-                print(f"    [MTF] {sym_short}: ❌ 4H BAJISTA - no entrar long")
-                return False
-            
-            # ============================================================
-            # PASO 3: ALINEACIÓN 1H, 15M, 5M con 4H
-            # ============================================================
-            
-            # 1H
-            ohlcv_1h = self.connector.exchange.fetch_ohlcv(symbol, '1h', limit=100)
-            if ohlcv_1h and len(ohlcv_1h) &gt;= 4:
-                closes_1h = [c[4] for c in ohlcv_1h]
-                trend_1h = 'UP' if closes_1h[-1] &gt; closes_1h[-3] else 'DOWN'
-            else:
-                trend_1h = trend_4h  # Asumir alineado
-            
-            # 15M
-            ohlcv_15m = self.connector.exchange.fetch_ohlcv(symbol, '15m', limit=100)
-            if ohlcv_15m and len(ohlcv_15m) &gt;= 8:
-                closes_15m = [c[4] for c in ohlcv_15m]
-                trend_15m = 'UP' if closes_15m[-1] &gt; closes_15m[-4] else 'DOWN'
-            else:
-                trend_15m = trend_4h
-            
-            # 5M (ya lo tenemos del análisis)
-            structure = analysis.get('structure', {})
-            trend_5m = 'UP' if structure.get('trend') == 'BULLISH' else 'DOWN' if structure.get('trend') == 'BEARISH' else 'UNKNOWN'
-            
-            # ============================================================
-            # PASO 4: VERIFICAR ALINEACIÓN COMPLETA
-            # ============================================================
-            
-            aligned_1h = (trend_1h == trend_4h)
-            aligned_15m = (trend_15m == trend_4h)
-            aligned_5m = (trend_5m == 'UP') if trend_4h == 'UP' else (trend_5m == 'DOWN')
-            
-            all_aligned = aligned_1h and aligned_15m and aligned_5m
-            
-            # Mostrar resultado
-            status_1d = '✓' if trend_1d == 'UP' and not is_correction else '✗'
-            status_4h = '✓' if trend_4h == 'UP' else '✗'
-            status_1h = '✓' if aligned_1h else '✗'
-            status_15m = '✓' if aligned_15m else '✗'
-            status_5m = '✓' if aligned_5m else '✗'
-            
-            if all_aligned:
-                print(f"    [MTF] {sym_short}: 1D{status_1d} 4H{status_4h} 1H{status_1h} 15M{status_15m} 5M{status_5m} → ✅ ALINEADO")
-            else:
-                print(f"    [MTF] {sym_short}: 1D{status_1d} 4H{status_4h} 1H{status_1h} 15M{status_15m} 5M{status_5m} → ❌ NO ALINEADO")
-            
-            return all_aligned
-            
-        except Exception as e:
-            print(f"    [MTF] {symbol}: ⚠️ Error: {e}")
-            logger.debug(f"Error MTF {symbol}: {e}")
-            return False  # En caso de error, NO permitir
-    
-    # ====================================================================
-    # HELPERS
-    # ====================================================================
-    
-    def _clean_rejected_cache(self):
-        """Limpia rejected cache (cooldown expirado)."""
-        now = datetime.now()
-        timeout = self.reject_cooldown * 60  # Minutos a segundos
-        
-        expired = [
-            symbol for symbol, timestamp in self.rejected_cache.items()
-            if (now - timestamp).total_seconds() &gt; timeout
-        ]
-        
-        for symbol in expired:
-            del self.rejected_cache[symbol]
-            print(f"    [CACHE] {symbol} expirado de rejected, puede re-escanearse")
-    
-    def get_best_setup(self) -&gt; Optional[dict]:
-        """Retorna el mejor setup disponible."""
-        if self.priority_queue:
-            return self.priority_queue[0]
-        if self.developing_queue:
-            return self.developing_queue[0]
-        return None
-    
-    def get_status(self) -&gt; dict:
-        """Retorna estado del sniper."""
         return {
-            'cycle_count': self.cycle_count,
-            'scan_count': self.scan_count,
-            'watchlist_size': len(self.watchlist),
-            'priority_count': len(self.priority_queue),
-            'developing_count': len(self.developing_queue),
-            'rejected_count': len(self.rejected_cache),
-            'last_full_scan': self.last_full_scan.isoformat() if self.last_full_scan else None
+            'position': self.position,
+            'velocity': self.velocity,
+            'acceleration': self.acceleration,
+            'force': self.force,
+            'direction': self.direction,
+            'is_accelerating': self.is_accelerating(),
+            'has_momentum': self.has_momentum(),
+            'last_update': self.last_update.isoformat() if self.last_update else None
         }
     
-    def print_watchlist(self):
-        """Imprime watchlist actual."""
-        print(f"\n  ╔{'═'*58}╗")
-        print(f"  ║  WATCHLIST ({len(self.watchlist)} monedas)                              ║")
-        print(f"  ╠{'═'*58}╣")
+    def __repr__(self):
+        return (f"MarketEntity({self.symbol} | "
+                f"Pos: ${self.position:.2f} | "
+                f"Vel: {self.velocity:+.2f} | "
+                f"Acc: {self.acceleration:+.2f} | "
+                f"Force: {self.force:.1f})")
+
+
+def test_market_entity():
+    """Test básico de MarketEntity con datos simulados."""
+    print("=== TEST MARKET ENTITY ===\n")
+    
+    entity = MarketEntity('BTC/USDT:USDT', history_size=10)
+    
+    # Simular movimiento alcista acelerando
+    prices = [
+        96000,  # t=0
+        96050,  # t=1 (+50)
+        96120,  # t=2 (+70)
+        96210,  # t=3 (+90)
+        96320,  # t=4 (+110)
+    ]
+    
+    print("Simulando precio subiendo y ACELERANDO:")
+    for i, price in enumerate(prices):
+        timestamp = datetime.now()
+        entity.update(price, timestamp)
+        entity.set_force(25 + i*2)  # ADX creciendo
         
-        for symbol, data in list(self.watchlist.items())[:10]:
-            classification = data.get('last_analysis', {}).get('classification', '?')
-            checks = data.get('checks', 0)
-            emoji = {'PRIORITY': '⭐', 'DEVELOPING': '🔄', 'REJECTED': '❌'}.get(classification, '?')
-            
-            sym_short = symbol.replace('/USDT:USDT', '')
-            print(f"  ║  {emoji} {sym_short:12s} | {classification:12s} | {checks:2d} checks  ║")
-        
-        if len(self.watchlist) &gt; 10:
-            print(f"  ║  ... y {len(self.watchlist) - 10} más                                ║")
-        
-        print(f"  ╚{'═'*58}╝")
+        print(f"Frame {i}: {entity}")
+        print(f"  └─ Acelerando: {entity.is_accelerating()}")
+        print(f"  └─ Momentum: {entity.has_momentum()}\n")
+    
+    # Verificar estado final
+    state = entity.get_state()
+    print("Estado final:")
+    for key, value in state.items():
+        print(f"  {key}: {value}")
+    
+    # Assertions
+    assert entity.velocity &gt; 0, "Velocidad debe ser positiva (subiendo)"
+    assert entity.acceleration &gt; 0, "Aceleración debe ser positiva (acelerando)"
+    assert entity.direction == 1, "Dirección debe ser bullish (1)"
+    
+    print("\n✅ Test passed!")
+    return True
 
-
-# ========================================================================
-# ALIAS PARA COMPATIBILIDAD
-# ========================================================================
-
-    def _classify_market_state(self, entity, walls, ohlcv, tech_indicators, velocity_avg) -&gt; dict:
-        """
-        PASO 3: Clasificador Visual (Refactorizado con visual_classifier.py)
-        Delegamos la lógica a las funciones especializadas.
-        """
-        try:
-            from brain.visual_classifier import (
-                classify_price_direction_with_avg, 
-                classify_candle_shape, 
-                classify_wind, 
-                classify_fuel, 
-                classify_terrain, 
-                classify_runway
-            )
-        except ImportError:
-            return {} 
-
-        if isinstance(tech_indicators, list) or tech_indicators is None:
-             tech_indicators = {}
-        
-        current_price = ohlcv[-1][4] if ohlcv else 0
-
-        # 1. Dirección del Precio
-        # Usamos la variante _with_avg porque tenemos el avg calculado externamente
-        pd_name = classify_price_direction_with_avg(
-            entity.velocity, 
-            entity.acceleration, 
-            velocity_avg
-        )
-            
-        # 2. Forma de Velas
-        cs_name = classify_candle_shape(ohlcv)
-
-        # 3. Wind (EMAs)
-        w_name = classify_wind(current_price, tech_indicators)
-
-        # 4. Fuel (Momentum)
-        f_name = classify_fuel(tech_indicators)
-
-        # 5. Terrain (Structure)
-        t_name = classify_terrain(walls)
-        
-        # 6. Runway
-        r_name = classify_runway(walls, current_price)
-        
-        return {
-            'price_direction': pd_name,
-            'candle_shape': cs_name,
-            'wind': w_name,
-            'fuel': f_name,
-            'terrain': t_name,
-            'runway': r_name
-        }
-
-    def _find_pattern(self, current_sprites):
-        """
-        PASO 4: Busca en el catálogo qué patrón matchea.
-        Delegado a brain.pattern_matcher
-        """
-        try:
-            from brain.pattern_matcher import find_pattern
-            # find_pattern retorna (id, score, data)
-            pid, score, pdata = find_pattern(current_sprites)
-            return pdata, score
-        except ImportError:
-            return None, 0.0
-
-    def _print_visual_report(self, sprites, pattern, score):
-        """
-        Imprime el reporte visual en el formato solicitado (Step 4 Demo).
-        """
-        try:
-            from brain.visual_sprites import VISUALS
-        except ImportError:
-            return
-
-        # Solo imprimimos si hay un patrón decente o si es debug explicito
-        # Para evitar spam, filtramos monedas normales.
-        if score &lt; 0.6: return 
-        
-        print(f"\nEstado visual:")
-        print(f"  Precio:      {VISUALS.get(sprites['price_direction'], '?')}")
-        print(f"  Velas:       {VISUALS.get(sprites['candle_shape'], '?')}")
-        print(f"  Viento:      {VISUALS.get(sprites['wind'], '?')}")
-        print(f"  Combustible: {VISUALS.get(sprites['fuel'], '?')}")
-        print(f"  Terreno:     {VISUALS.get(sprites['terrain'], '?')}")
-        print(f"  Runway:      {VISUALS.get(sprites['runway'], '?')}")
-        
-        if pattern:
-             print(f"\n📍 Patrón: {pattern['name']}")
-             print(f"   Match: {score*100:.0f}%")
-             print(f"   Visual: {pattern['visual']}")
-             print(f"   Win rate: {pattern.get('win_rate', 0)*100:.0f}%")
-             print(f"   Acción: {pattern['action']}")
-             print(f"{'-'*40}") # Separator
-
-    def _get_pattern_stats(self, pattern_id):
-        """Consulta base de datos de observaciones."""
-        try:
-            import sqlite3
-            from pathlib import Path
-            db_path = Path('data/pattern_memory.db')
-            
-            if not db_path.exists():
-                 return {'sample_size': 0, 'win_rate': 0, 'expectancy': 0}
-
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            
-            # Check table exists
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='observations'")
-            if not cursor.fetchone():
-                 conn.close()
-                 return {'sample_size': 0, 'win_rate': 0, 'expectancy': 0}
-            
-            outcomes = cursor.execute("""
-                SELECT outcome, profit_pct 
-                FROM observations 
-                WHERE pattern_id = ?
-            """, (pattern_id,)).fetchall()
-            
-            conn.close()
-            
-            if len(outcomes) &lt; 20:
-                return {'sample_size': len(outcomes), 'win_rate': 0, 'expectancy': 0}
-            
-            wins = [o for o in outcomes if o[0] == 'WIN']
-            win_rate = len(wins) / len(outcomes)
-            
-            # Avg Profit/Loss
-            wins_pct = [o[1] for o in wins]
-            losses_pct = [o[1] for o in outcomes if o[0] == 'LOSS']
-            
-            avg_profit = sum(wins_pct) / len(wins_pct) if wins_pct else 0
-            avg_loss = abs(sum(losses_pct) / len(losses_pct)) if losses_pct else 0
-            
-            # EV = (Win% * AvgWin) - (Loss% * AvgLoss)
-            expectancy = ((win_rate * avg_profit) - ((1-win_rate) * avg_loss))
-            
-            return {
-                'sample_size': len(outcomes),
-                'win_rate': win_rate,
-                'expectancy': expectancy
-            }
-        except Exception as e:
-            # print(f"DB Error: {e}")
-            return {'sample_size': 0, 'win_rate': 0, 'expectancy': 0}
-
-
-
-
-VisualSniper = HybridVisualSniper
-
-
-# ========================================================================
-# TEST
-# ========================================================================
 
 if __name__ == '__main__':
-    print("=== TEST HYBRID VISUAL SNIPER ===\n")
+    logging.basicConfig(level=logging.DEBUG)
+    test_market_entity()
+
+Modulo:
+
+"""
+Walls - Detector de obstáculos (Resistencias/Soportes).
+
+Las paredes del juego donde el precio rebota.
+"""
+
+import logging
+from typing import List, Tuple, Optional
+
+# Use custom BotLogger if available, else fallback to standard logging
+try:
+    from utils.logger import logger
+except ImportError:
+    logger = logging.getLogger(__name__)
+
+class Walls:
+    """
+    Detecta y gestiona resistencias y soportes.
     
-    sniper = HybridVisualSniper()
+    Como paredes en un videojuego:
+        - Resistencia = Pared superior
+        - Soporte = Pared inferior
+        - Precio rebota en estas paredes
+    """
     
-    print("\nStatus inicial:")
-    print(sniper.get_status())
+    def __init__(self, symbol: str, lookback_periods: int = 50):
+        """
+        Args:
+            symbol: Par de trading
+            lookback_periods: Períodos históricos para detectar pivotes
+        """
+        self.symbol = symbol
+        self.lookback_periods = lookback_periods
+        
+        # Obstáculos detectados
+        self.resistances: List[float] = []
+        self.supports: List[float] = []
+        
+        logger.info(f"Walls creado: {symbol}")
     
-    print("\n[OK] Test completado")
+    def update(self, ohlc_data: List[dict]):
+        """
+        Actualiza detección de resistencias/soportes.
+        
+        Método simple: Encuentra pivotes (máximos/mínimos locales).
+        
+        Args:
+            ohlc_data: Lista de velas [{'high': X, 'low': X}, ...]
+        """
+        if len(ohlc_data) &lt; 5:
+            logger.warning("Datos insuficientes para detectar walls")
+            return
+        
+        # Detectar pivotes
+        highs = [candle['high'] for candle in ohlc_data]
+        lows = [candle['low'] for candle in ohlc_data]
+        
+        # Resistencias = máximos locales
+        self.resistances = self._find_local_maxima(highs)
+        
+        # Soportes = mínimos locales
+        self.supports = self._find_local_minima(lows)
+        
+        logger.debug(f"Walls actualizadas: {len(self.resistances)} R, {len(self.supports)} S")
+    
+    def _find_local_maxima(self, values: List[float], window: int = 3) -&gt; List[float]:
+        """
+        Encuentra máximos locales (pivotes high).
+        
+        Un máximo local es un valor mayor que sus N vecinos.
+        
+        Args:
+            values: Lista de valores
+            window: Ventana de comparación (3 = compara con 3 a cada lado)
+        
+        Returns:
+            Lista de valores que son máximos locales
+        """
+        maxima = []
+        
+        for i in range(window, len(values) - window):
+            is_local_max = True
+            
+            # Comparar con vecinos
+            for j in range(1, window + 1):
+                if values[i] &lt;= values[i - j] or values[i] &lt;= values[i + j]:
+                    is_local_max = False
+                    break
+            
+            if is_local_max:
+                maxima.append(values[i])
+        
+        # Ordenar y eliminar duplicados cercanos
+        maxima = sorted(set(maxima), reverse=True)
+        
+        return maxima
+    
+    def _find_local_minima(self, values: List[float], window: int = 3) -&gt; List[float]:
+        """
+        Encuentra mínimos locales (pivotes low).
+        
+        Similar a maxima pero busca menores.
+        """
+        minima = []
+        
+        for i in range(window, len(values) - window):
+            is_local_min = True
+            
+            for j in range(1, window + 1):
+                if values[i] &gt;= values[i - j] or values[i] &gt;= values[i + j]:
+                    is_local_min = False
+                    break
+            
+            if is_local_min:
+                minima.append(values[i])
+        
+        minima = sorted(set(minima))
+        
+        return minima
+    
+    def detect_structure(self) -&gt; dict:
+        """
+        Detecta estructura de pivotes (HH/HL vs LL/LH).
+        
+        Returns:
+            dict: trend, counts, last pivots
+        """
+        if len(self.resistances) &lt; 2 or len(self.supports) &lt; 2:
+            return {
+                'trend': 'UNKNOWN',
+                'last_hh': None,
+                'last_hl': None,
+                'hh_count': 0,
+                'hl_count': 0,
+                'll_count': 0
+            }
+        
+        # Resistencias ordenadas (highs)
+        highs = sorted(self.resistances)
+        lows = sorted(self.supports)
+        
+        # Contar Higher Highs
+        hh_count = sum(1 for i in range(1, len(highs)) if highs[i] &gt; highs[i-1])
+        
+        # Contar Higher Lows
+        hl_count = sum(1 for i in range(1, len(lows)) if lows[i] &gt; lows[i-1])
+        
+        # Contar Lower Lows
+        ll_count = sum(1 for i in range(1, len(lows)) if lows[i] &lt; lows[i-1])
+        
+        # Contar Lower Highs
+        lh_count = sum(1 for i in range(1, len(highs)) if highs[i] &lt; highs[i-1])
+        
+        # Determinar tendencia
+        if hh_count &gt;= 2 and hl_count &gt;= 2:
+            trend = 'BULLISH'
+        elif ll_count &gt;= 2 and lh_count &gt;= 1:
+            trend = 'BEARISH'
+        else:
+            trend = 'LATERAL'
+        
+        return {
+            'trend': trend,
+            'last_hh': highs[-1] if highs else None,
+            'last_hl': lows[-1] if lows else None,
+            'last_ll': lows[0] if lows else None,
+            'last_lh': highs[0] if highs else None,
+            'hh_count': hh_count,
+            'hl_count': hl_count,
+            'll_count': ll_count,
+            'lh_count': lh_count
+        }
+    
+    def calculate_development_potential(
+        self, 
+        current_price: float, 
+        structure: dict
+    ) -&gt; dict:
+        """
+        Calcula cuánto le queda por desarrollar al precio.
+        
+        Returns:
+            dict: position_pct, room_to_develop_pct, stage
+        """
+        trend = structure.get('trend', 'UNKNOWN')
+        
+        if trend == 'BULLISH':
+            hl = structure.get('last_hl')
+            hh = structure.get('last_hh')
+            
+            if not hl or not hh or hh &lt;= hl:
+                return {'position_pct': 50, 'room_to_develop_pct': 50, 'stage': 'UNKNOWN'}
+            
+            total_range = hh - hl
+            current_progress = max(0, current_price - hl)
+            position_pct = min(100, (current_progress / total_range) * 100)
+            room_to_develop_pct = 100 - position_pct
+            
+            if position_pct &lt;= 30:
+                stage = 'EARLY'
+            elif position_pct &lt;= 70:
+                stage = 'MID'
+            else:
+                stage = 'LATE'
+            
+            return {
+                'position_pct': position_pct,
+                'room_to_develop_pct': room_to_develop_pct,
+                'stage': stage,
+                'range_low': hl,
+                'range_high': hh
+            }
+        
+        elif trend == 'BEARISH':
+            lh = structure.get('last_lh') or structure.get('last_hh')
+            ll = structure.get('last_ll')
+            
+            if not lh or not ll or lh &lt;= ll:
+                return {'position_pct': 50, 'room_to_develop_pct': 50, 'stage': 'UNKNOWN'}
+            
+            total_range = lh - ll
+            current_progress = max(0, lh - current_price)
+            position_pct = min(100, (current_progress / total_range) * 100)
+            room_to_develop_pct = 100 - position_pct
+            
+            if position_pct &lt;= 30:
+                stage = 'EARLY'
+            elif position_pct &lt;= 70:
+                stage = 'MID'
+            else:
+                stage = 'LATE'
+            
+            return {
+                'position_pct': position_pct,
+                'room_to_develop_pct': room_to_develop_pct,
+                'stage': stage,
+                'range_high': lh,
+                'range_low': ll
+            }
+        
+        else:
+            return {
+                'position_pct': 50,
+                'room_to_develop_pct': 0,
+                'stage': 'LATERAL'
+            }
+    
+    def find_nearest_wall(
+        self, 
+        current_price: float, 
+        direction: int
+    ) -&gt; Optional[Tuple[float, str, float]]:
+        """
+        Encuentra la pared más cercana en la dirección del movimiento.
+        
+        Args:
+            current_price: Precio actual
+            direction: 1 (bullish busca resistencia), -1 (bearish busca soporte)
+        
+        Returns:
+            Tuple: (precio_wall, tipo, distancia) o None si no hay
+            Ejemplo: (98000, 'resistance', 2000)
+        """
+        if direction &gt; 0:
+            # Buscar resistencia arriba
+            walls_above = [r for r in self.resistances if r &gt; current_price]
+            
+            if walls_above:
+                nearest = min(walls_above)
+                distance = nearest - current_price
+                return (nearest, 'resistance', distance)
+        
+        elif direction &lt; 0:
+            # Buscar soporte abajo
+            walls_below = [s for s in self.supports if s &lt; current_price]
+            
+            if walls_below:
+                nearest = max(walls_below)
+                distance = current_price - nearest
+                return (nearest, 'support', distance)
+        
+        return None
+    
+    def calculate_runway(
+        self, 
+        current_price: float, 
+        target_wall: float, 
+        velocity: float
+    ) -&gt; float:
+        """
+        Calcula tiempo hasta colisión con pared.
+        
+        velocity viene en %/min (desde MarketEntity).
+        
+        Args:
+            current_price: Precio actual
+            target_wall: Precio de la pared objetivo
+            velocity: Velocidad (%/min)
+        
+        Returns:
+            float: Minutos hasta colisión (inf si velocidad=0)
+        """
+        distance_usd = abs(target_wall - current_price)
+        
+        # Convertir distancia a porcentaje (para igualar escala de velocity)
+        distance_pct = (distance_usd / current_price) * 100 if current_price &gt; 0 else 0
+        
+        if abs(velocity) &gt; 0.001: # Evitar división por cero
+            time_minutes = distance_pct / abs(velocity)
+        else:
+            time_minutes = float('inf')
+        
+        return time_minutes
+    
+    def has_safe_runway(
+        self,
+        current_price: float,
+        direction: int,
+        velocity: float,
+        min_minutes: float = 3.0  # (Ya no se usa como threshold fijo, solo referencia)
+    ) -&gt; bool:
+        """
+        Verifica si hay espacio seguro para operar (100% relativo).
+        
+        NO usa threshold fijo. Simplemente pregunta:
+        ¿Si me muevo, tengo espacio libre por delante?
+        
+        Args:
+            current_price: Precio actual
+            direction: Dirección del movimiento
+            velocity: Velocidad actual (%/min)
+        
+        Returns:
+            bool: True si hay espacio suficiente (&gt; 0)
+        """
+        wall = self.find_nearest_wall(current_price, direction)
+        
+        if wall is None:
+            return True  # Sin pared cercana = espacio infinito
+        
+        wall_price = wall[0]
+        runway_minutes = self.calculate_runway(current_price, wall_price, velocity)
+        
+        # Visual simple: ¿Hay espacio positivo adelante?
+        if abs(velocity) &gt; 0.001:
+            # Mínimo 2 minutos de runway (antes era más restrictivo)
+            return runway_minutes &gt;= 2.0
+        else:
+            return False  # Si no hay velocidad, no es seguro (estático)
+    
+    def get_state(self) -&gt; dict:
+        """
+        Retorna estado completo.
+        
+        Returns:
+            dict: Resistencias, soportes, estadísticas
+        """
+        return {
+            'resistances': self.resistances[:5],  # Top 5
+            'supports': self.supports[:5],
+            'count_resistances': len(self.resistances),
+            'count_supports': len(self.supports)
+        }
+    
+    def __repr__(self):
+        return (f"Walls({self.symbol} | "
+                f"R: {len(self.resistances)} | "
+                f"S: {len(self.supports)})")
+
+
+def test_walls():
+    """Test básico de Walls con datos simulados."""
+    print("=== TEST WALLS ===\n")
+    
+    # Simular OHLC data (patrón pirámide claro para detectar pivotes)
+    # Window=3 requiere 3 vecinos menores a cada lado.
+    # Highs: 100, 200, 300, 400, 500(P), 400, 300, 200, 100
+    prices = [
+        (95000, 94000),
+        (96000, 95000),
+        (97000, 96000),
+        (98000, 97000), # Vecino 3 izq
+        (99000, 98000), # Vecino 2 izq
+        (99500, 99000), # Vecino 1 izq
+        (100000, 99500), # &lt;--- PIVOT MAX (Resistencia)
+        (99500, 99000), # Vecino 1 der
+        (99000, 98000), # Vecino 2 der
+        (98000, 97000), # Vecino 3 der
+        (97000, 96000),
+        (96000, 95000), 
+        (95000, 94000), # &lt;--- PIVOT MIN (Soporte)
+        (95500, 94500),
+        (96000, 95000),
+        (96500, 95500),
+        (97000, 96000),
+    ]
+    
+    ohlc_data = []
+    for high, low in prices:
+        ohlc_data.append({'high': high, 'low': low})
+    
+    # Crear y actualizar walls
+    walls = Walls('BTC/USDT:USDT')
+    walls.update(ohlc_data)
+    
+    print(f"Walls detectadas: {walls}\n")
+    print(f"Resistencias: {walls.resistances}")
+    print(f"Soportes: {walls.supports}\n")
+    
+    # Test: Encontrar pared más cercana
+    current_price = 99000
+    direction = 1  # Bullish
+    
+    nearest = walls.find_nearest_wall(current_price, direction)
+    
+    if nearest:
+        wall_price, wall_type, distance = nearest
+        print(f"Precio actual: ${current_price}")
+        print(f"Pared más cercana: ${wall_price} ({wall_type})")
+        print(f"Distancia: ${distance:.0f}\n")
+        
+        # Test: Calcular runway
+        velocity = 0.1  # 0.1%/min (fallback conservador)
+        runway = walls.calculate_runway(current_price, wall_price, velocity)
+        print(f"Velocidad: {velocity}%/min")
+        print(f"Tiempo hasta colisión: {runway:.2f} minutos\n")
+        
+        # Test: ¿Espacio seguro?
+        # Nota: has_safe_runway ya no usa min_minutes fijos, pero el test lo pasa por compatibilidad
+        safe = walls.has_safe_runway(current_price, velocity, direction)
+        print(f"¿Espacio seguro (&gt;0 min)? {safe}\n")
+    else:
+        print("❌ No se encontró pared cercana")
+    
+    # Assertions
+    assert len(walls.resistances) &gt; 0, "Debe detectar al menos 1 resistencia"
+    # El pivot max es 100000
+    assert 100000 in walls.resistances, f"Debe detectar 100000 como resistencia. Detectado: {walls.resistances}"
+    
+    if nearest:
+        assert nearest[0] == 100000, "La pared más cercana debe ser 100000"
+    
+    print("✅ Test passed!")
+    return True
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    test_walls()
 
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 107,784<br>
-    Generado: 2026-01-20 14:32:07
+    Total caracteres: 63,546<br>
+    Generado: 2026-01-20 15:02:53
   </div>
 </body>
 </html>
