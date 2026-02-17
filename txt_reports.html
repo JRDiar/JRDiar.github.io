@@ -15,11 +15,74 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-02-17 15:36:34</div>
+  <div class="meta">Última actualización: 2026-02-17 15:46:56</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
+Primero el error, luego todos los modulos: 
+
+Error actual (por qué no corre el backtest)
+
+Al ejecutar como script python backtest/motor_backtest.py, falla por imports: el script se ejecuta “dentro” de la carpeta backtest y no encuentra config.py (lo vi como ModuleNotFoundError: No module named 'config').
+Al ejecutar como módulo python -m backtest.motor_backtest, ya encuentra config.py, pero revienta en el import del simulador: motor_backtest.py:628 intenta from backtest.simulador import SimuladorMercado y ese módulo no existe en esa ruta.
+En la práctica, tus archivos están “anidados” así:
+Motor: motor_backtest.py
+Descargador: descargador.py
+Simulador: simulador.py
+Y el simulador además intenta importar un descargador inexistente: simulador.py:14
+Para que sea ejecutable como paquete, falta una estructura consistente de package/imports (p. ej. mover/duplicar simulador.py y descargador.py al mismo nivel que motor_backtest.py o ajustar imports a la ruta real, y/o añadir __init__.py según el enfoque). No lo cambio porque pediste “sin tocar código”, pero esa es la causa raíz.
+Desfase de temporalidades (tu punto principal)
+
+El bot real confirma indicadores con 1m + 5m: config.py:69 define ADX_TIMEFRAMES = ['1m','5m'].
+El backtest hoy está hardcodeado a 5m + 15m:
+Velas usadas en “Capa 2” del backtest: motor_backtest.py:217-218
+Confirmación (Capa 3) hardcodeada: motor_backtest.py:274
+Si querés “réplica exacta”, el backtest debe dejar de usar 15m para confirmar (a menos que cambies el bot), y debe usar exactamente los timeframes que el bot usa hoy (1m y 5m).
+Discrepancias funcionales (lo que impide que sea copia fiel)
+
+Dirección: bot confía en el radar si no es CAÓTICO; backtest veta.
+Bot: _confirmar_direccion() explícitamente “confía en el radar” incluso si contradice estructura (salvo CAÓTICO): capa2_analisis.py:414
+Backtest: descarta si hay contradicción: motor_backtest.py:248-250
+Esto cambia muchísimo cuántas entradas ocurren.
+Sala de espera (re-evaluación de Capa 3) existe en el bot y NO existe en backtest.
+Bot implementa sala_espera con expiración y re-evaluación: main.py:64, main.py:109-153, main.py:186-189
+Backtest: si Capa 3 falla, se pierde la oportunidad (no hay “watchlist”).
+Monitoreo/Salidas: el bot tiene 5 reglas; el backtest solo 2–3 simplificadas.
+Bot: además de TARGET/SL, tiene STALL_SIN_PROGRESO y PROTECCION_GANANCIA: monitoreo.py:165-197
+Backtest: no implementa esas dos reglas (impacta PnL y duración).
+Pérdida de fuerza no es equivalente.
+Bot: evalúa fuerza usando la lógica de Confirmacion.leer_fuerza_actual (basado en ADX_TIMEFRAMES) y exige 2 señales: monitoreo.py:113-149, y además está chequeando velas_achicando que hoy no se setea (si no hay otro módulo que lo agregue): monitoreo.py:142
+Backtest: usa _detectar_debilidad() con 5m solamente y suma una señal extra por tamaño de velas: motor_backtest.py:364 (y la función está más abajo en el mismo archivo).
+Cooldown/Re-entrada: el backtest aplica cooldown; el bot real no lo está aplicando en el flujo actual.
+Backtest evita re-entrar por REENTRADA_COOLDOWN_MINUTOS: motor_backtest.py:209
+En el bot, la función existe pero no se usa en ningún lado (solo aparece en salida.py:122), y GestorEntradas no consulta cooldown. Hoy, en vivo, podrías re-entrar inmediatamente si vuelve a aparecer señal.
+Radar: resolución temporal distinta.
+Bot detecta movimiento cada 30s: config.py:34
+Backtest lo hace “cada minuto” por simplificación: motor_backtest.py:130
+Si querés réplica fiel, necesitás (a) ticks/30s reales, o (b) una definición explícita de cómo aproximar 30s con velas 1m (esto cambia el set de candidatas).
+Limitaciones prácticas para “todas las monedas” en 2025
+
+El simulador busca el último open_time &lt;= current con un mask por tick y por moneda: simulador.py:152-156. Para “todas las monedas” y todo 2025 esto escala muy mal (CPU).
+cargar_datos() carga todo en memoria; para 1m de muchas monedas durante 1 año puede ser enorme (RAM). Para una réplica “de producción” suele necesitarse lectura por streaming o índices precomputados.
+Qué le falta (lista concreta para que sea copia fiel del bot actual)
+
+Arreglar packaging/imports del backtest (ruta única para descargador.py y simulador.py, e imports consistentes) para que motor_backtest.py:628 pueda importar el simulador.
+Cambiar backtest para que Capa 3 use ADX_TIMEFRAMES de config.py:69 (1m y 5m) y para que las velas pedidas correspondan a esos timeframes (no 15m).
+Copiar la lógica de Capa 2 del bot real:
+misma estructura (método de pivots y criterio “CAÓTICO”),
+mismo fallback de S/R “emergencia” cuando faltan niveles,
+misma regla de dirección (_confirmar_direccion confía en radar).
+Implementar sala de espera (re-evaluación de Capa 3 hasta timeout) como en main.py:109-153.
+Replicar el monitor del bot:
+misma frecuencia/criterio de cierre,
+incluir STALL_SIN_PROGRESO y PROTECCION_GANANCIA como monitoreo.py:165-197,
+igualar pérdida de fuerza (mismos timeframes, mismas señales).
+Decidir explícitamente cómo emular el radar de 30s con datos históricos (ideal: datos sub-minuto; alternativa: aproximación con 1m dejando claro el sesgo).
+Quitar el cooldown del backtest o implementar re-entrada de verdad; hoy el bot no lo aplica en el flujo, así que el cooldown en backtest sesga resultados: motor_backtest.py:209 vs salida.py:122.
+Si querés, en el próximo paso puedo proponerte dos caminos “réplica fiel”: (A) backtest rápido con aproximación 1m (menos fiel pero viable), o (B) backtest fiel de verdad (requiere datos sub-minuto y refactor de performance). ¿Cuál te interesa?
+
+
 """
 backtest/motor_backtest.py — Motor de Backtesting
 Réplica EXACTA del bot pero usando datos históricos.
@@ -1486,8 +1549,8 @@ if __name__ == '__main__':
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 52,934<br>
-    Generado: 2026-02-17 15:36:34
+    Total caracteres: 58,490<br>
+    Generado: 2026-02-17 15:46:56
   </div>
 </body>
 </html>
