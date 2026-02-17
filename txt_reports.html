@@ -15,570 +15,1479 @@
 </head>
 <body>
   <h1>📋 Comunicación Claude - Bot Phase 3.5</h1>
-  <div class="meta">Última actualización: 2026-01-20 17:58:22</div>
+  <div class="meta">Última actualización: 2026-02-17 15:36:34</div>
   <div class="separator">================================================================================</div>
   <div class="separator">Reporte.txt</div>
   <div class="separator">================================================================================</div>
   <pre>
-Plan de Implementación: Inspector Manual BrainTrader 2.0
-1. Plan de Arquitectura
-El módulo inspector.py será un script standalone (independiente) ubicado en la raíz del proyecto. No modificará ningún archivo existente del bot, garantizando que la lógica de producción permanezca intacta.
+"""
+backtest/motor_backtest.py — Motor de Backtesting
+Réplica EXACTA del bot pero usando datos históricos.
+Mismas capas, misma lógica, mismos thresholds.
+La única diferencia: los datos vienen del simulador, no del websocket.
 
-Flujo de Datos
-Input Usuario: Símbolo (ej: BTC/USDT:USDT o HANA).
-Conexión: Se instancia 
-MEXCConnection
- (reutilizando 
-exchange/connection.py
-) para obtener datos en tiempo real.
-Procesamiento: Se instancian las clases del cerebro (
-MarketEntity
-, 
-Walls
-) y funciones (pattern_matcher, visual_classifier) para replicar exactamente paso a paso el flujo de 
-visual_sniper.py
-.
-Output: Renderizado en consola con formato ASCII/ANSI específico solicitado.
-Dependencias (Imports)
-exchange.connection: Para interactuar con MEXC.
-brain.market_entity: Para cálculos de física (velocidad, aceleración).
-brain.walls: Para detección de estructura y runway.
-brain.visual_classifier: Para convertir métricas a sprites.
-brain.pattern_matcher: Para buscar patrones en el catálogo.
-brain.pattern_catalog: Definiciones de patrones.
-utils.logger: Para logging silencioso (suprimiremos logs ruidosos).
-2. Modificaciones de Archivos
-Archivo	Estado	Acción
-inspector.py	[NUEVO]	Se crea desde cero. Contendrá toda la lógica de flujo y visualización.
-main.py
-[NO CAMBIA]	Se mantiene intacto.
-brain/visual_sniper.py
-[NO CAMBIA]	Servirá de referencia, pero no se toca.
-brain/market_entity.py
-[NO CAMBIA]	Reutilizado tal cual.
-brain/walls.py
-[NO CAMBIA]	Reutilizado tal cual.
-... otros módulos ...	[NO CAMBIA]	Reutilizados tal cual.
-3. Código Propuesto: inspector.py
+Uso:
+    python -m backtest.motor_backtest --año 2025 --workers 8
+    python -m backtest.motor_backtest --desde 2025-06-01 --hasta 2025-12-31
+    python -m backtest.motor_backtest --año 2025 --monedas 50 (testing rápido)
 """
- INSPECTOR MANUAL BRAINTRADER 2.0
- Diagnóstico profundo de decisiones del bot paso a paso.
-"""
-import sys
-import time
+
+import argparse
 import os
-from datetime import datetime
-import numpy as np
-# Asegurar path root
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(ROOT_DIR)
-# Imports del Bot
-from exchange.connection import MEXCConnection
-from brain.market_entity import MarketEntity
-from brain.walls import Walls
-from brain.visual_classifier import (
-    classify_price_direction_with_avg,
-    classify_candle_shape,
-    classify_wind,
-    classify_fuel,
-    classify_terrain,
-    classify_runway
+import time
+from collections import deque
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+from concurrent.futures import ProcessPoolExecutor
+
+import pandas as pd
+
+from config import (
+    RADAR_PRECIO_CAMBIO_MINIMO,
+    RADAR_HISTORIAL_PRECIOS,
+    RADAR_MAX_CANDIDATAS,
+    RANGO_LONG_MAX_POSICION,
+    RANGO_SHORT_MIN_POSICION,
+    GANANCIA_MINIMA_USD,
+    CAPITAL_POR_TRADE,
+    CAPITAL_TOTAL,
+    MAX_TRADES_SIMULTANEOS,
+    COMISION_TAKER_PCT,
+    STOP_LOSS_EMERGENCIA_PCT,
+    FUERZA_SEÑALES_PARA_SALIR,
+    REENTRADA_COOLDOWN_MINUTOS,
+    REENTRADA_VOLUMEN_MULTIPLIER,
+    ADX_TIMEFRAMES,
 )
-from brain.pattern_matcher import find_pattern, get_pattern_action
-from brain.pattern_catalog import PATTERNS
-# Colores para consola
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-def print_header(symbol):
-    print(f"\n{Colors.HEADER}╔{'═'*60}╗{Colors.ENDC}")
-    print(f"{Colors.HEADER}║  🔍 BRAINTRADER INSPECTOR - {symbol:&lt;31} ║{Colors.ENDC}")
-    print(f"{Colors.HEADER}║  Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S'):&lt;37} ║{Colors.ENDC}")
-    print(f"{Colors.HEADER}╚{'═'*60}╝{Colors.ENDC}\n")
-def print_phase(phase_num, title, content_lines):
-    print(f"{Colors.CYAN}┌─ 📊 FASE {phase_num}: {title} {'─'*(48-len(title))}{Colors.ENDC}┐")
-    for line in content_lines:
-        print(f"{Colors.CYAN}│{Colors.ENDC} {line}")
-    print(f"{Colors.CYAN}└{'─'*58}{Colors.ENDC}")
-def analyze_symbol(symbol_input):
-    start_time = time.time()
+from soporte_resistencia import SoporteResistencia
+from indicadores.adx_visual import ADXVisual
+from indicadores.squeeze_momentum import SqueezeMomentum
+from calculadora import Calculadora
+
+
+class BacktestMotor:
+    """
+    Motor de backtesting — Réplica exacta del bot en vivo.
     
-    # Normalizar input
-    symbol = symbol_input.upper()
-    if not symbol.endswith(':USDT') and 'USDT' not in symbol:
-        symbol += '/USDT:USDT'
-    elif symbol.endswith('USDT') and ':' not in symbol:
-        symbol += ':USDT'
+    Recorre los datos históricos minuto a minuto y ejecuta
+    la misma lógica de las 3 capas + entrada + monitoreo + salida.
+    """
     
-    print_header(symbol)
-    # ------------------------------------------------------------
-    # FASE 0: INICIALIZACIÓN Y CONEXIÓN
-    # ------------------------------------------------------------
-    try:
-        # Silenciar logs para no ensuciar output
-        import logging
-        logging.getLogger().setLevel(logging.CRITICAL)
+    def __init__(self, fecha_inicio: datetime, fecha_fin: datetime):
+        self.fecha_inicio = fecha_inicio
+        self.fecha_fin = fecha_fin
         
-        # Conexión Read-Only (sin keys)
-        conn = MEXCConnection() 
-        if not conn.connected:
-            print(f"{Colors.FAIL}❌ Error conectando a MEXC{Colors.ENDC}")
+        # Módulos (mismos que el bot en vivo)
+        self.sr = SoporteResistencia()
+        self.adx = ADXVisual()
+        self.sqz = SqueezeMomentum()
+        self.calc = Calculadora()
+        
+        # Estado del radar
+        self.historial_precios: Dict[str, deque] = {}
+        
+        # Trades
+        self.trades_abiertos: Dict[str, Dict] = {}
+        self.trades_cerrados: List[Dict] = []
+        self.capital_actual = CAPITAL_TOTAL
+        
+        # Cooldowns
+        self.cooldowns: Dict[str, datetime] = {}
+        
+        # Estadísticas
+        self.total_señales_capa1 = 0
+        self.total_señales_capa2 = 0
+        self.total_señales_capa3 = 0
+        self.total_entradas = 0
+    
+    def ejecutar(self, simulador) -&gt; Dict:
+        """
+        Ejecuta el backtesting completo.
+        
+        Args:
+            simulador: SimuladorMercado con datos cargados
+        
+        Returns:
+            dict con resultados completos
+        """
+        print(f"\n{'═' * 60}")
+        print(f"🔬 BACKTESTING INICIADO")
+        print(f"   {self.fecha_inicio.date()} → {self.fecha_fin.date()}")
+        print(f"   Capital: {CAPITAL_TOTAL} USD")
+        print(f"   Monedas: {len(simulador.monedas_disponibles)}")
+        print(f"{'═' * 60}\n")
+        
+        inicio = time.time()
+        tick_count = 0
+        ultimo_progreso = 0
+        
+        # Reproducir mercado minuto a minuto
+        for estado_mercado in simulador.reproducir(intervalo_minutos=1):
+            tick_count += 1
+            timestamp = estado_mercado['timestamp']
+            
+            # Progreso cada 5%
+            progreso = int(estado_mercado['progreso_pct'])
+            if progreso &gt;= ultimo_progreso + 5:
+                ultimo_progreso = progreso
+                ganados = sum(1 for t in self.trades_cerrados if t['pnl_neto'] &gt; 0)
+                perdidos = sum(1 for t in self.trades_cerrados if t['pnl_neto'] &lt;= 0)
+                balance = sum(t['pnl_neto'] for t in self.trades_cerrados)
+                
+                print(f"   [{progreso:3d}%] {timestamp.strftime('%Y-%m-%d %H:%M')} | "
+                      f"Trades: {len(self.trades_cerrados)} "
+                      f"({ganados}W/{perdidos}L) | "
+                      f"Balance: {balance:+.2f} USD")
+            
+            # ═══════════════════════════════════════
+            # MONITOREAR TRADES ABIERTOS (cada minuto)
+            # ═══════════════════════════════════════
+            self._monitorear_trades(simulador, timestamp)
+            
+            # ═══════════════════════════════════════
+            # CAPA 1: RADAR (cada 30 seg = cada tick en backtest)
+            # Solo cada 30 ticks si intervalo es 1 min (pero para
+            # simplificar, cada minuto es suficiente)
+            # ═══════════════════════════════════════
+            if tick_count % 1 == 0:  # Cada minuto
+                self._actualizar_historial(estado_mercado)
+                candidatas = self._detectar_movimiento()
+                
+                if candidatas and self._slots_disponibles() &gt; 0:
+                    self.total_señales_capa1 += len(candidatas)
+                    
+                    # ═══════════════════════════════════════
+                    # CAPA 2 + CAPA 3 + ENTRADA
+                    # ═══════════════════════════════════════
+                    for candidata in candidatas:
+                        if self._slots_disponibles() &lt;= 0:
+                            break
+                        
+                        self._procesar_candidata(
+                            candidata, simulador, timestamp
+                        )
+        
+        duracion = time.time() - inicio
+        resultados = self._generar_reporte(duracion, tick_count, simulador)
+        
+        return resultados
+    
+    def _actualizar_historial(self, estado: Dict):
+        """Actualiza historial de precios (igual que el radar)."""
+        for ticker in estado['tickers']:
+            symbol = ticker['symbol']
+            
+            if symbol not in self.historial_precios:
+                self.historial_precios[symbol] = deque(maxlen=RADAR_HISTORIAL_PRECIOS)
+            
+            self.historial_precios[symbol].append({
+                'precio': ticker['precio'],
+                'volumen': ticker['volumen'],
+                'timestamp': estado['timestamp'],
+            })
+    
+    def _detectar_movimiento(self) -&gt; List[Dict]:
+        """Capa 1: Detecta movimientos fuertes (igual que radar)."""
+        candidatas = []
+        
+        for symbol, snapshots in self.historial_precios.items():
+            if len(snapshots) &lt; 2:
+                continue
+            
+            if symbol in self.trades_abiertos:
+                continue
+            
+            precio_actual = snapshots[-1]['precio']
+            precio_anterior = snapshots[-2]['precio']
+            
+            if precio_anterior == 0:
+                continue
+            
+            cambio_pct = ((precio_actual - precio_anterior) / precio_anterior) * 100
+            cambio_abs = abs(cambio_pct)
+            
+            if cambio_abs &gt;= RADAR_PRECIO_CAMBIO_MINIMO:
+                candidatas.append({
+                    'symbol': symbol,
+                    'precio': precio_actual,
+                    'cambio_pct': cambio_pct,
+                    'cambio_abs': cambio_abs,
+                    'direccion': 'LONG' if cambio_pct &gt; 0 else 'SHORT',
+                    'volumen': snapshots[-1]['volumen'],
+                })
+        
+        candidatas.sort(key=lambda x: x['cambio_abs'], reverse=True)
+        return candidatas[:RADAR_MAX_CANDIDATAS]
+    
+    def _procesar_candidata(self, candidata: Dict, simulador, timestamp: datetime):
+        """Capa 2 + Capa 3 + Entrada para una candidata."""
+        symbol = candidata['symbol']
+        direccion = candidata['direccion']
+        precio = candidata['precio']
+        
+        # Cooldown
+        if symbol in self.cooldowns:
+            minutos = (timestamp - self.cooldowns[symbol]).total_seconds() / 60
+            if minutos &lt; REENTRADA_COOLDOWN_MINUTOS:
+                return
+        
+        # ═══════════════════════════════════════
+        # CAPA 2: Análisis Visual
+        # ═══════════════════════════════════════
+        
+        # Obtener velas históricas (sin ver futuro)
+        df_5m = simulador.obtener_velas(symbol, '5m', timestamp, 50)
+        df_15m = simulador.obtener_velas(symbol, '15m', timestamp, 30)
+        
+        if df_5m is None or df_15m is None:
             return
-            
-    except Exception as e:
-        print(f"{Colors.FAIL}❌ Error fatal iniciando: {e}{Colors.ENDC}")
-        return
-    # ------------------------------------------------------------
-    # FASE 1: VALIDACIÓN EXCHANGE
-    # ------------------------------------------------------------
-    phase1_output = []
-    try:
-        ticker = conn.fetch_ticker(symbol)
-        if not ticker or ticker.get('last') == 0:
-             phase1_output.append(f"{Colors.FAIL}❌ Símbolo no encontrado o sin datos{Colors.ENDC}")
-             print_phase(1, "VALIDACIÓN EXCHANGE", phase1_output)
-             return
+        if len(df_5m) &lt; 20 or len(df_15m) &lt; 15:
+            return
         
-        price = ticker['last']
-        bid = ticker['bid']
-        ask = ticker['ask']
-        spread = ask - bid
-        spread_pct = (spread / price) * 100
+        # Estructura
+        estructura = self._analizar_estructura(df_5m)
+        if estructura == 'CAOTICO':
+            return
         
-        phase1_output.append(f"✅ Símbolo válido: {symbol}")
-        phase1_output.append(f"Precio Actual: ${price:,.5f}")
-        phase1_output.append(f"Spread: ${spread:.2f} ({spread_pct:.4f}%)")
+        # S/R
+        sr_data = self.sr.calcular(df_5m)
+        niveles = self.sr.encontrar_cercanos(sr_data, precio)
         
-    except Exception as e:
-        phase1_output.append(f"{Colors.FAIL}❌ Error validando: {e}{Colors.ENDC}")
-        print_phase(1, "VALIDACIÓN EXCHANGE", phase1_output)
-        return
-    print_phase(1, "VALIDACIÓN EXCHANGE", phase1_output)
-    # ------------------------------------------------------------
-    # FASE 2: DATOS OHLCV
-    # ------------------------------------------------------------
-    phase2_output = []
-    ohlcv = []
-    try:
-        ohlcv = conn.fetch_ohlcv(symbol, '5m', limit=100)
-        count = len(ohlcv)
-        phase2_output.append(f"Velas obtenidas (5m): {count}/100 requested")
+        if not niveles['soporte'] or not niveles['resistencia']:
+            return
         
-        if count &lt; 20:
-             phase2_output.append(f"{Colors.FAIL}❌ Insuficientes datos (&lt;20){Colors.ENDC}")
-             print_phase(2, "DATOS OHLCV", phase2_output)
-             return
-             
-        last_candle = ohlcv[-1]
-        candle_range = (last_candle[2] - last_candle[3]) / last_candle[3] * 100
+        # Posición en rango
+        posicion = niveles['posicion_rango']
+        if posicion is None:
+            return
         
-        phase2_output.append(f"Última Vela: O:{last_candle[1]} H:{last_candle[2]} L:{last_candle[3]} C:{last_candle[4]}")
-        phase2_output.append(f"Rango Vela: {candle_range:.2f}%")
+        if direccion == 'LONG' and posicion &gt; RANGO_LONG_MAX_POSICION * 100:
+            return
+        if direccion == 'SHORT' and posicion &lt; RANGO_SHORT_MIN_POSICION * 100:
+            return
         
-    except Exception as e:
-        phase2_output.append(f"{Colors.FAIL}❌ Error fetching OHLCV: {e}{Colors.ENDC}")
-        print_phase(2, "DATOS OHLCV", phase2_output)
-        return
-    print_phase(2, "DATOS OHLCV", phase2_output)
-    # ------------------------------------------------------------
-    # FASE 3: FÍSICA (MarketEntity)
-    # ------------------------------------------------------------
-    phase3_output = []
-    entity = None
-    try:
-        entity = MarketEntity(symbol)
-        # Poblar historia manualmente para simular el bot
-        prices = [c[4] for c in ohlcv]
-        # Necesitamos timestamps para calcular velocidad real
-        # MarketEntity espera (price, timestamp)
-        history_data = [(c[4], c[0]) for c in ohlcv[-20:]] # Simulamos updates recientes
+        # Dirección coherente
+        if direccion == 'LONG' and estructura == 'BAJISTA':
+            return
+        if direccion == 'SHORT' and estructura == 'ALCISTA':
+            return
         
-        # update masivo simulado
-        # En visual_sniper hace update() vela a vela o usa historia directa
-        # MarketEntity tiene .update(price, timestamp)
-        # Vamos a resetear y cargar
-        entity.price_history = []
-        for p, t in history_data:
-            entity.update(p, t)
-            
-        # Métricas
-        velocity = entity.velocity
-        accel = entity.acceleration
-        
-        # Momentum check manual (reimaginando logica visual_sniper que usa su propio avg check a veces)
-        # Pero market_entity.has_momentum() es la clave
-        
-        # Calculo de historical avg velocity para display
-        hist_vels = []
-        if len(entity.price_history) &gt; 2:
-            for i in range(1, len(entity.price_history)):
-                 v = abs((entity.price_history[i]['price'] - entity.price_history[i-1]['price']) / entity.price_history[i-1]['price'] * 100)
-                 hist_vels.append(v)
-        avg_vel = np.mean(hist_vels) if hist_vels else 0.001
-        
-        ratio = velocity / avg_vel if avg_vel &gt; 0 else 0
-        threshold = avg_vel * 0.3
-        has_momentum = abs(velocity) &gt; threshold
-        
-        phase3_output.append(f"Velocidad Actual: {velocity:+.4f}%/min")
-        phase3_output.append(f"Velocidad Promedio: {avg_vel:.4f}%/min")
-        phase3_output.append(f"Ratio (Act/Avg): {ratio:.2f}x")
-        phase3_output.append(f"Aceleración: {accel:+.6f}%/min²")
-        phase3_output.append(f"Threshold Momentum: &gt; {threshold:.4f}%/min")
-        
-        mom_icon = "✅" if has_momentum else "❌"
-        phase3_output.append(f"Test Momentum: {mom_icon} (Es {abs(velocity):.4f} &gt; {threshold:.4f}?)")
-        
-    except Exception as e:
-        phase3_output.append(f"{Colors.FAIL}❌ Error cálculo física: {e}{Colors.ENDC}")
-        import traceback
-        traceback.print_exc()
-    print_phase(3, "FÍSICA (MarketEntity)", phase3_output)
-    # ------------------------------------------------------------
-    # FASE 4: ESTRUCTURA (Walls)
-    # ------------------------------------------------------------
-    phase4_output = []
-    walls = None
-    try:
-        walls = Walls(symbol)
-        # Cargar OHLCV
-        # Walls usa self.df internamente si se le pasa ohlcv
-        # Ojo: Walls.update(ohlc) espera dict format o lista? 
-        # Revisando codigo Walls... update toma single candle dict o lista de dicts?
-        # Walls.update suele ser single candle. `detect_structure` usa self.closes
-        # Simulamos carga:
-        for c in ohlcv:
-            walls.update({
-                'timestamp': c[0],
-                'open': c[1], 'high': c[2], 'low': c[3], 'close': c[4], 'volume': c[5]
-            })
-            
-        structure = walls.detect_structure()
-        trend = structure.get('trend', 'UNKNOWN')
-        
-        phase4_output.append(f"Trend Detectada: {Colors.BOLD}{trend}{Colors.ENDC}")
-        phase4_output.append(f"Pivotes: HH={structure.get('hh_count')} HL={structure.get('hl_count')} LH={structure.get('lh_count')} LL={structure.get('ll_count')}")
-        
-        # Resistencias / Soportes
-        nearest_res = walls.find_nearest_wall(price, 1) # 1 = arriba
-        nearest_sup = walls.find_nearest_wall(price, -1) # -1 = abajo
-        
-        if nearest_res:
-            dist_res_pct = (nearest_res[0] - price) / price * 100
-            phase4_output.append(f"Resistencia Prox: ${nearest_res[0]:.2f} (+{dist_res_pct:.2f}%)")
+        # Ganancia mínima
+        if direccion == 'LONG':
+            target = niveles['resistencia']['precio']
+            recorrido = ((target - precio) / precio) * 100
         else:
-            phase4_output.append("Resistencia Prox: Ninguna cercana (Cielo abierto)")
-            
-        if nearest_sup:
-            dist_sup_pct = (price - nearest_sup[0]) / price * 100
-            phase4_output.append(f"Soporte Prox: ${nearest_sup[0]:.2f} (-{dist_sup_pct:.2f}%)")
-            
-        # Runway
-        runway_mins = 999
-        if nearest_res and velocity &gt; 0:
-            runway_mins = walls.calculate_runway(price, nearest_res[0], velocity)
-            phase4_output.append(f"Tiempo a Colisión: {runway_mins:.1f} min")
-        elif nearest_sup and velocity &lt; 0:
-            runway_mins = walls.calculate_runway(price, nearest_sup[0], velocity) # velocity es neg
-            phase4_output.append(f"Tiempo a Colisión: {runway_mins:.1f} min")
-        else:
-             phase4_output.append("Tiempo a Colisión: Infinito (scan/static)")
-        # Clasificación Runway
-        # Replicamos logica de visual_classifier para mostrar threshold
-        # classify_runway calcula distancia %
-        dist_pct = 0
-        if velocity &gt;= 0 and nearest_res:
-            dist_pct = (nearest_res[0] - price) / price * 100
-        elif velocity &lt; 0 and nearest_sup:
-            dist_pct = abs((nearest_sup[0] - price) / price * 100)
-        else:
-            dist_pct = 999
-            
-        runway_sprite = classify_runway(dist_pct)
-        phase4_output.append(f"Runway Sprite: {runway_sprite} (Dist: {dist_pct:.2f}%)")
+            target = niveles['soporte']['precio']
+            recorrido = ((precio - target) / precio) * 100
         
-    except Exception as e:
-         phase4_output.append(f"{Colors.FAIL}❌ Error estructura: {e}{Colors.ENDC}")
-    print_phase(4, "ESTRUCTURA (Walls)", phase4_output)
-    # ------------------------------------------------------------
-    # FASE 5: CLASIFICACIÓN VISUAL
-    # ------------------------------------------------------------
-    phase5_output = []
-    sprites = {}
-    
-    try:
-        # 1. Price Direction
-        p_dir = classify_price_direction_with_avg(velocity, accel, avg_vel)
-        phase5_output.append(f"Price Direction: {p_dir}")
-        sprites['price_direction'] = p_dir
+        ganancia_neta = (CAPITAL_POR_TRADE * recorrido / 100) - (CAPITAL_POR_TRADE * COMISION_TAKER_PCT / 100 * 2)
         
-        # 2. Candle Shape (simplificado sin acceso a historical body avg complejo aqui, usamos basic data)
-        # Necesitamos 'body_size' relative to something.
-        # classify_candle_shape usa (open, close, high, low, avg_body_size)
-        bodies = [abs(c[4]-c[1]) for c in ohlcv[-20:]]
-        avg_body = np.mean(bodies) if bodies else 0
-        c_shape = classify_candle_shape(last_candle[1], last_candle[4], last_candle[2], last_candle[3], avg_body)
-        phase5_output.append(f"Candle Shape: {c_shape}")
-        sprites['candle_shape'] = c_shape
+        if ganancia_neta &lt; GANANCIA_MINIMA_USD:
+            return
         
-        # 3. Wind (EMAs)
-        # Calculo simple de EMAs para pasar al clasificador
-        import pandas as pd
-        closes_s = pd.Series([c[4] for c in ohlcv])
-        ema9 = closes_s.ewm(span=9).mean().iloc[-1]
-        ema20 = closes_s.ewm(span=20).mean().iloc[-1]
-        ema50 = closes_s.ewm(span=50).mean().iloc[-1]
-        wind = classify_wind(price, ema9, ema20, ema50)
-        phase5_output.append(f"Wind: {wind}")
-        sprites['wind'] = wind
+        self.total_señales_capa2 += 1
         
-        # 4. Fuel (Momentum)
-        # Usamos velocity &gt; threshold como proxy de FUEL simple visual o logica de momentum LC
-        # VisualSniper usa Indicators para 'fuel'. Aquí simplificamos con velocity ratio o re-calculamos.
-        # Para ser fiel, usamos el estado de momentum calculado en F3
-        fuel = 'FULL_TANK' if has_momentum and velocity &gt; 0 else 'EMPTY_BEARISH' if has_momentum and velocity &lt; 0 else 'FUMES'
-        # O usar classify_fuel() si tuvieramos el indicador momentum especifico (ej. LazyBear)
-        # Vamos a usar classify_fuel placeholder/simple
-        # phase5_output.append(f"Fuel (Est): {fuel}")
-        sprites['fuel'] = 'ANY' # Placeholder para evitar bloqueo por falta de lib externa compleja
-        # Si fuel es critico en pattern, esto podría fallar. Revisemos patrón.
-        # La mayoria acepta ANY o FULL_TANK.
-        # Intentemos logica real:
-        if has_momentum:
-            sprites['fuel'] = 'FULL_TANK' if velocity &gt; 0 else 'EMPTY_BEARISH'
-        else:
-            sprites['fuel'] = 'FUMES'
-        phase5_output.append(f"Fuel: {sprites['fuel']}")
-        # 5. Terrain
-        terr = classify_terrain(structure)
-        phase5_output.append(f"Terrain: {terr}")
-        sprites['terrain'] = terr
+        # ═══════════════════════════════════════
+        # CAPA 3: Confirmación ADX + Momentum
+        # ═══════════════════════════════════════
         
-        # 6. Runway
-        sprites['runway'] = runway_sprite
-        phase5_output.append(f"Runway: {runway_sprite}")
+        confirmado = True
         
-    except Exception as e:
-        phase5_output.append(f"{Colors.FAIL}❌ Error clasificación: {e}{Colors.ENDC}")
-    print_phase(5, "CLASIFICACIÓN VISUAL", phase5_output)
-    # ------------------------------------------------------------
-    # FASE 6: PATTERN MATCHING
-    # ------------------------------------------------------------
-    phase6_output = []
-    best_pattern = None
-    best_score = 0
-    
-    try:
-        # Find pattern
-        # find_pattern retorna (id, score, data)
-        # Vamos a listar top matches
-        matches = []
-        for pid, pdata in PATTERNS.items():
-            # Calc score manual para display
-            score = 0
-            total = 0
-            details = []
-            
-            # Check Runway First logic (Critical)
-            # Logica de visual_sniper es: filter by runway comp
-            # Si runway no compatible, score = 0
-            
-            p_sprites = pdata['sprites']
-            
-            match_count = 0
-            for k, v in p_sprites.items():
-                if k == 'runway': continue
-                total += 1
-                if v == 'ANY' or v == sprites.get(k):
-                    match_count += 1
-                    details.append(f"✅ {k}")
-                else:
-                    details.append(f"❌ {k}({sprites.get(k)}!={v})")
-            
-            raw_score = match_count / total if total &gt; 0 else 0
-            
-            matches.append({
-                'id': pid,
-                'name': pdata['name'],
-                'score': raw_score,
-                'action': pdata['action'],
-                'details': details
-            })
-            
-        # Sort by score
-        matches.sort(key=lambda x: x['score'], reverse=True)
-        
-        phase6_output.append("Top 3 Patrones Candidatos:")
-        for m in matches[:3]:
-            phase6_output.append(f"  • {m['name']}: Score {m['score']:.2f} | Acc: {m['action']}")
-            # phase6_output.append(f"    {' '.join(m['details'][:3])}...") # Detalle corto
-            
-        best = matches[0] if matches else None
-        if best and best['score'] &gt;= 0.70:
-            best_pattern = best
-            phase6_output.append(f"\n🏆 GANADOR: {best['name']} (Score {best['score']:.2f})")
-            phase6_output.append(f"   Acción: {best['action']}")
-        else:
-            phase6_output.append(f"\n⚠️ Ningún patrón alcanzó score &gt;= 0.70")
-            phase6_output.append("   → Activando Fallback Físico")
-            
-    except Exception as e:
-        phase6_output.append(f"{Colors.FAIL}❌ Error pattern matching: {e}{Colors.ENDC}")
-    print_phase(6, "PATTERN MATCHING", phase6_output)
-    # ------------------------------------------------------------
-    # FASE 7: VALIDACIÓN FÍSICA (Fallback) &amp; FASE 8 MTF
-    # ------------------------------------------------------------
-    # Unificamos logica de decision final
-    phase7_output = []
-    final_decision = "REJECTED"
-    final_reason = ""
-    is_priority = False
-    
-    # 1. Determinar candidato PRIORITY
-    if best_pattern:
-        if 'LONG' in best_pattern['action'] or 'SHORT' in best_pattern['action']:
-             phase7_output.append(f"Ruta Patrón: {best_pattern['name']} valida entrada.")
-             is_priority = True
-             final_reason = f"Pattern {best_pattern['name']}"
-    else:
-        # Fallback Logic
-        phase7_output.append("Evaluando 4 Condiciones Físicas:")
-        c1 = has_momentum # Velocity &gt; 30% avg
-        c2 = accel &gt; 0 if velocity &gt; 0 else accel &lt; 0 # Accelerating logic simple
-        c3 = runway_sprite != 'ALLEY' # Espacio
-        
-        # Check EMAs alignment
-        c4 = False
-        if velocity &gt; 0:
-             c4 = price &gt; ema9 &gt; ema20
-        else:
-             c4 = price &lt; ema9 &lt; ema20
-             
-        phase7_output.append(f"  1. Momentum: {'✅' if c1 else '❌'}")
-        phase7_output.append(f"  2. Aceleración: {'✅' if c2 else '❌'}")
-        phase7_output.append(f"  3. Runway Safe: {'✅' if c3 else '❌'}")
-        phase7_output.append(f"  4. EMAs Align: {'✅' if c4 else '❌'}")
-        
-        passed = sum([c1, c2, c3, c4])
-        phase7_output.append(f"Condiciones: {passed}/4")
-        
-        if passed &gt;= 3: # Seamos estrictos para demo, visual_sniper pide 2+ pero con caveats
-             is_priority = True
-             final_reason = "Physics Fallback (3+ Conds)"
-             phase7_output.append("✅ Fallback APROBADO")
-        else:
-             phase7_output.append("❌ Fallback RECHAZADO")
-    print_phase(7, "VALIDACIÓN FÍSICA", phase7_output)
-    # FASE 8: MTF
-    phase8_output = []
-    diag_solution = []
-    diag_cause = "Unknown"
-    diag_problem = "Rejected"
-    
-    if is_priority:
-        phase8_output.append("Simulando análisis MTF (1D, 4H, 1H, 15M)...")
-        # Logica MTF real
-        try:
-             # Fetch 4H (Critico)
-             ohlcv_4h = conn.fetch_ohlcv(symbol, '4h', limit=5)
-             c4h = [c[4] for c in ohlcv_4h]
-             trend_4h = 'UP' if c4h[-1] &gt; c4h[-3] else 'DOWN'
-             phase8_output.append(f"Trend 4H: {trend_4h} (vs Trade Dir: {'LONG' if velocity &gt; 0 else 'SHORT'})")
-             
-             trade_dir = 'UP' if velocity &gt; 0 else 'DOWN'
-             
-             if trend_4h == trade_dir:
-                 phase8_output.append("✅ 4H Alineado con Trade")
-                 
-                 # 1H Check
-                 ohlcv_1h = conn.fetch_ohlcv(symbol, '1h', limit=5)
-                 c1h = [c[4] for c in ohlcv_1h]
-                 trend_1h = 'UP' if c1h[-1] &gt; c1h[-3] else 'DOWN'
-                 
-                 if trend_1h == trend_4h:
-                     phase8_output.append("✅ 1H Alineado")
-                     final_decision = "PRIORITY"
-                 else:
-                     phase8_output.append("❌ 1H Desalineado")
-                     final_decision = "DEVELOPING" # Downgrade
-                     final_reason += " (MTF 1H Fail)"
-                     diag_problem = "Fallo MTF"
-                     diag_cause = "Temporalidad 1H va en contra"
-                     diag_solution = ["Esperar alineación 1H", "Buscar otro par"]
-             else:
-                 phase8_output.append("❌ 4H Desalineado (BLOCK)")
-                 final_decision = "REJECTED"
-                 final_reason += " (MTF 4H Fail)"
-                 diag_problem = "Tendencia Mayor Opuesta"
-                 diag_cause = f"4H es {trend_4h} pero setup es {trade_dir}"
-                 diag_solution = ["No operar contra tendencia 4H", "Esperar reversión confirmada"]
-                 
-        except Exception as e:
-             phase8_output.append(f"❌ Error MTF: {e}")
-    else:
-        phase8_output.append("⏹️ Saltado (No es Priority)")
-        diag_problem = "Setup Débil"
-        diag_cause = "No cumple patrón ni condiciones físicas mínimas"
-        diag_solution = ["Buscar monedas con más volumen", "Esperar setup claro"]
-    print_phase(8, "MTF CONFIRMATION", phase8_output)
-    # DECISIÓN FINAL
-    color = Colors.GREEN if final_decision == 'PRIORITY' else Colors.FAIL
-    print(f"\n{color}╔{'═'*60}╗{Colors.ENDC}")
-    print(f"{color}║  {'✅' if final_decision=='PRIORITY' else '❌'} DECISIÓN FINAL: {final_decision:&lt;29} ║{Colors.ENDC}")
-    print(f"{color}║  Razón: {final_reason:&lt;49} ║{Colors.ENDC}")
-    print(f"{color}╚{'═'*60}╝{Colors.ENDC}\n")
-    # DIAGNOSTICO RAÍZ
-    if final_decision != 'PRIORITY':
-        print(f"🔧 {Colors.WARNING}DIAGNÓSTICO RAÍZ:{Colors.ENDC}")
-        print(f"┌{'─'*60}┐")
-        print(f"│ PROBLEMA: {diag_problem:&lt;48} │")
-        print(f"│ CAUSA: {diag_cause:&lt;51} │")
-        print(f"│ SOLUCIÓN SUGERIDA:                             │")
-        for sol in diag_solution:
-            print(f"│  • {sol:&lt;50} │")
-        print(f"└{'─'*60}┘")
-    duration = time.time() - start_time
-    print(f"\n⏱️ Análisis completado en {duration:.2f} segundos")
-def main():
-    while True:
-        try:
-            symbol = input(f"\n{Colors.BLUE}Ingrese símbolo (ej: BTC, HANA) o 'q' para salir: {Colors.ENDC}").strip()
-            if symbol.lower() in ['q', 'quit', 'exit']:
+        for tf, df in [('5m', df_5m), ('15m', df_15m)]:
+            # ADX
+            adx_lectura = self.adx.calcular_y_leer(df)
+            if adx_lectura['valido']:
+                esperado = f"{direccion}_CONFIRMADO"
+                if adx_lectura['lectura'] != esperado:
+                    confirmado = False
+                    break
+            else:
+                confirmado = False
                 break
-            if not symbol: continue
             
-            analyze_symbol(symbol)
+            # Squeeze Momentum
+            sqz_lectura = self.sqz.calcular_y_leer(df)
+            if sqz_lectura['valido']:
+                esperado = f"{direccion}_CONFIRMADO"
+                if sqz_lectura['lectura'] != esperado:
+                    confirmado = False
+                    break
+            else:
+                confirmado = False
+                break
+        
+        if not confirmado:
+            return
+        
+        self.total_señales_capa3 += 1
+        
+        # ═══════════════════════════════════════
+        # ENTRADA
+        # ═══════════════════════════════════════
+        
+        stop_loss = self.calc.calcular_stop_loss(direccion, precio)
+        
+        trade = {
+            'symbol': symbol,
+            'direccion': direccion,
+            'precio_entrada': precio,
+            'target': target,
+            'stop_loss': stop_loss,
+            'hora_entrada': timestamp,
+            'capital': CAPITAL_POR_TRADE,
+            'mejor_precio': precio,
+            'estructura': estructura,
+            'recorrido_esperado': recorrido,
+            'ganancia_esperada': ganancia_neta,
+        }
+        
+        self.trades_abiertos[symbol] = trade
+        self.total_entradas += 1
+    
+    def _monitorear_trades(self, simulador, timestamp: datetime):
+        """Monitorea todos los trades abiertos."""
+        cerrar = []
+        
+        for symbol, trade in self.trades_abiertos.items():
+            precio = simulador.obtener_precio(symbol)
+            if precio is None:
+                continue
             
-        except KeyboardInterrupt:
-            break
+            direccion = trade['direccion']
             
-    print("\n👋 Bye!")
+            # Actualizar mejor precio
+            if direccion == 'LONG':
+                trade['mejor_precio'] = max(trade['mejor_precio'], precio)
+            else:
+                trade['mejor_precio'] = min(trade['mejor_precio'], precio)
+            
+            razon = None
+            
+            # Target
+            if direccion == 'LONG' and precio &gt;= trade['target']:
+                razon = 'TARGET'
+            elif direccion == 'SHORT' and precio &lt;= trade['target']:
+                razon = 'TARGET'
+            
+            # Stop loss
+            if direccion == 'LONG' and precio &lt;= trade['stop_loss']:
+                razon = 'STOP_LOSS'
+            elif direccion == 'SHORT' and precio &gt;= trade['stop_loss']:
+                razon = 'STOP_LOSS'
+            
+            # Pérdida de fuerza (verificar cada 5 minutos para no sobrecargar)
+            if razon is None:
+                duracion_min = (timestamp - trade['hora_entrada']).total_seconds() / 60
+                if duracion_min &gt;= 2:
+                    pnl = self.calc.calcular_pnl(direccion, trade['precio_entrada'], precio)
+                    
+                    # Solo si estamos en ganancia
+                    if pnl['bruto_usd'] &gt; 0:
+                        df_5m = simulador.obtener_velas(symbol, '5m', timestamp, 20)
+                        if df_5m is not None and len(df_5m) &gt;= 10:
+                            señales = self._detectar_debilidad(df_5m, direccion)
+                            if señales &gt;= FUERZA_SEÑALES_PARA_SALIR:
+                                razon = 'PERDIDA_FUERZA'
+            
+            if razon:
+                pnl = self.calc.calcular_pnl(
+                    direccion, trade['precio_entrada'], precio
+                )
+                cerrar.append({
+                    'symbol': symbol,
+                    'precio_salida': precio,
+                    'razon': razon,
+                    'pnl': pnl,
+                    'hora_salida': timestamp,
+                })
+        
+        # Cerrar trades
+        for cierre in cerrar:
+            symbol = cierre['symbol']
+            trade = self.trades_abiertos.pop(symbol)
+            
+            trade_cerrado = {
+                **trade,
+                'precio_salida': cierre['precio_salida'],
+                'razon_salida': cierre['razon'],
+                'pnl_neto': cierre['pnl']['neto_usd'],
+                'pnl_pct': cierre['pnl']['pct'],
+                'fees': cierre['pnl']['fees_usd'],
+                'hora_salida': cierre['hora_salida'],
+                'duracion_seg': (cierre['hora_salida'] - trade['hora_entrada']).total_seconds(),
+            }
+            
+            self.trades_cerrados.append(trade_cerrado)
+            self.cooldowns[symbol] = cierre['hora_salida']
+    
+    def _analizar_estructura(self, df: pd.DataFrame) -&gt; str:
+        """Análisis de estructura simplificado (misma lógica que capa2)."""
+        reciente = df.tail(len(df) // 2)
+        
+        # Encontrar pivots
+        highs = reciente['high'].tolist()
+        lows = reciente['low'].tolist()
+        
+        pivot_h = []
+        pivot_l = []
+        w = 3
+        
+        for i in range(w, len(highs) - w):
+            if all(highs[i] &gt;= highs[j] for j in range(i-w, i+w+1) if j != i):
+                pivot_h.append(highs[i])
+        
+        for i in range(w, len(lows) - w):
+            if all(lows[i] &lt;= lows[j] for j in range(i-w, i+w+1) if j != i):
+                pivot_l.append(lows[i])
+        
+        if len(pivot_h) &lt; 2 or len(pivot_l) &lt; 2:
+            return 'INDEFINIDO'
+        
+        # Secuencia
+        h_sube = sum(1 for i in range(len(pivot_h)-1) if pivot_h[i+1] &gt; pivot_h[i])
+        l_sube = sum(1 for i in range(len(pivot_l)-1) if pivot_l[i+1] &gt; pivot_l[i])
+        h_total = len(pivot_h) - 1
+        l_total = len(pivot_l) - 1
+        
+        if h_total &gt; 0 and l_total &gt; 0:
+            if h_sube/h_total &gt; 0.6 and l_sube/l_total &gt; 0.6:
+                return 'ALCISTA'
+            h_baja = h_total - h_sube
+            l_baja = l_total - l_sube
+            if h_baja/h_total &gt; 0.6 and l_baja/l_total &gt; 0.6:
+                return 'BAJISTA'
+        
+        return 'INDEFINIDO'
+    
+    def _detectar_debilidad(self, df: pd.DataFrame, direccion: str) -&gt; int:
+        """Detecta señales de debilidad para salida anticipada."""
+        señales = 0
+        
+        # Momentum
+        sqz = self.sqz.calcular_y_leer(df)
+        if sqz['valido']:
+            color = sqz['detalle']['color_actual']
+            if direccion == 'LONG' and color == 'GREEN':
+                señales += 1
+            elif direccion == 'SHORT' and color == 'MAROON':
+                señales += 1
+        
+        # ADX
+        adx = self.adx.calcular_y_leer(df)
+        if adx['valido']:
+            if adx['detalle']['separacion'] == 'JUNTANDO':
+                señales += 1
+        
+        # Velas achicándose
+        sizes = [abs(row['close'] - row['open']) for _, row in df.tail(4).iterrows()]
+        if len(sizes) &gt;= 3 and sizes[-1] &lt; sizes[-2] &lt; sizes[-3]:
+            señales += 1
+        
+        return señales
+    
+    def _slots_disponibles(self) -&gt; int:
+        return MAX_TRADES_SIMULTANEOS - len(self.trades_abiertos)
+    
+    def _generar_reporte(self, duracion: float, ticks: int, simulador) -&gt; Dict:
+        """Genera reporte completo del backtesting."""
+        trades = self.trades_cerrados
+        
+        if not trades:
+            print("\n❌ Sin trades ejecutados")
+            return {'trades': 0}
+        
+        ganados = [t for t in trades if t['pnl_neto'] &gt; 0]
+        perdidos = [t for t in trades if t['pnl_neto'] &lt;= 0]
+        
+        balance = sum(t['pnl_neto'] for t in trades)
+        total_fees = sum(t['fees'] for t in trades)
+        
+        pnl_ganados = sum(t['pnl_neto'] for t in ganados) if ganados else 0
+        pnl_perdidos = sum(t['pnl_neto'] for t in perdidos) if perdidos else 0
+        
+        avg_ganancia = pnl_ganados / len(ganados) if ganados else 0
+        avg_perdida = pnl_perdidos / len(perdidos) if perdidos else 0
+        
+        win_rate = (len(ganados) / len(trades)) * 100 if trades else 0
+        
+        # Duración promedio
+        avg_duracion = sum(t['duracion_seg'] for t in trades) / len(trades)
+        
+        # Razones de salida
+        razones = {}
+        for t in trades:
+            r = t['razon_salida']
+            razones[r] = razones.get(r, 0) + 1
+        
+        # Drawdown
+        equity = [CAPITAL_TOTAL]
+        for t in trades:
+            equity.append(equity[-1] + t['pnl_neto'])
+        
+        peak = CAPITAL_TOTAL
+        max_dd = 0
+        for e in equity:
+            peak = max(peak, e)
+            dd = ((peak - e) / peak) * 100
+            max_dd = max(max_dd, dd)
+        
+        # Trades por mes
+        trades_por_mes = {}
+        for t in trades:
+            mes = t['hora_entrada'].strftime('%Y-%m')
+            if mes not in trades_por_mes:
+                trades_por_mes[mes] = {'trades': 0, 'pnl': 0, 'ganados': 0}
+            trades_por_mes[mes]['trades'] += 1
+            trades_por_mes[mes]['pnl'] += t['pnl_neto']
+            if t['pnl_neto'] &gt; 0:
+                trades_por_mes[mes]['ganados'] += 1
+        
+        reporte = {
+            'periodo': f"{self.fecha_inicio.date()} → {self.fecha_fin.date()}",
+            'duracion_backtest_min': duracion / 60,
+            'monedas_analizadas': len(simulador.monedas_disponibles),
+            'señales_capa1': self.total_señales_capa1,
+            'señales_capa2': self.total_señales_capa2,
+            'señales_capa3': self.total_señales_capa3,
+            'total_trades': len(trades),
+            'trades_ganados': len(ganados),
+            'trades_perdidos': len(perdidos),
+            'win_rate': round(win_rate, 1),
+            'balance_neto': round(balance, 2),
+            'total_fees': round(total_fees, 2),
+            'pnl_ganados': round(pnl_ganados, 2),
+            'pnl_perdidos': round(pnl_perdidos, 2),
+            'avg_ganancia': round(avg_ganancia, 2),
+            'avg_perdida': round(avg_perdida, 2),
+            'avg_duracion_seg': round(avg_duracion, 0),
+            'max_drawdown_pct': round(max_dd, 2),
+            'razones_salida': razones,
+            'por_mes': trades_por_mes,
+            'capital_inicial': CAPITAL_TOTAL,
+            'capital_final': round(CAPITAL_TOTAL + balance, 2),
+            'retorno_pct': round((balance / CAPITAL_TOTAL) * 100, 2),
+        }
+        
+        # Imprimir reporte
+        print(f"\n{'═' * 60}")
+        print(f"📊 REPORTE DE BACKTESTING")
+        print(f"{'═' * 60}")
+        print(f"   Período: {reporte['periodo']}")
+        print(f"   Duración del test: {reporte['duracion_backtest_min']:.1f} min")
+        print(f"   Monedas: {reporte['monedas_analizadas']}")
+        print(f"{'─' * 60}")
+        print(f"   Señales Capa 1: {reporte['señales_capa1']:,}")
+        print(f"   Señales Capa 2: {reporte['señales_capa2']:,}")
+        print(f"   Señales Capa 3: {reporte['señales_capa3']:,}")
+        print(f"   Trades ejecutados: {reporte['total_trades']}")
+        print(f"{'─' * 60}")
+        print(f"   ✅ Ganados: {reporte['trades_ganados']} | "
+              f"🔴 Perdidos: {reporte['trades_perdidos']}")
+        print(f"   Win rate: {reporte['win_rate']}%")
+        print(f"   Avg ganancia: +{reporte['avg_ganancia']:.2f} USD")
+        print(f"   Avg pérdida: {reporte['avg_perdida']:.2f} USD")
+        print(f"   Avg duración: {reporte['avg_duracion_seg']:.0f} seg")
+        print(f"{'─' * 60}")
+        print(f"   💰 Balance neto: {reporte['balance_neto']:+.2f} USD")
+        print(f"   📉 Max drawdown: {reporte['max_drawdown_pct']:.2f}%")
+        print(f"   💸 Total fees: {reporte['total_fees']:.2f} USD")
+        print(f"   Capital: {reporte['capital_inicial']} → "
+              f"{reporte['capital_final']} USD "
+              f"({reporte['retorno_pct']:+.1f}%)")
+        print(f"{'─' * 60}")
+        print(f"   Razones de salida:")
+        for razon, count in sorted(razones.items(), key=lambda x: x[1], reverse=True):
+            print(f"      {razon}: {count}")
+        print(f"{'─' * 60}")
+        print(f"   Por mes:")
+        for mes in sorted(trades_por_mes.keys()):
+            d = trades_por_mes[mes]
+            wr = (d['ganados']/d['trades']*100) if d['trades'] &gt; 0 else 0
+            print(f"      {mes}: {d['trades']} trades | "
+                  f"WR: {wr:.0f}% | PnL: {d['pnl']:+.2f} USD")
+        print(f"{'═' * 60}\n")
+        
+        # Guardar reporte
+        import json
+        reporte_path = 'backtest/reporte_backtest.json'
+        with open(reporte_path, 'w') as f:
+            json.dump(reporte, f, indent=2, default=str)
+        print(f"   📄 Reporte guardado en: {reporte_path}")
+        
+        # Guardar trades
+        trades_path = 'backtest/trades_backtest.json'
+        trades_serializables = []
+        for t in trades:
+            t_copy = {k: str(v) if isinstance(v, datetime) else v 
+                      for k, v in t.items()}
+            trades_serializables.append(t_copy)
+        
+        with open(trades_path, 'w') as f:
+            json.dump(trades_serializables, f, indent=2, default=str)
+        print(f"   📄 Trades guardados en: {trades_path}")
+        
+        return reporte
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Backtest del Scalper Bot')
+    parser.add_argument('--año', type=int, default=2025)
+    parser.add_argument('--desde', type=str, default=None, help='YYYY-MM-DD')
+    parser.add_argument('--hasta', type=str, default=None, help='YYYY-MM-DD')
+    parser.add_argument('--monedas', type=int, default=None,
+                        help='Limitar monedas (testing rápido)')
+    
+    args = parser.parse_args()
+    
+    if args.desde and args.hasta:
+        fecha_inicio = datetime.strptime(args.desde, '%Y-%m-%d')
+        fecha_fin = datetime.strptime(args.hasta, '%Y-%m-%d')
+    else:
+        fecha_inicio = datetime(args.año, 1, 1)
+        fecha_fin = datetime(args.año, 12, 31, 23, 59, 59)
+    
+    # Crear simulador y cargar datos
+    from backtest.simulador import SimuladorMercado
+    
+    simulador = SimuladorMercado(fecha_inicio, fecha_fin)
+    simulador.cargar_datos(max_monedas=args.monedas)
+    
+    if not simulador.monedas_disponibles:
+        print("❌ Sin datos. Ejecutar primero:")
+        print("   python -m backtest.descargador --año 2025")
+        return
+    
+    # Ejecutar backtest
+    motor = BacktestMotor(fecha_inicio, fecha_fin)
+    resultados = motor.ejecutar(simulador)
+
+
 if __name__ == '__main__':
     main()
-4. Testing
-Comandos
-Abrir terminal en raíz del repositorio.
-Ejecutar:
-python inspector.py
-Ingresar HANA (o cualquier moneda listada en futures) cuando se solicite.
-Verificación
-Verificar que se conecte a MEXC (mensaje verde/exitoso).
-Verificar "FASE 1" con datos de precio reales.
-Verificar "FASE 3" velocity y momentum calculado.
-Verificar "FASE 6" patrones detectados.
-Verificar output final y diagnóstico si es rechazado.
+
+
+"""
+backtest/simulador.py — Simulador de Mercado
+Reemplaza el websocket real con datos históricos.
+Reproduce el mercado minuto a minuto como si fuera en vivo.
+El bot ve exactamente lo mismo que vería en tiempo real.
+"""
+
+import os
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Generator
+
+import pandas as pd
+
+from backtest.descargador import DATOS_1M_DIR, DATOS_5M_DIR, DATOS_15M_DIR
+
+
+class SimuladorMercado:
+    """
+    Simula el mercado con datos históricos.
+    
+    Reproduce minuto a minuto el estado de TODAS las monedas.
+    El bot recibe los mismos datos que recibiría del websocket,
+    pero del pasado.
+    """
+    
+    def __init__(self, fecha_inicio: datetime, fecha_fin: datetime):
+        self.fecha_inicio = fecha_inicio
+        self.fecha_fin = fecha_fin
+        
+        # Datos cargados en memoria por moneda
+        # {symbol: {'1m': DataFrame, '5m': DataFrame, '15m': DataFrame}}
+        self.datos: Dict[str, Dict[str, pd.DataFrame]] = {}
+        
+        # Índice temporal: para cada minuto, qué precio tenía cada moneda
+        self.monedas_disponibles: List[str] = []
+        
+        # Estado actual (como el websocket)
+        self.precios_actuales: Dict[str, float] = {}
+        self.volumenes_actuales: Dict[str, float] = {}
+        self.timestamp_actual: Optional[datetime] = None
+    
+    def cargar_datos(self, max_monedas: int = None):
+        """
+        Carga todos los datos históricos en memoria.
+        
+        Args:
+            max_monedas: Limitar cantidad de monedas (para testing rápido)
+        """
+        print(f"\n📂 Cargando datos históricos...")
+        print(f"   Período: {self.fecha_inicio.date()} → {self.fecha_fin.date()}")
+        
+        # Listar archivos disponibles
+        if not os.path.exists(DATOS_1M_DIR):
+            print(f"   ❌ No hay datos en {DATOS_1M_DIR}")
+            print(f"   Ejecutar: python -m backtest.descargador --año 2025")
+            return
+        
+        archivos = [f for f in os.listdir(DATOS_1M_DIR) if f.endswith('.parquet')]
+        
+        if max_monedas:
+            archivos = archivos[:max_monedas]
+        
+        total = len(archivos)
+        cargadas = 0
+        
+        for i, archivo in enumerate(archivos, 1):
+            symbol = archivo.replace('.parquet', '')
+            
+            try:
+                datos_moneda = {}
+                
+                # Cargar cada timeframe
+                for tf, directorio in [('1m', DATOS_1M_DIR), 
+                                        ('5m', DATOS_5M_DIR),
+                                        ('15m', DATOS_15M_DIR)]:
+                    filepath = os.path.join(directorio, archivo)
+                    
+                    if os.path.exists(filepath):
+                        df = pd.read_parquet(filepath)
+                        
+                        # Filtrar por período
+                        df = df[
+                            (df['open_time'] &gt;= self.fecha_inicio) &amp;
+                            (df['open_time'] &lt;= self.fecha_fin)
+                        ].copy()
+                        
+                        if len(df) &gt; 0:
+                            df = df.sort_values('open_time').reset_index(drop=True)
+                            datos_moneda[tf] = df
+                
+                # Solo incluir si tiene datos de 1m (mínimo requerido)
+                if '1m' in datos_moneda and len(datos_moneda['1m']) &gt; 100:
+                    self.datos[symbol] = datos_moneda
+                    self.monedas_disponibles.append(symbol)
+                    cargadas += 1
+                
+                if i % 50 == 0:
+                    print(f"   [{i}/{total}] {cargadas} monedas cargadas...")
+                    
+            except Exception as e:
+                print(f"   ⚠️ Error cargando {symbol}: {e}")
+        
+        print(f"   ✅ {cargadas} monedas cargadas en memoria")
+        
+        # Calcular memoria usada
+        mem_total = 0
+        for sym, datos in self.datos.items():
+            for tf, df in datos.items():
+                mem_total += df.memory_usage(deep=True).sum()
+        
+        print(f"   💾 Memoria: {mem_total / 1024 / 1024:.0f} MB")
+    
+    def reproducir(self, intervalo_minutos: int = 1) -&gt; Generator[Dict, None, None]:
+        """
+        Reproduce el mercado minuto a minuto.
+        
+        Cada yield retorna el estado del mercado en ese momento,
+        como si fuera un tick del websocket.
+        
+        Args:
+            intervalo_minutos: Cada cuántos minutos avanzar (default: 1)
+        
+        Yields:
+            dict con estado del mercado en cada momento
+        """
+        if not self.datos:
+            print("❌ No hay datos cargados")
+            return
+        
+        # Generar timestamps minuto a minuto
+        current = self.fecha_inicio
+        delta = timedelta(minutes=intervalo_minutos)
+        
+        total_minutos = int((self.fecha_fin - self.fecha_inicio).total_seconds() / 60)
+        minuto_actual = 0
+        
+        while current &lt;= self.fecha_fin:
+            self.timestamp_actual = current
+            minuto_actual += 1
+            
+            # Para cada moneda, buscar el precio en este momento
+            tickers = []
+            
+            for symbol in self.monedas_disponibles:
+                df_1m = self.datos[symbol].get('1m')
+                
+                if df_1m is None:
+                    continue
+                
+                # Buscar la vela que corresponde a este timestamp
+                # (la vela cuyo open_time es &lt;= current)
+                mask = df_1m['open_time'] &lt;= current
+                if not mask.any():
+                    continue
+                
+                idx = mask.values.nonzero()[0][-1]  # Última vela &lt;= current
+                row = df_1m.iloc[idx]
+                
+                precio = float(row['close'])
+                volumen = float(row['volume'])
+                
+                self.precios_actuales[symbol] = precio
+                self.volumenes_actuales[symbol] = volumen
+                
+                tickers.append({
+                    'symbol': symbol,
+                    'precio': precio,
+                    'volumen': volumen,
+                    'open': float(row['open']),
+                    'high': float(row['high']),
+                    'low': float(row['low']),
+                    'close': precio,
+                })
+            
+            # Yield estado del mercado
+            yield {
+                'timestamp': current,
+                'tickers': tickers,
+                'monedas_activas': len(tickers),
+                'minuto': minuto_actual,
+                'total_minutos': total_minutos,
+                'progreso_pct': (minuto_actual / total_minutos) * 100 if total_minutos &gt; 0 else 0,
+            }
+            
+            current += delta
+    
+    def obtener_velas(self, symbol: str, timeframe: str, 
+                       hasta: datetime, cantidad: int) -&gt; Optional[pd.DataFrame]:
+        """
+        Obtiene velas históricas de una moneda HASTA un momento dado.
+        
+        Replica exacta de lo que haría el bot en vivo al pedir
+        velas a Binance, pero usando datos locales.
+        
+        Args:
+            symbol: Moneda
+            timeframe: '1m', '5m', '15m'
+            hasta: Timestamp máximo (el bot no puede ver el futuro)
+            cantidad: Cuántas velas pedir
+        
+        Returns:
+            DataFrame con velas, o None
+        """
+        if symbol not in self.datos:
+            return None
+        
+        df = self.datos[symbol].get(timeframe)
+        if df is None:
+            return None
+        
+        # Solo velas ANTES del momento actual (sin mirar el futuro)
+        mask = df['open_time'] &lt;= hasta
+        df_filtrado = df[mask].copy()
+        
+        if len(df_filtrado) &lt; 10:
+            return None
+        
+        # Últimas N velas
+        return df_filtrado.tail(cantidad).reset_index(drop=True)
+    
+    def obtener_precio(self, symbol: str) -&gt; Optional[float]:
+        """Retorna precio actual de una moneda."""
+        return self.precios_actuales.get(symbol)
+
+
+"""
+backtest/descargador.py — Descarga Datos Históricos de Binance
+Descarga velas de 1m de TODAS las monedas de Binance Futures para todo 2025.
+Usa multiprocessing para aprovechar todos los cores del CPU.
+Los datos se guardan en archivos Parquet (comprimidos, rápidos de leer).
+
+Uso:
+    python -m backtest.descargador --año 2025 --workers 8
+"""
+
+import os
+import sys
+import time
+import argparse
+from datetime import datetime, timedelta
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import List, Optional
+
+import pandas as pd
+from binance.client import Client as BinanceClient
+
+from config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+
+
+# Directorio de datos
+DATOS_DIR = 'backtest/datos'
+DATOS_1M_DIR = os.path.join(DATOS_DIR, '1m')
+DATOS_5M_DIR = os.path.join(DATOS_DIR, '5m')
+DATOS_15M_DIR = os.path.join(DATOS_DIR, '15m')
+
+
+def obtener_todas_las_monedas() -&gt; List[str]:
+    """Obtiene lista de todos los futuros USDT de Binance."""
+    client = BinanceClient(BINANCE_API_KEY, BINANCE_SECRET_KEY)
+    info = client.futures_exchange_info()
+    
+    excluidas = {'USDCUSDT', 'BUSDUSDT', 'TUSDUSDT', 'EURUSDT',
+                 'DAIUSDT', 'FDUSDUSDT', 'USDPUSDT'}
+    
+    symbols = []
+    for s in info['symbols']:
+        if (s['symbol'].endswith('USDT') and 
+            s['status'] == 'TRADING' and
+            s['symbol'] not in excluidas):
+            symbols.append(s['symbol'])
+    
+    return sorted(symbols)
+
+
+def descargar_moneda(args: tuple) -&gt; dict:
+    """
+    Descarga datos de UNA moneda para todo el período.
+    Se ejecuta en un proceso separado (multiprocessing).
+    
+    Args:
+        args: (symbol, intervalo, fecha_inicio, fecha_fin, directorio)
+    
+    Returns:
+        dict con resultado de la descarga
+    """
+    symbol, intervalo, fecha_inicio, fecha_fin, directorio = args
+    
+    filepath = os.path.join(directorio, f'{symbol}.parquet')
+    
+    # Si ya existe, skip
+    if os.path.exists(filepath):
+        try:
+            df_existente = pd.read_parquet(filepath)
+            if len(df_existente) &gt; 1000:
+                return {
+                    'symbol': symbol,
+                    'status': 'SKIP',
+                    'velas': len(df_existente),
+                    'msg': 'Ya descargado',
+                }
+        except Exception:
+            pass  # Re-descargar si está corrupto
+    
+    try:
+        client = BinanceClient(BINANCE_API_KEY, BINANCE_SECRET_KEY)
+        
+        all_klines = []
+        current_start = fecha_inicio
+        
+        while current_start &lt; fecha_fin:
+            # Binance retorna máximo 1500 velas por request
+            klines = client.futures_klines(
+                symbol=symbol,
+                interval=intervalo,
+                startTime=int(current_start.timestamp() * 1000),
+                endTime=int(fecha_fin.timestamp() * 1000),
+                limit=1500,
+            )
+            
+            if not klines:
+                break
+            
+            all_klines.extend(klines)
+            
+            # Avanzar al siguiente batch
+            last_time = klines[-1][0]  # open_time del último
+            current_start = datetime.fromtimestamp(last_time / 1000) + timedelta(milliseconds=1)
+            
+            # Rate limit: ser amable con Binance
+            time.sleep(0.1)
+        
+        if not all_klines:
+            return {
+                'symbol': symbol,
+                'status': 'VACIO',
+                'velas': 0,
+                'msg': 'Sin datos',
+            }
+        
+        # Crear DataFrame
+        df = pd.DataFrame(all_klines, columns=[
+            'open_time', 'open', 'high', 'low', 'close', 'volume',
+            'close_time', 'quote_volume', 'trades',
+            'taker_buy_volume', 'taker_buy_quote_volume', 'ignore',
+        ])
+        
+        # Convertir tipos
+        for col in ['open', 'high', 'low', 'close', 'volume', 'quote_volume']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
+        df['close_time'] = pd.to_datetime(df['close_time'], unit='ms')
+        df['trades'] = pd.to_numeric(df['trades'], errors='coerce')
+        
+        # Eliminar duplicados
+        df = df.drop_duplicates(subset='open_time').sort_values('open_time').reset_index(drop=True)
+        
+        # Guardar como Parquet (comprimido)
+        df.to_parquet(filepath, index=False, compression='snappy')
+        
+        return {
+            'symbol': symbol,
+            'status': 'OK',
+            'velas': len(df),
+            'desde': df['open_time'].iloc[0].strftime('%Y-%m-%d'),
+            'hasta': df['open_time'].iloc[-1].strftime('%Y-%m-%d'),
+        }
+        
+    except Exception as e:
+        return {
+            'symbol': symbol,
+            'status': 'ERROR',
+            'velas': 0,
+            'msg': str(e),
+        }
+
+
+def descargar_todo(año: int = 2025, workers: int = None, intervalo: str = '1m'):
+    """
+    Descarga datos de TODAS las monedas para el año especificado.
+    Usa multiprocessing para aprovechar todos los cores.
+    
+    Args:
+        año: Año a descargar (default: 2025)
+        workers: Cantidad de procesos paralelos (default: CPU cores)
+        intervalo: '1m', '5m', o '15m'
+    """
+    import multiprocessing
+    
+    if workers is None:
+        workers = multiprocessing.cpu_count()
+    
+    # Directorio según intervalo
+    dir_map = {'1m': DATOS_1M_DIR, '5m': DATOS_5M_DIR, '15m': DATOS_15M_DIR}
+    directorio = dir_map.get(intervalo, DATOS_1M_DIR)
+    os.makedirs(directorio, exist_ok=True)
+    
+    # Período
+    fecha_inicio = datetime(año, 1, 1)
+    fecha_fin = datetime(año, 12, 31, 23, 59, 59)
+    
+    print(f"\n{'═' * 60}")
+    print(f"📥 DESCARGADOR DE DATOS HISTÓRICOS")
+    print(f"   Período: {fecha_inicio.date()} → {fecha_fin.date()}")
+    print(f"   Intervalo: {intervalo}")
+    print(f"   Workers: {workers} procesos")
+    print(f"   Directorio: {directorio}")
+    print(f"{'═' * 60}")
+    
+    # Obtener lista de monedas
+    print("\n   Obteniendo lista de monedas...")
+    monedas = obtener_todas_las_monedas()
+    print(f"   {len(monedas)} monedas encontradas")
+    
+    # Preparar argumentos para multiprocessing
+    args_list = [
+        (symbol, intervalo, fecha_inicio, fecha_fin, directorio)
+        for symbol in monedas
+    ]
+    
+    # Descargar en paralelo
+    print(f"\n   Descargando {len(monedas)} monedas x {intervalo}...")
+    inicio = time.time()
+    
+    resultados = {'OK': 0, 'SKIP': 0, 'ERROR': 0, 'VACIO': 0}
+    total_velas = 0
+    
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(descargar_moneda, args): args[0]
+            for args in args_list
+        }
+        
+        for i, future in enumerate(as_completed(futures), 1):
+            symbol = futures[future]
+            try:
+                resultado = future.result()
+                status = resultado['status']
+                resultados[status] = resultados.get(status, 0) + 1
+                total_velas += resultado['velas']
+                
+                # Progreso
+                pct = (i / len(monedas)) * 100
+                emoji = {'OK': '✅', 'SKIP': '⏭️', 'ERROR': '❌', 'VACIO': '⚪'}
+                print(f"   [{pct:5.1f}%] {emoji.get(status, '?')} "
+                      f"{resultado['symbol']:15s} | {status:5s} | "
+                      f"{resultado['velas']:,} velas")
+                
+            except Exception as e:
+                resultados['ERROR'] += 1
+                print(f"   [{(i/len(monedas))*100:5.1f}%] ❌ {symbol}: {e}")
+    
+    duracion = time.time() - inicio
+    
+    print(f"\n{'═' * 60}")
+    print(f"📊 DESCARGA COMPLETADA")
+    print(f"   Tiempo: {duracion/60:.1f} minutos")
+    print(f"   OK: {resultados['OK']} | Skip: {resultados['SKIP']} | "
+          f"Error: {resultados['ERROR']} | Vacío: {resultados['VACIO']}")
+    print(f"   Total velas: {total_velas:,}")
+    print(f"{'═' * 60}\n")
+
+
+def descargar_todos_los_intervalos(año: int = 2025, workers: int = None):
+    """Descarga 1m, 5m y 15m para todas las monedas."""
+    for intervalo in ['1m', '5m', '15m']:
+        descargar_todo(año=año, workers=workers, intervalo=intervalo)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Descarga datos históricos de Binance')
+    parser.add_argument('--año', type=int, default=2025, help='Año a descargar')
+    parser.add_argument('--workers', type=int, default=None, help='Procesos paralelos')
+    parser.add_argument('--intervalo', type=str, default='todos',
+                        choices=['1m', '5m', '15m', 'todos'],
+                        help='Intervalo de velas')
+    
+    args = parser.parse_args()
+    
+    if args.intervalo == 'todos':
+        descargar_todos_los_intervalos(año=args.año, workers=args.workers)
+    else:
+        descargar_todo(año=args.año, workers=args.workers, intervalo=args.intervalo)
+
+"""
+main.py — Loop Principal del Bot Scalping Visual
+Conecta todas las capas y gestiona el flujo completo:
+Radar → Análisis → Confirmación → Entrada → Monitoreo → Salida
+
+Arquitectura:
+  Capa 1 (Radar)     → Websocket detecta movimiento fuerte
+  Capa 2 (Análisis)  → Estructura, tendencia, S/R, runway
+  Capa 3 (Confirmar) → ADX visual + Squeeze Momentum
+  Entrada            → Abre posición simulada
+  Monitoreo          → Vigila precio, fuerza, stop loss
+  Salida             → Cierra en target, SL, o pérdida de fuerza
+  VAR                → Graba todo para análisis posterior
+  Telegram           → Notifica cada evento
+"""
+
+import asyncio
+import os
+import signal
+import sys
+from datetime import datetime
+from typing import Dict
+
+from config import (
+    validar_config,
+    LOGS_DIR,
+    VAR_TRADES_DIR,
+    SALA_ESPERA_TIMEOUT_SEG,
+    SALA_ESPERA_MAX,
+)
+from capa1_radar import Radar
+from capa2_analisis import AnálisisVisual
+from capa3_confirmacion import Confirmacion
+from entrada import GestorEntradas
+from monitoreo import Monitor
+from salida import GestorSalidas
+from var_system import VARSystem
+from telegram_bot import TelegramNotifier
+
+
+class ScalperBot:
+    """
+    Bot de Scalping Visual — Loop Principal.
+    
+    Flujo: Radar detecta → Análisis visual filtra → Confirmación valida
+           → Entra → Monitorea → Sale → Graba VAR → Notifica
+    """
+    
+    def __init__(self):
+        # Módulos
+        self.radar = Radar()
+        self.analisis = AnálisisVisual()
+        self.confirmacion = Confirmacion()
+        self.entradas = GestorEntradas()
+        self.salidas = GestorSalidas()
+        self.var = VARSystem()
+        self.telegram = TelegramNotifier()
+        
+        # Estado
+        self.activo = False
+        self.ciclos = 0
+
+        # Sala de espera: symbol → {'analisis': dict Capa 2, 'timestamp': datetime}
+        self.sala_espera = {}
+        
+        # Conectar callbacks
+        self.radar.on_candidatas(self._procesar_candidatas)
+    
+    async def iniciar(self):
+        """Arranca el bot."""
+        print("\n" + "═" * 60)
+        print("🤖 SCALPER BOT — Iniciando...")
+        print("═" * 60)
+        
+        # Validar configuración
+        if not validar_config():
+            print("❌ Configuración inválida. Revisar .env")
+            return
+        
+        # Crear directorios
+        os.makedirs(VAR_TRADES_DIR, exist_ok=True)
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        
+        self.activo = True
+        
+        # Notificar inicio
+        await self.telegram.enviar("🤖 Scalper Bot iniciado — Modo SIMULACIÓN")
+        
+        # Iniciar radar (loop principal)
+        print("🔍 Iniciando RADAR...")
+        try:
+            await self.radar.iniciar()
+        except KeyboardInterrupt:
+            await self.detener()
+    
+    async def _procesar_candidatas(self, candidatas: list):
+        """
+        Callback del Radar: recibe monedas con movimiento fuerte.
+        Las pasa por Capa 2 y Capa 3.
+        """
+        self.ciclos += 1
+
+        # ══════════════════════════════════════════
+        # SALA DE ESPERA: expirar y re-evaluar Capa 3
+        # ══════════════════════════════════════════
+
+        expiradas = []
+        ahora = datetime.now()
+        for sym, data in list(self.sala_espera.items()):
+            edad = (ahora - data['timestamp']).total_seconds()
+
+            # Expirar por timeout
+            if edad &gt; SALA_ESPERA_TIMEOUT_SEG:
+                print(f"   ⌛ {sym}: Expiró de sala de espera ({edad:.0f}s)")
+                expiradas.append(sym)
+                continue
+
+            # Si ya entró por otro camino, limpiar
+            if self.entradas.ya_en_trade(sym):
+                expiradas.append(sym)
+
+        for sym in expiradas:
+            self.sala_espera.pop(sym, None)
+
+        confirmadas = []
+        for sym, data in list(self.sala_espera.items()):
+            # ¿Hay slots?
+            if not self.entradas.puede_entrar():
+                break
+
+            try:
+                # Descargar velas frescas para indicadores actualizados
+                velas_frescas = self.analisis._descargar_velas(sym)
+                if velas_frescas.get('valido'):
+                    data['analisis']['velas'] = velas_frescas
+
+                señal = self.confirmacion.confirmar(data['analisis'])
+                if señal is not None:
+                    print(f"   🔥 {sym}: CONFIRMADO desde sala de espera!")
+
+                    trade = self.entradas.entrar(señal)
+                    if trade:
+                        self.var.iniciar_grabacion(trade)
+                        await self.telegram.notificar_entrada(trade)
+                        asyncio.create_task(self._monitorear_trade(trade))
+
+                    confirmadas.append(sym)
+
+            except Exception as e:
+                print(f"   ⚠️ Error re-evaluando {sym}: {e}")
+
+        for sym in confirmadas:
+            self.sala_espera.pop(sym, None)
+        
+        # ¿Hay slots disponibles?
+        if not self.entradas.puede_entrar():
+            return
+        
+        for candidata in candidatas:
+            symbol = candidata['symbol']
+            
+            # ¿Ya estamos en este trade?
+            if self.entradas.ya_en_trade(symbol):
+                continue
+            
+            # ¿Hay slots?
+            if not self.entradas.puede_entrar():
+                break
+            
+            try:
+                # ══════════════════════════════════════════
+                # CAPA 2: Análisis Visual
+                # ══════════════════════════════════════════
+                analisis = await self.analisis.analizar(candidata)
+                
+                if analisis is None:
+                    continue  # Descartada en Capa 2
+                
+                # ══════════════════════════════════════════
+                # CAPA 3: Confirmación ADX + Momentum
+                # ══════════════════════════════════════════
+                señal = self.confirmacion.confirmar(analisis)
+                
+                if señal is None:
+                    # Guardar en sala de espera para re-evaluar
+                    if len(self.sala_espera) &lt; SALA_ESPERA_MAX:
+                        self.sala_espera[symbol] = {
+                            'analisis': analisis,
+                            'timestamp': datetime.now(),
+                        }
+                        print(f"   ⏳ {symbol}: En sala de espera (Capa 3 pendiente)")
+                    continue  # No confirmada en Capa 3
+                
+                # ══════════════════════════════════════════
+                # ENTRADA
+                # ══════════════════════════════════════════
+                trade = self.entradas.entrar(señal)
+                
+                if trade is None:
+                    continue
+                
+                # VAR: Iniciar grabación
+                self.var.iniciar_grabacion(trade)
+                
+                # Telegram: Notificar entrada
+                await self.telegram.notificar_entrada(trade)
+                
+                # ══════════════════════════════════════════
+                # MONITOREO (en paralelo)
+                # ══════════════════════════════════════════
+                asyncio.create_task(
+                    self._monitorear_trade(trade)
+                )
+                
+            except Exception as e:
+                print(f"   ❌ Error procesando {symbol}: {e}")
+    
+    async def _monitorear_trade(self, trade: Dict):
+        """
+        Inicia monitoreo de un trade en paralelo.
+        Cuando el monitor detecta condición de salida, cierra.
+        """
+        symbol = trade['symbol']
+        monitor = Monitor()
+        
+        # Callback de cierre
+        async def on_cerrar(trade_cerrado):
+            await self._cerrar_trade(trade_cerrado)
+        
+        # Callback de snapshot VAR
+        async def on_var_snapshot(trade_snap, snapshot):
+            self.var.agregar_snapshot(trade_snap, snapshot)
+        
+        monitor.on_cerrar(on_cerrar)
+        monitor.on_var_snapshot(on_var_snapshot)
+        
+        # Funciones para obtener precio y fuerza
+        async def obtener_precio(sym):
+            return self.radar.precios_actuales.get(sym)
+        
+        async def obtener_fuerza(trade_data):
+            try:
+                velas = trade_data.get('señal_completa', {}).get('velas', {})
+                if velas:
+                    return self.confirmacion.leer_fuerza_actual(
+                        velas, trade_data['direccion']
+                    )
+            except Exception:
+                pass
+            return None
+        
+        # Iniciar vigilancia
+        await monitor.vigilar(trade, obtener_precio, obtener_fuerza)
+    
+    async def _cerrar_trade(self, trade: dict):
+        """Ejecuta el cierre completo de un trade."""
+        symbol = trade['symbol']
+        
+        # Cerrar posición
+        resumen = self.salidas.cerrar(trade)
+        
+        # Remover de trades abiertos
+        self.entradas.cerrar_trade(symbol)
+        
+        # VAR: Cerrar grabación
+        self.var.cerrar_grabacion(trade, resumen)
+        
+        # Telegram: Notificar salida
+        await self.telegram.notificar_salida(resumen)
+        
+        # Estadísticas cada 5 trades
+        total_trades = self.salidas.trades_ganados + self.salidas.trades_perdidos
+        if total_trades &gt; 0 and total_trades % 5 == 0:
+            stats = self.salidas.estadisticas()
+            await self.telegram.notificar_resumen(stats)
+    
+    async def detener(self):
+        """Detiene el bot limpiamente."""
+        print("\n🛑 Deteniendo bot...")
+        self.activo = False
+        self.radar.detener()
+        self.sala_espera.clear()
+        
+        # Cerrar trades abiertos
+        for trade in self.entradas.listar_trades():
+            print(f"   ⚠️ Cerrando trade abierto: {trade['symbol']}")
+            trade['razon_salida'] = 'BOT_DETENIDO'
+            trade['precio_salida'] = self.radar.precios_actuales.get(
+                trade['symbol'], trade['precio_entrada']
+            )
+            trade['hora_salida'] = datetime.now()
+            trade['duracion'] = (
+                trade['hora_salida'] - trade['hora_entrada']
+            ).total_seconds()
+            await self._cerrar_trade(trade)
+        
+        # Resumen final
+        stats = self.salidas.estadisticas()
+        print(f"\n{'═' * 60}")
+        print(f"📊 RESUMEN FINAL")
+        print(f"   Trades: {stats['trades_ganados']}W / {stats['trades_perdidos']}L")
+        print(f"   Win rate: {stats['win_rate']}%")
+        print(f"   Balance: {stats['balance_neto']:+.2f} USD")
+        print(f"{'═' * 60}")
+        
+        await self.telegram.notificar_resumen(stats)
+        await self.telegram.enviar("🛑 Bot detenido")
+
+
+# ══════════════════════════════════════════════════════════
+# PUNTO DE ENTRADA
+# ══════════════════════════════════════════════════════════
+
+async def main():
+    bot = ScalperBot()
+    
+    # Manejar Ctrl+C
+    loop = asyncio.get_event_loop()
+    
+    def signal_handler():
+        asyncio.create_task(bot.detener())
+    
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, signal_handler)
+        except NotImplementedError:
+            pass  # Windows no soporta add_signal_handler
+    
+    await bot.iniciar()
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
   </pre>
   <div class="footer">
     Total archivos: 1<br>
-    Total caracteres: 23,611<br>
-    Generado: 2026-01-20 17:58:22
+    Total caracteres: 52,934<br>
+    Generado: 2026-02-17 15:36:34
   </div>
 </body>
 </html>
